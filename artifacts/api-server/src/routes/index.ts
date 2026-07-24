@@ -8,6 +8,8 @@ import countriesRouter from "./countries";
 import paymentMethodsRouter from "./payment-methods";
 import depositsRouter from "./deposits";
 import withdrawalsRouter from "./withdrawals";
+import adminRouter from "./admin";
+import ticketsRouter from "./tickets";
 
 const router: IRouter = Router();
 
@@ -20,5 +22,7 @@ router.use(countriesRouter);
 router.use(paymentMethodsRouter);
 router.use(depositsRouter);
 router.use(withdrawalsRouter);
+router.use(adminRouter);
+router.use(ticketsRouter);
 
 export default router;

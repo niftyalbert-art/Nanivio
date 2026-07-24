@@ -6,20 +6,18 @@ import {
   getGetDepositsQueryKey,
 } from '@workspace/api-client-react';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
+import { Card, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Badge } from '@/components/ui/badge';
-import { CheckCircle2, Copy, Check, Upload, Clock, ArrowLeft } from 'lucide-react';
+import { CheckCircle2, Copy, Check, Upload, Clock, ArrowLeft, ChevronRight, ChevronDown } from 'lucide-react';
 import { useQueryClient } from '@tanstack/react-query';
 import { useToast } from '@/hooks/use-toast';
 import { Link } from 'wouter';
 
-type Step = 'method' | 'confirm' | 'success';
-
-export default function Deposit() {
+export default function FundWallet() {
   const queryClient = useQueryClient();
   const { toast } = useToast();
   const fileRef = useRef<HTMLInputElement>(null);
@@ -28,7 +26,6 @@ export default function Deposit() {
   const { data: wallets, isLoading: walletsLoading } = useGetWallets();
   const createDeposit = useCreateDeposit();
 
-  const [step, setStep] = useState<Step>('method');
   const [selectedMethodId, setSelectedMethodId] = useState<number | null>(null);
   const [selectedWalletId, setSelectedWalletId] = useState<string>('');
   const [amount, setAmount] = useState('');
@@ -36,6 +33,7 @@ export default function Deposit() {
   const [receiptBase64, setReceiptBase64] = useState<string>('');
   const [receiptName, setReceiptName] = useState('');
   const [copied, setCopied] = useState<string | null>(null);
+  const [success, setSuccess] = useState(false);
 
   const selectedMethod = methods?.find(m => m.id === selectedMethodId);
   const selectedWallet = wallets?.find(w => w.id === Number(selectedWalletId));
@@ -51,78 +49,48 @@ export default function Deposit() {
     if (!file) return;
     setReceiptName(file.name);
     const reader = new FileReader();
-    reader.onload = (ev) => {
-      setReceiptBase64(ev.target?.result as string);
-    };
+    reader.onload = (ev) => setReceiptBase64(ev.target?.result as string);
     reader.readAsDataURL(file);
   };
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedMethodId || !selectedWalletId || !amount || !txId || !receiptBase64) {
-      toast({ title: 'Missing fields', description: 'Please fill in all fields and upload your receipt.', variant: 'destructive' });
+      toast({ title: 'Missing fields', description: 'Please complete all fields and upload your receipt.', variant: 'destructive' });
       return;
     }
     createDeposit.mutate(
+      { data: { walletId: Number(selectedWalletId), paymentMethodId: selectedMethodId!, amount: Number(amount), externalTransactionId: txId, receiptImage: receiptBase64 } },
       {
-        data: {
-          walletId: Number(selectedWalletId),
-          paymentMethodId: selectedMethodId,
-          amount: Number(amount),
-          externalTransactionId: txId,
-          receiptImage: receiptBase64,
-        },
-      },
-      {
-        onSuccess: () => {
-          queryClient.invalidateQueries({ queryKey: getGetDepositsQueryKey() });
-          setStep('success');
-        },
-        onError: () => {
-          toast({ title: 'Submission failed', description: 'Please try again.', variant: 'destructive' });
-        },
+        onSuccess: () => { queryClient.invalidateQueries({ queryKey: getGetDepositsQueryKey() }); setSuccess(true); },
+        onError: () => toast({ title: 'Submission failed', description: 'Please try again.', variant: 'destructive' }),
       }
     );
   };
 
   if (methodsLoading || walletsLoading) {
-    return (
-      <div className="p-4 md:p-8 max-w-2xl mx-auto space-y-4">
-        <Skeleton className="h-8 w-48" />
-        <Skeleton className="h-64" />
-      </div>
-    );
+    return <div className="p-4 md:p-8 max-w-2xl mx-auto space-y-4"><Skeleton className="h-8 w-48" /><Skeleton className="h-64" /></div>;
   }
 
-  if (step === 'success') {
+  if (success) {
     return (
       <div className="p-4 md:p-8 max-w-2xl mx-auto flex items-center justify-center min-h-[60vh]">
         <Card className="w-full">
           <CardContent className="pt-10 pb-10 text-center space-y-5">
-            <div className="w-16 h-16 mx-auto rounded-full bg-amber-500/10 flex items-center justify-center">
-              <Clock className="w-8 h-8 text-amber-500" />
+            <div className="w-20 h-20 mx-auto rounded-full bg-amber-500/10 flex items-center justify-center">
+              <Clock className="w-10 h-10 text-amber-500" />
             </div>
-            <div className="space-y-1">
-              <h2 className="text-xl md:text-2xl font-bold">Deposit Pending</h2>
-              <p className="text-sm text-muted-foreground">
-                Your deposit is under review. It will be credited to your {selectedWallet?.currencyCode} wallet once confirmed by admin — usually within 1–3 hours.
+            <div className="space-y-2">
+              <h2 className="text-2xl font-bold">Pending Review</h2>
+              <p className="text-sm text-muted-foreground max-w-xs mx-auto">
+                Your deposit is under review. It will be credited to your <span className="font-semibold">{selectedWallet?.currencyCode}</span> wallet once confirmed — usually within 1–3 hours.
               </p>
             </div>
-            <Badge className="bg-amber-500/10 text-amber-500 border-amber-500/20 px-4 py-1">Pending Review</Badge>
+            <Badge className="bg-amber-500/10 text-amber-500 border-amber-500/20 px-4 py-1.5 text-sm">⏳ Pending</Badge>
             <div className="pt-2 space-y-2">
-              <Link href="/wallets">
-                <Button className="w-full max-w-xs">View My Wallets</Button>
-              </Link>
-              <Button variant="outline" className="w-full max-w-xs" onClick={() => {
-                setStep('method');
-                setSelectedMethodId(null);
-                setSelectedWalletId('');
-                setAmount('');
-                setTxId('');
-                setReceiptBase64('');
-                setReceiptName('');
-              }}>
-                New Deposit
+              <Link href="/wallets"><Button className="w-full max-w-xs">View My Wallets</Button></Link>
+              <Button variant="outline" className="w-full max-w-xs" onClick={() => { setSuccess(false); setSelectedMethodId(null); setSelectedWalletId(''); setAmount(''); setTxId(''); setReceiptBase64(''); setReceiptName(''); }}>
+                Make Another Deposit
               </Button>
             </div>
           </CardContent>
@@ -132,116 +100,96 @@ export default function Deposit() {
   }
 
   return (
-    <div className="p-4 md:p-8 max-w-2xl mx-auto space-y-5">
+    <div className="p-4 md:p-8 max-w-2xl mx-auto space-y-6">
+      {/* Header */}
       <div className="flex items-center gap-3">
         <Link href="/wallets">
-          <Button variant="ghost" size="sm" className="px-2">
-            <ArrowLeft className="w-4 h-4 mr-1" /> Back
-          </Button>
+          <Button variant="ghost" size="sm" className="px-2"><ArrowLeft className="w-4 h-4 mr-1" /> Back</Button>
         </Link>
         <div>
-          <h1 className="text-xl md:text-2xl font-bold tracking-tight">Fund Your Wallet</h1>
-          <p className="text-xs text-muted-foreground">Copy payment details, transfer funds, then confirm below</p>
+          <h1 className="text-xl md:text-2xl font-bold tracking-tight">Top Up Wallet</h1>
+          <p className="text-xs text-muted-foreground">Choose a payment method below and follow the steps</p>
         </div>
       </div>
 
-      {/* Step indicator */}
-      <div className="flex items-center gap-2 text-xs text-muted-foreground">
-        <span className={step === 'method' ? 'text-primary font-semibold' : ''}>1. Choose method</span>
-        <span>→</span>
-        <span className={step === 'confirm' ? 'text-primary font-semibold' : ''}>2. Confirm transfer</span>
-      </div>
-
-      {step === 'method' && (
-        <div className="space-y-4">
-          {/* Payment Methods */}
-          <div className="space-y-2">
-            <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">Select Payment Channel</h2>
-            {methods?.map((method) => (
-              <Card
-                key={method.id}
-                className={`cursor-pointer transition-all border-2 ${selectedMethodId === method.id ? 'border-primary bg-primary/5' : 'border-transparent hover:border-border'}`}
-                onClick={() => setSelectedMethodId(method.id)}
-              >
-                <CardContent className="p-4">
-                  <div className="flex items-start gap-3">
-                    <span className="text-2xl shrink-0">{method.logoEmoji}</span>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center justify-between mb-2">
-                        <p className="font-bold">{method.name}</p>
-                        {selectedMethodId === method.id && (
-                          <CheckCircle2 className="w-4 h-4 text-primary shrink-0" />
-                        )}
+      {/* Step 1: Choose deposit type */}
+      <div className="space-y-2">
+        <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Step 1 — Choose Deposit Type</p>
+        <div className="space-y-2">
+          {methods?.map((method) => {
+            const isSelected = selectedMethodId === method.id;
+            return (
+              <div key={method.id}>
+                <button
+                  type="button"
+                  onClick={() => setSelectedMethodId(isSelected ? null : method.id)}
+                  className={`w-full text-left rounded-xl border-2 transition-all p-4 ${isSelected ? 'border-primary bg-primary/5' : 'border-border hover:border-primary/40 bg-card'}`}
+                >
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      <span className="text-2xl">{method.logoEmoji}</span>
+                      <div>
+                        <p className="font-bold text-sm">
+                          {method.type === 'botim' ? 'Botim Deposit' : method.type === 'emoney' ? 'eMoney Deposit' : 'Bank Deposit'}
+                        </p>
+                        <p className="text-xs text-muted-foreground">{method.name}</p>
                       </div>
-
-                      {/* Copyable details */}
-                      <div className="space-y-2 text-sm">
-                        <div className="flex items-center justify-between gap-2 bg-muted/60 rounded-lg px-3 py-2">
-                          <div className="min-w-0">
-                            <p className="text-xs text-muted-foreground">Account / Number</p>
-                            <p className="font-mono font-semibold text-xs md:text-sm truncate">{method.accountNumber}</p>
-                          </div>
-                          <Button
-                            variant="ghost" size="sm"
-                            className="shrink-0 h-7 w-7 p-0"
-                            onClick={(e) => { e.stopPropagation(); copyToClipboard(method.accountNumber, `acct-${method.id}`); }}
-                          >
-                            {copied === `acct-${method.id}` ? <Check className="w-3.5 h-3.5 text-emerald-500" /> : <Copy className="w-3.5 h-3.5" />}
-                          </Button>
-                        </div>
-                        <div className="flex items-center justify-between gap-2 bg-muted/60 rounded-lg px-3 py-2">
-                          <div className="min-w-0">
-                            <p className="text-xs text-muted-foreground">Account Name</p>
-                            <p className="font-semibold text-xs md:text-sm truncate">{method.accountName}</p>
-                          </div>
-                          <Button
-                            variant="ghost" size="sm"
-                            className="shrink-0 h-7 w-7 p-0"
-                            onClick={(e) => { e.stopPropagation(); copyToClipboard(method.accountName, `name-${method.id}`); }}
-                          >
-                            {copied === `name-${method.id}` ? <Check className="w-3.5 h-3.5 text-emerald-500" /> : <Copy className="w-3.5 h-3.5" />}
-                          </Button>
-                        </div>
-                      </div>
-
-                      <p className="text-xs text-muted-foreground mt-2 leading-relaxed">{method.instructions}</p>
                     </div>
+                    {isSelected ? <ChevronDown className="w-4 h-4 text-primary" /> : <ChevronRight className="w-4 h-4 text-muted-foreground" />}
                   </div>
-                </CardContent>
-              </Card>
-            ))}
-          </div>
+                </button>
 
-          <Button
-            className="w-full"
-            disabled={!selectedMethodId}
-            onClick={() => setStep('confirm')}
-          >
-            I've sent the money — Continue
-          </Button>
+                {/* Expanded details */}
+                {isSelected && (
+                  <div className="border-2 border-t-0 border-primary rounded-b-xl bg-primary/5 p-4 space-y-3">
+                    <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Payment Details — Copy &amp; Transfer</p>
+
+                    <div className="flex items-center justify-between gap-2 bg-background/80 border border-border rounded-lg px-3 py-2.5">
+                      <div className="min-w-0">
+                        <p className="text-xs text-muted-foreground">Account / Number</p>
+                        <p className="font-mono font-bold text-sm">{method.accountNumber}</p>
+                      </div>
+                      <Button variant="ghost" size="sm" className="shrink-0 h-8 w-8 p-0" onClick={() => copyToClipboard(method.accountNumber, `acct-${method.id}`)}>
+                        {copied === `acct-${method.id}` ? <Check className="w-3.5 h-3.5 text-emerald-500" /> : <Copy className="w-3.5 h-3.5" />}
+                      </Button>
+                    </div>
+
+                    <div className="flex items-center justify-between gap-2 bg-background/80 border border-border rounded-lg px-3 py-2.5">
+                      <div className="min-w-0">
+                        <p className="text-xs text-muted-foreground">Account Name</p>
+                        <p className="font-semibold text-sm">{method.accountName}</p>
+                      </div>
+                      <Button variant="ghost" size="sm" className="shrink-0 h-8 w-8 p-0" onClick={() => copyToClipboard(method.accountName, `name-${method.id}`)}>
+                        {copied === `name-${method.id}` ? <Check className="w-3.5 h-3.5 text-emerald-500" /> : <Copy className="w-3.5 h-3.5" />}
+                      </Button>
+                    </div>
+
+                    <p className="text-xs text-muted-foreground leading-relaxed bg-amber-500/10 border border-amber-500/20 rounded-lg p-2.5">
+                      📋 {method.instructions}
+                    </p>
+                  </div>
+                )}
+              </div>
+            );
+          })}
         </div>
-      )}
+      </div>
 
-      {step === 'confirm' && (
+      {/* Step 2: Confirm details */}
+      {selectedMethodId && (
         <form onSubmit={handleSubmit} className="space-y-4">
+          <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Step 2 — Confirm Your Transfer</p>
+
           <Card>
-            <CardHeader className="p-4 pb-0">
-              <CardTitle className="text-base">Confirm Your Transfer</CardTitle>
-              <CardDescription className="text-xs">Fill in the details from your {selectedMethod?.name} receipt</CardDescription>
-            </CardHeader>
             <CardContent className="p-4 space-y-4">
               {/* Wallet */}
               <div className="space-y-1.5">
                 <Label className="text-sm">Credit to Wallet</Label>
                 <Select value={selectedWalletId} onValueChange={setSelectedWalletId} required>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select wallet to receive funds" />
-                  </SelectTrigger>
+                  <SelectTrigger><SelectValue placeholder="Which wallet should we credit?" /></SelectTrigger>
                   <SelectContent>
                     {wallets?.map((w) => (
-                      <SelectItem key={w.id} value={String(w.id)}>
-                        {w.flag} {w.currencyName} ({w.currencyCode})
-                      </SelectItem>
+                      <SelectItem key={w.id} value={String(w.id)}>{w.flag} {w.currencyName} ({w.currencyCode})</SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
@@ -249,73 +197,55 @@ export default function Deposit() {
 
               {/* Amount */}
               <div className="space-y-1.5">
-                <Label className="text-sm">Amount Sent</Label>
+                <Label className="text-sm">Amount You Sent</Label>
                 <div className="relative">
-                  <Input
-                    type="number" step="0.01" min="0.01" placeholder="0.00"
-                    value={amount} onChange={(e) => setAmount(e.target.value)}
-                    className="pr-20 font-mono" required
-                  />
-                  <span className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground text-sm">
-                    {selectedWallet?.currencyCode || '---'}
-                  </span>
+                  <Input type="number" step="0.01" min="0.01" placeholder="0.00" value={amount} onChange={e => setAmount(e.target.value)} className="pr-20 font-mono" required />
+                  <span className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground text-sm">{selectedWallet?.currencyCode || '---'}</span>
                 </div>
               </div>
 
               {/* Transaction ID */}
               <div className="space-y-1.5">
                 <Label className="text-sm">Transaction / Reference ID</Label>
-                <Input
-                  placeholder="e.g. TXN-829401847"
-                  value={txId} onChange={(e) => setTxId(e.target.value)}
-                  required
-                />
-                <p className="text-xs text-muted-foreground">Enter the reference number from your {selectedMethod?.name} confirmation.</p>
+                <Input placeholder="e.g. TXN-829401847" value={txId} onChange={e => setTxId(e.target.value)} className="font-mono" required />
+                <p className="text-xs text-muted-foreground">The reference number from your {selectedMethod?.name} confirmation screen.</p>
               </div>
 
               {/* Receipt Upload */}
               <div className="space-y-1.5">
-                <Label className="text-sm">Receipt Screenshot</Label>
+                <Label className="text-sm">Upload Receipt Screenshot</Label>
                 <div
-                  className="border-2 border-dashed border-border rounded-lg p-4 text-center cursor-pointer hover:border-primary/50 transition-colors"
+                  className="border-2 border-dashed border-border rounded-xl p-5 text-center cursor-pointer hover:border-primary/50 transition-colors"
                   onClick={() => fileRef.current?.click()}
                 >
                   {receiptBase64 ? (
                     <div className="space-y-1">
-                      <CheckCircle2 className="w-6 h-6 text-emerald-500 mx-auto" />
+                      <CheckCircle2 className="w-7 h-7 text-emerald-500 mx-auto" />
                       <p className="text-sm font-medium text-emerald-600 dark:text-emerald-400">{receiptName}</p>
                       <p className="text-xs text-muted-foreground">Tap to change</p>
                     </div>
                   ) : (
-                    <div className="space-y-1">
-                      <Upload className="w-6 h-6 mx-auto text-muted-foreground" />
-                      <p className="text-sm font-medium">Upload receipt</p>
-                      <p className="text-xs text-muted-foreground">PNG, JPG, or JPEG</p>
+                    <div className="space-y-1.5">
+                      <Upload className="w-7 h-7 mx-auto text-muted-foreground" />
+                      <p className="text-sm font-semibold">Tap to upload receipt</p>
+                      <p className="text-xs text-muted-foreground">PNG, JPG — screenshot of your payment confirmation</p>
                     </div>
                   )}
                 </div>
-                <input
-                  ref={fileRef}
-                  type="file"
-                  accept="image/*"
-                  className="hidden"
-                  onChange={handleFileChange}
-                />
+                <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={handleFileChange} />
               </div>
             </CardContent>
           </Card>
 
-          <div className="flex gap-3">
-            <Button type="button" variant="outline" className="flex-1" onClick={() => setStep('method')}>
-              Back
-            </Button>
-            <Button
-              type="submit" className="flex-1"
-              disabled={!selectedWalletId || !amount || !txId || !receiptBase64 || createDeposit.isPending}
-            >
-              {createDeposit.isPending ? 'Submitting...' : 'Submit Deposit'}
-            </Button>
-          </div>
+          <Button
+            type="submit"
+            size="lg"
+            className="w-full font-bold text-base"
+            disabled={!selectedWalletId || !amount || !txId || !receiptBase64 || createDeposit.isPending}
+          >
+            {createDeposit.isPending ? 'Submitting...' : 'Confirm Deposit'}
+          </Button>
+          <p className="text-xs text-center text-muted-foreground">Your deposit will show as <span className="text-amber-500 font-medium">Pending</span> until our team verifies it.</p>
         </form>
       )}
     </div>

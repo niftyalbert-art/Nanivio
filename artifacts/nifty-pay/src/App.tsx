@@ -13,27 +13,36 @@ import Stats from '@/pages/stats';
 import Deposit from '@/pages/deposit';
 import Withdraw from '@/pages/withdraw';
 import Account from '@/pages/account';
+import Admin from '@/pages/admin';
 import NotFound from '@/pages/not-found';
 
 const queryClient = new QueryClient();
 
 function Router() {
   return (
-    <AppLayout>
-      <Switch>
-        <Route path="/" component={Dashboard} />
-        <Route path="/send" component={Send} />
-        <Route path="/transactions" component={Transactions} />
-        <Route path="/transactions/:id" component={TransactionDetail} />
-        <Route path="/countries" component={Countries} />
-        <Route path="/wallets" component={Wallets} />
-        <Route path="/stats" component={Stats} />
-        <Route path="/deposit" component={Deposit} />
-        <Route path="/withdraw" component={Withdraw} />
-        <Route path="/account" component={Account} />
-        <Route component={NotFound} />
-      </Switch>
-    </AppLayout>
+    <Switch>
+      {/* Admin panel — no app chrome */}
+      <Route path="/admin" component={Admin} />
+
+      {/* Main app */}
+      <Route>
+        <AppLayout>
+          <Switch>
+            <Route path="/" component={Dashboard} />
+            <Route path="/send" component={Send} />
+            <Route path="/transactions" component={Transactions} />
+            <Route path="/transactions/:id" component={TransactionDetail} />
+            <Route path="/countries" component={Countries} />
+            <Route path="/wallets" component={Wallets} />
+            <Route path="/stats" component={Stats} />
+            <Route path="/deposit" component={Deposit} />
+            <Route path="/withdraw" component={Withdraw} />
+            <Route path="/account" component={Account} />
+            <Route component={NotFound} />
+          </Switch>
+        </AppLayout>
+      </Route>
+    </Switch>
   );
 }
 

@@ -1,49 +1,13 @@
-import { useState } from 'react';
-import { useGetWallets, useTopUpWallet, getGetWalletsQueryKey, getGetDashboardSummaryQueryKey } from '@workspace/api-client-react';
+import { useGetWallets } from '@workspace/api-client-react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
 import { ArrowUpRight, ArrowDownLeft, Plus } from 'lucide-react';
-import { useQueryClient } from '@tanstack/react-query';
-import { useToast } from '@/hooks/use-toast';
 import { Link } from 'wouter';
 
 export default function Wallets() {
-  const queryClient = useQueryClient();
-  const { toast } = useToast();
   const { data: wallets, isLoading } = useGetWallets();
-  const topUpWallet = useTopUpWallet();
-
-  const [dialogOpen, setDialogOpen] = useState(false);
-  const [selectedWalletId, setSelectedWalletId] = useState<number | null>(null);
-  const [topUpAmount, setTopUpAmount] = useState('');
-
-  const selectedWallet = wallets?.find(w => w.id === selectedWalletId);
-
-  const handleTopUp = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!selectedWalletId) return;
-    topUpWallet.mutate(
-      { id: selectedWalletId, data: { amount: Number(topUpAmount) } },
-      {
-        onSuccess: () => {
-          queryClient.invalidateQueries({ queryKey: getGetWalletsQueryKey() });
-          queryClient.invalidateQueries({ queryKey: getGetDashboardSummaryQueryKey() });
-          toast({ title: 'Money added', description: `${topUpAmount} ${selectedWallet?.currencyCode} added to your wallet` });
-          setDialogOpen(false);
-          setTopUpAmount('');
-          setSelectedWalletId(null);
-        },
-        onError: () => {
-          toast({ title: 'Failed', description: 'Something went wrong.', variant: 'destructive' });
-        },
-      }
-    );
-  };
 
   if (isLoading) {
     return (
@@ -64,7 +28,7 @@ export default function Wallets() {
         <Link href="/deposit">
           <Button size="sm" className="gap-1.5">
             <Plus className="w-3.5 h-3.5" />
-            Deposit
+            Top Up
           </Button>
         </Link>
       </div>
@@ -113,52 +77,12 @@ export default function Wallets() {
                     Receive
                   </Button>
                 </Link>
-                <Dialog
-                  open={dialogOpen && selectedWalletId === wallet.id}
-                  onOpenChange={(open) => {
-                    setDialogOpen(open);
-                    if (open) setSelectedWalletId(wallet.id);
-                    else setSelectedWalletId(null);
-                  }}
-                >
-                  <DialogTrigger asChild>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="w-full gap-1.5 text-xs md:text-sm"
-                      onClick={() => setSelectedWalletId(wallet.id)}
-                      data-testid={`button-add-money-${wallet.id}`}
-                    >
-                      <Plus className="w-3.5 h-3.5" />
-                      Top Up
-                    </Button>
-                  </DialogTrigger>
-                  <DialogContent>
-                    <DialogHeader>
-                      <DialogTitle>Top Up {wallet.currencyName}</DialogTitle>
-                      <DialogDescription>Add funds directly to your {wallet.currencyCode} wallet</DialogDescription>
-                    </DialogHeader>
-                    <form onSubmit={handleTopUp} className="space-y-4">
-                      <div className="space-y-1.5">
-                        <Label>Amount</Label>
-                        <div className="relative">
-                          <Input
-                            type="number" step="0.01" min="0.01" placeholder="0.00"
-                            value={topUpAmount} onChange={(e) => setTopUpAmount(e.target.value)}
-                            className="pr-16 font-mono text-lg" required
-                            data-testid="input-topup-amount"
-                          />
-                          <span className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground font-mono text-sm">
-                            {wallet.currencyCode}
-                          </span>
-                        </div>
-                      </div>
-                      <Button type="submit" className="w-full" disabled={topUpWallet.isPending} data-testid="button-confirm-topup">
-                        {topUpWallet.isPending ? 'Processing...' : 'Add Money'}
-                      </Button>
-                    </form>
-                  </DialogContent>
-                </Dialog>
+                <Link href="/deposit">
+                  <Button variant="outline" size="sm" className="w-full gap-1.5 text-xs md:text-sm" data-testid={`button-add-money-${wallet.id}`}>
+                    <Plus className="w-3.5 h-3.5" />
+                    Top Up
+                  </Button>
+                </Link>
               </div>
             </CardContent>
           </Card>

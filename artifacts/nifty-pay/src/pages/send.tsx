@@ -9,23 +9,49 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Skeleton } from '@/components/ui/skeleton';
-import { ArrowRight, CheckCircle2 } from 'lucide-react';
+import { Badge } from '@/components/ui/badge';
+import { Clock, Smartphone, Building2, ArrowLeft, ChevronRight } from 'lucide-react';
 import { useQueryClient } from '@tanstack/react-query';
 import { useLocation } from 'wouter';
 import { useToast } from '@/hooks/use-toast';
 
-const CURRENCIES = [
-  { code: 'USD', name: 'US Dollar', flag: '🇺🇸' },
-  { code: 'AED', name: 'UAE Dirham', flag: '🇦🇪' },
-  { code: 'GHS', name: 'Ghanaian Cedi', flag: '🇬🇭' },
-  { code: 'PHP', name: 'Philippine Peso', flag: '🇵🇭' },
-  { code: 'NGN', name: 'Nigerian Naira', flag: '🇳🇬' },
-  { code: 'INR', name: 'Indian Rupee', flag: '🇮🇳' },
-  { code: 'KES', name: 'Kenyan Shilling', flag: '🇰🇪' },
-  { code: 'GBP', name: 'British Pound', flag: '🇬🇧' },
-  { code: 'EUR', name: 'Euro', flag: '🇪🇺' },
-  { code: 'USDT', name: 'Tether', flag: '₿' },
+// Networks per country
+const MOBILE_NETWORKS: Record<string, { name: string; flag: string }[]> = {
+  Ghana: [
+    { name: 'MTN Mobile Money', flag: '🟡' },
+    { name: 'Telecel Cash (Vodafone)', flag: '🔴' },
+    { name: 'AirtelTigo Money', flag: '🔵' },
+  ],
+  Nigeria: [
+    { name: 'MTN MoMo', flag: '🟡' },
+    { name: 'Opay', flag: '🟢' },
+    { name: 'Palmpay', flag: '🔵' },
+    { name: 'Kuda', flag: '🟣' },
+  ],
+  Kenya: [{ name: 'M-Pesa', flag: '🟢' }, { name: 'Airtel Money', flag: '🔴' }, { name: 'Equitel', flag: '🔵' }],
+  Philippines: [{ name: 'GCash', flag: '🔵' }, { name: 'Maya', flag: '🟢' }, { name: 'ShopeePay', flag: '🟠' }],
+  Uganda: [{ name: 'MTN Mobile Money', flag: '🟡' }, { name: 'Airtel Money', flag: '🔴' }],
+  Tanzania: [{ name: 'M-Pesa', flag: '🟢' }, { name: 'Airtel Money', flag: '🔴' }, { name: 'Tigo Pesa', flag: '🔵' }],
+  Senegal: [{ name: 'Orange Money', flag: '🟠' }, { name: 'Wave', flag: '🔵' }, { name: 'Free Money', flag: '🟢' }],
+  Bangladesh: [{ name: 'bKash', flag: '🔴' }, { name: 'Nagad', flag: '🟠' }, { name: 'Rocket', flag: '🟣' }],
+  Pakistan: [{ name: 'JazzCash', flag: '🔴' }, { name: 'EasyPaisa', flag: '🟢' }],
+  Egypt: [{ name: 'Vodafone Cash', flag: '🔴' }, { name: 'Fawry', flag: '🟣' }, { name: 'Orange Money', flag: '🟠' }],
+  India: [{ name: 'UPI / IMPS', flag: '🇮🇳' }, { name: 'PhonePe', flag: '🟣' }, { name: 'Paytm', flag: '🔵' }],
+  Malaysia: [{ name: "Touch 'n Go", flag: '🔵' }, { name: 'Boost', flag: '🟠' }, { name: 'GrabPay', flag: '🟢' }],
+  Indonesia: [{ name: 'OVO', flag: '🟣' }, { name: 'GoPay', flag: '🟢' }, { name: 'DANA', flag: '🔵' }],
+  Togo: [{ name: 'Flooz (Moov)', flag: '🔵' }, { name: 'T-Money (Togocel)', flag: '🟡' }],
+  'Ivory Coast': [{ name: 'MTN Mobile Money', flag: '🟡' }, { name: 'Orange Money', flag: '🟠' }, { name: 'Wave', flag: '🔵' }],
+  Cameroon: [{ name: 'MTN Mobile Money', flag: '🟡' }, { name: 'Orange Money', flag: '🟠' }],
+};
+
+const COUNTRIES = [
+  'Ghana', 'Nigeria', 'Kenya', 'Philippines', 'India', 'Pakistan',
+  'Uganda', 'Tanzania', 'UAE', 'USA', 'UK', 'Bangladesh', 'Egypt',
+  'Morocco', 'Senegal', 'Malaysia', 'Indonesia', 'Brazil', 'Togo',
+  'Ivory Coast', 'Cameroon',
 ];
+
+type Step = 'details' | 'method' | 'recipient' | 'review' | 'success';
 
 export default function Send() {
   const [, setLocation] = useLocation();
@@ -35,94 +61,92 @@ export default function Send() {
   const { data: wallets, isLoading: walletsLoading } = useGetWallets();
   const createTransaction = useCreateTransaction();
 
-  const [step, setStep] = useState<'form' | 'confirm' | 'success'>('form');
-  const [fromWalletId, setFromWalletId] = useState<string>('');
-  const [toCurrency, setToCurrency] = useState<string>('');
-  const [amount, setAmount] = useState<string>('');
-  const [recipientName, setRecipientName] = useState<string>('');
-  const [recipientCountry, setRecipientCountry] = useState<string>('');
-  const [note, setNote] = useState<string>('');
+  const [step, setStep] = useState<Step>('details');
+  const [fromWalletId, setFromWalletId] = useState('');
+  const [amount, setAmount] = useState('');
+  const [recipientCountry, setRecipientCountry] = useState('');
+  const [transferType, setTransferType] = useState<'mobile_money' | 'bank' | null>(null);
+  const [mobileNetwork, setMobileNetwork] = useState('');
+  const [mobileNumber, setMobileNumber] = useState('');
+  const [recipientName, setRecipientName] = useState('');
+  const [bankName, setBankName] = useState('');
+  const [accountNumber, setAccountNumber] = useState('');
+  const [accountName, setAccountName] = useState('');
+  const [note, setNote] = useState('');
 
   const selectedWallet = wallets?.find(w => w.id === Number(fromWalletId));
+  const hasMobile = !!MOBILE_NETWORKS[recipientCountry];
+  const networks = MOBILE_NETWORKS[recipientCountry] ?? [];
 
-  const { data: rates, isLoading: ratesLoading } = useGetExchangeRates(
-    { from: selectedWallet?.currencyCode || '', to: toCurrency },
-    {
-      query: {
-        enabled: !!selectedWallet && !!toCurrency && selectedWallet.currencyCode !== toCurrency,
-        queryKey: selectedWallet && toCurrency ? ['exchange-rates', selectedWallet.currencyCode, toCurrency] : undefined,
-        refetchInterval: 5000,
-      },
-    }
+  // Derive toCurrencyCode from country for exchange rate lookup
+  const COUNTRY_CURRENCY: Record<string, string> = {
+    Ghana: 'GHS', Nigeria: 'NGN', Kenya: 'KES', Philippines: 'PHP', India: 'INR',
+    Pakistan: 'PKR', UAE: 'AED', USA: 'USD', UK: 'GBP', Bangladesh: 'BDT',
+    Indonesia: 'IDR', Malaysia: 'MYR', Egypt: 'EGP', Brazil: 'BRL',
+  };
+  const toCurrency = COUNTRY_CURRENCY[recipientCountry] || 'USD';
+
+  const { data: rates } = useGetExchangeRates(
+    { from: selectedWallet?.currencyCode || 'AED', to: toCurrency },
+    { query: { enabled: !!selectedWallet && !!recipientCountry && selectedWallet.currencyCode !== toCurrency } }
   );
 
   const numAmount = Number(amount) || 0;
-  const feeAmount = rates?.feeAmount || 0;
-  const recipientGets = rates ? numAmount * rates.rate : 0;
+  const recipientGets = rates ? numAmount * rates.rate : numAmount;
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (step === 'form') {
-      setStep('confirm');
-    } else if (step === 'confirm') {
-      createTransaction.mutate(
-        {
-          data: {
-            fromWalletId: Number(fromWalletId),
-            toCurrencyCode: toCurrency,
-            fromAmount: numAmount,
-            recipientName,
-            recipientCountry,
-            note: note || undefined,
-          },
+  const recipientDetail = transferType === 'mobile_money' ? mobileNumber : accountNumber;
+
+  const handleConfirm = () => {
+    createTransaction.mutate(
+      {
+        data: {
+          fromWalletId: Number(fromWalletId),
+          toCurrencyCode: toCurrency,
+          fromAmount: numAmount,
+          recipientName: recipientName || accountName,
+          recipientCountry,
+          note: [
+            transferType === 'mobile_money' ? `${mobileNetwork}: ${mobileNumber}` : `${bankName} / ${accountNumber} / ${accountName}`,
+            note,
+          ].filter(Boolean).join(' | ') || undefined,
         },
-        {
-          onSuccess: () => {
-            queryClient.invalidateQueries({ queryKey: getGetWalletsQueryKey() });
-            queryClient.invalidateQueries({ queryKey: getGetTransactionsQueryKey() });
-            queryClient.invalidateQueries({ queryKey: getGetDashboardSummaryQueryKey() });
-            setStep('success');
-          },
-          onError: () => {
-            toast({ title: 'Transfer failed', description: 'Something went wrong. Please try again.', variant: 'destructive' });
-          },
-        }
-      );
-    }
+      },
+      {
+        onSuccess: () => {
+          queryClient.invalidateQueries({ queryKey: getGetWalletsQueryKey() });
+          queryClient.invalidateQueries({ queryKey: getGetTransactionsQueryKey() });
+          queryClient.invalidateQueries({ queryKey: getGetDashboardSummaryQueryKey() });
+          setStep('success');
+        },
+        onError: () => toast({ title: 'Transfer failed', description: 'Something went wrong. Please try again.', variant: 'destructive' }),
+      }
+    );
   };
 
   if (walletsLoading) {
-    return (
-      <div className="p-4 md:p-8 max-w-2xl mx-auto space-y-6">
-        <Skeleton className="h-8 w-48" />
-        <Skeleton className="h-80 md:h-96" />
-      </div>
-    );
+    return <div className="p-4 md:p-8 max-w-2xl mx-auto space-y-4"><Skeleton className="h-8 w-48" /><Skeleton className="h-80" /></div>;
   }
 
+  // ── SUCCESS ──────────────────────────────────────────────────────────
   if (step === 'success') {
     return (
-      <div className="min-h-[50dvh] p-4 md:p-8 max-w-2xl mx-auto flex items-center justify-center">
+      <div className="p-4 md:p-8 max-w-2xl mx-auto flex items-center justify-center min-h-[60vh]">
         <Card className="w-full">
           <CardContent className="pt-10 pb-10 text-center space-y-5">
-            <div className="w-16 h-16 md:w-20 md:h-20 mx-auto rounded-full bg-emerald-500/10 flex items-center justify-center">
-              <CheckCircle2 className="w-8 h-8 md:w-10 md:h-10 text-emerald-500" />
+            <div className="w-20 h-20 mx-auto rounded-full bg-amber-500/10 flex items-center justify-center">
+              <Clock className="w-10 h-10 text-amber-500" />
             </div>
-            <div className="space-y-1">
-              <h2 className="text-xl md:text-3xl font-bold">Transfer Initiated</h2>
-              <p className="text-sm text-muted-foreground">Your transfer is being processed. You'll receive a confirmation shortly.</p>
+            <div className="space-y-2">
+              <h2 className="text-2xl font-bold">Transfer Pending</h2>
+              <p className="text-sm text-muted-foreground max-w-xs mx-auto">
+                We're processing your transfer of <span className="font-bold font-mono">{numAmount.toLocaleString()} {selectedWallet?.currencyCode}</span> to <span className="font-bold">{recipientName || accountName}</span> in {recipientCountry}.
+              </p>
             </div>
-            <div className="pt-2 space-y-3">
-              <Button size="lg" className="w-full max-w-xs" onClick={() => setLocation('/transactions')} data-testid="button-view-transactions">
-                View Transactions
-              </Button>
-              <Button
-                size="lg"
-                variant="outline"
-                className="w-full max-w-xs"
-                onClick={() => { setStep('form'); setFromWalletId(''); setToCurrency(''); setAmount(''); setRecipientName(''); setRecipientCountry(''); setNote(''); }}
-                data-testid="button-send-another"
-              >
+            <Badge className="bg-amber-500/10 text-amber-500 border-amber-500/20 px-4 py-1.5 text-sm">⏳ Pending</Badge>
+            <p className="text-xs text-muted-foreground">Our team will send the funds shortly. You'll see the update in your transactions.</p>
+            <div className="pt-2 space-y-2">
+              <Button className="w-full max-w-xs" onClick={() => setLocation('/transactions')}>View Transactions</Button>
+              <Button variant="outline" className="w-full max-w-xs" onClick={() => { setStep('details'); setFromWalletId(''); setAmount(''); setRecipientCountry(''); setTransferType(null); setMobileNetwork(''); setMobileNumber(''); setRecipientName(''); setBankName(''); setAccountNumber(''); setAccountName(''); setNote(''); }}>
                 Send Another
               </Button>
             </div>
@@ -132,184 +156,233 @@ export default function Send() {
     );
   }
 
-  if (step === 'confirm') {
-    const toCurrencyInfo = CURRENCIES.find(c => c.code === toCurrency);
+  // ── REVIEW ──────────────────────────────────────────────────────────
+  if (step === 'review') {
+    const rows = [
+      { label: 'From Wallet', value: `${selectedWallet?.flag} ${selectedWallet?.currencyName}` },
+      { label: 'You Send', value: `${numAmount.toLocaleString()} ${selectedWallet?.currencyCode}`, mono: true, large: true },
+      ...(rates ? [{ label: 'Exchange Rate', value: `1 ${selectedWallet?.currencyCode} = ${rates.rate.toFixed(4)} ${toCurrency}` }] : []),
+      { label: 'Recipient Gets (approx)', value: `${recipientGets.toLocaleString(undefined, { maximumFractionDigits: 2 })} ${toCurrency}`, mono: true, highlight: true },
+      { label: 'Country', value: recipientCountry },
+      { label: 'Method', value: transferType === 'mobile_money' ? `📱 ${mobileNetwork}` : `🏦 ${bankName}` },
+      { label: 'Recipient', value: recipientName || accountName },
+      { label: 'Account / Number', value: recipientDetail, mono: true },
+      ...(note ? [{ label: 'Note', value: note }] : []),
+    ];
     return (
-      <div className="p-4 md:p-8 max-w-2xl mx-auto space-y-5 md:space-y-8">
-        <div>
-          <h1 className="text-xl md:text-4xl font-bold tracking-tight mb-1">Confirm Transfer</h1>
-          <p className="text-sm text-muted-foreground">Review the details before sending</p>
+      <div className="p-4 md:p-8 max-w-2xl mx-auto space-y-5">
+        <div className="flex items-center gap-3">
+          <Button variant="ghost" size="sm" className="px-2" onClick={() => setStep('recipient')}><ArrowLeft className="w-4 h-4 mr-1" /> Back</Button>
+          <div><h1 className="text-xl font-bold">Review Transfer</h1><p className="text-xs text-muted-foreground">Check details before confirming</p></div>
         </div>
-
         <Card>
-          <CardContent className="p-4 md:p-8 space-y-4 md:space-y-6">
-            <div className="space-y-3">
-              {[
-                { label: 'From', value: `${selectedWallet?.flag} ${selectedWallet?.currencyName}` },
-                { label: 'To', value: `${toCurrencyInfo?.flag} ${toCurrencyInfo?.name}` },
-              ].map(({ label, value }) => (
-                <div key={label} className="flex justify-between items-center py-2.5 border-b border-border">
-                  <span className="text-sm text-muted-foreground">{label}</span>
-                  <span className="font-semibold text-sm">{value}</span>
-                </div>
-              ))}
-              <div className="flex justify-between items-center py-2.5 border-b border-border">
-                <span className="text-sm text-muted-foreground">You send</span>
-                <span className="text-lg md:text-2xl font-bold font-mono">{numAmount.toFixed(2)} {selectedWallet?.currencyCode}</span>
+          <CardContent className="p-4 space-y-1">
+            {rows.map(({ label, value, mono, large, highlight }) => (
+              <div key={label} className={`flex justify-between items-start gap-4 py-2.5 border-b border-border last:border-0 ${highlight ? 'bg-primary/5 rounded-lg px-3 -mx-3' : ''}`}>
+                <span className="text-sm text-muted-foreground shrink-0">{label}</span>
+                <span className={`text-sm text-right break-all font-semibold ${mono ? 'font-mono' : ''} ${large ? 'text-lg font-bold' : ''} ${highlight ? 'text-primary text-base font-bold' : ''}`}>{value}</span>
               </div>
-              <div className="flex justify-between items-center py-2.5 border-b border-border">
-                <span className="text-sm text-muted-foreground">Exchange rate</span>
-                <span className="font-mono text-sm">1 {selectedWallet?.currencyCode} = {rates?.rate.toFixed(4)} {toCurrency}</span>
-              </div>
-              <div className="flex justify-between items-center py-2.5 border-b border-border">
-                <span className="text-sm text-muted-foreground">Transfer fee</span>
-                <span className="font-mono text-sm">{feeAmount.toFixed(2)} {selectedWallet?.currencyCode}</span>
-              </div>
-              <div className="flex justify-between items-center py-3 bg-primary/5 rounded-lg px-3 md:px-4">
-                <span className="font-semibold text-sm md:text-base">Recipient gets</span>
-                <span className="text-lg md:text-2xl font-bold font-mono text-primary">{recipientGets.toFixed(2)} {toCurrency}</span>
-              </div>
-              <div className="pt-3 space-y-2">
-                {[
-                  { label: 'Recipient', value: recipientName },
-                  { label: 'Country', value: recipientCountry },
-                  ...(note ? [{ label: 'Note', value: note }] : []),
-                ].map(({ label, value }) => (
-                  <div key={label} className="flex justify-between text-sm">
-                    <span className="text-muted-foreground">{label}</span>
-                    <span className="font-semibold text-right max-w-[60%] break-words">{value}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            <div className="flex gap-3 pt-2">
-              <Button type="button" variant="outline" className="flex-1" onClick={() => setStep('form')} data-testid="button-back">Back</Button>
-              <Button type="button" className="flex-1" onClick={handleSubmit} disabled={createTransaction.isPending} data-testid="button-confirm-transfer">
-                {createTransaction.isPending ? 'Processing...' : 'Confirm & Send'}
-              </Button>
-            </div>
+            ))}
           </CardContent>
         </Card>
+        <div className="p-3 bg-amber-500/10 border border-amber-500/20 rounded-lg">
+          <p className="text-xs text-amber-600 dark:text-amber-400">⚠️ Funds will be deducted from your wallet immediately. Transfers are processed within 24 hours.</p>
+        </div>
+        <Button size="lg" className="w-full font-bold" onClick={handleConfirm} disabled={createTransaction.isPending}>
+          {createTransaction.isPending ? 'Processing...' : 'Confirm Send'}
+        </Button>
       </div>
     );
   }
 
-  return (
-    <div className="p-4 md:p-8 max-w-2xl mx-auto space-y-5 md:space-y-8">
-      <div>
-        <h1 className="text-xl md:text-4xl font-bold tracking-tight mb-1">Send Money</h1>
-        <p className="text-sm text-muted-foreground">Transfer funds globally in seconds</p>
-      </div>
+  // ── RECIPIENT DETAILS ────────────────────────────────────────────────
+  if (step === 'recipient') {
+    return (
+      <div className="p-4 md:p-8 max-w-2xl mx-auto space-y-5">
+        <div className="flex items-center gap-3">
+          <Button variant="ghost" size="sm" className="px-2" onClick={() => setStep('method')}><ArrowLeft className="w-4 h-4 mr-1" /> Back</Button>
+          <div>
+            <h1 className="text-xl font-bold">Recipient Details</h1>
+            <p className="text-xs text-muted-foreground">{transferType === 'mobile_money' ? `📱 ${mobileNetwork}` : '🏦 Bank Transfer'} · {recipientCountry}</p>
+          </div>
+        </div>
 
-      <form onSubmit={handleSubmit}>
         <Card>
-          <CardHeader className="p-4 md:p-6 pb-0 md:pb-0">
-            <CardTitle className="text-base md:text-xl">Transfer Details</CardTitle>
-            <CardDescription className="text-xs md:text-sm">Choose your source wallet and destination currency</CardDescription>
-          </CardHeader>
-          <CardContent className="p-4 md:p-6 space-y-4 md:space-y-6">
-            <div className="space-y-1.5">
-              <Label htmlFor="from-wallet" className="text-sm">From Wallet</Label>
-              <Select value={fromWalletId} onValueChange={setFromWalletId} required>
-                <SelectTrigger id="from-wallet" data-testid="select-from-wallet">
-                  <SelectValue placeholder="Select wallet" />
-                </SelectTrigger>
-                <SelectContent>
-                  {wallets?.map((wallet) => (
-                    <SelectItem key={wallet.id} value={String(wallet.id)}>
-                      {wallet.flag} {wallet.currencyName} ({wallet.balance.toFixed(2)} {wallet.currencyCode})
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div className="space-y-1.5">
-              <Label htmlFor="to-currency" className="text-sm">To Currency</Label>
-              <Select value={toCurrency} onValueChange={setToCurrency} required>
-                <SelectTrigger id="to-currency" data-testid="select-to-currency">
-                  <SelectValue placeholder="Select currency" />
-                </SelectTrigger>
-                <SelectContent>
-                  {CURRENCIES.filter(c => c.code !== selectedWallet?.currencyCode).map((currency) => (
-                    <SelectItem key={currency.code} value={currency.code}>
-                      {currency.flag} {currency.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div className="space-y-1.5">
-              <Label htmlFor="amount" className="text-sm">Amount</Label>
-              <div className="relative">
-                <Input
-                  id="amount"
-                  type="number"
-                  step="0.01"
-                  min="0.01"
-                  placeholder="0.00"
-                  value={amount}
-                  onChange={(e) => setAmount(e.target.value)}
-                  className="pr-16 font-mono text-base md:text-lg"
-                  required
-                  data-testid="input-amount"
-                />
-                <span className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground font-mono text-sm">
-                  {selectedWallet?.currencyCode || 'USD'}
-                </span>
-              </div>
-            </div>
-
-            {rates && selectedWallet && toCurrency && amount && (
-              <Card className="bg-muted/50 border-primary/20">
-                <CardContent className="p-3 md:p-4 space-y-2 md:space-y-3">
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs md:text-sm text-muted-foreground">Exchange Rate</span>
-                    <span className="font-mono text-xs md:text-sm">1 {selectedWallet.currencyCode} = {rates.rate.toFixed(4)} {toCurrency}</span>
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs md:text-sm text-muted-foreground">Fee ({rates.fee}%)</span>
-                    <span className="font-mono text-xs md:text-sm">{feeAmount.toFixed(2)} {selectedWallet.currencyCode}</span>
-                  </div>
-                  <div className="flex items-center justify-between pt-2 border-t border-border">
-                    <span className="font-semibold text-sm">Recipient Gets</span>
-                    <span className="text-base md:text-xl font-bold font-mono text-primary">{recipientGets.toFixed(2)} {toCurrency}</span>
-                  </div>
-                </CardContent>
-              </Card>
+          <CardContent className="p-4 space-y-4">
+            {transferType === 'mobile_money' ? (
+              <>
+                <div className="space-y-1.5">
+                  <Label className="text-sm">Recipient Name</Label>
+                  <Input placeholder="Full name of recipient" value={recipientName} onChange={e => setRecipientName(e.target.value)} />
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-sm">{mobileNetwork} Number</Label>
+                  <Input type="tel" placeholder="+233 000 000 000" value={mobileNumber} onChange={e => setMobileNumber(e.target.value)} className="font-mono" />
+                  <p className="text-xs text-muted-foreground">Enter the recipient's registered mobile money number</p>
+                </div>
+              </>
+            ) : (
+              <>
+                <div className="space-y-1.5">
+                  <Label className="text-sm">Bank Name</Label>
+                  <Input placeholder="e.g. GCB Bank, Access Bank" value={bankName} onChange={e => setBankName(e.target.value)} />
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-sm">Account Number</Label>
+                  <Input placeholder="Account / IBAN number" value={accountNumber} onChange={e => setAccountNumber(e.target.value)} className="font-mono" />
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-sm">Account Name</Label>
+                  <Input placeholder="Name on the account" value={accountName} onChange={e => setAccountName(e.target.value)} />
+                </div>
+              </>
             )}
-
-            <div className="pt-2 border-t border-border space-y-4">
-              <h3 className="font-semibold text-sm md:text-base">Recipient Information</h3>
-              <div className="space-y-1.5">
-                <Label htmlFor="recipient-name" className="text-sm">Recipient Name</Label>
-                <Input id="recipient-name" placeholder="Full name" value={recipientName} onChange={(e) => setRecipientName(e.target.value)} required data-testid="input-recipient-name" />
-              </div>
-              <div className="space-y-1.5">
-                <Label htmlFor="recipient-country" className="text-sm">Recipient Country</Label>
-                <Input id="recipient-country" placeholder="Country" value={recipientCountry} onChange={(e) => setRecipientCountry(e.target.value)} required data-testid="input-recipient-country" />
-              </div>
-              <div className="space-y-1.5">
-                <Label htmlFor="note" className="text-sm">Note (Optional)</Label>
-                <Input id="note" placeholder="Add a message" value={note} onChange={(e) => setNote(e.target.value)} data-testid="input-note" />
-              </div>
+            <div className="space-y-1.5">
+              <Label className="text-sm">Note / Reference (Optional)</Label>
+              <Input placeholder="e.g. School fees, rent..." value={note} onChange={e => setNote(e.target.value)} />
             </div>
-
-            <Button
-              type="submit"
-              size="lg"
-              className="w-full"
-              disabled={!fromWalletId || !toCurrency || !amount || !recipientName || !recipientCountry || ratesLoading}
-              data-testid="button-continue"
-            >
-              Continue
-              <ArrowRight className="ml-2 w-4 h-4" />
-            </Button>
           </CardContent>
         </Card>
-      </form>
+
+        <Button
+          size="lg" className="w-full font-bold"
+          onClick={() => setStep('review')}
+          disabled={transferType === 'mobile_money' ? (!mobileNumber || !recipientName) : (!bankName || !accountNumber || !accountName)}
+        >
+          Review Transfer <ChevronRight className="w-4 h-4 ml-1" />
+        </Button>
+      </div>
+    );
+  }
+
+  // ── METHOD SELECTION ────────────────────────────────────────────────
+  if (step === 'method') {
+    return (
+      <div className="p-4 md:p-8 max-w-2xl mx-auto space-y-5">
+        <div className="flex items-center gap-3">
+          <Button variant="ghost" size="sm" className="px-2" onClick={() => setStep('details')}><ArrowLeft className="w-4 h-4 mr-1" /> Back</Button>
+          <div>
+            <h1 className="text-xl font-bold">Transfer Method</h1>
+            <p className="text-xs text-muted-foreground">Sending to {recipientCountry} · {numAmount.toLocaleString()} {selectedWallet?.currencyCode}</p>
+          </div>
+        </div>
+
+        <div className="space-y-3">
+          {/* Bank Transfer */}
+          <button
+            type="button"
+            onClick={() => { setTransferType('bank'); setStep('recipient'); }}
+            className="w-full text-left rounded-xl border-2 border-border hover:border-primary/40 bg-card p-4 transition-all flex items-center justify-between"
+          >
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-full bg-blue-500/10 flex items-center justify-center">
+                <Building2 className="w-5 h-5 text-blue-500" />
+              </div>
+              <div>
+                <p className="font-bold text-sm">Bank Transfer</p>
+                <p className="text-xs text-muted-foreground">Send directly to a bank account</p>
+              </div>
+            </div>
+            <ChevronRight className="w-4 h-4 text-muted-foreground" />
+          </button>
+
+          {/* Mobile Money */}
+          {hasMobile && (
+            <div className="space-y-2">
+              <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground px-1">Mobile Money</p>
+              {networks.map((net) => (
+                <button
+                  key={net.name}
+                  type="button"
+                  onClick={() => { setTransferType('mobile_money'); setMobileNetwork(net.name); setStep('recipient'); }}
+                  className="w-full text-left rounded-xl border-2 border-border hover:border-primary/40 bg-card p-4 transition-all flex items-center justify-between"
+                >
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-full bg-green-500/10 flex items-center justify-center">
+                      <span className="text-xl">{net.flag}</span>
+                    </div>
+                    <div>
+                      <p className="font-bold text-sm">{net.name}</p>
+                      <p className="text-xs text-muted-foreground">Mobile Money · {recipientCountry}</p>
+                    </div>
+                  </div>
+                  <ChevronRight className="w-4 h-4 text-muted-foreground" />
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  // ── STEP 1: DETAILS ──────────────────────────────────────────────────
+  return (
+    <div className="p-4 md:p-8 max-w-2xl mx-auto space-y-5">
+      <div>
+        <h1 className="text-xl md:text-2xl font-bold tracking-tight">Send Money</h1>
+        <p className="text-sm text-muted-foreground">Transfer funds to anyone, anywhere</p>
+      </div>
+
+      <Card>
+        <CardHeader className="p-4 pb-0">
+          <CardTitle className="text-base">Transfer Details</CardTitle>
+          <CardDescription className="text-xs">Choose your wallet, amount, and destination country</CardDescription>
+        </CardHeader>
+        <CardContent className="p-4 space-y-4">
+          <div className="space-y-1.5">
+            <Label className="text-sm">From Wallet</Label>
+            <Select value={fromWalletId} onValueChange={setFromWalletId}>
+              <SelectTrigger><SelectValue placeholder="Select wallet" /></SelectTrigger>
+              <SelectContent>
+                {wallets?.map(w => (
+                  <SelectItem key={w.id} value={String(w.id)}>{w.flag} {w.currencyName} — {w.balance.toLocaleString('en-US', { minimumFractionDigits: 2 })} {w.currencyCode}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div className="space-y-1.5">
+            <Label className="text-sm">Amount to Send</Label>
+            <div className="relative">
+              <Input type="number" step="0.01" min="0.01" max={selectedWallet?.balance} placeholder="0.00"
+                value={amount} onChange={e => setAmount(e.target.value)} className="pr-16 font-mono text-lg" />
+              <span className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground text-sm">{selectedWallet?.currencyCode || '---'}</span>
+            </div>
+            {selectedWallet && <p className="text-xs text-muted-foreground">Available: <span className="font-mono font-semibold">{selectedWallet.balance.toLocaleString('en-US', { minimumFractionDigits: 2 })} {selectedWallet.currencyCode}</span></p>}
+          </div>
+
+          <div className="space-y-1.5">
+            <Label className="text-sm">Recipient's Country</Label>
+            <Select value={recipientCountry} onValueChange={v => { setRecipientCountry(v); setTransferType(null); setMobileNetwork(''); }}>
+              <SelectTrigger><SelectValue placeholder="Select country" /></SelectTrigger>
+              <SelectContent>
+                {COUNTRIES.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}
+              </SelectContent>
+            </Select>
+          </div>
+
+          {rates && recipientCountry && amount && (
+            <div className="bg-primary/5 border border-primary/20 rounded-lg p-3">
+              <div className="flex justify-between text-xs text-muted-foreground mb-1">
+                <span>Exchange rate</span><span className="font-mono">1 {selectedWallet?.currencyCode} = {rates.rate.toFixed(4)} {toCurrency}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-sm font-semibold">Recipient gets ~</span>
+                <span className="text-sm font-bold font-mono text-primary">{recipientGets.toLocaleString(undefined, { maximumFractionDigits: 2 })} {toCurrency}</span>
+              </div>
+            </div>
+          )}
+
+          <Button
+            size="lg" className="w-full font-bold"
+            onClick={() => setStep('method')}
+            disabled={!fromWalletId || !amount || !recipientCountry || Number(amount) <= 0}
+          >
+            Choose Transfer Method <ChevronRight className="w-4 h-4 ml-1" />
+          </Button>
+        </CardContent>
+      </Card>
     </div>
   );
 }
