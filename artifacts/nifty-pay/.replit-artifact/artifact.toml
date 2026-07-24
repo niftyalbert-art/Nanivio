@@ -1,0 +1,27 @@
+kind = "web"
+previewPath = "/"
+title = "Nifty Pay"
+version = "1.0.0"
+id = "artifacts/nifty-pay"
+router = "path"
+
+[[services]]
+name = "web"
+paths = [ "/" ]
+localPort = 18638
+
+[services.development]
+run = "pnpm --filter @workspace/nifty-pay run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/nifty-pay", "run", "build" ]
+serve = "static"
+publicDir = "artifacts/nifty-pay/dist/public"
+
+[[services.production.rewrites]]
+from = "/*"
+to = "/index.html"
+
+[services.env]
+PORT = "18638"
+BASE_PATH = "/"

@@ -3,13 +3,23 @@ info:
   # Do not change the title, if the title changes, the import paths will be broken
   title: Api
   version: 0.1.0
-  description: API specification
+  description: Nifty Pay - Global Money Transfer API
 servers:
   - url: /api
     description: Base API path
 tags:
   - name: health
     description: Health operations
+  - name: user
+    description: User profile and balance
+  - name: wallets
+    description: Multi-currency wallet management
+  - name: transactions
+    description: Send money and transaction history
+  - name: rates
+    description: Exchange rates
+  - name: countries
+    description: Supported countries and corridors
 paths:
   /healthz:
     get:
@@ -24,6 +34,213 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HealthStatus"
+
+  /user/profile:
+    get:
+      operationId: getUserProfile
+      tags: [user]
+      summary: Get current user profile
+      responses:
+        "200":
+          description: User profile
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserProfile"
+
+  /user/dashboard:
+    get:
+      operationId: getDashboardSummary
+      tags: [user]
+      summary: Get dashboard summary (total balance, stats, recent)
+      responses:
+        "200":
+          description: Dashboard summary
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DashboardSummary"
+
+  /wallets:
+    get:
+      operationId: getWallets
+      tags: [wallets]
+      summary: List all wallets for the user
+      responses:
+        "200":
+          description: List of wallets
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Wallet"
+
+  /wallets/{id}:
+    get:
+      operationId: getWallet
+      tags: [wallets]
+      summary: Get a single wallet
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Wallet
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Wallet"
+        "404":
+          description: Not found
+
+  /wallets/{id}/topup:
+    post:
+      operationId: topUpWallet
+      tags: [wallets]
+      summary: Add money to a wallet
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TopUpInput"
+      responses:
+        "200":
+          description: Updated wallet
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Wallet"
+
+  /transactions:
+    get:
+      operationId: getTransactions
+      tags: [transactions]
+      summary: List transactions with optional filters
+      parameters:
+        - name: status
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [pending, completed, failed]
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: List of transactions
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Transaction"
+    post:
+      operationId: createTransaction
+      tags: [transactions]
+      summary: Initiate a money transfer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TransactionInput"
+      responses:
+        "201":
+          description: Transaction created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Transaction"
+        "400":
+          description: Validation error
+
+  /transactions/{id}:
+    get:
+      operationId: getTransaction
+      tags: [transactions]
+      summary: Get transaction details
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Transaction
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Transaction"
+        "404":
+          description: Not found
+
+  /rates:
+    get:
+      operationId: getExchangeRates
+      tags: [rates]
+      summary: Get current exchange rates from a base currency
+      parameters:
+        - name: from
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: to
+          in: query
+          required: false
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Exchange rate info
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ExchangeRateResult"
+
+  /countries:
+    get:
+      operationId: getSupportedCountries
+      tags: [countries]
+      summary: List all supported destination countries
+      responses:
+        "200":
+          description: List of supported countries
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Country"
+
+  /transactions/stats:
+    get:
+      operationId: getTransactionStats
+      tags: [transactions]
+      summary: Get transfer stats (volume by currency, success rate)
+      responses:
+        "200":
+          description: Transfer stats
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TransactionStats"
+
 components:
   schemas:
     HealthStatus:
@@ -34,3 +251,173 @@ components:
       required:
         - status
 
+    UserProfile:
+      type: object
+      required: [id, name, email, avatarInitials, memberSince]
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        email:
+          type: string
+        avatarInitials:
+          type: string
+        memberSince:
+          type: string
+
+    DashboardSummary:
+      type: object
+      required: [totalBalanceUsd, totalWallets, completedTransfers, totalVolume, recentTransactions]
+      properties:
+        totalBalanceUsd:
+          type: number
+        totalWallets:
+          type: integer
+        completedTransfers:
+          type: integer
+        totalVolume:
+          type: number
+        recentTransactions:
+          type: array
+          items:
+            $ref: "#/components/schemas/Transaction"
+
+    Wallet:
+      type: object
+      required: [id, currencyCode, currencyName, balance, flag, isCrypto]
+      properties:
+        id:
+          type: integer
+        currencyCode:
+          type: string
+        currencyName:
+          type: string
+        balance:
+          type: number
+        flag:
+          type: string
+        isCrypto:
+          type: boolean
+        cryptoSymbol:
+          type: ["string", "null"]
+
+    TopUpInput:
+      type: object
+      required: [amount]
+      properties:
+        amount:
+          type: number
+
+    Transaction:
+      type: object
+      required: [id, fromCurrency, toCurrency, fromAmount, toAmount, exchangeRate, fee, status, recipientName, recipientCountry, createdAt]
+      properties:
+        id:
+          type: integer
+        fromCurrency:
+          type: string
+        toCurrency:
+          type: string
+        fromAmount:
+          type: number
+        toAmount:
+          type: number
+        exchangeRate:
+          type: number
+        fee:
+          type: number
+        status:
+          type: string
+          enum: [pending, completed, failed]
+        recipientName:
+          type: string
+        recipientCountry:
+          type: string
+        recipientFlag:
+          type: string
+        note:
+          type: ["string", "null"]
+        createdAt:
+          type: string
+
+    TransactionInput:
+      type: object
+      required: [fromWalletId, toCurrencyCode, fromAmount, recipientName, recipientCountry]
+      properties:
+        fromWalletId:
+          type: integer
+        toCurrencyCode:
+          type: string
+        fromAmount:
+          type: number
+        recipientName:
+          type: string
+        recipientCountry:
+          type: string
+        note:
+          type: string
+
+    ExchangeRateResult:
+      type: object
+      required: [from, to, rate, fee, feeAmount, inverseRate]
+      properties:
+        from:
+          type: string
+        to:
+          type: string
+        rate:
+          type: number
+        fee:
+          type: number
+        feeAmount:
+          type: number
+        inverseRate:
+          type: number
+
+    Country:
+      type: object
+      required: [code, name, currencyCode, currencyName, flag, transferFee, estimatedTime]
+      properties:
+        code:
+          type: string
+        name:
+          type: string
+        currencyCode:
+          type: string
+        currencyName:
+          type: string
+        flag:
+          type: string
+        transferFee:
+          type: number
+        estimatedTime:
+          type: string
+        popular:
+          type: boolean
+
+    TransactionStats:
+      type: object
+      required: [byCurrency, successRate, avgTransferTime]
+      properties:
+        byCurrency:
+          type: array
+          items:
+            $ref: "#/components/schemas/CurrencyVolume"
+        successRate:
+          type: number
+        avgTransferTime:
+          type: string
+
+    CurrencyVolume:
+      type: object
+      required: [currencyCode, flag, totalVolume, count]
+      properties:
+        currencyCode:
+          type: string
+        flag:
+          type: string
+        totalVolume:
+          type: number
+        count:
+          type: integer
