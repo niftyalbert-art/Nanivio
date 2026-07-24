@@ -454,6 +454,7 @@ function PaymentMethodsPanel() {
 
 // ── Main Admin Page ─────────────────────────────────────────────────────────
 export default function Admin() {
+  const [username, setUsername] = useState('');
   const [pin, setPin] = useState('');
   const [authed, setAuthed] = useState(false);
   const { toast } = useToast();
@@ -468,24 +469,63 @@ export default function Admin() {
   const openTickets = (tickets as any[] | undefined)?.filter(t => t.status === 'open').length ?? 0;
 
   if (!authed) {
+    const attempt = () => {
+      if (username.trim().toLowerCase() !== 'admin') {
+        toast({ title: 'Invalid credentials', variant: 'destructive' });
+        return;
+      }
+      if (pin === ADMIN_PIN) {
+        setAuthed(true);
+      } else {
+        toast({ title: 'Invalid credentials', variant: 'destructive' });
+      }
+    };
     return (
-      <div className="min-h-screen flex items-center justify-center p-4 bg-background">
-        <Card className="w-full max-w-sm">
-          <CardContent className="pt-8 pb-8 space-y-5 text-center">
-            <div className="w-14 h-14 rounded-full bg-primary/10 flex items-center justify-center mx-auto">
-              <Lock className="w-7 h-7 text-primary" />
+      <div className="min-h-screen flex flex-col items-center justify-center gap-8 p-4 bg-background">
+        {/* Branding */}
+        <div className="flex flex-col items-center gap-3">
+          <img src={`${import.meta.env.BASE_URL}logo.png`} alt="Nivio" className="w-16 h-16 rounded-2xl shadow-xl" />
+          <div className="text-center">
+            <h1 className="text-2xl font-extrabold tracking-tight">Nivio</h1>
+            <p className="text-xs text-muted-foreground mt-0.5 uppercase tracking-widest">Admin Portal</p>
+          </div>
+        </div>
+
+        {/* Login card */}
+        <Card className="w-full max-w-sm shadow-2xl border-border/60">
+          <CardHeader className="pb-2 pt-6 px-6">
+            <CardTitle className="text-base font-bold">Sign in to continue</CardTitle>
+            <CardDescription className="text-xs">Access is restricted to authorised personnel</CardDescription>
+          </CardHeader>
+          <CardContent className="px-6 pb-6 space-y-4">
+            <div className="space-y-1.5">
+              <Label className="text-xs font-medium">Username</Label>
+              <Input
+                placeholder="admin"
+                value={username}
+                onChange={e => setUsername(e.target.value)}
+                autoComplete="username"
+                onKeyDown={e => { if (e.key === 'Enter') attempt(); }}
+              />
             </div>
-            <div><h1 className="text-xl font-bold">Admin Panel</h1><p className="text-sm text-muted-foreground">Nivio Operations</p></div>
-            <div className="space-y-3 text-left">
-              <Label>Access PIN</Label>
-              <Input type="password" placeholder="Enter admin PIN" value={pin} onChange={e => setPin(e.target.value)}
-                onKeyDown={e => { if (e.key === 'Enter') { if (pin === ADMIN_PIN) setAuthed(true); else toast({ title: 'Wrong PIN', variant: 'destructive' }); } }} />
-              <Button className="w-full" onClick={() => { if (pin === ADMIN_PIN) setAuthed(true); else toast({ title: 'Wrong PIN', variant: 'destructive' }); }}>
-                Sign In
-              </Button>
+            <div className="space-y-1.5">
+              <Label className="text-xs font-medium">Password</Label>
+              <Input
+                type="password"
+                placeholder="••••••••••••"
+                value={pin}
+                onChange={e => setPin(e.target.value)}
+                autoComplete="current-password"
+                onKeyDown={e => { if (e.key === 'Enter') attempt(); }}
+              />
             </div>
+            <Button className="w-full font-semibold mt-1" onClick={attempt}>
+              Sign In
+            </Button>
           </CardContent>
         </Card>
+
+        <p className="text-xs text-muted-foreground">Nivio · Admin Portal · Restricted Access</p>
       </div>
     );
   }
