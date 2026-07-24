@@ -8,7 +8,7 @@ import { Badge } from '@/components/ui/badge';
 import { Textarea } from '@/components/ui/textarea';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { Skeleton } from '@/components/ui/skeleton';
-import { CheckCircle2, XCircle, Clock, ArrowDownLeft, ArrowUpRight, MessageSquare, Settings, Lock, Plus, Edit2, Trash2 } from 'lucide-react';
+import { CheckCircle2, XCircle, Clock, ArrowDownLeft, ArrowUpRight, MessageSquare, Lock, Plus, Edit2, TrendingUp } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import { useToast } from '@/hooks/use-toast';
 
@@ -249,6 +249,132 @@ function TicketsPanel() {
   );
 }
 
+// ── Exchange Rates Panel ────────────────────────────────────────────────────
+function RatesPanel() {
+  const { toast } = useToast();
+  const qc = useQueryClient();
+  const { data: rates, isLoading } = useQuery({ queryKey: ['admin-rates'], queryFn: () => apiFetch('/admin/rates') });
+  const [editing, setEditing] = useState<Record<string, { rate: string; fee: string }>>({});
+  const [saving, setSaving] = useState<string | null>(null);
+  const [showAdd, setShowAdd] = useState(false);
+  const [newForm, setNewForm] = useState({ currencyCode: '', rateToUsd: '', feePercent: '3' });
+
+  const startEdit = (r: any) => {
+    setEditing(e => ({ ...e, [r.currencyCode]: { rate: String(r.rateToUsd), fee: String(r.feePercent) } }));
+  };
+  const cancelEdit = (code: string) => {
+    setEditing(e => { const n = { ...e }; delete n[code]; return n; });
+  };
+
+  const saveRate = async (code: string) => {
+    const vals = editing[code];
+    if (!vals) return;
+    setSaving(code);
+    try {
+      await apiFetch(`/admin/rates/${code}`, { method: 'PUT', body: JSON.stringify({ rateToUsd: vals.rate, feePercent: vals.fee }) });
+      qc.invalidateQueries({ queryKey: ['admin-rates'] });
+      toast({ title: `${code} updated ✓` });
+      cancelEdit(code);
+    } catch (e: any) {
+      toast({ title: 'Error', description: e.message, variant: 'destructive' });
+    }
+    setSaving(null);
+  };
+
+  const addRate = useMutation({
+    mutationFn: () => apiFetch('/admin/rates', { method: 'POST', body: JSON.stringify({ currencyCode: newForm.currencyCode, rateToUsd: newForm.rateToUsd, feePercent: newForm.feePercent }) }),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['admin-rates'] }); toast({ title: 'Currency added ✓' }); setShowAdd(false); setNewForm({ currencyCode: '', rateToUsd: '', feePercent: '3' }); },
+    onError: (e: any) => toast({ title: 'Error', description: e.message, variant: 'destructive' }),
+  });
+
+  return (
+    <div className="space-y-4">
+      <div className="p-3 bg-blue-500/10 border border-blue-500/20 rounded-lg">
+        <p className="text-xs text-blue-600 dark:text-blue-400">
+          💡 All rates are relative to USD (1 USD = rate units of that currency). Fee is a percentage charged on the destination amount.
+        </p>
+      </div>
+
+      <Button size="sm" onClick={() => setShowAdd(true)} className="w-full">
+        <Plus className="w-3.5 h-3.5 mr-1" /> Add Currency
+      </Button>
+
+      {showAdd && (
+        <Card className="border-primary/30">
+          <CardContent className="p-4 space-y-3">
+            <p className="font-bold text-sm">New Currency Rate</p>
+            <div className="grid grid-cols-3 gap-2">
+              <div className="space-y-1">
+                <Label className="text-xs">Code</Label>
+                <Input placeholder="e.g. XAF" value={newForm.currencyCode} onChange={e => setNewForm(f => ({ ...f, currencyCode: e.target.value.toUpperCase() }))} className="text-sm font-mono" />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs">Rate to USD</Label>
+                <Input type="number" placeholder="e.g. 655" value={newForm.rateToUsd} onChange={e => setNewForm(f => ({ ...f, rateToUsd: e.target.value }))} className="text-sm font-mono" />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs">Fee %</Label>
+                <Input type="number" step="0.1" placeholder="3" value={newForm.feePercent} onChange={e => setNewForm(f => ({ ...f, feePercent: e.target.value }))} className="text-sm font-mono" />
+              </div>
+            </div>
+            <div className="flex gap-2">
+              <Button size="sm" className="flex-1" onClick={() => addRate.mutate()} disabled={addRate.isPending || !newForm.currencyCode || !newForm.rateToUsd}>Add</Button>
+              <Button size="sm" variant="outline" className="flex-1" onClick={() => setShowAdd(false)}>Cancel</Button>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {isLoading ? (
+        <div className="space-y-2">{[...Array(5)].map((_, i) => <Skeleton key={i} className="h-14" />)}</div>
+      ) : (
+        <div className="space-y-2">
+          {(rates as any[] | undefined)?.map((r: any) => {
+            const isEditing = !!editing[r.currencyCode];
+            return (
+              <Card key={r.currencyCode}>
+                <CardContent className="p-3">
+                  {isEditing ? (
+                    <div className="space-y-2">
+                      <p className="font-bold text-sm font-mono">{r.currencyCode}</p>
+                      <div className="grid grid-cols-2 gap-2">
+                        <div className="space-y-1">
+                          <Label className="text-xs">Rate (1 USD = ? {r.currencyCode})</Label>
+                          <Input type="number" step="any" value={editing[r.currencyCode].rate} onChange={e => setEditing(ed => ({ ...ed, [r.currencyCode]: { ...ed[r.currencyCode], rate: e.target.value } }))} className="text-sm font-mono" />
+                        </div>
+                        <div className="space-y-1">
+                          <Label className="text-xs">Fee %</Label>
+                          <Input type="number" step="0.1" value={editing[r.currencyCode].fee} onChange={e => setEditing(ed => ({ ...ed, [r.currencyCode]: { ...ed[r.currencyCode], fee: e.target.value } }))} className="text-sm font-mono" />
+                        </div>
+                      </div>
+                      <div className="flex gap-2">
+                        <Button size="sm" className="flex-1 bg-emerald-600 hover:bg-emerald-700" onClick={() => saveRate(r.currencyCode)} disabled={saving === r.currencyCode}>
+                          {saving === r.currencyCode ? 'Saving…' : 'Save'}
+                        </Button>
+                        <Button size="sm" variant="outline" className="flex-1" onClick={() => cancelEdit(r.currencyCode)}>Cancel</Button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="flex items-center gap-3">
+                      <p className="font-bold text-sm font-mono w-12 shrink-0">{r.currencyCode}</p>
+                      <div className="flex-1 text-xs text-muted-foreground">
+                        <span className="font-mono text-foreground">{r.rateToUsd.toLocaleString()}</span> per USD · <span className="font-mono text-foreground">{r.feePercent}%</span> fee
+                      </div>
+                      <Button size="sm" variant="ghost" className="h-7 w-7 p-0 shrink-0" onClick={() => startEdit(r)}>
+                        <Edit2 className="w-3.5 h-3.5" />
+                      </Button>
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── Payment Methods Panel ───────────────────────────────────────────────────
 function PaymentMethodsPanel() {
   const { toast } = useToast();
@@ -392,9 +518,9 @@ export default function Admin() {
       </div>
 
       <Tabs defaultValue="deposits">
-        <TabsList className="w-full grid grid-cols-4">
+        <TabsList className="w-full grid grid-cols-5">
           <TabsTrigger value="deposits" className="text-xs relative">
-            Deposits {pendingDeposits > 0 && <span className="ml-1 bg-amber-500 text-white text-[9px] rounded-full w-4 h-4 inline-flex items-center justify-center">{pendingDeposits}</span>}
+            Dep {pendingDeposits > 0 && <span className="ml-1 bg-amber-500 text-white text-[9px] rounded-full w-4 h-4 inline-flex items-center justify-center">{pendingDeposits}</span>}
           </TabsTrigger>
           <TabsTrigger value="withdrawals" className="text-xs">
             Send {pendingWithdrawals > 0 && <span className="ml-1 bg-amber-500 text-white text-[9px] rounded-full w-4 h-4 inline-flex items-center justify-center">{pendingWithdrawals}</span>}
@@ -403,11 +529,13 @@ export default function Admin() {
             Tickets {openTickets > 0 && <span className="ml-1 bg-blue-500 text-white text-[9px] rounded-full w-4 h-4 inline-flex items-center justify-center">{openTickets}</span>}
           </TabsTrigger>
           <TabsTrigger value="methods" className="text-xs">Methods</TabsTrigger>
+          <TabsTrigger value="rates" className="text-xs">Rates</TabsTrigger>
         </TabsList>
         <TabsContent value="deposits" className="mt-4"><DepositsPanel /></TabsContent>
         <TabsContent value="withdrawals" className="mt-4"><WithdrawalsPanel /></TabsContent>
         <TabsContent value="tickets" className="mt-4"><TicketsPanel /></TabsContent>
         <TabsContent value="methods" className="mt-4"><PaymentMethodsPanel /></TabsContent>
+        <TabsContent value="rates" className="mt-4"><RatesPanel /></TabsContent>
       </Tabs>
     </div>
   );

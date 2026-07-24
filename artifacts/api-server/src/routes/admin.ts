@@ -1,6 +1,6 @@
 import { Router, type IRouter, type Request, type Response, type NextFunction } from "express";
 import { eq, sql } from "drizzle-orm";
-import { db, depositsTable, withdrawalsTable, walletsTable, paymentMethodsTable } from "@workspace/db";
+import { db, depositsTable, withdrawalsTable, walletsTable, paymentMethodsTable, exchangeRatesTable } from "@workspace/db";
 
 const router: IRouter = Router();
 
@@ -143,6 +143,62 @@ router.put("/admin/payment-methods/:id", adminOnly, async (req, res): Promise<vo
   const [updated] = await db.update(paymentMethodsTable).set(updates).where(eq(paymentMethodsTable.id, id)).returning();
   if (!updated) { res.status(404).json({ error: "Not found" }); return; }
   res.json(updated);
+});
+
+// ── Exchange Rates admin CRUD ─────────────────────────────────────────────────
+
+// List all rates
+router.get("/admin/rates", adminOnly, async (req, res): Promise<void> => {
+  const rows = await db.select().from(exchangeRatesTable).orderBy(exchangeRatesTable.currencyCode);
+  res.json(rows.map(r => ({
+    ...r,
+    rateToUsd: parseFloat(r.rateToUsd),
+    feePercent: parseFloat(r.feePercent),
+  })));
+});
+
+// Update a rate
+router.put("/admin/rates/:code", adminOnly, async (req, res): Promise<void> => {
+  const code = (req.params.code as string).toUpperCase();
+  const { rateToUsd, feePercent } = req.body ?? {};
+
+  const updates: Record<string, any> = { updatedAt: new Date() };
+  if (rateToUsd !== undefined) {
+    const v = parseFloat(rateToUsd);
+    if (isNaN(v) || v <= 0) { res.status(400).json({ error: "rateToUsd must be a positive number" }); return; }
+    updates.rateToUsd = String(v);
+  }
+  if (feePercent !== undefined) {
+    const v = parseFloat(feePercent);
+    if (isNaN(v) || v < 0) { res.status(400).json({ error: "feePercent must be >= 0" }); return; }
+    updates.feePercent = String(v);
+  }
+
+  const [updated] = await db.update(exchangeRatesTable)
+    .set(updates)
+    .where(eq(exchangeRatesTable.currencyCode, code))
+    .returning();
+
+  if (!updated) { res.status(404).json({ error: "Currency not found" }); return; }
+  res.json({ ...updated, rateToUsd: parseFloat(updated.rateToUsd), feePercent: parseFloat(updated.feePercent) });
+});
+
+// Add new rate
+router.post("/admin/rates", adminOnly, async (req, res): Promise<void> => {
+  const { currencyCode, rateToUsd, feePercent } = req.body ?? {};
+  if (!currencyCode || rateToUsd === undefined) {
+    res.status(400).json({ error: "currencyCode and rateToUsd are required" }); return;
+  }
+  const rate = parseFloat(rateToUsd);
+  const fee = parseFloat(feePercent ?? "3");
+  if (isNaN(rate) || rate <= 0) { res.status(400).json({ error: "rateToUsd must be positive" }); return; }
+
+  const [row] = await db.insert(exchangeRatesTable).values({
+    currencyCode: currencyCode.toUpperCase(),
+    rateToUsd: String(rate),
+    feePercent: String(fee),
+  }).returning();
+  res.status(201).json({ ...row, rateToUsd: parseFloat(row.rateToUsd), feePercent: parseFloat(row.feePercent) });
 });
 
 export default router;

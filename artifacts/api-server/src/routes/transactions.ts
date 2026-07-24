@@ -1,6 +1,6 @@
 import { Router, type IRouter } from "express";
 import { eq, sql, desc } from "drizzle-orm";
-import { db, walletsTable, transactionsTable } from "@workspace/db";
+import { db, walletsTable, transactionsTable, exchangeRatesTable } from "@workspace/db";
 import {
   GetTransactionsQueryParams,
   GetTransactionsResponse,
@@ -13,47 +13,21 @@ import {
 
 const router: IRouter = Router();
 
-// Exchange rates table (from USD)
-const RATES: Record<string, { rate: number; fee: number; flag: string }> = {
-  AED: { rate: 3.6725, fee: 2.5, flag: "🇦🇪" },
-  GHS: { rate: 15.2, fee: 3.0, flag: "🇬🇭" },
-  PHP: { rate: 56.8, fee: 2.0, flag: "🇵🇭" },
-  INR: { rate: 83.5, fee: 1.5, flag: "🇮🇳" },
-  NGN: { rate: 1540, fee: 4.0, flag: "🇳🇬" },
-  KES: { rate: 129.5, fee: 2.5, flag: "🇰🇪" },
-  EUR: { rate: 0.926, fee: 1.5, flag: "🇪🇺" },
-  GBP: { rate: 0.787, fee: 2.0, flag: "🇬🇧" },
-  PKR: { rate: 278.5, fee: 3.0, flag: "🇵🇰" },
-  BDT: { rate: 110.2, fee: 2.5, flag: "🇧🇩" },
-  LKR: { rate: 322.5, fee: 3.5, flag: "🇱🇰" },
-  TZS: { rate: 2650, fee: 4.0, flag: "🇹🇿" },
-  UGX: { rate: 3850, fee: 4.0, flag: "🇺🇬" },
-  ZAR: { rate: 18.5, fee: 2.0, flag: "🇿🇦" },
-  MAD: { rate: 10.1, fee: 2.5, flag: "🇲🇦" },
-  EGP: { rate: 31.5, fee: 3.0, flag: "🇪🇬" },
-  XOF: { rate: 607, fee: 4.0, flag: "🇸🇳" },
-  MXN: { rate: 17.2, fee: 2.0, flag: "🇲🇽" },
-  BRL: { rate: 5.1, fee: 2.0, flag: "🇧🇷" },
-  THB: { rate: 35.8, fee: 2.0, flag: "🇹🇭" },
-  MYR: { rate: 4.7, fee: 2.0, flag: "🇲🇾" },
-  SGD: { rate: 1.35, fee: 1.5, flag: "🇸🇬" },
-  CAD: { rate: 1.36, fee: 1.5, flag: "🇨🇦" },
-  AUD: { rate: 1.54, fee: 1.5, flag: "🇦🇺" },
-  NZD: { rate: 1.64, fee: 2.0, flag: "🇳🇿" },
-  JPY: { rate: 151.5, fee: 2.0, flag: "🇯🇵" },
-  CNY: { rate: 7.24, fee: 2.5, flag: "🇨🇳" },
-  HKD: { rate: 7.83, fee: 1.5, flag: "🇭🇰" },
-  USDT: { rate: 1.0, fee: 1.0, flag: "₿" },
-  USD: { rate: 1.0, fee: 0, flag: "🇺🇸" },
+// Flag lookup (static — display only)
+const FLAGS: Record<string, string> = {
+  AED: "🇦🇪", GHS: "🇬🇭", PHP: "🇵🇭", INR: "🇮🇳", NGN: "🇳🇬",
+  KES: "🇰🇪", EUR: "🇪🇺", GBP: "🇬🇧", PKR: "🇵🇰", BDT: "🇧🇩",
+  LKR: "🇱🇰", TZS: "🇹🇿", UGX: "🇺🇬", ZAR: "🇿🇦", MAD: "🇲🇦",
+  EGP: "🇪🇬", XOF: "🇸🇳", MXN: "🇲🇽", BRL: "🇧🇷", THB: "🇹🇭",
+  MYR: "🇲🇾", SGD: "🇸🇬", CAD: "🇨🇦", AUD: "🇦🇺", NZD: "🇳🇿",
+  JPY: "🇯🇵", CNY: "🇨🇳", HKD: "🇭🇰", USDT: "₿", USD: "🇺🇸",
 };
 
-const fromUSD: Record<string, number> = {
-  AED: 3.6725, USD: 1, GHS: 15.2, PHP: 56.8, INR: 83.5, NGN: 1540,
-  KES: 129.5, EUR: 0.926, GBP: 0.787, PKR: 278.5, BDT: 110.2, LKR: 322.5,
-  TZS: 2650, UGX: 3850, ZAR: 18.5, MAD: 10.1, EGP: 31.5, XOF: 607,
-  MXN: 17.2, BRL: 5.1, THB: 35.8, MYR: 4.7, SGD: 1.35, CAD: 1.36,
-  AUD: 1.54, NZD: 1.64, JPY: 151.5, CNY: 7.24, HKD: 7.83, USDT: 1.0,
-};
+async function getRateRow(currencyCode: string) {
+  const [row] = await db.select().from(exchangeRatesTable)
+    .where(eq(exchangeRatesTable.currencyCode, currencyCode));
+  return row ?? null;
+}
 
 router.get("/transactions/stats", async (req, res): Promise<void> => {
   const rows = await db
@@ -83,7 +57,7 @@ router.get("/transactions/stats", async (req, res): Promise<void> => {
   const stats = {
     byCurrency: rows.map((r) => ({
       currencyCode: r.toCurrency,
-      flag: RATES[r.toCurrency]?.flag ?? "🌐",
+      flag: FLAGS[r.toCurrency] ?? "🌐",
       totalVolume: Number(r.totalVolume),
       count: Number(r.count),
     })),
@@ -142,8 +116,26 @@ router.post("/transactions", async (req, res): Promise<void> => {
     return;
   }
 
+  // Look up exchange rates from DB
+  const fromRateRow = await getRateRow(wallet.currencyCode);
+  const toRateRow = await getRateRow(toCurrencyCode);
+
+  if (!fromRateRow) {
+    res.status(400).json({ error: `Unsupported source currency: ${wallet.currencyCode}` });
+    return;
+  }
+  if (!toRateRow) {
+    res.status(400).json({ error: `Unsupported destination currency: ${toCurrencyCode}` });
+    return;
+  }
+
+  const fromRateToUsd = parseFloat(fromRateRow.rateToUsd);
+  const toRateToUsd = parseFloat(toRateRow.rateToUsd);
+  const feePercent = parseFloat(toRateRow.feePercent);
+
   const currentBalance = parseFloat(wallet.balance);
-  const fee = (RATES[wallet.currencyCode]?.fee ?? 3);
+  // Fee in source currency
+  const fee = Math.round(((feePercent / 100) * (1 / fromRateToUsd)) * 100) / 100;
   const totalCost = fromAmount + fee;
 
   if (currentBalance < totalCost) {
@@ -152,11 +144,9 @@ router.post("/transactions", async (req, res): Promise<void> => {
   }
 
   // Convert fromCurrency → USD → toCurrency
-  const toUSDRate = 1 / (fromUSD[wallet.currencyCode] ?? 1);
-  const toDestRate = fromUSD[toCurrencyCode] ?? 1;
-  const exchangeRate = toUSDRate * toDestRate;
+  const exchangeRate = toRateToUsd / fromRateToUsd;
   const toAmount = fromAmount * exchangeRate;
-  const recipientFlag = RATES[toCurrencyCode]?.flag ?? "🌐";
+  const recipientFlag = FLAGS[toCurrencyCode] ?? "🌐";
 
   // Deduct from wallet
   await db
