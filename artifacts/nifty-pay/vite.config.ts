@@ -36,10 +36,10 @@ export default defineConfig({
     runtimeErrorOverlay(),
     VitePWA({
       registerType: 'autoUpdate',
-      includeAssets: ['favicon.svg', 'icons/icon-192.png', 'icons/icon-512.png'],
+      includeAssets: ['favicon.svg', 'logo.png', 'icons/icon-192.png', 'icons/icon-512.png', 'icons/apple-touch-icon.png'],
       manifest: {
-        name: 'Nifty Pay',
-        short_name: 'Nifty Pay',
+        name: 'Nivio',
+        short_name: 'Nivio',
         description: 'Send money globally — fast, simple, trusted',
         theme_color: '#0d1117',
         background_color: '#0d1117',
@@ -48,8 +48,9 @@ export default defineConfig({
         start_url: basePath || '/',
         scope: basePath || '/',
         icons: [
-          { src: 'icons/icon-192.png', sizes: '192x192', type: 'image/png', purpose: 'any maskable' },
-          { src: 'icons/icon-512.png', sizes: '512x512', type: 'image/png', purpose: 'any maskable' },
+          { src: 'icons/icon-192.png', sizes: '192x192', type: 'image/png', purpose: 'any' },
+          { src: 'icons/icon-512.png', sizes: '512x512', type: 'image/png', purpose: 'any' },
+          { src: 'icons/icon-512.png', sizes: '512x512', type: 'image/png', purpose: 'maskable' },
         ],
       },
       workbox: {

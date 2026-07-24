@@ -14,6 +14,7 @@ import Deposit from '@/pages/deposit';
 import Withdraw from '@/pages/withdraw';
 import Account from '@/pages/account';
 import Admin from '@/pages/admin';
+import Install from '@/pages/install';
 import NotFound from '@/pages/not-found';
 
 const queryClient = new QueryClient();
@@ -21,8 +22,9 @@ const queryClient = new QueryClient();
 function Router() {
   return (
     <Switch>
-      {/* Admin panel — no app chrome */}
+      {/* Standalone pages — no app chrome */}
       <Route path="/admin" component={Admin} />
+      <Route path="/install" component={Install} />
 
       {/* Main app */}
       <Route>

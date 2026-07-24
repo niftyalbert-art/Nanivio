@@ -76,6 +76,7 @@
     "zod": "catalog:"
   },
   "dependencies": {
-    "@radix-ui/react-icons": "^1.3.2"
+    "@radix-ui/react-icons": "^1.3.2",
+    "qrcode.react": "^4.2.0"
   }
 }
