@@ -20,6 +20,186 @@ type Step = 'country' | 'type' | 'receiver' | 'amount' | 'review' | 'success';
 
 const API = import.meta.env.BASE_URL.replace(/\/$/, '') + '/api';
 
+// Mobile money providers keyed by country code
+const MOBILE_MONEY_PROVIDERS: Record<string, { label: string; icon: string }[]> = {
+  // West Africa
+  GH: [
+    { icon: '🟡', label: 'MTN Mobile Money (MoMo)' },
+    { icon: '🔴', label: 'Telecel Cash (Vodafone Cash)' },
+    { icon: '🔵', label: 'AirtelTigo Money' },
+  ],
+  NG: [
+    { icon: '🟢', label: 'Opay' },
+    { icon: '🟣', label: 'PalmPay' },
+    { icon: '🔵', label: 'Airtel Money' },
+    { icon: '🟡', label: 'MTN MoMo' },
+    { icon: '🟠', label: 'Kuda' },
+    { icon: '⚫', label: 'Moniepoint' },
+  ],
+  SN: [
+    { icon: '🟠', label: 'Orange Money' },
+    { icon: '🟡', label: 'Wave' },
+    { icon: '🟢', label: 'Free Money' },
+    { icon: '🔵', label: 'Wari' },
+  ],
+  CI: [
+    { icon: '🟠', label: 'Orange Money' },
+    { icon: '🟡', label: 'MTN MoMo' },
+    { icon: '🟢', label: 'Wave' },
+    { icon: '🔵', label: 'Moov Money' },
+  ],
+  BJ: [
+    { icon: '🟡', label: 'MTN MoMo' },
+    { icon: '🔵', label: 'Moov Money' },
+    { icon: '🟠', label: 'Celtiis Cash' },
+  ],
+  LR: [
+    { icon: '🟠', label: 'Orange Money' },
+    { icon: '🟡', label: 'MTN MoMo' },
+    { icon: '🔵', label: 'Lonestar Money' },
+  ],
+  GN: [
+    { icon: '🟠', label: 'Orange Money' },
+    { icon: '🟡', label: 'MTN MoMo' },
+    { icon: '🔵', label: 'Cellcom Money' },
+  ],
+  ML: [
+    { icon: '🟠', label: 'Orange Money' },
+    { icon: '🟡', label: 'Moov Money' },
+    { icon: '🔵', label: 'Sama Money' },
+  ],
+  BF: [
+    { icon: '🟠', label: 'Orange Money' },
+    { icon: '🔵', label: 'Moov Money' },
+  ],
+  TG: [
+    { icon: '🟠', label: 'Flooz (Moov)' },
+    { icon: '🔵', label: 'T-Money (Togocel)' },
+  ],
+  // Central Africa
+  CM: [
+    { icon: '🟠', label: 'Orange Money' },
+    { icon: '🟡', label: 'MTN MoMo' },
+  ],
+  CG: [
+    { icon: '🟠', label: 'Orange Money' },
+    { icon: '🔵', label: 'Airtel Money' },
+    { icon: '🟡', label: 'MTN MoMo' },
+  ],
+  // East Africa
+  KE: [
+    { icon: '🟢', label: 'M-Pesa (Safaricom)' },
+    { icon: '🔵', label: 'Airtel Money' },
+    { icon: '🟠', label: 'T-Kash (Telkom)' },
+  ],
+  UG: [
+    { icon: '🟡', label: 'MTN MoMo' },
+    { icon: '🔵', label: 'Airtel Money' },
+  ],
+  TZ: [
+    { icon: '🟢', label: 'M-Pesa (Vodacom)' },
+    { icon: '🔵', label: 'Airtel Money' },
+    { icon: '🟡', label: 'Tigo Pesa' },
+    { icon: '🟠', label: 'HaloPesa' },
+  ],
+  RW: [
+    { icon: '🟡', label: 'MTN MoMo' },
+    { icon: '🔵', label: 'Airtel Money' },
+  ],
+  ET: [
+    { icon: '🟢', label: 'Telebirr (Ethio Telecom)' },
+    { icon: '🔵', label: 'M-Pesa' },
+  ],
+  // Southern Africa
+  ZA: [
+    { icon: '🟢', label: 'M-Pesa (Vodacom)' },
+    { icon: '🔵', label: 'MTN MoMo' },
+    { icon: '🟠', label: 'FNB eWallet' },
+  ],
+  ZM: [
+    { icon: '🟡', label: 'MTN MoMo' },
+    { icon: '🔵', label: 'Airtel Money' },
+    { icon: '🟢', label: 'Zamtel Kwacha' },
+  ],
+  ZW: [
+    { icon: '🟢', label: 'EcoCash' },
+    { icon: '🔵', label: 'OneMoney' },
+    { icon: '🟠', label: 'Telecash' },
+  ],
+  // South / Southeast Asia
+  PH: [
+    { icon: '🔵', label: 'GCash' },
+    { icon: '🔴', label: 'PayMaya (Maya)' },
+    { icon: '🟢', label: 'ShopeePay' },
+    { icon: '🟠', label: 'Coins.ph' },
+  ],
+  IN: [
+    { icon: '🔵', label: 'Paytm' },
+    { icon: '🟠', label: 'PhonePe' },
+    { icon: '🟢', label: 'Google Pay (GPay)' },
+    { icon: '🔴', label: 'Amazon Pay' },
+  ],
+  PK: [
+    { icon: '🔵', label: 'JazzCash' },
+    { icon: '🟠', label: 'Easypaisa' },
+    { icon: '🟢', label: 'NayaPay' },
+  ],
+  BD: [
+    { icon: '🔴', label: 'bKash' },
+    { icon: '🟠', label: 'Nagad' },
+    { icon: '🔵', label: 'Rocket (DBBL)' },
+  ],
+  LK: [
+    { icon: '🔴', label: 'Dialog Genie' },
+    { icon: '🟢', label: 'eZ Cash (Mobitel)' },
+    { icon: '🔵', label: 'Hutch Money' },
+  ],
+  MY: [
+    { icon: '🔵', label: 'Touch \'n Go eWallet' },
+    { icon: '🟠', label: 'Boost' },
+    { icon: '🟢', label: 'GrabPay' },
+    { icon: '🔴', label: 'MAE (Maybank)' },
+  ],
+  TH: [
+    { icon: '🔵', label: 'PromptPay' },
+    { icon: '🟢', label: 'TrueMoney Wallet' },
+    { icon: '🟠', label: 'AirPay' },
+    { icon: '🔴', label: 'Rabbit LINE Pay' },
+  ],
+  // Middle East
+  AE: [
+    { icon: '🔵', label: 'Botim Pay' },
+    { icon: '🟠', label: 'NOW Money' },
+    { icon: '🟢', label: 'YAP' },
+  ],
+  EG: [
+    { icon: '🟠', label: 'Fawry' },
+    { icon: '🔵', label: 'Vodafone Cash' },
+    { icon: '🟢', label: 'Orange Cash' },
+    { icon: '🔴', label: 'Etisalat Cash' },
+  ],
+  MA: [
+    { icon: '🟠', label: 'Orange Money' },
+    { icon: '🔵', label: 'Inwi Money' },
+    { icon: '🟢', label: 'Maroc Telecom Cash' },
+  ],
+  // Americas
+  MX: [
+    { icon: '🔵', label: 'OXXO Pay' },
+    { icon: '🟢', label: 'Mercado Pago' },
+    { icon: '🟠', label: 'CoDi (Banco de México)' },
+  ],
+  BR: [
+    { icon: '🔵', label: 'PIX' },
+    { icon: '🟢', label: 'Mercado Pago' },
+    { icon: '🟠', label: 'PicPay' },
+  ],
+};
+
+function getProviders(countryCode: string): { icon: string; label: string }[] {
+  return MOBILE_MONEY_PROVIDERS[countryCode] ?? [];
+}
+
 async function fetchRate(from: string, to: string) {
   const r = await fetch(`${API}/rates?from=${from}&to=${to}`);
   if (!r.ok) return null;
@@ -351,18 +531,61 @@ export default function Send() {
 
             {transferType === 'mobile_money' && (
               <>
-                <div className="space-y-1.5">
+                {/* Provider picker */}
+                <div className="space-y-2">
                   <Label className="text-sm">Mobile Money Provider</Label>
-                  <Input
-                    placeholder={`e.g. ${selectedCountry?.name === 'Ghana' ? 'MTN MoMo, Vodafone Cash' : selectedCountry?.name === 'Kenya' ? 'M-Pesa, Airtel Money' : selectedCountry?.name === 'Nigeria' ? 'Opay, PalmPay' : 'Provider name'}`}
-                    value={mobileProvider}
-                    onChange={e => setMobileProvider(e.target.value)}
-                  />
+                  {(() => {
+                    const providers = getProviders(selectedCountry?.code ?? '');
+                    if (providers.length > 0) {
+                      return (
+                        <div className="grid grid-cols-1 gap-2">
+                          {providers.map(p => {
+                            const selected = mobileProvider === p.label;
+                            return (
+                              <button
+                                key={p.label}
+                                type="button"
+                                onClick={() => setMobileProvider(p.label)}
+                                className={`w-full text-left rounded-lg border-2 px-3 py-2.5 flex items-center gap-3 transition-all text-sm
+                                  ${selected
+                                    ? 'border-primary bg-primary/10 font-semibold'
+                                    : 'border-border hover:border-primary/40 bg-card'
+                                  }`}
+                              >
+                                <span className="text-base leading-none w-5 text-center">{p.icon}</span>
+                                <span className="flex-1">{p.label}</span>
+                                {selected && <span className="text-primary text-xs">✓ Selected</span>}
+                              </button>
+                            );
+                          })}
+                          {/* Allow typing a custom provider not in the list */}
+                          <div className="pt-1 space-y-1">
+                            <p className="text-xs text-muted-foreground">Not listed? Type below:</p>
+                            <Input
+                              placeholder="Other provider..."
+                              value={providers.some(p => p.label === mobileProvider) ? '' : mobileProvider}
+                              onChange={e => setMobileProvider(e.target.value)}
+                              className="text-sm"
+                            />
+                          </div>
+                        </div>
+                      );
+                    }
+                    // Fallback for countries with no mapped providers
+                    return (
+                      <Input
+                        placeholder="e.g. Provider name"
+                        value={mobileProvider}
+                        onChange={e => setMobileProvider(e.target.value)}
+                      />
+                    );
+                  })()}
                 </div>
+
                 <div className="space-y-1.5">
                   <Label className="text-sm">Mobile Number</Label>
                   <Input type="tel" placeholder="+233 50 000 0000" value={mobileNumber} onChange={e => setMobileNumber(e.target.value)} className="font-mono" />
-                  <p className="text-xs text-muted-foreground">Enter the phone number registered with the mobile money account</p>
+                  <p className="text-xs text-muted-foreground">Enter the number registered with the mobile money account</p>
                 </div>
                 <div className="space-y-1.5">
                   <Label className="text-sm">Receiver's Name</Label>
