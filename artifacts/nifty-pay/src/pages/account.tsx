@@ -14,7 +14,7 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
-import { Copy, Check, Clock, ArrowDownLeft, ArrowUpLeft, MessageSquare, CheckCircle2, ExternalLink, Send } from 'lucide-react';
+import { Copy, Check, Clock, ArrowDownLeft, ArrowUpLeft, MessageSquare, CheckCircle2, ExternalLink, Send, LogOut } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import { useToast } from '@/hooks/use-toast';
 
@@ -288,6 +288,23 @@ export default function Account() {
           </Card>
         </TabsContent>
       </Tabs>
+
+      {/* Sign Out */}
+      <Card className="border-destructive/30">
+        <CardContent className="p-4">
+          <Button
+            variant="ghost"
+            className="w-full gap-2 text-destructive hover:bg-destructive/10 hover:text-destructive"
+            onClick={() => {
+              localStorage.setItem('nivio_signed_out', 'true');
+              window.location.reload();
+            }}
+          >
+            <LogOut className="w-4 h-4" />
+            Sign Out
+          </Button>
+        </CardContent>
+      </Card>
     </div>
   );
 }

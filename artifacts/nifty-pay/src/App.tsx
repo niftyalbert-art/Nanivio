@@ -15,11 +15,15 @@ import Withdraw from '@/pages/withdraw';
 import Account from '@/pages/account';
 import Admin from '@/pages/admin';
 import Install from '@/pages/install';
+import LockScreen from '@/pages/lock-screen';
 import NotFound from '@/pages/not-found';
 
 const queryClient = new QueryClient();
 
+const isSignedOut = () => localStorage.getItem('nivio_signed_out') === 'true';
+
 function Router() {
+  if (isSignedOut()) return <LockScreen />;
   return (
     <Switch>
       {/* Standalone pages — no app chrome */}
