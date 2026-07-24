@@ -12,9 +12,9 @@ const router: IRouter = Router();
 router.get("/user/profile", async (req, res): Promise<void> => {
   const profile = {
     id: 1,
-    name: "Nifty",
-    email: "nifty@niftypay.com",
-    avatarInitials: "NP",
+    name: "Ken",
+    email: "ken@niftypay.com",
+    avatarInitials: "KN",
     memberSince: "2022-03-15",
   };
   res.json(GetUserProfileResponse.parse(profile));

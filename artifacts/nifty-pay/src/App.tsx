@@ -10,6 +10,9 @@ import TransactionDetail from '@/pages/transaction-detail';
 import Countries from '@/pages/countries';
 import Wallets from '@/pages/wallets';
 import Stats from '@/pages/stats';
+import Deposit from '@/pages/deposit';
+import Withdraw from '@/pages/withdraw';
+import Account from '@/pages/account';
 import NotFound from '@/pages/not-found';
 
 const queryClient = new QueryClient();
@@ -25,6 +28,9 @@ function Router() {
         <Route path="/countries" component={Countries} />
         <Route path="/wallets" component={Wallets} />
         <Route path="/stats" component={Stats} />
+        <Route path="/deposit" component={Deposit} />
+        <Route path="/withdraw" component={Withdraw} />
+        <Route path="/account" component={Account} />
         <Route component={NotFound} />
       </Switch>
     </AppLayout>

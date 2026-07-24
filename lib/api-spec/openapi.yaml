@@ -20,13 +20,18 @@ tags:
     description: Exchange rates
   - name: countries
     description: Supported countries and corridors
+  - name: payment-methods
+    description: Admin-provided payment deposit methods
+  - name: deposits
+    description: Deposit requests with receipt confirmation
+  - name: withdrawals
+    description: Withdrawal requests via mobile money or bank
 paths:
   /healthz:
     get:
       operationId: healthCheck
       tags: [health]
       summary: Health check
-      description: Returns server health status
       responses:
         "200":
           description: Healthy
@@ -52,7 +57,7 @@ paths:
     get:
       operationId: getDashboardSummary
       tags: [user]
-      summary: Get dashboard summary (total balance, stats, recent)
+      summary: Get dashboard summary
       responses:
         "200":
           description: Dashboard summary
@@ -65,7 +70,7 @@ paths:
     get:
       operationId: getWallets
       tags: [wallets]
-      summary: List all wallets for the user
+      summary: List all wallets
       responses:
         "200":
           description: List of wallets
@@ -101,7 +106,7 @@ paths:
     post:
       operationId: topUpWallet
       tags: [wallets]
-      summary: Add money to a wallet
+      summary: Add money to a wallet (internal/admin)
       parameters:
         - name: id
           in: path
@@ -126,7 +131,7 @@ paths:
     get:
       operationId: getTransactions
       tags: [transactions]
-      summary: List transactions with optional filters
+      summary: List transactions
       parameters:
         - name: status
           in: query
@@ -189,11 +194,24 @@ paths:
         "404":
           description: Not found
 
+  /transactions/stats:
+    get:
+      operationId: getTransactionStats
+      tags: [transactions]
+      summary: Get transfer stats
+      responses:
+        "200":
+          description: Transfer stats
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TransactionStats"
+
   /rates:
     get:
       operationId: getExchangeRates
       tags: [rates]
-      summary: Get current exchange rates from a base currency
+      summary: Get current exchange rates
       parameters:
         - name: from
           in: query
@@ -228,18 +246,130 @@ paths:
                 items:
                   $ref: "#/components/schemas/Country"
 
-  /transactions/stats:
+  /payment-methods:
     get:
-      operationId: getTransactionStats
-      tags: [transactions]
-      summary: Get transfer stats (volume by currency, success rate)
+      operationId: getPaymentMethods
+      tags: [payment-methods]
+      summary: Get admin-provided deposit payment methods
       responses:
         "200":
-          description: Transfer stats
+          description: List of active payment methods
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/TransactionStats"
+                type: array
+                items:
+                  $ref: "#/components/schemas/PaymentMethod"
+
+  /deposits:
+    get:
+      operationId: getDeposits
+      tags: [deposits]
+      summary: List all deposit requests
+      responses:
+        "200":
+          description: List of deposits
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Deposit"
+    post:
+      operationId: createDeposit
+      tags: [deposits]
+      summary: Submit a deposit request with receipt
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DepositInput"
+      responses:
+        "201":
+          description: Deposit created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Deposit"
+        "400":
+          description: Validation error
+
+  /deposits/{id}:
+    get:
+      operationId: getDeposit
+      tags: [deposits]
+      summary: Get a deposit by ID
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Deposit
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Deposit"
+        "404":
+          description: Not found
+
+  /withdrawals:
+    get:
+      operationId: getWithdrawals
+      tags: [withdrawals]
+      summary: List all withdrawal requests
+      responses:
+        "200":
+          description: List of withdrawals
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Withdrawal"
+    post:
+      operationId: createWithdrawal
+      tags: [withdrawals]
+      summary: Submit a withdrawal request
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/WithdrawalInput"
+      responses:
+        "201":
+          description: Withdrawal created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Withdrawal"
+        "400":
+          description: Validation error
+
+  /withdrawals/{id}:
+    get:
+      operationId: getWithdrawal
+      tags: [withdrawals]
+      summary: Get a withdrawal by ID
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Withdrawal
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Withdrawal"
+        "404":
+          description: Not found
 
 components:
   schemas:
@@ -248,8 +378,7 @@ components:
       properties:
         status:
           type: string
-      required:
-        - status
+      required: [status]
 
     UserProfile:
       type: object
@@ -421,3 +550,127 @@ components:
           type: number
         count:
           type: integer
+
+    PaymentMethod:
+      type: object
+      required: [id, type, name, accountNumber, accountName, instructions, logoEmoji, isActive]
+      properties:
+        id:
+          type: integer
+        type:
+          type: string
+        name:
+          type: string
+        accountNumber:
+          type: string
+        accountName:
+          type: string
+        instructions:
+          type: string
+        logoEmoji:
+          type: string
+        isActive:
+          type: boolean
+
+    DepositInput:
+      type: object
+      required: [walletId, paymentMethodId, amount, externalTransactionId, receiptImage]
+      properties:
+        walletId:
+          type: integer
+        paymentMethodId:
+          type: integer
+        amount:
+          type: number
+        externalTransactionId:
+          type: string
+        receiptImage:
+          type: string
+        note:
+          type: string
+
+    Deposit:
+      type: object
+      required: [id, walletId, paymentMethodId, amount, currencyCode, externalTransactionId, receiptImage, status, createdAt]
+      properties:
+        id:
+          type: integer
+        walletId:
+          type: integer
+        paymentMethodId:
+          type: integer
+        amount:
+          type: number
+        currencyCode:
+          type: string
+        externalTransactionId:
+          type: string
+        receiptImage:
+          type: string
+        status:
+          type: string
+          enum: [pending, approved, rejected]
+        note:
+          type: ["string", "null"]
+        createdAt:
+          type: string
+
+    WithdrawalInput:
+      type: object
+      required: [walletId, amount, withdrawalType, recipientCountry]
+      properties:
+        walletId:
+          type: integer
+        amount:
+          type: number
+        withdrawalType:
+          type: string
+          enum: [mobile_money, bank]
+        recipientCountry:
+          type: string
+        mobileNumber:
+          type: string
+        mobileNetwork:
+          type: string
+        bankName:
+          type: string
+        accountNumber:
+          type: string
+        accountName:
+          type: string
+        note:
+          type: string
+
+    Withdrawal:
+      type: object
+      required: [id, walletId, amount, currencyCode, withdrawalType, recipientCountry, status, createdAt]
+      properties:
+        id:
+          type: integer
+        walletId:
+          type: integer
+        amount:
+          type: number
+        currencyCode:
+          type: string
+        withdrawalType:
+          type: string
+        recipientCountry:
+          type: string
+        mobileNumber:
+          type: ["string", "null"]
+        mobileNetwork:
+          type: ["string", "null"]
+        bankName:
+          type: ["string", "null"]
+        accountNumber:
+          type: ["string", "null"]
+        accountName:
+          type: ["string", "null"]
+        status:
+          type: string
+          enum: [pending, approved, rejected]
+        note:
+          type: ["string", "null"]
+        createdAt:
+          type: string

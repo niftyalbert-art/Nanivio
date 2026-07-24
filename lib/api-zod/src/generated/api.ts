@@ -9,7 +9,6 @@ import * as zod from 'zod';
 
 
 /**
- * Returns server health status
  * @summary Health check
  */
 export const HealthCheckResponse = zod.object({
@@ -30,7 +29,7 @@ export const GetUserProfileResponse = zod.object({
 
 
 /**
- * @summary Get dashboard summary (total balance, stats, recent)
+ * @summary Get dashboard summary
  */
 export const GetDashboardSummaryResponse = zod.object({
   "totalBalanceUsd": zod.number(),
@@ -56,7 +55,7 @@ export const GetDashboardSummaryResponse = zod.object({
 
 
 /**
- * @summary List all wallets for the user
+ * @summary List all wallets
  */
 export const GetWalletsResponseItem = zod.object({
   "id": zod.number(),
@@ -89,7 +88,7 @@ export const GetWalletResponse = zod.object({
 
 
 /**
- * @summary Add money to a wallet
+ * @summary Add money to a wallet (internal/admin)
  */
 export const TopUpWalletParams = zod.object({
   "id": zod.coerce.number()
@@ -111,7 +110,7 @@ export const TopUpWalletResponse = zod.object({
 
 
 /**
- * @summary List transactions with optional filters
+ * @summary List transactions
  */
 export const GetTransactionsQueryParams = zod.object({
   "status": zod.enum(['pending', 'completed', 'failed']).optional(),
@@ -190,7 +189,22 @@ export const GetTransactionResponse = zod.object({
 
 
 /**
- * @summary Get current exchange rates from a base currency
+ * @summary Get transfer stats
+ */
+export const GetTransactionStatsResponse = zod.object({
+  "byCurrency": zod.array(zod.object({
+  "currencyCode": zod.string(),
+  "flag": zod.string(),
+  "totalVolume": zod.number(),
+  "count": zod.number()
+})),
+  "successRate": zod.number(),
+  "avgTransferTime": zod.string()
+})
+
+
+/**
+ * @summary Get current exchange rates
  */
 export const GetExchangeRatesQueryParams = zod.object({
   "from": zod.coerce.string(),
@@ -224,17 +238,164 @@ export const GetSupportedCountriesResponse = zod.array(GetSupportedCountriesResp
 
 
 /**
- * @summary Get transfer stats (volume by currency, success rate)
+ * @summary Get admin-provided deposit payment methods
  */
-export const GetTransactionStatsResponse = zod.object({
-  "byCurrency": zod.array(zod.object({
+export const GetPaymentMethodsResponseItem = zod.object({
+  "id": zod.number(),
+  "type": zod.string(),
+  "name": zod.string(),
+  "accountNumber": zod.string(),
+  "accountName": zod.string(),
+  "instructions": zod.string(),
+  "logoEmoji": zod.string(),
+  "isActive": zod.boolean()
+})
+export const GetPaymentMethodsResponse = zod.array(GetPaymentMethodsResponseItem)
+
+
+/**
+ * @summary List all deposit requests
+ */
+export const GetDepositsResponseItem = zod.object({
+  "id": zod.number(),
+  "walletId": zod.number(),
+  "paymentMethodId": zod.number(),
+  "amount": zod.number(),
   "currencyCode": zod.string(),
-  "flag": zod.string(),
-  "totalVolume": zod.number(),
-  "count": zod.number()
-})),
-  "successRate": zod.number(),
-  "avgTransferTime": zod.string()
+  "externalTransactionId": zod.string(),
+  "receiptImage": zod.string(),
+  "status": zod.enum(['pending', 'approved', 'rejected']),
+  "note": zod.string().nullish(),
+  "createdAt": zod.string()
+})
+export const GetDepositsResponse = zod.array(GetDepositsResponseItem)
+
+
+/**
+ * @summary Submit a deposit request with receipt
+ */
+export const CreateDepositBody = zod.object({
+  "walletId": zod.number(),
+  "paymentMethodId": zod.number(),
+  "amount": zod.number(),
+  "externalTransactionId": zod.string(),
+  "receiptImage": zod.string(),
+  "note": zod.string().optional()
+})
+
+export const CreateDepositResponse = zod.object({
+  "id": zod.number(),
+  "walletId": zod.number(),
+  "paymentMethodId": zod.number(),
+  "amount": zod.number(),
+  "currencyCode": zod.string(),
+  "externalTransactionId": zod.string(),
+  "receiptImage": zod.string(),
+  "status": zod.enum(['pending', 'approved', 'rejected']),
+  "note": zod.string().nullish(),
+  "createdAt": zod.string()
+})
+
+
+/**
+ * @summary Get a deposit by ID
+ */
+export const GetDepositParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const GetDepositResponse = zod.object({
+  "id": zod.number(),
+  "walletId": zod.number(),
+  "paymentMethodId": zod.number(),
+  "amount": zod.number(),
+  "currencyCode": zod.string(),
+  "externalTransactionId": zod.string(),
+  "receiptImage": zod.string(),
+  "status": zod.enum(['pending', 'approved', 'rejected']),
+  "note": zod.string().nullish(),
+  "createdAt": zod.string()
+})
+
+
+/**
+ * @summary List all withdrawal requests
+ */
+export const GetWithdrawalsResponseItem = zod.object({
+  "id": zod.number(),
+  "walletId": zod.number(),
+  "amount": zod.number(),
+  "currencyCode": zod.string(),
+  "withdrawalType": zod.string(),
+  "recipientCountry": zod.string(),
+  "mobileNumber": zod.string().nullish(),
+  "mobileNetwork": zod.string().nullish(),
+  "bankName": zod.string().nullish(),
+  "accountNumber": zod.string().nullish(),
+  "accountName": zod.string().nullish(),
+  "status": zod.enum(['pending', 'approved', 'rejected']),
+  "note": zod.string().nullish(),
+  "createdAt": zod.string()
+})
+export const GetWithdrawalsResponse = zod.array(GetWithdrawalsResponseItem)
+
+
+/**
+ * @summary Submit a withdrawal request
+ */
+export const CreateWithdrawalBody = zod.object({
+  "walletId": zod.number(),
+  "amount": zod.number(),
+  "withdrawalType": zod.enum(['mobile_money', 'bank']),
+  "recipientCountry": zod.string(),
+  "mobileNumber": zod.string().optional(),
+  "mobileNetwork": zod.string().optional(),
+  "bankName": zod.string().optional(),
+  "accountNumber": zod.string().optional(),
+  "accountName": zod.string().optional(),
+  "note": zod.string().optional()
+})
+
+export const CreateWithdrawalResponse = zod.object({
+  "id": zod.number(),
+  "walletId": zod.number(),
+  "amount": zod.number(),
+  "currencyCode": zod.string(),
+  "withdrawalType": zod.string(),
+  "recipientCountry": zod.string(),
+  "mobileNumber": zod.string().nullish(),
+  "mobileNetwork": zod.string().nullish(),
+  "bankName": zod.string().nullish(),
+  "accountNumber": zod.string().nullish(),
+  "accountName": zod.string().nullish(),
+  "status": zod.enum(['pending', 'approved', 'rejected']),
+  "note": zod.string().nullish(),
+  "createdAt": zod.string()
+})
+
+
+/**
+ * @summary Get a withdrawal by ID
+ */
+export const GetWithdrawalParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const GetWithdrawalResponse = zod.object({
+  "id": zod.number(),
+  "walletId": zod.number(),
+  "amount": zod.number(),
+  "currencyCode": zod.string(),
+  "withdrawalType": zod.string(),
+  "recipientCountry": zod.string(),
+  "mobileNumber": zod.string().nullish(),
+  "mobileNetwork": zod.string().nullish(),
+  "bankName": zod.string().nullish(),
+  "accountNumber": zod.string().nullish(),
+  "accountName": zod.string().nullish(),
+  "status": zod.enum(['pending', 'approved', 'rejected']),
+  "note": zod.string().nullish(),
+  "createdAt": zod.string()
 })
 
 

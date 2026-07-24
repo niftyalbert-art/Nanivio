@@ -108,6 +108,102 @@ export interface TransactionStats {
   avgTransferTime: string;
 }
 
+export interface PaymentMethod {
+  id: number;
+  type: string;
+  name: string;
+  accountNumber: string;
+  accountName: string;
+  instructions: string;
+  logoEmoji: string;
+  isActive: boolean;
+}
+
+export interface DepositInput {
+  walletId: number;
+  paymentMethodId: number;
+  amount: number;
+  externalTransactionId: string;
+  receiptImage: string;
+  note?: string;
+}
+
+export type DepositStatus = typeof DepositStatus[keyof typeof DepositStatus];
+
+
+export const DepositStatus = {
+  pending: 'pending',
+  approved: 'approved',
+  rejected: 'rejected',
+} as const;
+
+export interface Deposit {
+  id: number;
+  walletId: number;
+  paymentMethodId: number;
+  amount: number;
+  currencyCode: string;
+  externalTransactionId: string;
+  receiptImage: string;
+  status: DepositStatus;
+  /** @nullable */
+  note?: string | null;
+  createdAt: string;
+}
+
+export type WithdrawalInputWithdrawalType = typeof WithdrawalInputWithdrawalType[keyof typeof WithdrawalInputWithdrawalType];
+
+
+export const WithdrawalInputWithdrawalType = {
+  mobile_money: 'mobile_money',
+  bank: 'bank',
+} as const;
+
+export interface WithdrawalInput {
+  walletId: number;
+  amount: number;
+  withdrawalType: WithdrawalInputWithdrawalType;
+  recipientCountry: string;
+  mobileNumber?: string;
+  mobileNetwork?: string;
+  bankName?: string;
+  accountNumber?: string;
+  accountName?: string;
+  note?: string;
+}
+
+export type WithdrawalStatus = typeof WithdrawalStatus[keyof typeof WithdrawalStatus];
+
+
+export const WithdrawalStatus = {
+  pending: 'pending',
+  approved: 'approved',
+  rejected: 'rejected',
+} as const;
+
+export interface Withdrawal {
+  id: number;
+  walletId: number;
+  amount: number;
+  currencyCode: string;
+  withdrawalType: string;
+  recipientCountry: string;
+  /** @nullable */
+  mobileNumber?: string | null;
+  /** @nullable */
+  mobileNetwork?: string | null;
+  /** @nullable */
+  bankName?: string | null;
+  /** @nullable */
+  accountNumber?: string | null;
+  /** @nullable */
+  accountName?: string | null;
+  status: WithdrawalStatus;
+  /** @nullable */
+  note?: string | null;
+  createdAt: string;
+}
+
 export type GetTransactionsParams = {
 status?: GetTransactionsStatus;
 limit?: number;

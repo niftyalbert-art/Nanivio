@@ -1,5 +1,5 @@
 import { Link, useLocation } from 'wouter';
-import { Home, Send, Receipt, Globe, Wallet, BarChart3 } from 'lucide-react';
+import { Home, Send, Receipt, Globe, Wallet, BarChart3, User } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useGetUserProfile } from '@workspace/api-client-react';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
@@ -10,17 +10,23 @@ interface AppLayoutProps {
 }
 
 const navigation = [
-  { name: 'Dashboard', href: '/', icon: Home },
-  { name: 'Send', href: '/send', icon: Send },
-  { name: 'Transactions', href: '/transactions', icon: Receipt },
-  { name: 'Countries', href: '/countries', icon: Globe },
-  { name: 'Wallets', href: '/wallets', icon: Wallet },
-  { name: 'Stats', href: '/stats', icon: BarChart3 },
+  { name: 'Home',         href: '/',             icon: Home },
+  { name: 'Send',         href: '/send',          icon: Send },
+  { name: 'Transactions', href: '/transactions',  icon: Receipt },
+  { name: 'Wallets',      href: '/wallets',       icon: Wallet },
+  { name: 'Account',      href: '/account',       icon: User },
+];
+
+const sidebarExtra = [
+  { name: 'Countries',    href: '/countries',     icon: Globe },
+  { name: 'Stats',        href: '/stats',         icon: BarChart3 },
 ];
 
 export function AppLayout({ children }: AppLayoutProps) {
   const [location] = useLocation();
   const { data: profile, isLoading: profileLoading } = useGetUserProfile();
+
+  const allSidebar = [...navigation, ...sidebarExtra];
 
   return (
     <div className="flex min-h-[100dvh] bg-background">
@@ -38,7 +44,7 @@ export function AppLayout({ children }: AppLayoutProps) {
 
         {/* Navigation */}
         <nav className="flex-1 p-4 space-y-1">
-          {navigation.map((item) => {
+          {allSidebar.map((item) => {
             const isActive = location === item.href;
             const Icon = item.icon;
             return (
@@ -51,7 +57,6 @@ export function AppLayout({ children }: AppLayoutProps) {
                     ? 'bg-sidebar-primary text-sidebar-primary-foreground'
                     : 'text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground'
                 )}
-                data-testid={`nav-${item.name.toLowerCase().replace(' ', '-')}`}
               >
                 <Icon className="w-5 h-5 shrink-0" />
                 {item.name}
@@ -65,13 +70,10 @@ export function AppLayout({ children }: AppLayoutProps) {
           {profileLoading ? (
             <div className="flex items-center gap-3">
               <Skeleton className="w-10 h-10 rounded-full" />
-              <div className="flex-1 space-y-2">
-                <Skeleton className="h-4 w-24" />
-                <Skeleton className="h-3 w-32" />
-              </div>
+              <div className="flex-1 space-y-2"><Skeleton className="h-4 w-24" /><Skeleton className="h-3 w-32" /></div>
             </div>
           ) : profile ? (
-            <div className="flex items-center gap-3">
+            <Link href="/account" className="flex items-center gap-3 hover:opacity-80 transition-opacity">
               <Avatar>
                 <AvatarFallback className="bg-primary text-primary-foreground font-semibold">
                   {profile.avatarInitials}
@@ -81,7 +83,7 @@ export function AppLayout({ children }: AppLayoutProps) {
                 <p className="text-sm font-semibold text-sidebar-foreground truncate">{profile.name}</p>
                 <p className="text-xs text-muted-foreground truncate">{profile.email}</p>
               </div>
-            </div>
+            </Link>
           ) : null}
         </div>
       </aside>
@@ -95,20 +97,20 @@ export function AppLayout({ children }: AppLayoutProps) {
           </div>
           <span className="text-base font-bold tracking-tight">Nifty Pay</span>
           {profile && (
-            <div className="ml-auto">
+            <Link href="/account" className="ml-auto">
               <Avatar className="w-8 h-8">
                 <AvatarFallback className="bg-primary text-primary-foreground font-semibold text-xs">
                   {profile.avatarInitials}
                 </AvatarFallback>
               </Avatar>
-            </div>
+            </Link>
           )}
         </header>
 
         {children}
       </main>
 
-      {/* Bottom Navigation — mobile only */}
+      {/* Bottom Navigation — mobile only (5 tabs) */}
       <nav className="md:hidden fixed bottom-0 left-0 right-0 z-50 bg-sidebar/95 backdrop-blur border-t border-sidebar-border flex items-center">
         {navigation.map((item) => {
           const isActive = location === item.href;
@@ -119,11 +121,8 @@ export function AppLayout({ children }: AppLayoutProps) {
               href={item.href}
               className={cn(
                 'flex-1 flex flex-col items-center gap-0.5 py-2 px-1 text-[10px] font-medium transition-colors',
-                isActive
-                  ? 'text-primary'
-                  : 'text-muted-foreground'
+                isActive ? 'text-primary' : 'text-muted-foreground'
               )}
-              data-testid={`nav-mobile-${item.name.toLowerCase().replace(' ', '-')}`}
             >
               <Icon className={cn('w-5 h-5', isActive && 'text-primary')} />
               <span className="leading-tight">{item.name}</span>

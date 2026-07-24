@@ -22,16 +22,21 @@ import type {
 import type {
   Country,
   DashboardSummary,
+  Deposit,
+  DepositInput,
   ExchangeRateResult,
   GetExchangeRatesParams,
   GetTransactionsParams,
   HealthStatus,
+  PaymentMethod,
   TopUpInput,
   Transaction,
   TransactionInput,
   TransactionStats,
   UserProfile,
-  Wallet
+  Wallet,
+  Withdrawal,
+  WithdrawalInput
 } from './api.schemas';
 
 import { customFetch } from '../custom-fetch';
@@ -70,7 +75,6 @@ export const getHealthCheckUrl = () => {
 }
 
 /**
- * Returns server health status
  * @summary Health check
  */
 export const healthCheck = async ( options?: RequestInit): Promise<HealthStatus> => {
@@ -225,7 +229,7 @@ export const getGetDashboardSummaryUrl = () => {
 }
 
 /**
- * @summary Get dashboard summary (total balance, stats, recent)
+ * @summary Get dashboard summary
  */
 export const getDashboardSummary = async ( options?: RequestInit): Promise<DashboardSummary> => {
 
@@ -272,7 +276,7 @@ export type GetDashboardSummaryQueryError = ErrorType<unknown>
 
 
 /**
- * @summary Get dashboard summary (total balance, stats, recent)
+ * @summary Get dashboard summary
  */
 
 export function useGetDashboardSummary<TData = Awaited<ReturnType<typeof getDashboardSummary>>, TError = ErrorType<unknown>>(
@@ -302,7 +306,7 @@ export const getGetWalletsUrl = () => {
 }
 
 /**
- * @summary List all wallets for the user
+ * @summary List all wallets
  */
 export const getWallets = async ( options?: RequestInit): Promise<Wallet[]> => {
 
@@ -349,7 +353,7 @@ export type GetWalletsQueryError = ErrorType<unknown>
 
 
 /**
- * @summary List all wallets for the user
+ * @summary List all wallets
  */
 
 export function useGetWallets<TData = Awaited<ReturnType<typeof getWallets>>, TError = ErrorType<unknown>>(
@@ -456,7 +460,7 @@ export const getTopUpWalletUrl = (id: number,) => {
 }
 
 /**
- * @summary Add money to a wallet
+ * @summary Add money to a wallet (internal/admin)
  */
 export const topUpWallet = async (id: number,
     topUpInput: TopUpInput, options?: RequestInit): Promise<Wallet> => {
@@ -506,7 +510,7 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
     export type TopUpWalletMutationError = ErrorType<unknown>
 
     /**
- * @summary Add money to a wallet
+ * @summary Add money to a wallet (internal/admin)
  */
 export const useTopUpWallet = <TError = ErrorType<unknown>,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof topUpWallet>>, TError,{id: number;data: BodyType<TopUpInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
@@ -535,7 +539,7 @@ export const getGetTransactionsUrl = (params?: GetTransactionsParams,) => {
 }
 
 /**
- * @summary List transactions with optional filters
+ * @summary List transactions
  */
 export const getTransactions = async (params?: GetTransactionsParams, options?: RequestInit): Promise<Transaction[]> => {
 
@@ -582,7 +586,7 @@ export type GetTransactionsQueryError = ErrorType<unknown>
 
 
 /**
- * @summary List transactions with optional filters
+ * @summary List transactions
  */
 
 export function useGetTransactions<TData = Awaited<ReturnType<typeof getTransactions>>, TError = ErrorType<unknown>>(
@@ -751,6 +755,83 @@ export function useGetTransaction<TData = Awaited<ReturnType<typeof getTransacti
 
 
 
+export const getGetTransactionStatsUrl = () => {
+
+
+
+
+  return `/api/transactions/stats`
+}
+
+/**
+ * @summary Get transfer stats
+ */
+export const getTransactionStats = async ( options?: RequestInit): Promise<TransactionStats> => {
+
+  return customFetch<TransactionStats>(getGetTransactionStatsUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetTransactionStatsQueryKey = () => {
+    return [
+    `/api/transactions/stats`
+    ] as const;
+    }
+
+
+export const getGetTransactionStatsQueryOptions = <TData = Awaited<ReturnType<typeof getTransactionStats>>, TError = ErrorType<unknown>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getTransactionStats>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetTransactionStatsQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getTransactionStats>>> = ({ signal }) => getTransactionStats({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getTransactionStats>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetTransactionStatsQueryResult = NonNullable<Awaited<ReturnType<typeof getTransactionStats>>>
+export type GetTransactionStatsQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary Get transfer stats
+ */
+
+export function useGetTransactionStats<TData = Awaited<ReturnType<typeof getTransactionStats>>, TError = ErrorType<unknown>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getTransactionStats>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetTransactionStatsQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
 export const getGetExchangeRatesUrl = (params: GetExchangeRatesParams,) => {
   const normalizedParams = new URLSearchParams();
 
@@ -767,7 +848,7 @@ export const getGetExchangeRatesUrl = (params: GetExchangeRatesParams,) => {
 }
 
 /**
- * @summary Get current exchange rates from a base currency
+ * @summary Get current exchange rates
  */
 export const getExchangeRates = async (params: GetExchangeRatesParams, options?: RequestInit): Promise<ExchangeRateResult> => {
 
@@ -814,7 +895,7 @@ export type GetExchangeRatesQueryError = ErrorType<unknown>
 
 
 /**
- * @summary Get current exchange rates from a base currency
+ * @summary Get current exchange rates
  */
 
 export function useGetExchangeRates<TData = Awaited<ReturnType<typeof getExchangeRates>>, TError = ErrorType<unknown>>(
@@ -912,20 +993,20 @@ export function useGetSupportedCountries<TData = Awaited<ReturnType<typeof getSu
 
 
 
-export const getGetTransactionStatsUrl = () => {
+export const getGetPaymentMethodsUrl = () => {
 
 
 
 
-  return `/api/transactions/stats`
+  return `/api/payment-methods`
 }
 
 /**
- * @summary Get transfer stats (volume by currency, success rate)
+ * @summary Get admin-provided deposit payment methods
  */
-export const getTransactionStats = async ( options?: RequestInit): Promise<TransactionStats> => {
+export const getPaymentMethods = async ( options?: RequestInit): Promise<PaymentMethod[]> => {
 
-  return customFetch<TransactionStats>(getGetTransactionStatsUrl(),
+  return customFetch<PaymentMethod[]>(getGetPaymentMethodsUrl(),
   {
     ...options,
     method: 'GET'
@@ -938,45 +1019,495 @@ export const getTransactionStats = async ( options?: RequestInit): Promise<Trans
 
 
 
-export const getGetTransactionStatsQueryKey = () => {
+export const getGetPaymentMethodsQueryKey = () => {
     return [
-    `/api/transactions/stats`
+    `/api/payment-methods`
     ] as const;
     }
 
 
-export const getGetTransactionStatsQueryOptions = <TData = Awaited<ReturnType<typeof getTransactionStats>>, TError = ErrorType<unknown>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getTransactionStats>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+export const getGetPaymentMethodsQueryOptions = <TData = Awaited<ReturnType<typeof getPaymentMethods>>, TError = ErrorType<unknown>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getPaymentMethods>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
 ) => {
 
 const {query: queryOptions, request: requestOptions} = options ?? {};
 
-  const queryKey =  queryOptions?.queryKey ?? getGetTransactionStatsQueryKey();
+  const queryKey =  queryOptions?.queryKey ?? getGetPaymentMethodsQueryKey();
 
 
 
-    const queryFn: QueryFunction<Awaited<ReturnType<typeof getTransactionStats>>> = ({ signal }) => getTransactionStats({ signal, ...requestOptions });
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getPaymentMethods>>> = ({ signal }) => getPaymentMethods({ signal, ...requestOptions });
 
 
 
 
 
-   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getTransactionStats>>, TError, TData> & { queryKey: QueryKey }
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getPaymentMethods>>, TError, TData> & { queryKey: QueryKey }
 }
 
-export type GetTransactionStatsQueryResult = NonNullable<Awaited<ReturnType<typeof getTransactionStats>>>
-export type GetTransactionStatsQueryError = ErrorType<unknown>
+export type GetPaymentMethodsQueryResult = NonNullable<Awaited<ReturnType<typeof getPaymentMethods>>>
+export type GetPaymentMethodsQueryError = ErrorType<unknown>
 
 
 /**
- * @summary Get transfer stats (volume by currency, success rate)
+ * @summary Get admin-provided deposit payment methods
  */
 
-export function useGetTransactionStats<TData = Awaited<ReturnType<typeof getTransactionStats>>, TError = ErrorType<unknown>>(
-  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getTransactionStats>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+export function useGetPaymentMethods<TData = Awaited<ReturnType<typeof getPaymentMethods>>, TError = ErrorType<unknown>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getPaymentMethods>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
 
  ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
 
-  const queryOptions = getGetTransactionStatsQueryOptions(options)
+  const queryOptions = getGetPaymentMethodsQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getGetDepositsUrl = () => {
+
+
+
+
+  return `/api/deposits`
+}
+
+/**
+ * @summary List all deposit requests
+ */
+export const getDeposits = async ( options?: RequestInit): Promise<Deposit[]> => {
+
+  return customFetch<Deposit[]>(getGetDepositsUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetDepositsQueryKey = () => {
+    return [
+    `/api/deposits`
+    ] as const;
+    }
+
+
+export const getGetDepositsQueryOptions = <TData = Awaited<ReturnType<typeof getDeposits>>, TError = ErrorType<unknown>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getDeposits>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetDepositsQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getDeposits>>> = ({ signal }) => getDeposits({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getDeposits>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetDepositsQueryResult = NonNullable<Awaited<ReturnType<typeof getDeposits>>>
+export type GetDepositsQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary List all deposit requests
+ */
+
+export function useGetDeposits<TData = Awaited<ReturnType<typeof getDeposits>>, TError = ErrorType<unknown>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getDeposits>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetDepositsQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getCreateDepositUrl = () => {
+
+
+
+
+  return `/api/deposits`
+}
+
+/**
+ * @summary Submit a deposit request with receipt
+ */
+export const createDeposit = async (depositInput: DepositInput, options?: RequestInit): Promise<Deposit> => {
+
+  return customFetch<Deposit>(getCreateDepositUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(depositInput)
+  }
+);}
+
+
+
+
+
+export const getCreateDepositMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createDeposit>>, TError,{data: BodyType<DepositInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof createDeposit>>, TError,{data: BodyType<DepositInput>}, TContext> => {
+
+const mutationKey = ['createDeposit'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof createDeposit>>, {data: BodyType<DepositInput>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  createDeposit(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CreateDepositMutationResult = NonNullable<Awaited<ReturnType<typeof createDeposit>>>
+    export type CreateDepositMutationBody = BodyType<DepositInput>
+    export type CreateDepositMutationError = ErrorType<void>
+
+    /**
+ * @summary Submit a deposit request with receipt
+ */
+export const useCreateDeposit = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createDeposit>>, TError,{data: BodyType<DepositInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof createDeposit>>,
+        TError,
+        {data: BodyType<DepositInput>},
+        TContext
+      > => {
+      return useMutation(getCreateDepositMutationOptions(options));
+    }
+
+export const getGetDepositUrl = (id: number,) => {
+
+
+
+
+  return `/api/deposits/${id}`
+}
+
+/**
+ * @summary Get a deposit by ID
+ */
+export const getDeposit = async (id: number, options?: RequestInit): Promise<Deposit> => {
+
+  return customFetch<Deposit>(getGetDepositUrl(id),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetDepositQueryKey = (id: number,) => {
+    return [
+    `/api/deposits/${id}`
+    ] as const;
+    }
+
+
+export const getGetDepositQueryOptions = <TData = Awaited<ReturnType<typeof getDeposit>>, TError = ErrorType<void>>(id: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getDeposit>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetDepositQueryKey(id);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getDeposit>>> = ({ signal }) => getDeposit(id, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: id !== null && id !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getDeposit>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetDepositQueryResult = NonNullable<Awaited<ReturnType<typeof getDeposit>>>
+export type GetDepositQueryError = ErrorType<void>
+
+
+/**
+ * @summary Get a deposit by ID
+ */
+
+export function useGetDeposit<TData = Awaited<ReturnType<typeof getDeposit>>, TError = ErrorType<void>>(
+ id: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getDeposit>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetDepositQueryOptions(id,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getGetWithdrawalsUrl = () => {
+
+
+
+
+  return `/api/withdrawals`
+}
+
+/**
+ * @summary List all withdrawal requests
+ */
+export const getWithdrawals = async ( options?: RequestInit): Promise<Withdrawal[]> => {
+
+  return customFetch<Withdrawal[]>(getGetWithdrawalsUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetWithdrawalsQueryKey = () => {
+    return [
+    `/api/withdrawals`
+    ] as const;
+    }
+
+
+export const getGetWithdrawalsQueryOptions = <TData = Awaited<ReturnType<typeof getWithdrawals>>, TError = ErrorType<unknown>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getWithdrawals>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetWithdrawalsQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getWithdrawals>>> = ({ signal }) => getWithdrawals({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getWithdrawals>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetWithdrawalsQueryResult = NonNullable<Awaited<ReturnType<typeof getWithdrawals>>>
+export type GetWithdrawalsQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary List all withdrawal requests
+ */
+
+export function useGetWithdrawals<TData = Awaited<ReturnType<typeof getWithdrawals>>, TError = ErrorType<unknown>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getWithdrawals>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetWithdrawalsQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getCreateWithdrawalUrl = () => {
+
+
+
+
+  return `/api/withdrawals`
+}
+
+/**
+ * @summary Submit a withdrawal request
+ */
+export const createWithdrawal = async (withdrawalInput: WithdrawalInput, options?: RequestInit): Promise<Withdrawal> => {
+
+  return customFetch<Withdrawal>(getCreateWithdrawalUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(withdrawalInput)
+  }
+);}
+
+
+
+
+
+export const getCreateWithdrawalMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createWithdrawal>>, TError,{data: BodyType<WithdrawalInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof createWithdrawal>>, TError,{data: BodyType<WithdrawalInput>}, TContext> => {
+
+const mutationKey = ['createWithdrawal'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof createWithdrawal>>, {data: BodyType<WithdrawalInput>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  createWithdrawal(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CreateWithdrawalMutationResult = NonNullable<Awaited<ReturnType<typeof createWithdrawal>>>
+    export type CreateWithdrawalMutationBody = BodyType<WithdrawalInput>
+    export type CreateWithdrawalMutationError = ErrorType<void>
+
+    /**
+ * @summary Submit a withdrawal request
+ */
+export const useCreateWithdrawal = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createWithdrawal>>, TError,{data: BodyType<WithdrawalInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof createWithdrawal>>,
+        TError,
+        {data: BodyType<WithdrawalInput>},
+        TContext
+      > => {
+      return useMutation(getCreateWithdrawalMutationOptions(options));
+    }
+
+export const getGetWithdrawalUrl = (id: number,) => {
+
+
+
+
+  return `/api/withdrawals/${id}`
+}
+
+/**
+ * @summary Get a withdrawal by ID
+ */
+export const getWithdrawal = async (id: number, options?: RequestInit): Promise<Withdrawal> => {
+
+  return customFetch<Withdrawal>(getGetWithdrawalUrl(id),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetWithdrawalQueryKey = (id: number,) => {
+    return [
+    `/api/withdrawals/${id}`
+    ] as const;
+    }
+
+
+export const getGetWithdrawalQueryOptions = <TData = Awaited<ReturnType<typeof getWithdrawal>>, TError = ErrorType<void>>(id: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getWithdrawal>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetWithdrawalQueryKey(id);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getWithdrawal>>> = ({ signal }) => getWithdrawal(id, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: id !== null && id !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getWithdrawal>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetWithdrawalQueryResult = NonNullable<Awaited<ReturnType<typeof getWithdrawal>>>
+export type GetWithdrawalQueryError = ErrorType<void>
+
+
+/**
+ * @summary Get a withdrawal by ID
+ */
+
+export function useGetWithdrawal<TData = Awaited<ReturnType<typeof getWithdrawal>>, TError = ErrorType<void>>(
+ id: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getWithdrawal>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetWithdrawalQueryOptions(id,options)
 
   const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
 

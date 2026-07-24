@@ -1,32 +1,16 @@
-import { useGetDashboardSummary, useGetWallets } from '@workspace/api-client-react';
+import { useGetDashboardSummary, useGetWallets, useGetUserProfile } from '@workspace/api-client-react';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { ArrowUpRight, ArrowDownLeft, TrendingUp } from 'lucide-react';
+import { ArrowUpRight, ArrowDownLeft, Plus, ChevronRight } from 'lucide-react';
 import { Link } from 'wouter';
 import { formatDistanceToNow } from 'date-fns';
 
 export default function Dashboard() {
   const { data: summary, isLoading: summaryLoading } = useGetDashboardSummary();
   const { data: wallets, isLoading: walletsLoading } = useGetWallets();
-
-  if (summaryLoading || walletsLoading) {
-    return (
-      <div className="p-4 md:p-8 space-y-6">
-        <div className="space-y-2">
-          <Skeleton className="h-7 w-40" />
-          <Skeleton className="h-4 w-56" />
-        </div>
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 md:gap-6">
-          {[...Array(4)].map((_, i) => <Skeleton key={i} className="h-28 md:h-32" />)}
-        </div>
-        <Skeleton className="h-64 md:h-96" />
-      </div>
-    );
-  }
-
-  if (!summary || !wallets) return null;
+  const { data: profile } = useGetUserProfile();
 
   const getStatusColor = (status: string) => {
     switch (status) {
@@ -37,151 +21,135 @@ export default function Dashboard() {
     }
   };
 
+  if (summaryLoading || walletsLoading) {
+    return (
+      <div className="p-4 md:p-8 space-y-5">
+        <Skeleton className="h-8 w-48" />
+        <Skeleton className="h-40" />
+        <div className="grid grid-cols-2 gap-3"><Skeleton className="h-14" /><Skeleton className="h-14" /></div>
+        <Skeleton className="h-52" />
+      </div>
+    );
+  }
+
+  if (!summary) return null;
+
+  const firstName = profile?.name?.split(' ')[0] ?? 'there';
+
   return (
-    <div className="p-4 md:p-8 space-y-6 md:space-y-8">
-      {/* Header */}
-      <div className="space-y-1">
-        <h1 className="text-2xl md:text-4xl font-bold tracking-tight">Good evening</h1>
-        <p className="text-sm text-muted-foreground">Manage your global finances in one place</p>
+    <div className="p-4 md:p-8 space-y-5 md:space-y-6">
+      {/* Welcome */}
+      <div>
+        <p className="text-sm text-muted-foreground">Welcome back,</p>
+        <h1 className="text-2xl md:text-3xl font-bold tracking-tight">{firstName} 👋</h1>
       </div>
 
-      {/* Stats Grid */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 md:gap-6">
-        <Card className="wallet-card-glow">
-          <CardHeader className="pb-2 md:pb-3 p-3 md:p-6">
-            <CardTitle className="text-xs md:text-sm font-medium text-muted-foreground">Total Balance</CardTitle>
-          </CardHeader>
-          <CardContent className="p-3 md:p-6 pt-0">
-            <p className="text-xl md:text-3xl font-bold tracking-tight font-mono" data-testid="text-total-balance">
-              ${summary.totalBalanceUsd.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-            </p>
-            <p className="text-xs text-muted-foreground mt-1 md:mt-2">USD Equivalent</p>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="pb-2 md:pb-3 p-3 md:p-6">
-            <CardTitle className="text-xs md:text-sm font-medium text-muted-foreground">Active Wallets</CardTitle>
-          </CardHeader>
-          <CardContent className="p-3 md:p-6 pt-0">
-            <p className="text-xl md:text-3xl font-bold tracking-tight">{summary.totalWallets}</p>
-            <p className="text-xs text-muted-foreground mt-1 md:mt-2">Across {summary.totalWallets} currencies</p>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="pb-2 md:pb-3 p-3 md:p-6">
-            <CardTitle className="text-xs md:text-sm font-medium text-muted-foreground">Completed</CardTitle>
-          </CardHeader>
-          <CardContent className="p-3 md:p-6 pt-0">
-            <p className="text-xl md:text-3xl font-bold tracking-tight">{summary.completedTransfers}</p>
-            <p className="text-xs text-muted-foreground mt-1 md:mt-2">All time</p>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="pb-2 md:pb-3 p-3 md:p-6">
-            <CardTitle className="text-xs md:text-sm font-medium text-muted-foreground">Total Volume</CardTitle>
-          </CardHeader>
-          <CardContent className="p-3 md:p-6 pt-0">
-            <p className="text-xl md:text-3xl font-bold tracking-tight font-mono">
-              ${summary.totalVolume.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-            </p>
-            <p className="text-xs text-muted-foreground mt-1 md:mt-2">Transferred</p>
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Wallets */}
-      <div className="space-y-3 md:space-y-4">
-        <div className="flex items-center justify-between">
-          <h2 className="text-lg md:text-2xl font-bold tracking-tight">Your Wallets</h2>
-          <Link href="/wallets">
-            <Button variant="ghost" size="sm" data-testid="button-view-all-wallets" className="text-xs md:text-sm">View all</Button>
-          </Link>
-        </div>
-
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 md:gap-6">
-          {wallets.slice(0, 4).map((wallet) => (
-            <Card key={wallet.id} className="relative overflow-hidden">
-              <div className="absolute top-0 right-0 w-24 h-24 bg-gradient-to-br from-primary/10 to-transparent rounded-full blur-2xl -mr-12 -mt-12" />
-              <CardHeader className="pb-2 p-3 md:p-6">
-                <div className="flex items-center justify-between">
-                  <span className="text-2xl md:text-3xl">{wallet.flag}</span>
-                  {wallet.isCrypto && (
-                    <Badge variant="outline" className="text-[10px] md:text-xs px-1 py-0">Crypto</Badge>
-                  )}
-                </div>
-              </CardHeader>
-              <CardContent className="p-3 md:p-6 pt-0 space-y-0.5">
-                <p className="text-[10px] md:text-xs text-muted-foreground">{wallet.currencyName}</p>
-                <p className="text-sm md:text-xl font-bold tracking-tight font-mono leading-tight">
-                  {wallet.isCrypto ? wallet.cryptoSymbol : wallet.currencyCode}
-                </p>
-                <p className="text-base md:text-xl font-bold font-mono">
-                  {wallet.balance.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                </p>
-              </CardContent>
-            </Card>
-          ))}
-        </div>
-      </div>
+      {/* Balance Hero */}
+      <Card className="wallet-card-glow bg-gradient-to-br from-primary/20 via-primary/10 to-transparent border-primary/20">
+        <CardContent className="p-5 md:p-6">
+          <p className="text-xs md:text-sm text-muted-foreground mb-1">Total Balance (USD equiv.)</p>
+          <p className="text-3xl md:text-4xl font-bold tracking-tight font-mono mb-3">
+            ${summary.totalBalanceUsd.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+          </p>
+          <div className="flex items-center gap-3 text-xs text-muted-foreground">
+            <span>🏦 {summary.totalWallets} wallets</span>
+            <span>·</span>
+            <span>✅ {summary.completedTransfers} transfers</span>
+          </div>
+        </CardContent>
+      </Card>
 
       {/* Quick Actions */}
-      <div className="grid grid-cols-2 gap-3 md:gap-4">
+      <div className="grid grid-cols-3 gap-2 md:gap-3">
         <Link href="/send">
-          <Button size="lg" className="w-full h-14 md:h-20 text-sm md:text-base" data-testid="button-send-money">
-            <ArrowUpRight className="w-4 h-4 mr-2" />
-            Send Money
+          <Button className="w-full h-14 flex-col gap-1 text-xs" data-testid="button-send-money">
+            <ArrowUpRight className="w-4 h-4" />
+            Send
           </Button>
         </Link>
-        <Link href="/wallets">
-          <Button size="lg" variant="secondary" className="w-full h-14 md:h-20 text-sm md:text-base" data-testid="button-add-money">
-            <ArrowDownLeft className="w-4 h-4 mr-2" />
-            Add Money
+        <Link href="/deposit">
+          <Button variant="secondary" className="w-full h-14 flex-col gap-1 text-xs" data-testid="button-deposit">
+            <Plus className="w-4 h-4" />
+            Deposit
+          </Button>
+        </Link>
+        <Link href="/withdraw">
+          <Button variant="outline" className="w-full h-14 flex-col gap-1 text-xs" data-testid="button-withdraw">
+            <ArrowDownLeft className="w-4 h-4" />
+            Withdraw
           </Button>
         </Link>
       </div>
 
-      {/* Recent Transactions */}
-      <div className="space-y-3 md:space-y-4">
+      {/* My Wallets (compact) */}
+      {wallets && wallets.length > 0 && (
+        <div className="space-y-2">
+          <div className="flex items-center justify-between">
+            <h2 className="text-base font-semibold">My Wallets</h2>
+            <Link href="/wallets">
+              <Button variant="ghost" size="sm" className="text-xs h-7 px-2 gap-1">
+                View all <ChevronRight className="w-3 h-3" />
+              </Button>
+            </Link>
+          </div>
+          <div className="space-y-2">
+            {wallets.slice(0, 3).map((wallet) => (
+              <Link href="/wallets" key={wallet.id}>
+                <Card className="cursor-pointer hover:border-primary/40 transition-colors">
+                  <CardContent className="p-3 flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <span className="text-xl">{wallet.flag}</span>
+                      <div>
+                        <p className="text-sm font-medium">{wallet.currencyName}</p>
+                        <p className="text-xs text-muted-foreground">{wallet.currencyCode}</p>
+                      </div>
+                    </div>
+                    <p className="font-bold font-mono text-sm">
+                      {wallet.balance.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    </p>
+                  </CardContent>
+                </Card>
+              </Link>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Recent Activity */}
+      <div className="space-y-2">
         <div className="flex items-center justify-between">
-          <h2 className="text-lg md:text-2xl font-bold tracking-tight">Recent Transactions</h2>
+          <h2 className="text-base font-semibold">Recent Activity</h2>
           <Link href="/transactions">
-            <Button variant="ghost" size="sm" data-testid="button-view-all-transactions" className="text-xs md:text-sm">View all</Button>
+            <Button variant="ghost" size="sm" className="text-xs h-7 px-2 gap-1">
+              View all <ChevronRight className="w-3 h-3" />
+            </Button>
           </Link>
         </div>
-
         <Card>
           <CardContent className="p-0">
             {summary.recentTransactions.length === 0 ? (
-              <div className="p-8 md:p-12 text-center">
-                <TrendingUp className="w-10 h-10 mx-auto mb-3 text-muted-foreground opacity-20" />
-                <h3 className="text-base font-semibold mb-2">No transactions yet</h3>
-                <p className="text-sm text-muted-foreground mb-4">Start sending money globally</p>
-                <Link href="/send"><Button size="sm">Send Money Now</Button></Link>
+              <div className="p-6 text-center">
+                <p className="text-sm text-muted-foreground">No activity yet. Start sending money!</p>
+                <Link href="/send"><Button size="sm" className="mt-3">Send Money</Button></Link>
               </div>
             ) : (
               <div className="divide-y divide-border">
-                {summary.recentTransactions.map((tx) => (
+                {summary.recentTransactions.slice(0, 4).map((tx) => (
                   <Link
                     key={tx.id}
                     href={`/transactions/${tx.id}`}
                     className="block hover:bg-accent/5 transition-colors"
-                    data-testid={`transaction-${tx.id}`}
                   >
-                    <div className="p-3 md:p-4 flex items-center gap-3">
-                      <div className="w-9 h-9 md:w-10 md:h-10 rounded-full bg-muted flex items-center justify-center text-lg md:text-xl shrink-0">
+                    <div className="p-3 flex items-center gap-3">
+                      <div className="w-9 h-9 rounded-full bg-muted flex items-center justify-center text-lg shrink-0">
                         {tx.recipientFlag}
                       </div>
                       <div className="flex-1 min-w-0">
-                        <p className="font-semibold text-sm truncate">{tx.recipientName}</p>
-                        <p className="text-xs text-muted-foreground truncate">
-                          {tx.fromCurrency} → {tx.toCurrency} · {formatDistanceToNow(new Date(tx.createdAt), { addSuffix: true })}
-                        </p>
+                        <p className="font-medium text-sm truncate">{tx.recipientName}</p>
+                        <p className="text-xs text-muted-foreground">{formatDistanceToNow(new Date(tx.createdAt), { addSuffix: true })}</p>
                       </div>
                       <div className="text-right shrink-0">
-                        <p className="font-semibold font-mono text-sm">
+                        <p className="font-mono text-sm font-semibold">
                           -{tx.fromAmount.toLocaleString('en-US', { minimumFractionDigits: 2 })} {tx.fromCurrency}
                         </p>
                         <Badge className={`text-[10px] px-1.5 py-0 ${getStatusColor(tx.status)}`}>
