@@ -5,7 +5,7 @@ import { db, depositsTable, withdrawalsTable, walletsTable, paymentMethodsTable,
 const router: IRouter = Router();
 
 // ── Simple admin auth ─────────────────────────────────────────────────────
-const ADMIN_KEY = "niftypay2024";
+const ADMIN_KEY = "niviopay2024";
 function adminOnly(req: Request, res: Response, next: NextFunction): void {
   if (req.headers["x-admin-key"] !== ADMIN_KEY) {
     res.status(401).json({ error: "Unauthorized" });

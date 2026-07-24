@@ -15,7 +15,7 @@ const supportTicketsTable = pgTable("support_tickets", {
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
-const ADMIN_KEY = "niftypay2024";
+const ADMIN_KEY = "niviopay2024";
 
 const router: IRouter = Router();
 

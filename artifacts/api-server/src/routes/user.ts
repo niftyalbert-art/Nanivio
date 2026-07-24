@@ -13,7 +13,7 @@ router.get("/user/profile", async (req, res): Promise<void> => {
   const profile = {
     id: 1,
     name: "Ken",
-    email: "ken@niftypay.com",
+    email: "ken@niviopay.com",
     avatarInitials: "KN",
     memberSince: "2022-03-15",
   };

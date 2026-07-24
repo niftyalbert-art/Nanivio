@@ -236,7 +236,7 @@ export default function Account() {
                   </Button>
                 </a>
                 <a
-                  href="https://t.me/niftypay_support"
+                  href="https://t.me/niviopay_support"
                   target="_blank" rel="noopener noreferrer"
                 >
                   <Button variant="outline" className="w-full gap-2 text-blue-500 border-blue-500/30 hover:bg-blue-500/10 hover:text-blue-500">

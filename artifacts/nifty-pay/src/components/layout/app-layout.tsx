@@ -38,7 +38,7 @@ export function AppLayout({ children }: AppLayoutProps) {
             <div className="w-8 h-8 rounded-lg bg-primary flex items-center justify-center">
               <span className="text-primary-foreground font-bold text-lg">N</span>
             </div>
-            <span className="text-xl font-bold tracking-tight">Nifty Pay</span>
+            <span className="text-xl font-bold tracking-tight">Nivio Pay</span>
           </Link>
         </div>
 
@@ -95,7 +95,7 @@ export function AppLayout({ children }: AppLayoutProps) {
           <div className="w-7 h-7 rounded-md bg-primary flex items-center justify-center shrink-0">
             <span className="text-primary-foreground font-bold text-sm">N</span>
           </div>
-          <span className="text-base font-bold tracking-tight">Nifty Pay</span>
+          <span className="text-base font-bold tracking-tight">Nivio Pay</span>
           {profile && (
             <Link href="/account" className="ml-auto">
               <Avatar className="w-8 h-8">

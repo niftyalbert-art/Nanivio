@@ -13,7 +13,7 @@ import { formatDistanceToNow } from 'date-fns';
 import { useToast } from '@/hooks/use-toast';
 
 const API = import.meta.env.BASE_URL.replace(/\/$/, '') + '/api';
-const ADMIN_PIN = 'niftypay2024';
+const ADMIN_PIN = 'niviopay2024';
 
 function apiFetch(path: string, opts?: RequestInit) {
   return fetch(`${API}${path}`, {
@@ -475,7 +475,7 @@ export default function Admin() {
             <div className="w-14 h-14 rounded-full bg-primary/10 flex items-center justify-center mx-auto">
               <Lock className="w-7 h-7 text-primary" />
             </div>
-            <div><h1 className="text-xl font-bold">Admin Panel</h1><p className="text-sm text-muted-foreground">Nifty Pay Operations</p></div>
+            <div><h1 className="text-xl font-bold">Admin Panel</h1><p className="text-sm text-muted-foreground">Nivio Pay Operations</p></div>
             <div className="space-y-3 text-left">
               <Label>Access PIN</Label>
               <Input type="password" placeholder="Enter admin PIN" value={pin} onChange={e => setPin(e.target.value)}
@@ -495,7 +495,7 @@ export default function Admin() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-xl font-bold">Admin Panel</h1>
-          <p className="text-xs text-muted-foreground">Nifty Pay Operations</p>
+          <p className="text-xs text-muted-foreground">Nivio Pay Operations</p>
         </div>
         <Button variant="outline" size="sm" onClick={() => setAuthed(false)}>Sign Out</Button>
       </div>
