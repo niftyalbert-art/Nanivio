@@ -78,8 +78,10 @@ const MOBILE_MONEY_PROVIDERS: Record<string, { label: string; icon: string }[]> 
   ],
   // Central Africa
   CM: [
-    { icon: '🟠', label: 'Orange Money' },
     { icon: '🟡', label: 'MTN MoMo' },
+    { icon: '🟠', label: 'Orange Money' },
+    { icon: '🔵', label: 'Express Union Mobile Money' },
+    { icon: '🟣', label: 'Yoomee Money' },
   ],
   CG: [
     { icon: '🟠', label: 'Orange Money' },
@@ -531,13 +533,15 @@ export default function Send() {
 
             {transferType === 'mobile_money' && (
               <>
-                {/* Fixed provider picker — eMoney & Botim only */}
-                <div className="space-y-2">
+                {/* Provider picker: eMoney + Botim always, then country-specific below */}
+                <div className="space-y-3">
                   <Label className="text-sm">Mobile Money Provider</Label>
+
+                  {/* eMoney & Botim — always shown as feature cards */}
                   <div className="grid grid-cols-2 gap-3">
                     {[
-                      { label: 'eMoney', icon: '💰', desc: 'eMoney wallet', color: 'text-green-400', bg: 'bg-green-500/10' },
-                      { label: 'Botim', icon: '📱', desc: 'Botim account', color: 'text-blue-400', bg: 'bg-blue-500/10' },
+                      { label: 'eMoney', icon: '💰', desc: 'eMoney wallet', bg: 'bg-green-500/10' },
+                      { label: 'Botim', icon: '📱', desc: 'Botim account', bg: 'bg-blue-500/10' },
                     ].map(p => {
                       const selected = mobileProvider === p.label;
                       return (
@@ -546,10 +550,7 @@ export default function Send() {
                           type="button"
                           onClick={() => setMobileProvider(p.label)}
                           className={`rounded-xl border-2 p-4 flex flex-col items-center gap-2 transition-all text-center
-                            ${selected
-                              ? 'border-primary bg-primary/10'
-                              : 'border-border hover:border-primary/40 bg-card'
-                            }`}
+                            ${selected ? 'border-primary bg-primary/10' : 'border-border hover:border-primary/40 bg-card'}`}
                         >
                           <div className={`w-10 h-10 rounded-full ${p.bg} flex items-center justify-center text-xl`}>
                             {p.icon}
@@ -561,6 +562,33 @@ export default function Send() {
                       );
                     })}
                   </div>
+
+                  {/* Country-specific providers as compact rows */}
+                  {(() => {
+                    const extra = getProviders(selectedCountry?.code ?? '');
+                    if (extra.length === 0) return null;
+                    return (
+                      <div className="space-y-1.5">
+                        <p className="text-xs text-muted-foreground font-medium">Also available in {selectedCountry?.name}</p>
+                        {extra.map(p => {
+                          const selected = mobileProvider === p.label;
+                          return (
+                            <button
+                              key={p.label}
+                              type="button"
+                              onClick={() => setMobileProvider(p.label)}
+                              className={`w-full text-left rounded-lg border-2 px-3 py-2.5 flex items-center gap-3 transition-all text-sm
+                                ${selected ? 'border-primary bg-primary/10 font-semibold' : 'border-border hover:border-primary/40 bg-card'}`}
+                            >
+                              <span className="text-base leading-none w-5 text-center">{p.icon}</span>
+                              <span className="flex-1">{p.label}</span>
+                              {selected && <span className="text-primary text-xs">✓</span>}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    );
+                  })()}
                 </div>
 
                 <div className="space-y-1.5">
