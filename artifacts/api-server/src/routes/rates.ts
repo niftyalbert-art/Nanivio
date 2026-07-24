@@ -1,6 +1,6 @@
 import { Router, type IRouter } from "express";
 import { eq } from "drizzle-orm";
-import { db, exchangeRatesTable } from "@workspace/db";
+import { db, exchangeRatesTable, settingsTable } from "@workspace/db";
 import { GetExchangeRatesQueryParams, GetExchangeRatesResponse } from "@workspace/api-zod";
 
 const router: IRouter = Router();
@@ -31,10 +31,14 @@ router.get("/rates", async (req, res): Promise<void> => {
   const fromRateToUsd = parseFloat(fromRow.rateToUsd);
   const toRateToUsd = parseFloat(toRow.rateToUsd);
 
+  // Check for global send fee override in settings
+  const [globalFeeSetting] = await db.select().from(settingsTable).where(eq(settingsTable.key, "send_fee_percent"));
+  const globalFee = globalFeeSetting?.value ? parseFloat(globalFeeSetting.value) : NaN;
+
   // Convert: from → USD → to
   const rate = toRateToUsd / fromRateToUsd;
   const inverseRate = fromRateToUsd / toRateToUsd;
-  const fee = parseFloat(toRow.feePercent);
+  const fee = !isNaN(globalFee) && globalFee >= 0 ? globalFee : parseFloat(toRow.feePercent);
   const feeAmount = (fee / 100) * (1 / fromRateToUsd);
 
   const result = {

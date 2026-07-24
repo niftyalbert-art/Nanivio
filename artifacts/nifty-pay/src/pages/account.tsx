@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   useGetUserProfile,
   useGetPaymentMethods,
@@ -23,6 +23,10 @@ const API_BASE = import.meta.env.BASE_URL.replace(/\/$/, '') + '/api';
 export default function Account() {
   const { toast } = useToast();
   const { data: profile, isLoading: profileLoading } = useGetUserProfile();
+  const { data: siteSettings } = useQuery({
+    queryKey: ['site-settings'],
+    queryFn: () => fetch(`${API_BASE}/settings`).then(r => r.json()) as Promise<{ whatsappLink: string; telegramLink: string; supportHours: string }>,
+  });
   const { data: methods, isLoading: methodsLoading } = useGetPaymentMethods();
   const { data: deposits, isLoading: depositsLoading } = useGetDeposits();
   const { data: withdrawals, isLoading: withdrawalsLoading } = useGetWithdrawals();
@@ -226,26 +230,20 @@ export default function Account() {
             <CardContent className="p-4 space-y-3">
               <p className="font-semibold text-sm">Contact Us Instantly</p>
               <div className="grid grid-cols-2 gap-3">
-                <a
-                  href="https://wa.me/971501234567?text=Hi%20Nifty%20Pay%2C%20I%20need%20help"
-                  target="_blank" rel="noopener noreferrer"
-                >
+                <a href={siteSettings?.whatsappLink ?? 'https://wa.me/971501234567'} target="_blank" rel="noopener noreferrer">
                   <Button variant="outline" className="w-full gap-2 text-green-600 border-green-600/30 hover:bg-green-500/10 hover:text-green-600">
                     <span className="text-lg">💬</span> WhatsApp
                     <ExternalLink className="w-3 h-3 ml-auto" />
                   </Button>
                 </a>
-                <a
-                  href="https://t.me/niviopay_support"
-                  target="_blank" rel="noopener noreferrer"
-                >
+                <a href={siteSettings?.telegramLink ?? 'https://t.me/niviopay_support'} target="_blank" rel="noopener noreferrer">
                   <Button variant="outline" className="w-full gap-2 text-blue-500 border-blue-500/30 hover:bg-blue-500/10 hover:text-blue-500">
                     <span className="text-lg">✈️</span> Telegram
                     <ExternalLink className="w-3 h-3 ml-auto" />
                   </Button>
                 </a>
               </div>
-              <p className="text-xs text-muted-foreground">Available 8am–10pm UAE time · Usually replies within 30 minutes</p>
+              <p className="text-xs text-muted-foreground">{siteSettings?.supportHours ?? 'Available 8am–10pm UAE time · Usually replies within 30 minutes'}</p>
             </CardContent>
           </Card>
 

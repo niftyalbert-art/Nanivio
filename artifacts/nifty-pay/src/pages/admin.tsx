@@ -8,7 +8,7 @@ import { Badge } from '@/components/ui/badge';
 import { Textarea } from '@/components/ui/textarea';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { Skeleton } from '@/components/ui/skeleton';
-import { CheckCircle2, XCircle, Clock, ArrowDownLeft, ArrowUpRight, MessageSquare, Lock, Plus, Edit2, TrendingUp } from 'lucide-react';
+import { CheckCircle2, XCircle, Clock, ArrowDownLeft, ArrowUpRight, MessageSquare, Lock, Plus, Edit2, TrendingUp, Settings2, Link } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import { useToast } from '@/hooks/use-toast';
 
@@ -375,6 +375,136 @@ function RatesPanel() {
   );
 }
 
+// ── Settings Panel ──────────────────────────────────────────────────────────
+function SettingsPanel() {
+  const { toast } = useToast();
+  const { data: settings, isLoading, refetch } = useQuery({
+    queryKey: ['admin-settings'],
+    queryFn: () => apiFetch('/admin/settings'),
+  });
+
+  const [form, setForm] = useState<Record<string, string>>({});
+  const [saving, setSaving] = useState<string | null>(null);
+
+  // Populate form when data loads
+  const s = settings as Record<string, string> | undefined;
+
+  const save = async (key: string) => {
+    setSaving(key);
+    try {
+      await apiFetch(`/admin/settings/${key}`, { method: 'PUT', body: JSON.stringify({ value: form[key] ?? '' }) });
+      await refetch();
+      toast({ title: 'Saved ✓' });
+    } catch (e: any) {
+      toast({ title: 'Error', description: e.message, variant: 'destructive' });
+    }
+    setSaving(null);
+  };
+
+  const val = (key: string) => form[key] !== undefined ? form[key] : (s?.[key] ?? '');
+  const set = (key: string, v: string) => setForm(f => ({ ...f, [key]: v }));
+
+  if (isLoading) return <div className="space-y-3">{[...Array(3)].map((_, i) => <Skeleton key={i} className="h-20" />)}</div>;
+
+  return (
+    <div className="space-y-5">
+
+      {/* Transfer Fee */}
+      <Card>
+        <CardHeader className="p-4 pb-2">
+          <CardTitle className="text-sm font-bold flex items-center gap-2">
+            <TrendingUp className="w-4 h-4 text-primary" /> Global Send Fee
+          </CardTitle>
+          <CardDescription className="text-xs">
+            Overrides per-currency fees for all transfers. Leave blank to use each currency's own fee from the Rates tab.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="p-4 pt-0 space-y-2">
+          <div className="flex gap-2 items-end">
+            <div className="flex-1 space-y-1">
+              <Label className="text-xs">Fee Percentage (%)</Label>
+              <Input
+                type="number"
+                step="0.1"
+                min="0"
+                max="100"
+                placeholder="e.g. 3  (blank = use per-currency fee)"
+                value={val('send_fee_percent')}
+                onChange={e => set('send_fee_percent', e.target.value)}
+                className="font-mono text-sm"
+              />
+            </div>
+            <Button size="sm" className="shrink-0" onClick={() => save('send_fee_percent')} disabled={saving === 'send_fee_percent'}>
+              {saving === 'send_fee_percent' ? 'Saving…' : 'Save'}
+            </Button>
+          </div>
+          {val('send_fee_percent') !== '' && (
+            <p className="text-xs text-amber-500">⚠️ Global fee override active: {val('send_fee_percent')}% on all transfers</p>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Support Links */}
+      <Card>
+        <CardHeader className="p-4 pb-2">
+          <CardTitle className="text-sm font-bold flex items-center gap-2">
+            <Link className="w-4 h-4 text-primary" /> Customer Support Links
+          </CardTitle>
+          <CardDescription className="text-xs">These links appear on the user's Account → Support page.</CardDescription>
+        </CardHeader>
+        <CardContent className="p-4 pt-0 space-y-3">
+          {/* WhatsApp */}
+          <div className="space-y-1">
+            <Label className="text-xs flex items-center gap-1">💬 WhatsApp Link</Label>
+            <div className="flex gap-2">
+              <Input
+                placeholder="https://wa.me/971XXXXXXXXX"
+                value={val('whatsapp_link')}
+                onChange={e => set('whatsapp_link', e.target.value)}
+                className="text-sm flex-1"
+              />
+              <Button size="sm" className="shrink-0" onClick={() => save('whatsapp_link')} disabled={saving === 'whatsapp_link'}>
+                {saving === 'whatsapp_link' ? '…' : 'Save'}
+              </Button>
+            </div>
+          </div>
+          {/* Telegram */}
+          <div className="space-y-1">
+            <Label className="text-xs flex items-center gap-1">✈️ Telegram Link</Label>
+            <div className="flex gap-2">
+              <Input
+                placeholder="https://t.me/yourusername"
+                value={val('telegram_link')}
+                onChange={e => set('telegram_link', e.target.value)}
+                className="text-sm flex-1"
+              />
+              <Button size="sm" className="shrink-0" onClick={() => save('telegram_link')} disabled={saving === 'telegram_link'}>
+                {saving === 'telegram_link' ? '…' : 'Save'}
+              </Button>
+            </div>
+          </div>
+          {/* Support Hours */}
+          <div className="space-y-1">
+            <Label className="text-xs">🕐 Support Hours Text</Label>
+            <div className="flex gap-2">
+              <Input
+                placeholder="Available 8am–10pm UAE time..."
+                value={val('support_hours')}
+                onChange={e => set('support_hours', e.target.value)}
+                className="text-sm flex-1"
+              />
+              <Button size="sm" className="shrink-0" onClick={() => save('support_hours')} disabled={saving === 'support_hours'}>
+                {saving === 'support_hours' ? '…' : 'Save'}
+              </Button>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+    </div>
+  );
+}
+
 // ── Payment Methods Panel ───────────────────────────────────────────────────
 function PaymentMethodsPanel() {
   const { toast } = useToast();
@@ -558,7 +688,7 @@ export default function Admin() {
       </div>
 
       <Tabs defaultValue="deposits">
-        <TabsList className="w-full grid grid-cols-5">
+        <TabsList className="w-full grid grid-cols-6">
           <TabsTrigger value="deposits" className="text-xs relative">
             Dep {pendingDeposits > 0 && <span className="ml-1 bg-amber-500 text-white text-[9px] rounded-full w-4 h-4 inline-flex items-center justify-center">{pendingDeposits}</span>}
           </TabsTrigger>
@@ -570,12 +700,14 @@ export default function Admin() {
           </TabsTrigger>
           <TabsTrigger value="methods" className="text-xs">Methods</TabsTrigger>
           <TabsTrigger value="rates" className="text-xs">Rates</TabsTrigger>
+          <TabsTrigger value="settings" className="text-xs"><Settings2 className="w-3 h-3" /></TabsTrigger>
         </TabsList>
         <TabsContent value="deposits" className="mt-4"><DepositsPanel /></TabsContent>
         <TabsContent value="withdrawals" className="mt-4"><WithdrawalsPanel /></TabsContent>
         <TabsContent value="tickets" className="mt-4"><TicketsPanel /></TabsContent>
         <TabsContent value="methods" className="mt-4"><PaymentMethodsPanel /></TabsContent>
         <TabsContent value="rates" className="mt-4"><RatesPanel /></TabsContent>
+        <TabsContent value="settings" className="mt-4"><SettingsPanel /></TabsContent>
       </Tabs>
     </div>
   );
