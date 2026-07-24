@@ -22,13 +22,13 @@ import { Link } from 'wouter';
 const MOBILE_MONEY_NETWORKS: Record<string, string[]> = {
   Ghana: ['MTN Mobile Money', 'Vodafone Cash', 'AirtelTigo Money'],
   Nigeria: ['MTN MoMo', 'Opay', 'Palmpay', 'Kuda'],
-  Kenya: ["M-Pesa", "Airtel Money", "Equitel"],
+  Kenya: ['M-Pesa', 'Airtel Money', 'Equitel'],
   Philippines: ['GCash', 'Maya', 'ShopeePay'],
   India: ['UPI / IMPS', 'Paytm', 'PhonePe'],
   Pakistan: ['JazzCash', 'EasyPaisa'],
   Uganda: ['MTN Mobile Money', 'Airtel Money'],
-  Tanzania: ["M-Pesa", "Airtel Money", "Tigo Pesa"],
-  UAE: ['Botim Pay', 'PayBy'],
+  Tanzania: ['M-Pesa', 'Airtel Money', 'Tigo Pesa'],
+  UAE: ['Botim', 'eMoney'],
   USA: ['Zelle', 'Venmo', 'Cash App'],
   UK: ['Faster Payments', 'Revolut'],
   Bangladesh: ['bKash', 'Nagad', 'Rocket'],
@@ -37,9 +37,10 @@ const MOBILE_MONEY_NETWORKS: Record<string, string[]> = {
   'Sri Lanka': ['eZ Cash', 'Dialog Mobile Money'],
   Senegal: ['Orange Money', 'Wave', 'Free Money'],
   Malaysia: ['Touch \'n Go', 'Boost', 'GrabPay'],
-  Indonesia: ['OVO', 'GoPay', 'DANA'],
   Mexico: ['SPEI', 'CoDi'],
   Brazil: ['Pix', 'Nubank'],
+  Cameroon: ['MTN MoMo', 'Orange Money'],
+  Ethiopia: ['Telebirr', 'M-Pesa'],
 };
 
 const COUNTRIES_WITH_MOBILE_MONEY = Object.keys(MOBILE_MONEY_NETWORKS);
@@ -214,7 +215,7 @@ export default function Withdraw() {
                     <SelectValue placeholder="Select country" />
                   </SelectTrigger>
                   <SelectContent>
-                    {['Ghana', 'Nigeria', 'Kenya', 'Philippines', 'India', 'Pakistan', 'Uganda', 'Tanzania', 'UAE', 'USA', 'UK', 'Bangladesh', 'Egypt', 'Morocco', 'Sri Lanka', 'Senegal', 'Malaysia', 'Indonesia', 'Mexico', 'Brazil'].map(c => (
+                    {['Ghana', 'Nigeria', 'Kenya', 'Philippines', 'India', 'Pakistan', 'Uganda', 'Tanzania', 'UAE', 'USA', 'UK', 'Bangladesh', 'Egypt', 'Morocco', 'Sri Lanka', 'Senegal', 'Malaysia', 'Mexico', 'Brazil', 'Cameroon', 'Ethiopia'].sort().map(c => (
                       <SelectItem key={c} value={c}>{c}</SelectItem>
                     ))}
                   </SelectContent>

@@ -531,61 +531,52 @@ export default function Send() {
 
             {transferType === 'mobile_money' && (
               <>
-                {/* Provider picker */}
+                {/* Fixed provider picker — eMoney & Botim only */}
                 <div className="space-y-2">
                   <Label className="text-sm">Mobile Money Provider</Label>
-                  {(() => {
-                    const providers = getProviders(selectedCountry?.code ?? '');
-                    if (providers.length > 0) {
+                  <div className="grid grid-cols-2 gap-3">
+                    {[
+                      { label: 'eMoney', icon: '💰', desc: 'eMoney wallet', color: 'text-green-400', bg: 'bg-green-500/10' },
+                      { label: 'Botim', icon: '📱', desc: 'Botim account', color: 'text-blue-400', bg: 'bg-blue-500/10' },
+                    ].map(p => {
+                      const selected = mobileProvider === p.label;
                       return (
-                        <div className="grid grid-cols-1 gap-2">
-                          {providers.map(p => {
-                            const selected = mobileProvider === p.label;
-                            return (
-                              <button
-                                key={p.label}
-                                type="button"
-                                onClick={() => setMobileProvider(p.label)}
-                                className={`w-full text-left rounded-lg border-2 px-3 py-2.5 flex items-center gap-3 transition-all text-sm
-                                  ${selected
-                                    ? 'border-primary bg-primary/10 font-semibold'
-                                    : 'border-border hover:border-primary/40 bg-card'
-                                  }`}
-                              >
-                                <span className="text-base leading-none w-5 text-center">{p.icon}</span>
-                                <span className="flex-1">{p.label}</span>
-                                {selected && <span className="text-primary text-xs">✓ Selected</span>}
-                              </button>
-                            );
-                          })}
-                          {/* Allow typing a custom provider not in the list */}
-                          <div className="pt-1 space-y-1">
-                            <p className="text-xs text-muted-foreground">Not listed? Type below:</p>
-                            <Input
-                              placeholder="Other provider..."
-                              value={providers.some(p => p.label === mobileProvider) ? '' : mobileProvider}
-                              onChange={e => setMobileProvider(e.target.value)}
-                              className="text-sm"
-                            />
+                        <button
+                          key={p.label}
+                          type="button"
+                          onClick={() => setMobileProvider(p.label)}
+                          className={`rounded-xl border-2 p-4 flex flex-col items-center gap-2 transition-all text-center
+                            ${selected
+                              ? 'border-primary bg-primary/10'
+                              : 'border-border hover:border-primary/40 bg-card'
+                            }`}
+                        >
+                          <div className={`w-10 h-10 rounded-full ${p.bg} flex items-center justify-center text-xl`}>
+                            {p.icon}
                           </div>
-                        </div>
+                          <span className={`font-bold text-sm ${selected ? 'text-primary' : ''}`}>{p.label}</span>
+                          <span className="text-xs text-muted-foreground">{p.desc}</span>
+                          {selected && <span className="text-[10px] text-primary font-semibold">✓ Selected</span>}
+                        </button>
                       );
-                    }
-                    // Fallback for countries with no mapped providers
-                    return (
-                      <Input
-                        placeholder="e.g. Provider name"
-                        value={mobileProvider}
-                        onChange={e => setMobileProvider(e.target.value)}
-                      />
-                    );
-                  })()}
+                    })}
+                  </div>
                 </div>
 
                 <div className="space-y-1.5">
-                  <Label className="text-sm">Mobile Number</Label>
-                  <Input type="tel" placeholder="+233 50 000 0000" value={mobileNumber} onChange={e => setMobileNumber(e.target.value)} className="font-mono" />
-                  <p className="text-xs text-muted-foreground">Enter the number registered with the mobile money account</p>
+                  <Label className="text-sm">
+                    {mobileProvider === 'Botim' ? 'Botim Phone Number' : mobileProvider === 'eMoney' ? 'eMoney Account Number' : 'Account / Phone Number'}
+                  </Label>
+                  <Input
+                    type={mobileProvider === 'Botim' ? 'tel' : 'text'}
+                    placeholder={mobileProvider === 'Botim' ? '+971 50 000 0000' : mobileProvider === 'eMoney' ? 'e.g. EMNY-12345678' : 'Account or phone number'}
+                    value={mobileNumber}
+                    onChange={e => setMobileNumber(e.target.value)}
+                    className="font-mono"
+                  />
+                  {mobileProvider === 'Botim' && (
+                    <p className="text-xs text-muted-foreground">Enter the phone number registered on the receiver's Botim account</p>
+                  )}
                 </div>
                 <div className="space-y-1.5">
                   <Label className="text-sm">Receiver's Name</Label>
