@@ -1,17 +1,9 @@
-import { Router, type IRouter, type Request, type Response, type NextFunction } from "express";
+import { Router, type IRouter } from "express";
 import { eq } from "drizzle-orm";
 import { db, settingsTable } from "@workspace/db";
+import { adminOnly } from "../middleware/auth";
 
 const router: IRouter = Router();
-
-const ADMIN_KEY = "niviopay2024";
-function adminOnly(req: Request, res: Response, next: NextFunction): void {
-  if (req.headers["x-admin-key"] !== ADMIN_KEY) {
-    res.status(401).json({ error: "Unauthorized" });
-    return;
-  }
-  next();
-}
 
 const DEFAULT_SETTINGS: Record<string, string> = {
   whatsapp_link: "https://wa.me/971501234567",

@@ -1,29 +1,26 @@
 import { Router, type IRouter } from "express";
 import { db } from "@workspace/db";
 import { sql, eq, desc } from "drizzle-orm";
-import { pgTable, serial, text, boolean, timestamp } from "drizzle-orm/pg-core";
+import { integer, pgTable, serial, text, boolean, timestamp } from "drizzle-orm/pg-core";
+import { requireAuth, adminOnly } from "../middleware/auth";
 
-// Inline table definition since it's not in the shared schema package yet
+// Inline table definition
 const supportTicketsTable = pgTable("support_tickets", {
   id: serial("id").primaryKey(),
+  userId: integer("user_id"),
   subject: text("subject").notNull(),
   message: text("message").notNull(),
-  userName: text("user_name").notNull().default("Ken"),
+  userName: text("user_name").notNull().default("User"),
   status: text("status").notNull().default("open"),
   adminReply: text("admin_reply"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
-const ADMIN_KEY = "niviopay2024";
-
 const router: IRouter = Router();
 
-// List tickets (admin only)
-router.get("/tickets", async (req, res): Promise<void> => {
-  if (req.headers["x-admin-key"] !== ADMIN_KEY) {
-    res.status(401).json({ error: "Unauthorized" }); return;
-  }
+// List tickets (admin only — all tickets)
+router.get("/tickets", adminOnly, async (_req, res): Promise<void> => {
   const tickets = await db.select().from(supportTicketsTable).orderBy(desc(supportTicketsTable.createdAt));
   const result = tickets.map(t => ({
     ...t,
@@ -33,14 +30,19 @@ router.get("/tickets", async (req, res): Promise<void> => {
   res.json(result);
 });
 
-// Create ticket (any user)
-router.post("/tickets", async (req, res): Promise<void> => {
-  const { subject, message, userName } = req.body ?? {};
+// Create ticket (authenticated user)
+router.post("/tickets", requireAuth, async (req, res): Promise<void> => {
+  const { subject, message } = req.body ?? {};
   if (!subject || !message) {
     res.status(400).json({ error: "subject and message are required" }); return;
   }
   const [ticket] = await db.insert(supportTicketsTable)
-    .values({ subject: String(subject), message: String(message), userName: userName ? String(userName) : "Ken" })
+    .values({
+      userId: req.userId,
+      subject: String(subject),
+      message: String(message),
+      userName: req.userName ?? "User",
+    })
     .returning();
   res.status(201).json({
     ...ticket,
@@ -49,11 +51,21 @@ router.post("/tickets", async (req, res): Promise<void> => {
   });
 });
 
+// User: list own tickets
+router.get("/tickets/mine", requireAuth, async (req, res): Promise<void> => {
+  const tickets = await db.select().from(supportTicketsTable)
+    .where(eq(supportTicketsTable.userId, req.userId!))
+    .orderBy(desc(supportTicketsTable.createdAt));
+  const result = tickets.map(t => ({
+    ...t,
+    createdAt: t.createdAt instanceof Date ? t.createdAt.toISOString() : String(t.createdAt),
+    updatedAt: t.updatedAt instanceof Date ? t.updatedAt.toISOString() : String(t.updatedAt),
+  }));
+  res.json(result);
+});
+
 // Admin reply to ticket
-router.put("/admin/tickets/:id/reply", async (req, res): Promise<void> => {
-  if (req.headers["x-admin-key"] !== ADMIN_KEY) {
-    res.status(401).json({ error: "Unauthorized" }); return;
-  }
+router.put("/admin/tickets/:id/reply", adminOnly, async (req, res): Promise<void> => {
   const id = parseInt(req.params.id as string, 10);
   if (isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
   const { adminReply } = req.body ?? {};

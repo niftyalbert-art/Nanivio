@@ -1,13 +1,15 @@
 import { Router, type IRouter } from "express";
-import { eq, desc } from "drizzle-orm";
+import { eq, and, desc } from "drizzle-orm";
 import { db, depositsTable, walletsTable, paymentMethodsTable } from "@workspace/db";
+import { requireAuth } from "../middleware/auth";
 
 const router: IRouter = Router();
 
-router.get("/deposits", async (req, res): Promise<void> => {
+router.get("/deposits", requireAuth, async (req, res): Promise<void> => {
   const rows = await db
     .select()
     .from(depositsTable)
+    .where(eq(depositsTable.userId, req.userId!))
     .orderBy(desc(depositsTable.createdAt));
 
   const result = rows.map((d) => ({
@@ -19,7 +21,7 @@ router.get("/deposits", async (req, res): Promise<void> => {
   res.json(result);
 });
 
-router.post("/deposits", async (req, res): Promise<void> => {
+router.post("/deposits", requireAuth, async (req, res): Promise<void> => {
   const { walletId, paymentMethodId, amount, externalTransactionId, receiptImage, note } = req.body ?? {};
 
   if (!walletId || !paymentMethodId || !amount || !externalTransactionId || !receiptImage) {
@@ -31,7 +33,9 @@ router.post("/deposits", async (req, res): Promise<void> => {
     return;
   }
 
-  const [wallet] = await db.select().from(walletsTable).where(eq(walletsTable.id, Number(walletId)));
+  // Ensure wallet belongs to the authenticated user
+  const [wallet] = await db.select().from(walletsTable)
+    .where(and(eq(walletsTable.id, Number(walletId)), eq(walletsTable.userId, req.userId!)));
   if (!wallet) { res.status(404).json({ error: "Wallet not found" }); return; }
 
   const [method] = await db.select().from(paymentMethodsTable).where(eq(paymentMethodsTable.id, Number(paymentMethodId)));
@@ -40,6 +44,7 @@ router.post("/deposits", async (req, res): Promise<void> => {
   const [deposit] = await db
     .insert(depositsTable)
     .values({
+      userId: req.userId!,
       walletId: Number(walletId),
       paymentMethodId: Number(paymentMethodId),
       amount: String(amount),
@@ -58,11 +63,12 @@ router.post("/deposits", async (req, res): Promise<void> => {
   });
 });
 
-router.get("/deposits/:id", async (req, res): Promise<void> => {
+router.get("/deposits/:id", requireAuth, async (req, res): Promise<void> => {
   const id = parseInt(req.params.id as string, 10);
   if (isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
 
-  const [deposit] = await db.select().from(depositsTable).where(eq(depositsTable.id, id));
+  const [deposit] = await db.select().from(depositsTable)
+    .where(and(eq(depositsTable.id, id), eq(depositsTable.userId, req.userId!)));
   if (!deposit) { res.status(404).json({ error: "Deposit not found" }); return; }
 
   res.json({

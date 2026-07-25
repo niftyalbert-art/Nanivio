@@ -2,6 +2,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { Toaster } from '@/components/ui/toaster';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { Route, Switch, Router as WouterRouter } from 'wouter';
+import { AuthProvider, useAuth } from '@/contexts/auth';
 import { AppLayout } from '@/components/layout/app-layout';
 import Dashboard from '@/pages/dashboard';
 import Send from '@/pages/send';
@@ -15,15 +16,33 @@ import Withdraw from '@/pages/withdraw';
 import Account from '@/pages/account';
 import Admin from '@/pages/admin';
 import Install from '@/pages/install';
-import LockScreen from '@/pages/lock-screen';
+import Login from '@/pages/login';
+import SignUp from '@/pages/signup';
+import ForgotPassword from '@/pages/forgot-password';
+import ResetPassword from '@/pages/reset-password';
 import NotFound from '@/pages/not-found';
 
 const queryClient = new QueryClient();
 
-const isSignedOut = () => localStorage.getItem('nivio_signed_out') === 'true';
-
 function Router() {
-  if (isSignedOut()) return <LockScreen />;
+  const { isAuthenticated } = useAuth();
+
+  // Unauthenticated: show auth pages + always-public standalone pages
+  if (!isAuthenticated) {
+    return (
+      <Switch>
+        <Route path="/admin" component={Admin} />
+        <Route path="/install" component={Install} />
+        <Route path="/signup" component={SignUp} />
+        <Route path="/forgot-password" component={ForgotPassword} />
+        <Route path="/reset-password" component={ResetPassword} />
+        {/* Catch-all → login */}
+        <Route component={Login} />
+      </Switch>
+    );
+  }
+
+  // Authenticated: full app
   return (
     <Switch>
       {/* Standalone pages — no app chrome */}
@@ -54,14 +73,16 @@ function Router() {
 
 function App() {
   return (
-    <QueryClientProvider client={queryClient}>
-      <TooltipProvider>
-        <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, '')}>
-          <Router />
-        </WouterRouter>
-        <Toaster />
-      </TooltipProvider>
-    </QueryClientProvider>
+    <AuthProvider>
+      <QueryClientProvider client={queryClient}>
+        <TooltipProvider>
+          <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, '')}>
+            <Router />
+          </WouterRouter>
+          <Toaster />
+        </TooltipProvider>
+      </QueryClientProvider>
+    </AuthProvider>
   );
 }
 

@@ -1,13 +1,15 @@
 import { Router, type IRouter } from "express";
-import { eq, desc, sql } from "drizzle-orm";
+import { eq, and, desc, sql } from "drizzle-orm";
 import { db, withdrawalsTable, walletsTable } from "@workspace/db";
+import { requireAuth } from "../middleware/auth";
 
 const router: IRouter = Router();
 
-router.get("/withdrawals", async (req, res): Promise<void> => {
+router.get("/withdrawals", requireAuth, async (req, res): Promise<void> => {
   const rows = await db
     .select()
     .from(withdrawalsTable)
+    .where(eq(withdrawalsTable.userId, req.userId!))
     .orderBy(desc(withdrawalsTable.createdAt));
 
   const result = rows.map((w) => ({
@@ -19,7 +21,7 @@ router.get("/withdrawals", async (req, res): Promise<void> => {
   res.json(result);
 });
 
-router.post("/withdrawals", async (req, res): Promise<void> => {
+router.post("/withdrawals", requireAuth, async (req, res): Promise<void> => {
   const {
     walletId, amount, withdrawalType, recipientCountry,
     mobileNumber, mobileNetwork,
@@ -48,7 +50,9 @@ router.post("/withdrawals", async (req, res): Promise<void> => {
     return;
   }
 
-  const [wallet] = await db.select().from(walletsTable).where(eq(walletsTable.id, Number(walletId)));
+  // Ensure wallet belongs to the authenticated user
+  const [wallet] = await db.select().from(walletsTable)
+    .where(and(eq(walletsTable.id, Number(walletId)), eq(walletsTable.userId, req.userId!)));
   if (!wallet) { res.status(404).json({ error: "Wallet not found" }); return; }
 
   if (parseFloat(wallet.balance) < amount) {
@@ -56,7 +60,6 @@ router.post("/withdrawals", async (req, res): Promise<void> => {
     return;
   }
 
-  // Deduct balance
   await db
     .update(walletsTable)
     .set({ balance: sql`${walletsTable.balance} - ${amount}`, updatedAt: new Date() })
@@ -65,6 +68,7 @@ router.post("/withdrawals", async (req, res): Promise<void> => {
   const [withdrawal] = await db
     .insert(withdrawalsTable)
     .values({
+      userId: req.userId!,
       walletId: Number(walletId),
       amount: String(amount),
       currencyCode: wallet.currencyCode,
@@ -87,11 +91,12 @@ router.post("/withdrawals", async (req, res): Promise<void> => {
   });
 });
 
-router.get("/withdrawals/:id", async (req, res): Promise<void> => {
+router.get("/withdrawals/:id", requireAuth, async (req, res): Promise<void> => {
   const id = parseInt(req.params.id as string, 10);
   if (isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
 
-  const [withdrawal] = await db.select().from(withdrawalsTable).where(eq(withdrawalsTable.id, id));
+  const [withdrawal] = await db.select().from(withdrawalsTable)
+    .where(and(eq(withdrawalsTable.id, id), eq(withdrawalsTable.userId, req.userId!)));
   if (!withdrawal) { res.status(404).json({ error: "Withdrawal not found" }); return; }
 
   res.json({

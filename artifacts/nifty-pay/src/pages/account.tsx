@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useAuth } from '@/contexts/auth';
 import {
   useGetUserProfile,
   useGetPaymentMethods,
@@ -22,6 +23,7 @@ const API_BASE = import.meta.env.BASE_URL.replace(/\/$/, '') + '/api';
 
 export default function Account() {
   const { toast } = useToast();
+  const { logout, token } = useAuth();
   const { data: profile, isLoading: profileLoading } = useGetUserProfile();
   const { data: siteSettings } = useQuery({
     queryKey: ['site-settings'],
@@ -38,12 +40,18 @@ export default function Account() {
   const [ticketSent, setTicketSent] = useState(false);
 
   const submitTicket = useMutation({
-    mutationFn: () =>
-      fetch(`${API_BASE}/tickets`, {
+    mutationFn: async () => {
+      const r = await fetch(`${API_BASE}/tickets`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
+        },
         body: JSON.stringify({ subject: ticketSubject, message: ticketMessage }),
-      }).then(r => r.json()),
+      });
+      if (!r.ok) throw new Error(await r.text());
+      return r.json();
+    },
     onSuccess: () => { setTicketSent(true); setTicketSubject(''); setTicketMessage(''); },
     onError: () => toast({ title: 'Failed to send', description: 'Please try again.', variant: 'destructive' }),
   });
@@ -293,10 +301,7 @@ export default function Account() {
           <Button
             variant="ghost"
             className="w-full gap-2 text-destructive hover:bg-destructive/10 hover:text-destructive"
-            onClick={() => {
-              localStorage.setItem('nivio_signed_out', 'true');
-              window.location.reload();
-            }}
+            onClick={logout}
           >
             <LogOut className="w-4 h-4" />
             Sign Out

@@ -1,5 +1,5 @@
 import { Router, type IRouter } from "express";
-import { eq } from "drizzle-orm";
+import { eq, and } from "drizzle-orm";
 import { db, walletsTable } from "@workspace/db";
 import {
   GetWalletsResponse,
@@ -10,11 +10,14 @@ import {
   TopUpWalletResponse,
 } from "@workspace/api-zod";
 import { sql } from "drizzle-orm";
+import { requireAuth, adminOnly } from "../middleware/auth";
 
 const router: IRouter = Router();
 
-router.get("/wallets", async (req, res): Promise<void> => {
-  const wallets = await db.select().from(walletsTable).orderBy(walletsTable.id);
+router.get("/wallets", requireAuth, async (req, res): Promise<void> => {
+  const wallets = await db.select().from(walletsTable)
+    .where(eq(walletsTable.userId, req.userId!))
+    .orderBy(walletsTable.id);
   const parsed = wallets.map((w) => ({
     ...w,
     balance: parseFloat(w.balance),
@@ -22,7 +25,7 @@ router.get("/wallets", async (req, res): Promise<void> => {
   res.json(GetWalletsResponse.parse(parsed));
 });
 
-router.get("/wallets/:id", async (req, res): Promise<void> => {
+router.get("/wallets/:id", requireAuth, async (req, res): Promise<void> => {
   const raw = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
   const params = GetWalletParams.safeParse({ id: parseInt(raw, 10) });
   if (!params.success) {
@@ -33,7 +36,7 @@ router.get("/wallets/:id", async (req, res): Promise<void> => {
   const [wallet] = await db
     .select()
     .from(walletsTable)
-    .where(eq(walletsTable.id, params.data.id));
+    .where(and(eq(walletsTable.id, params.data.id), eq(walletsTable.userId, req.userId!)));
 
   if (!wallet) {
     res.status(404).json({ error: "Wallet not found" });
@@ -43,7 +46,8 @@ router.get("/wallets/:id", async (req, res): Promise<void> => {
   res.json(GetWalletResponse.parse({ ...wallet, balance: parseFloat(wallet.balance) }));
 });
 
-router.post("/wallets/:id/topup", async (req, res): Promise<void> => {
+// Admin only — balance credits must go through verified deposit approval flow
+router.post("/wallets/:id/topup", adminOnly, async (req, res): Promise<void> => {
   const raw = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
   const params = TopUpWalletParams.safeParse({ id: parseInt(raw, 10) });
   if (!params.success) {
@@ -54,6 +58,13 @@ router.post("/wallets/:id/topup", async (req, res): Promise<void> => {
   const body = TopUpWalletBody.safeParse(req.body);
   if (!body.success) {
     res.status(400).json({ error: body.error.message });
+    return;
+  }
+
+  const [existing] = await db.select().from(walletsTable)
+    .where(eq(walletsTable.id, params.data.id));
+  if (!existing) {
+    res.status(404).json({ error: "Wallet not found" });
     return;
   }
 

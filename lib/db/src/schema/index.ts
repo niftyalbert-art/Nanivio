@@ -6,3 +6,4 @@ export * from "./deposits";
 export * from "./withdrawals";
 export * from "./exchange_rates";
 export * from "./settings";
+export * from "./users";

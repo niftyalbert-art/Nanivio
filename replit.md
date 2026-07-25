@@ -1,45 +1,46 @@
-# [Project name]
+# Nivio — Global Money Transfer PWA
 
-_Replace the heading above with the project's name, and this line with one sentence describing what this app does for users._
+Nivio is a UAE-based global money transfer web app (Wise/Revolut-style), built as a mobile-first PWA.
 
-## Run & Operate
+## Project overview
 
-- `pnpm --filter @workspace/api-server run dev` — run the API server (port 5000)
-- `pnpm run typecheck` — full typecheck across all packages
-- `pnpm run build` — typecheck + build all packages
-- `pnpm --filter @workspace/api-spec run codegen` — regenerate API hooks and Zod schemas from the OpenAPI spec
-- `pnpm --filter @workspace/db run push` — push DB schema changes (dev only)
-- Required env: `DATABASE_URL` — Postgres connection string
+- **Frontend** (`artifacts/nifty-pay`) — React + Vite + Tailwind + shadcn/ui. Registered at path `/`.
+- **API server** (`artifacts/api-server`) — Express 5 + Drizzle ORM, listens on `PORT` (default 8080).
+- **Database** (`lib/db`) — Shared Drizzle schema + Postgres client.
+- **Monorepo** — pnpm workspace at root.
 
-## Stack
+## Architecture
 
-- pnpm workspaces, Node.js 24, TypeScript 5.9
-- API: Express 5
-- DB: PostgreSQL + Drizzle ORM
-- Validation: Zod (`zod/v4`), `drizzle-zod`
-- API codegen: Orval (from OpenAPI spec)
-- Build: esbuild (CJS bundle)
+### Authentication
+- JWT (30-day) stored in `localStorage` under `nivio_token`.
+- Signed with `SESSION_SECRET` env var using `jsonwebtoken`.
+- Passwords hashed with `bcryptjs`.
+- `setAuthTokenGetter` (from `lib/api-client-react`) is called in `contexts/auth.tsx` so every generated API client call auto-attaches the `Authorization: Bearer` header.
 
-## Where things live
+### User flow
+- Unauthenticated users see: Login → Signup → Forgot Password → Reset Password.
+- Authenticated users see the full app (Dashboard, Send, Wallets, Transactions, Deposit, Withdraw, Account).
+- `/admin` and `/install` are always accessible (no user auth required on the page itself — admin logs in with a password form).
 
-_Populate as you build — short repo map plus pointers to the source-of-truth file for DB schema, API contracts, theme files, etc._
+### Admin authentication
+- Admin panel uses a server-side JWT login: operator visits `/admin`, enters the `ADMIN_PASSWORD` env var value, gets an 8-hour JWT stored in `sessionStorage`.
+- `POST /api/admin/login` validates the password and issues the token. No static key is embedded in client code.
+- All `/admin/*` API routes are protected by `adminOnly` middleware (verifies the admin Bearer JWT).
 
-## Architecture decisions
+### Data isolation
+- All user-facing API routes require `requireAuth` middleware and filter by `req.userId`.
+- Admin routes require `adminOnly` middleware (separate admin JWT, role: "admin").
 
-_Populate as you build — non-obvious choices a reader couldn't infer from the code (3-5 bullets)._
+### Settings (admin-configurable)
+- `send_fee_percent` — global send fee override (blank = use per-currency fee from exchange_rates).
+- `whatsapp_link`, `telegram_link`, `support_hours` — shown on the user's Account → Support tab.
 
-## Product
-
-_Describe the high-level user-facing capabilities of this app once they exist._
+### Forgot-password flow
+- `POST /api/auth/forgot-password` generates a 6-digit OTP stored in the `users` table.
+- Admin Settings → "Pending Resets" shows active OTPs so support can relay them manually until email is wired up.
+- `POST /api/auth/reset-password` validates OTP + sets new password.
 
 ## User preferences
-
-_Populate as you build — explicit user instructions worth remembering across sessions._
-
-## Gotchas
-
-_Populate as you build — sharp edges, "always run X before Y" rules._
-
-## Pointers
-
-- See the `pnpm-workspace` skill for workspace structure, TypeScript setup, and package details
+- Keep the existing mobile-first, dark-theme Nivio design.
+- No Zod in `api-server` — esbuild can't resolve `zod/v4`; validation is manual.
+- Admin password is set via the `ADMIN_PASSWORD` environment variable (configure via Replit Secrets).

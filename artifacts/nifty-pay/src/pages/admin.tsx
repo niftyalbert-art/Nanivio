@@ -13,11 +13,15 @@ import { formatDistanceToNow } from 'date-fns';
 import { useToast } from '@/hooks/use-toast';
 
 const API = import.meta.env.BASE_URL.replace(/\/$/, '') + '/api';
-const ADMIN_PIN = 'niviopay2024';
+const ADMIN_JWT_KEY = 'nivio_admin_jwt';
 
 function apiFetch(path: string, opts?: RequestInit) {
+  const token = sessionStorage.getItem(ADMIN_JWT_KEY);
   return fetch(`${API}${path}`, {
-    headers: { 'Content-Type': 'application/json', 'X-Admin-Key': ADMIN_PIN },
+    headers: {
+      'Content-Type': 'application/json',
+      ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
+    },
     ...opts,
   }).then(async r => {
     if (!r.ok) throw new Error(await r.text());
@@ -38,7 +42,7 @@ const statusColor = (s: string) => {
 function DepositsPanel() {
   const { toast } = useToast();
   const qc = useQueryClient();
-  const { data: deposits, isLoading } = useQuery({ queryKey: ['admin-deposits'], queryFn: () => apiFetch('/deposits') });
+  const { data: deposits, isLoading } = useQuery({ queryKey: ['admin-deposits'], queryFn: () => apiFetch('/admin/deposits') });
   const [note, setNote] = useState<Record<number, string>>({});
 
   const approve = useMutation({
@@ -113,7 +117,7 @@ function WithdrawalsPanel() {
   const { toast } = useToast();
   const qc = useQueryClient();
   const fileRef = useState<HTMLInputElement | null>(null);
-  const { data: withdrawals, isLoading } = useQuery({ queryKey: ['admin-withdrawals'], queryFn: () => apiFetch('/withdrawals') });
+  const { data: withdrawals, isLoading } = useQuery({ queryKey: ['admin-withdrawals'], queryFn: () => apiFetch('/admin/withdrawals') });
   const [receiptB64, setReceiptB64] = useState<Record<number, string>>({});
   const [adminNote, setAdminNote] = useState<Record<number, string>>({});
 
@@ -406,8 +410,79 @@ function SettingsPanel() {
 
   if (isLoading) return <div className="space-y-3">{[...Array(3)].map((_, i) => <Skeleton key={i} className="h-20" />)}</div>;
 
+  const { data: pendingResets, isLoading: resetsLoading } = useQuery({
+    queryKey: ['admin-pending-resets'],
+    queryFn: () => apiFetch('/admin/pending-resets'),
+    refetchInterval: 30000,
+  });
+
+  const { data: users, isLoading: usersLoading } = useQuery({
+    queryKey: ['admin-users'],
+    queryFn: () => apiFetch('/admin/users'),
+  });
+
   return (
     <div className="space-y-5">
+
+      {/* Pending Password Resets */}
+      <Card>
+        <CardHeader className="p-4 pb-2">
+          <CardTitle className="text-sm font-bold flex items-center gap-2">
+            🔑 Pending Password Resets
+            {(pendingResets as any[] | undefined)?.length ? (
+              <span className="ml-auto bg-amber-500 text-white text-[9px] rounded-full px-1.5 py-0.5">
+                {(pendingResets as any[]).length}
+              </span>
+            ) : null}
+          </CardTitle>
+          <CardDescription className="text-xs">Users who requested a reset code. Relay the OTP to them manually until email is configured.</CardDescription>
+        </CardHeader>
+        <CardContent className="p-4 pt-0">
+          {resetsLoading ? <Skeleton className="h-12" /> : (pendingResets as any[] | undefined)?.length === 0 || !(pendingResets as any[])?.length ? (
+            <p className="text-xs text-muted-foreground py-2">No pending resets 🎉</p>
+          ) : (
+            <div className="space-y-2">
+              {(pendingResets as any[]).map((r: any) => (
+                <div key={r.id} className="flex items-center gap-2 p-2 bg-amber-500/5 border border-amber-500/20 rounded-lg">
+                  <div className="flex-1 min-w-0">
+                    <p className="text-xs font-medium truncate">{r.name} <span className="text-muted-foreground font-normal">— {r.email}</span></p>
+                    <p className="text-xs text-muted-foreground">Expires: {new Date(r.expiresAt).toLocaleTimeString()}</p>
+                  </div>
+                  <div className="font-mono font-bold text-lg text-amber-500 shrink-0">{r.otp}</div>
+                </div>
+              ))}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Registered Users */}
+      <Card>
+        <CardHeader className="p-4 pb-2">
+          <CardTitle className="text-sm font-bold flex items-center gap-2">
+            👥 Registered Users
+            {(users as any[] | undefined)?.length ? (
+              <span className="ml-1 text-muted-foreground font-normal">({(users as any[]).length})</span>
+            ) : null}
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="p-4 pt-0">
+          {usersLoading ? <Skeleton className="h-24" /> : (
+            <div className="space-y-1.5">
+              {(users as any[] | undefined)?.map((u: any) => (
+                <div key={u.id} className="flex items-center gap-2 text-xs py-1 border-b border-border last:border-0">
+                  <span className="w-6 h-6 rounded-full bg-primary/20 text-primary font-bold flex items-center justify-center text-[10px] shrink-0">
+                    {u.name[0]?.toUpperCase()}
+                  </span>
+                  <span className="font-medium truncate flex-1">{u.name}</span>
+                  <span className="text-muted-foreground truncate">{u.email}</span>
+                  <span className="text-muted-foreground shrink-0">{new Date(u.createdAt).toLocaleDateString()}</span>
+                </div>
+              ))}
+            </div>
+          )}
+        </CardContent>
+      </Card>
 
       {/* Transfer Fee */}
       <Card>
@@ -586,30 +661,44 @@ function PaymentMethodsPanel() {
 export default function Admin() {
   const [username, setUsername] = useState('');
   const [pin, setPin] = useState('');
-  const [authed, setAuthed] = useState(false);
+  const [loginLoading, setLoginLoading] = useState(false);
+  // Persist admin session in sessionStorage — never embed the password in client code
+  const [authed, setAuthed] = useState(() => !!sessionStorage.getItem(ADMIN_JWT_KEY));
   const { toast } = useToast();
   const qc = useQueryClient();
 
-  const { data: deposits } = useQuery({ queryKey: ['admin-deposits'], queryFn: () => apiFetch('/deposits'), enabled: authed });
-  const { data: withdrawals } = useQuery({ queryKey: ['admin-withdrawals'], queryFn: () => apiFetch('/withdrawals'), enabled: authed });
+  const { data: deposits } = useQuery({ queryKey: ['admin-deposits'], queryFn: () => apiFetch('/admin/deposits'), enabled: authed });
+  const { data: withdrawals } = useQuery({ queryKey: ['admin-withdrawals'], queryFn: () => apiFetch('/admin/withdrawals'), enabled: authed });
   const { data: tickets } = useQuery({ queryKey: ['admin-tickets'], queryFn: () => apiFetch('/tickets'), enabled: authed });
 
   const pendingDeposits = (deposits as any[] | undefined)?.filter(d => d.status === 'pending').length ?? 0;
   const pendingWithdrawals = (withdrawals as any[] | undefined)?.filter(w => w.status === 'pending').length ?? 0;
   const openTickets = (tickets as any[] | undefined)?.filter(t => t.status === 'open').length ?? 0;
 
-  if (!authed) {
-    const attempt = () => {
-      if (username.trim().toLowerCase() !== 'admin') {
+  const attempt = async () => {
+    setLoginLoading(true);
+    try {
+      const r = await fetch(`${API}/admin/login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username: username.trim().toLowerCase(), password: pin }),
+      });
+      if (!r.ok) {
         toast({ title: 'Invalid credentials', variant: 'destructive' });
         return;
       }
-      if (pin === ADMIN_PIN) {
-        setAuthed(true);
-      } else {
-        toast({ title: 'Invalid credentials', variant: 'destructive' });
-      }
-    };
+      const { token } = await r.json();
+      sessionStorage.setItem(ADMIN_JWT_KEY, token);
+      setAuthed(true);
+      qc.invalidateQueries();
+    } catch {
+      toast({ title: 'Network error', description: 'Please try again.', variant: 'destructive' });
+    } finally {
+      setLoginLoading(false);
+    }
+  };
+
+  if (!authed) {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center gap-8 p-4 bg-background">
         {/* Branding */}
@@ -649,8 +738,8 @@ export default function Admin() {
                 onKeyDown={e => { if (e.key === 'Enter') attempt(); }}
               />
             </div>
-            <Button className="w-full font-semibold mt-1" onClick={attempt}>
-              Sign In
+            <Button className="w-full font-semibold mt-1" onClick={attempt} disabled={loginLoading}>
+              {loginLoading ? 'Signing in…' : 'Sign In'}
             </Button>
           </CardContent>
         </Card>
@@ -667,7 +756,7 @@ export default function Admin() {
           <h1 className="text-xl font-bold">Admin Panel</h1>
           <p className="text-xs text-muted-foreground">Nivio Operations</p>
         </div>
-        <Button variant="outline" size="sm" onClick={() => setAuthed(false)}>Sign Out</Button>
+        <Button variant="outline" size="sm" onClick={() => { sessionStorage.removeItem(ADMIN_JWT_KEY); setAuthed(false); qc.clear(); }}>Sign Out</Button>
       </div>
 
       {/* Summary cards */}

@@ -1,6 +1,4 @@
 import { pgTable, serial, text, numeric, boolean } from "drizzle-orm/pg-core";
-import { createInsertSchema } from "drizzle-zod";
-import { z } from "zod";
 
 export const countriesTable = pgTable("countries", {
   id: serial("id").primaryKey(),
@@ -14,6 +12,5 @@ export const countriesTable = pgTable("countries", {
   popular: boolean("popular").notNull().default(false),
 });
 
-export const insertCountrySchema = createInsertSchema(countriesTable).omit({ id: true });
-export type InsertCountry = z.infer<typeof insertCountrySchema>;
+export type InsertCountry = typeof countriesTable.$inferInsert;
 export type Country = typeof countriesTable.$inferSelect;

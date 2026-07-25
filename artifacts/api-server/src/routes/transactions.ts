@@ -1,6 +1,6 @@
 import { Router, type IRouter } from "express";
-import { eq, sql, desc } from "drizzle-orm";
-import { db, walletsTable, transactionsTable, exchangeRatesTable } from "@workspace/db";
+import { eq, and, sql, desc } from "drizzle-orm";
+import { db, walletsTable, transactionsTable, exchangeRatesTable, settingsTable } from "@workspace/db";
 import {
   GetTransactionsQueryParams,
   GetTransactionsResponse,
@@ -10,10 +10,10 @@ import {
   GetTransactionResponse,
   GetTransactionStatsResponse,
 } from "@workspace/api-zod";
+import { requireAuth } from "../middleware/auth";
 
 const router: IRouter = Router();
 
-// Flag lookup (static — display only)
 const FLAGS: Record<string, string> = {
   AED: "🇦🇪", GHS: "🇬🇭", PHP: "🇵🇭", INR: "🇮🇳", NGN: "🇳🇬",
   KES: "🇰🇪", EUR: "🇪🇺", GBP: "🇬🇧", PKR: "🇵🇰", BDT: "🇧🇩",
@@ -29,7 +29,10 @@ async function getRateRow(currencyCode: string) {
   return row ?? null;
 }
 
-router.get("/transactions/stats", async (req, res): Promise<void> => {
+// Stats: admin-style endpoint — all transactions (no userId filter)
+router.get("/transactions/stats", requireAuth, async (req, res): Promise<void> => {
+  const userId = req.userId!;
+
   const rows = await db
     .select({
       toCurrency: transactionsTable.toCurrency,
@@ -37,17 +40,19 @@ router.get("/transactions/stats", async (req, res): Promise<void> => {
       count: sql<number>`count(*)`,
     })
     .from(transactionsTable)
+    .where(eq(transactionsTable.userId, userId))
     .groupBy(transactionsTable.toCurrency)
     .orderBy(sql`sum(${transactionsTable.fromAmount}) desc`);
 
   const successRows = await db
     .select({ count: sql<number>`count(*)` })
     .from(transactionsTable)
-    .where(eq(transactionsTable.status, "completed"));
+    .where(and(eq(transactionsTable.status, "completed"), eq(transactionsTable.userId, userId)));
 
   const totalRows = await db
     .select({ count: sql<number>`count(*)` })
-    .from(transactionsTable);
+    .from(transactionsTable)
+    .where(eq(transactionsTable.userId, userId));
 
   const successRate =
     Number(totalRows[0]?.count) > 0
@@ -68,7 +73,7 @@ router.get("/transactions/stats", async (req, res): Promise<void> => {
   res.json(GetTransactionStatsResponse.parse(stats));
 });
 
-router.get("/transactions", async (req, res): Promise<void> => {
+router.get("/transactions", requireAuth, async (req, res): Promise<void> => {
   const qParams = GetTransactionsQueryParams.safeParse(req.query);
   if (!qParams.success) {
     res.status(400).json({ error: qParams.error.message });
@@ -76,14 +81,17 @@ router.get("/transactions", async (req, res): Promise<void> => {
   }
 
   const { status, limit } = qParams.data;
+  const userId = req.userId!;
+
   let query = db
     .select()
     .from(transactionsTable)
+    .where(eq(transactionsTable.userId, userId))
     .orderBy(desc(transactionsTable.createdAt))
     .$dynamic();
 
   if (status) {
-    query = query.where(eq(transactionsTable.status, status));
+    query = query.where(and(eq(transactionsTable.userId, userId), eq(transactionsTable.status, status)));
   }
 
   const rows = await query.limit(limit ?? 50);
@@ -100,7 +108,7 @@ router.get("/transactions", async (req, res): Promise<void> => {
   res.json(GetTransactionsResponse.parse(parsed));
 });
 
-router.post("/transactions", async (req, res): Promise<void> => {
+router.post("/transactions", requireAuth, async (req, res): Promise<void> => {
   const body = CreateTransactionBody.safeParse(req.body);
   if (!body.success) {
     res.status(400).json({ error: body.error.message });
@@ -108,15 +116,16 @@ router.post("/transactions", async (req, res): Promise<void> => {
   }
 
   const { fromWalletId, toCurrencyCode, fromAmount, recipientName, recipientCountry, note } = body.data;
+  const userId = req.userId!;
 
-  // Get source wallet
-  const [wallet] = await db.select().from(walletsTable).where(eq(walletsTable.id, fromWalletId));
+  // Get source wallet — must belong to this user
+  const [wallet] = await db.select().from(walletsTable)
+    .where(and(eq(walletsTable.id, fromWalletId), eq(walletsTable.userId, userId)));
   if (!wallet) {
     res.status(400).json({ error: "Source wallet not found" });
     return;
   }
 
-  // Look up exchange rates from DB
   const fromRateRow = await getRateRow(wallet.currencyCode);
   const toRateRow = await getRateRow(toCurrencyCode);
 
@@ -131,10 +140,13 @@ router.post("/transactions", async (req, res): Promise<void> => {
 
   const fromRateToUsd = parseFloat(fromRateRow.rateToUsd);
   const toRateToUsd = parseFloat(toRateRow.rateToUsd);
-  const feePercent = parseFloat(toRateRow.feePercent);
+
+  // Check for global send fee override
+  const [globalFeeSetting] = await db.select().from(settingsTable).where(eq(settingsTable.key, "send_fee_percent"));
+  const globalFee = globalFeeSetting?.value ? parseFloat(globalFeeSetting.value) : NaN;
+  const feePercent = !isNaN(globalFee) && globalFee >= 0 ? globalFee : parseFloat(toRateRow.feePercent);
 
   const currentBalance = parseFloat(wallet.balance);
-  // Fee in source currency
   const fee = Math.round(((feePercent / 100) * (1 / fromRateToUsd)) * 100) / 100;
   const totalCost = fromAmount + fee;
 
@@ -143,12 +155,10 @@ router.post("/transactions", async (req, res): Promise<void> => {
     return;
   }
 
-  // Convert fromCurrency → USD → toCurrency
   const exchangeRate = toRateToUsd / fromRateToUsd;
   const toAmount = fromAmount * exchangeRate;
   const recipientFlag = FLAGS[toCurrencyCode] ?? "🌐";
 
-  // Deduct from wallet
   await db
     .update(walletsTable)
     .set({
@@ -157,10 +167,10 @@ router.post("/transactions", async (req, res): Promise<void> => {
     })
     .where(eq(walletsTable.id, fromWalletId));
 
-  // Create transaction
   const [transaction] = await db
     .insert(transactionsTable)
     .values({
+      userId,
       fromCurrency: wallet.currencyCode,
       toCurrency: toCurrencyCode,
       fromAmount: String(fromAmount),
@@ -187,7 +197,7 @@ router.post("/transactions", async (req, res): Promise<void> => {
   );
 });
 
-router.get("/transactions/:id", async (req, res): Promise<void> => {
+router.get("/transactions/:id", requireAuth, async (req, res): Promise<void> => {
   const raw = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
   const params = GetTransactionParams.safeParse({ id: parseInt(raw, 10) });
   if (!params.success) {
@@ -198,7 +208,7 @@ router.get("/transactions/:id", async (req, res): Promise<void> => {
   const [t] = await db
     .select()
     .from(transactionsTable)
-    .where(eq(transactionsTable.id, params.data.id));
+    .where(and(eq(transactionsTable.id, params.data.id), eq(transactionsTable.userId, req.userId!)));
 
   if (!t) {
     res.status(404).json({ error: "Transaction not found" });

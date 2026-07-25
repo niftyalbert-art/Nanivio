@@ -1,18 +1,45 @@
-import { Router, type IRouter, type Request, type Response, type NextFunction } from "express";
-import { eq, sql } from "drizzle-orm";
-import { db, depositsTable, withdrawalsTable, walletsTable, paymentMethodsTable, exchangeRatesTable } from "@workspace/db";
+import { Router, type IRouter } from "express";
+import { eq, sql, isNotNull, desc } from "drizzle-orm";
+import { db, depositsTable, withdrawalsTable, walletsTable, paymentMethodsTable, exchangeRatesTable, usersTable } from "@workspace/db";
+import { adminOnly, signAdminToken } from "../middleware/auth";
 
 const router: IRouter = Router();
 
-// ── Simple admin auth ─────────────────────────────────────────────────────
-const ADMIN_KEY = "niviopay2024";
-function adminOnly(req: Request, res: Response, next: NextFunction): void {
-  if (req.headers["x-admin-key"] !== ADMIN_KEY) {
-    res.status(401).json({ error: "Unauthorized" });
+// ── Admin login — issues a short-lived JWT (no static key in client code) ─
+router.post("/admin/login", async (req, res): Promise<void> => {
+  const adminPassword = process.env.ADMIN_PASSWORD;
+  if (!adminPassword) {
+    res.status(503).json({ error: "ADMIN_PASSWORD not configured on server" });
     return;
   }
-  next();
-}
+  const { password } = req.body ?? {};
+  if (!password || password !== adminPassword) {
+    res.status(401).json({ error: "Invalid credentials" });
+    return;
+  }
+  const token = signAdminToken();
+  res.json({ token });
+});
+
+// ── Admin list views (all records, not user-scoped) ────────────────────────
+
+router.get("/admin/deposits", adminOnly, async (_req, res): Promise<void> => {
+  const rows = await db.select().from(depositsTable).orderBy(desc(depositsTable.createdAt));
+  res.json(rows.map(d => ({
+    ...d,
+    amount: typeof d.amount === "string" ? parseFloat(d.amount) : d.amount,
+    createdAt: d.createdAt instanceof Date ? d.createdAt.toISOString() : String(d.createdAt),
+  })));
+});
+
+router.get("/admin/withdrawals", adminOnly, async (_req, res): Promise<void> => {
+  const rows = await db.select().from(withdrawalsTable).orderBy(desc(withdrawalsTable.createdAt));
+  res.json(rows.map(w => ({
+    ...w,
+    amount: typeof w.amount === "string" ? parseFloat(w.amount) : w.amount,
+    createdAt: w.createdAt instanceof Date ? w.createdAt.toISOString() : String(w.createdAt),
+  })));
+});
 
 // ── Deposits ──────────────────────────────────────────────────────────────
 
@@ -199,6 +226,51 @@ router.post("/admin/rates", adminOnly, async (req, res): Promise<void> => {
     feePercent: String(fee),
   }).returning();
   res.status(201).json({ ...row, rateToUsd: parseFloat(row.rateToUsd), feePercent: parseFloat(row.feePercent) });
+});
+
+// ── Pending password resets (admin view) ─────────────────────────────────
+router.get("/admin/pending-resets", adminOnly, async (_req, res): Promise<void> => {
+  const now = new Date();
+  const rows = await db
+    .select({
+      id: usersTable.id,
+      name: usersTable.name,
+      email: usersTable.email,
+      resetOtp: usersTable.resetOtp,
+      resetOtpExpiresAt: usersTable.resetOtpExpiresAt,
+    })
+    .from(usersTable)
+    .where(isNotNull(usersTable.resetOtp));
+
+  const active = rows
+    .filter(r => r.resetOtpExpiresAt && new Date(r.resetOtpExpiresAt) > now)
+    .map(r => ({
+      id: r.id,
+      name: r.name,
+      email: r.email,
+      otp: r.resetOtp,
+      expiresAt: r.resetOtpExpiresAt instanceof Date ? r.resetOtpExpiresAt.toISOString() : String(r.resetOtpExpiresAt),
+    }));
+
+  res.json(active);
+});
+
+// ── Users list (admin view) ───────────────────────────────────────────────
+router.get("/admin/users", adminOnly, async (_req, res): Promise<void> => {
+  const users = await db
+    .select({
+      id: usersTable.id,
+      name: usersTable.name,
+      email: usersTable.email,
+      createdAt: usersTable.createdAt,
+    })
+    .from(usersTable)
+    .orderBy(usersTable.id);
+
+  res.json(users.map(u => ({
+    ...u,
+    createdAt: u.createdAt instanceof Date ? u.createdAt.toISOString() : String(u.createdAt),
+  })));
 });
 
 export default router;

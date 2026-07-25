@@ -2,6 +2,7 @@ import { pgTable, serial, text, numeric, integer, timestamp } from "drizzle-orm/
 
 export const withdrawalsTable = pgTable("withdrawals", {
   id: serial("id").primaryKey(),
+  userId: integer("user_id"),
   walletId: integer("wallet_id").notNull(),
   amount: numeric("amount", { precision: 18, scale: 4 }).notNull(),
   currencyCode: text("currency_code").notNull(),
