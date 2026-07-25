@@ -350,7 +350,7 @@ export default function Send() {
               </p>
             </div>
             <Badge className="bg-amber-500/10 text-amber-500 border-amber-500/20 px-4 py-1.5 text-sm">⏳ Pending</Badge>
-            <p className="text-xs text-muted-foreground">Our team will process and send the funds shortly. You'll see the update in your account.</p>
+            <p className="text-xs text-muted-foreground">Funds are being processed within 24 hours. Updates will be shown in your account shortly.</p>
             <div className="pt-2 space-y-2">
               <Button className="w-full max-w-xs" onClick={() => setLocation('/account')}>View in Account</Button>
               <Button variant="outline" className="w-full max-w-xs" onClick={reset}>Send Another</Button>
@@ -706,21 +706,22 @@ export default function Send() {
       </div>
 
       {/* Country list with scroll controls */}
-      <div className="relative">
-        {/* Scroll up */}
+      <div className="flex flex-col gap-2">
+        {/* Scroll up bar */}
         <button
           type="button"
           aria-label="Scroll up"
-          onClick={() => countryListRef.current?.scrollBy({ top: -180, behavior: 'smooth' })}
-          className="absolute -top-3 left-1/2 -translate-x-1/2 z-10 flex items-center justify-center w-8 h-8 rounded-full bg-card border border-border shadow-md hover:bg-muted transition-colors"
+          onClick={() => countryListRef.current?.scrollBy({ top: -200, behavior: 'smooth' })}
+          className="w-full flex items-center justify-center gap-1.5 py-2 rounded-xl border border-border bg-card hover:bg-muted/60 transition-colors text-muted-foreground text-xs font-medium"
         >
-          <ChevronUp className="w-4 h-4 text-muted-foreground" />
+          <ChevronUp className="w-4 h-4" />
+          Scroll up
         </button>
 
         {/* Scrollable list */}
         <div
           ref={countryListRef}
-          className="space-y-2 overflow-y-auto max-h-[58vh] pr-0.5 scroll-smooth [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+          className="space-y-2 overflow-y-auto max-h-[52vh] scroll-smooth [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
         >
           {filteredCountries.length === 0 && (
             <p className="text-sm text-muted-foreground text-center py-8">No countries found</p>
@@ -745,14 +746,15 @@ export default function Send() {
           ))}
         </div>
 
-        {/* Scroll down */}
+        {/* Scroll down bar */}
         <button
           type="button"
           aria-label="Scroll down"
-          onClick={() => countryListRef.current?.scrollBy({ top: 180, behavior: 'smooth' })}
-          className="absolute -bottom-3 left-1/2 -translate-x-1/2 z-10 flex items-center justify-center w-8 h-8 rounded-full bg-card border border-border shadow-md hover:bg-muted transition-colors"
+          onClick={() => countryListRef.current?.scrollBy({ top: 200, behavior: 'smooth' })}
+          className="w-full flex items-center justify-center gap-1.5 py-2 rounded-xl border border-border bg-card hover:bg-muted/60 transition-colors text-muted-foreground text-xs font-medium"
         >
-          <ChevronDown className="w-4 h-4 text-muted-foreground" />
+          <ChevronDown className="w-4 h-4" />
+          Scroll down
         </button>
       </div>
     </div>
