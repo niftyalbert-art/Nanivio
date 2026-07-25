@@ -15,9 +15,10 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
-import { Copy, Check, Clock, ArrowDownLeft, ArrowUpLeft, MessageSquare, CheckCircle2, ExternalLink, Send, LogOut } from 'lucide-react';
+import { Copy, Check, ArrowDownLeft, ArrowUpLeft, MessageSquare, CheckCircle2, ExternalLink, Send, LogOut, ShieldCheck, ChevronDown, ChevronUp } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import { useToast } from '@/hooks/use-toast';
+import { PinInput } from '@/components/pin-input';
 
 const API_BASE = import.meta.env.BASE_URL.replace(/\/$/, '') + '/api';
 
@@ -33,6 +34,37 @@ export default function Account() {
   const { data: deposits, isLoading: depositsLoading } = useGetDeposits();
   const { data: withdrawals, isLoading: withdrawalsLoading } = useGetWithdrawals();
   const [copied, setCopied] = useState<string | null>(null);
+
+  // Change PIN
+  const [showChangePinForm, setShowChangePinForm] = useState(false);
+  const [currentPin, setCurrentPin] = useState('');
+  const [newPin, setNewPin] = useState('');
+  const [confirmPin, setConfirmPin] = useState('');
+  const [pinChanged, setPinChanged] = useState(false);
+
+  const changePin = useMutation({
+    mutationFn: async () => {
+      const r = await fetch(`${API_BASE}/auth/change-pin`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({ currentPin, newPin }),
+      });
+      if (!r.ok) {
+        const body = await r.json().catch(() => ({ error: 'Unknown error' }));
+        throw new Error(body.error ?? 'Failed to change PIN');
+      }
+      return r.json();
+    },
+    onSuccess: () => {
+      setPinChanged(true);
+      setCurrentPin(''); setNewPin(''); setConfirmPin('');
+      setTimeout(() => { setPinChanged(false); setShowChangePinForm(false); }, 3000);
+    },
+    onError: (err: Error) => toast({ title: 'PIN change failed', description: err.message, variant: 'destructive' }),
+  });
 
   // Support ticket
   const [ticketSubject, setTicketSubject] = useState('');
@@ -95,6 +127,73 @@ export default function Account() {
           </CardContent>
         </Card>
       )}
+
+      {/* ── Security / Change PIN ─────────────────────────────────── */}
+      <Card>
+        <CardContent className="p-0">
+          <button
+            type="button"
+            className="w-full flex items-center justify-between p-4 text-left"
+            onClick={() => { setShowChangePinForm(v => !v); setPinChanged(false); }}
+          >
+            <div className="flex items-center gap-3">
+              <div className="w-9 h-9 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
+                <ShieldCheck className="w-4 h-4 text-primary" />
+              </div>
+              <div>
+                <p className="font-semibold text-sm">Change PIN</p>
+                <p className="text-xs text-muted-foreground">Update your 4-digit login PIN</p>
+              </div>
+            </div>
+            {showChangePinForm
+              ? <ChevronUp className="w-4 h-4 text-muted-foreground" />
+              : <ChevronDown className="w-4 h-4 text-muted-foreground" />}
+          </button>
+
+          {showChangePinForm && (
+            <div className="px-4 pb-4 space-y-4 border-t border-border pt-4">
+              {pinChanged ? (
+                <div className="text-center py-3 space-y-2">
+                  <CheckCircle2 className="w-8 h-8 text-emerald-500 mx-auto" />
+                  <p className="font-semibold text-sm text-emerald-500">PIN changed successfully!</p>
+                  <p className="text-xs text-muted-foreground">Use your new PIN next time you sign in.</p>
+                </div>
+              ) : (
+                <>
+                  <div className="space-y-1.5">
+                    <Label className="text-xs text-muted-foreground">Current PIN</Label>
+                    <PinInput value={currentPin} onChange={setCurrentPin} autoFocus={false} />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label className="text-xs text-muted-foreground">New PIN</Label>
+                    <PinInput value={newPin} onChange={setNewPin} autoFocus={false} />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label className="text-xs text-muted-foreground">Confirm New PIN</Label>
+                    <PinInput value={confirmPin} onChange={setConfirmPin} autoFocus={false} />
+                  </div>
+                  {newPin.length === 4 && confirmPin.length === 4 && newPin !== confirmPin && (
+                    <p className="text-xs text-destructive text-center">PINs don't match</p>
+                  )}
+                  <Button
+                    className="w-full"
+                    disabled={
+                      currentPin.length !== 4 ||
+                      newPin.length !== 4 ||
+                      confirmPin.length !== 4 ||
+                      newPin !== confirmPin ||
+                      changePin.isPending
+                    }
+                    onClick={() => changePin.mutate()}
+                  >
+                    {changePin.isPending ? 'Saving…' : 'Save New PIN'}
+                  </Button>
+                </>
+              )}
+            </div>
+          )}
+        </CardContent>
+      </Card>
 
       <Tabs defaultValue="payment-details">
         <TabsList className="w-full">
@@ -233,25 +332,50 @@ export default function Account() {
 
         {/* Support Tab */}
         <TabsContent value="support" className="space-y-4 mt-3">
-          {/* Quick contact */}
-          <Card>
+          {/* Instant contact */}
+          <Card className="border-primary/20 bg-primary/5">
             <CardContent className="p-4 space-y-3">
-              <p className="font-semibold text-sm">Contact Us Instantly</p>
-              <div className="grid grid-cols-2 gap-3">
-                <a href={siteSettings?.whatsappLink ?? 'https://wa.me/971501234567'} target="_blank" rel="noopener noreferrer">
-                  <Button variant="outline" className="w-full gap-2 text-green-600 border-green-600/30 hover:bg-green-500/10 hover:text-green-600">
-                    <span className="text-lg">💬</span> WhatsApp
-                    <ExternalLink className="w-3 h-3 ml-auto" />
-                  </Button>
-                </a>
-                <a href={siteSettings?.telegramLink ?? 'https://t.me/niviopay_support'} target="_blank" rel="noopener noreferrer">
-                  <Button variant="outline" className="w-full gap-2 text-blue-500 border-blue-500/30 hover:bg-blue-500/10 hover:text-blue-500">
-                    <span className="text-lg">✈️</span> Telegram
-                    <ExternalLink className="w-3 h-3 ml-auto" />
-                  </Button>
-                </a>
+              <div className="flex items-center gap-2">
+                <MessageSquare className="w-4 h-4 text-primary" />
+                <p className="font-bold text-sm">Contact Customer Support</p>
               </div>
-              <p className="text-xs text-muted-foreground">{siteSettings?.supportHours ?? 'Available 8am–10pm UAE time · Usually replies within 30 minutes'}</p>
+              <p className="text-xs text-muted-foreground leading-relaxed">
+                Reach us instantly on WhatsApp or Telegram — fastest way to get help with your transfers, deposits, or account.
+              </p>
+
+              {/* WhatsApp */}
+              <a
+                href={siteSettings?.whatsappLink ?? 'https://wa.me/971501234567'}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-center gap-3 rounded-xl border border-green-600/30 bg-green-500/10 p-3.5 hover:bg-green-500/20 transition-colors"
+              >
+                <span className="text-2xl leading-none">💬</span>
+                <div className="flex-1 min-w-0">
+                  <p className="font-bold text-sm text-green-600">WhatsApp</p>
+                  <p className="text-xs text-muted-foreground">Chat with us on WhatsApp</p>
+                </div>
+                <ExternalLink className="w-4 h-4 text-green-600 shrink-0" />
+              </a>
+
+              {/* Telegram */}
+              <a
+                href={siteSettings?.telegramLink ?? 'https://t.me/niviopay_support'}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-center gap-3 rounded-xl border border-blue-500/30 bg-blue-500/10 p-3.5 hover:bg-blue-500/20 transition-colors"
+              >
+                <span className="text-2xl leading-none">✈️</span>
+                <div className="flex-1 min-w-0">
+                  <p className="font-bold text-sm text-blue-500">Telegram</p>
+                  <p className="text-xs text-muted-foreground">Message us on Telegram</p>
+                </div>
+                <ExternalLink className="w-4 h-4 text-blue-500 shrink-0" />
+              </a>
+
+              <p className="text-xs text-muted-foreground text-center pt-1">
+                🕐 {siteSettings?.supportHours ?? 'Available 8am–10pm UAE time · Replies within 30 minutes'}
+              </p>
             </CardContent>
           </Card>
 
@@ -259,8 +383,11 @@ export default function Account() {
           <Card>
             <CardHeader className="p-4 pb-2">
               <CardTitle className="text-sm font-bold flex items-center gap-2">
-                <MessageSquare className="w-4 h-4" /> Submit a Support Ticket
+                <Send className="w-4 h-4" /> Send a Support Ticket
               </CardTitle>
+              <p className="text-xs text-muted-foreground">
+                Prefer to write? Submit a ticket and we'll follow up via WhatsApp or email.
+              </p>
             </CardHeader>
             <CardContent className="p-4 pt-0 space-y-3">
               {ticketSent ? (

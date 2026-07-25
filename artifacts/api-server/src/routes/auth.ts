@@ -163,6 +163,46 @@ router.post("/auth/reset-password", async (req, res): Promise<void> => {
   res.json({ message: "PIN updated successfully. You can now log in." });
 });
 
+// POST /auth/change-pin (protected)
+router.post("/auth/change-pin", requireAuth, async (req, res): Promise<void> => {
+  const { currentPin, newPin } = req.body ?? {};
+
+  if (!currentPin || !newPin) {
+    res.status(400).json({ error: "currentPin and newPin are required" });
+    return;
+  }
+  if (typeof newPin !== "string" || !PIN_RE.test(newPin)) {
+    res.status(400).json({ error: "New PIN must be exactly 4 digits" });
+    return;
+  }
+  if (typeof currentPin !== "string" || !PIN_RE.test(currentPin)) {
+    res.status(400).json({ error: "Current PIN must be exactly 4 digits" });
+    return;
+  }
+
+  const [user] = await db.select().from(usersTable).where(eq(usersTable.id, req.userId!));
+  if (!user) {
+    res.status(404).json({ error: "User not found" });
+    return;
+  }
+
+  const valid = await bcrypt.compare(currentPin, user.passwordHash);
+  if (!valid) {
+    res.status(401).json({ error: "Current PIN is incorrect" });
+    return;
+  }
+
+  if (currentPin === newPin) {
+    res.status(400).json({ error: "New PIN must be different from current PIN" });
+    return;
+  }
+
+  const passwordHash = await bcrypt.hash(newPin, 10);
+  await db.update(usersTable).set({ passwordHash, updatedAt: new Date() }).where(eq(usersTable.id, req.userId!));
+
+  res.json({ message: "PIN changed successfully" });
+});
+
 // GET /auth/me (protected)
 router.get("/auth/me", requireAuth, async (req, res): Promise<void> => {
   const [user] = await db.select().from(usersTable).where(eq(usersTable.id, req.userId!));
