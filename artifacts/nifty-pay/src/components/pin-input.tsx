@@ -9,16 +9,12 @@ interface PinInputProps {
 }
 
 export function PinInput({ value, onChange, disabled, autoFocus }: PinInputProps) {
-  const refs = [
-    useRef<HTMLInputElement>(null),
-    useRef<HTMLInputElement>(null),
-    useRef<HTMLInputElement>(null),
-    useRef<HTMLInputElement>(null),
-  ];
+  // Single ref holding all four input elements — no hooks inside arrays
+  const refs = useRef<(HTMLInputElement | null)[]>([null, null, null, null]);
 
-  const digits = value.padEnd(4, '').split('').slice(0, 4);
+  const digits = value.padEnd(4, ' ').split('').slice(0, 4);
 
-  const focus = (i: number) => refs[i]?.current?.focus();
+  const focus = (i: number) => refs.current[i]?.focus();
 
   const handleChange = (i: number, raw: string) => {
     const digit = raw.replace(/\D/g, '').slice(-1);
@@ -29,12 +25,12 @@ export function PinInput({ value, onChange, disabled, autoFocus }: PinInputProps
 
   const handleKey = (i: number, e: KeyboardEvent<HTMLInputElement>) => {
     if (e.key === 'Backspace') {
-      if (digits[i]) {
-        const next = digits.map((d, idx) => (idx === i ? '' : d)).join('');
-        onChange(next);
+      if (digits[i] && digits[i] !== ' ') {
+        const next = digits.map((d, idx) => (idx === i ? ' ' : d)).join('').trimEnd();
+        onChange(next.replace(/ /g, ''));
       } else if (i > 0) {
-        const next = digits.map((d, idx) => (idx === i - 1 ? '' : d)).join('');
-        onChange(next);
+        const next = digits.map((d, idx) => (idx === i - 1 ? ' ' : d)).join('').trimEnd();
+        onChange(next.replace(/ /g, ''));
         focus(i - 1);
       }
     } else if (e.key === 'ArrowLeft' && i > 0) {
@@ -53,16 +49,16 @@ export function PinInput({ value, onChange, disabled, autoFocus }: PinInputProps
 
   return (
     <div className="flex gap-3 justify-center">
-      {[0, 1, 2, 3].map(i => (
+      {([0, 1, 2, 3] as const).map(i => (
         <input
           key={i}
-          ref={refs[i]}
+          ref={el => { refs.current[i] = el; }}
           type="text"
           inputMode="numeric"
           pattern="\d*"
           maxLength={1}
           value={digits[i] === ' ' || !digits[i] ? '' : digits[i]}
-          autoFocus={autoFocus && i === 0}
+          autoFocus={autoFocus !== false && i === 0}
           disabled={disabled}
           onChange={e => handleChange(i, e.target.value)}
           onKeyDown={e => handleKey(i, e)}
