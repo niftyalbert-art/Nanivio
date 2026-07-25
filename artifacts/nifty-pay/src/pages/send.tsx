@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import {
   useGetWallets, useCreateTransaction, useGetSupportedCountries,
   getGetWalletsQueryKey, getGetTransactionsQueryKey, getGetDashboardSummaryQueryKey,
@@ -10,7 +10,7 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Badge } from '@/components/ui/badge';
-import { Clock, ArrowLeft, ChevronRight, Building2, Smartphone, Search } from 'lucide-react';
+import { Clock, ArrowLeft, ChevronRight, ChevronUp, ChevronDown, Building2, Smartphone, Search } from 'lucide-react';
 import { useQueryClient } from '@tanstack/react-query';
 import { useLocation } from 'wouter';
 import { useToast } from '@/hooks/use-toast';
@@ -217,6 +217,7 @@ export default function Send() {
   const { data: countries, isLoading: countriesLoading } = useGetSupportedCountries();
   const createTransaction = useCreateTransaction();
 
+  const countryListRef = useRef<HTMLDivElement>(null);
   const [step, setStep] = useState<Step>('country');
   const [countrySearch, setCountrySearch] = useState('');
 
@@ -704,29 +705,55 @@ export default function Send() {
         />
       </div>
 
-      {/* Country list */}
-      <div className="space-y-2">
-        {filteredCountries.length === 0 && (
-          <p className="text-sm text-muted-foreground text-center py-8">No countries found</p>
-        )}
-        {filteredCountries.map(c => (
-          <button
-            key={c.code}
-            type="button"
-            onClick={() => { setSelectedCountryCode(c.code); setStep('type'); }}
-            className="w-full text-left rounded-xl border border-border hover:border-primary/50 hover:bg-muted/30 bg-card p-3.5 transition-all flex items-center gap-3.5"
-          >
-            <span className="text-2xl leading-none">{c.flag}</span>
-            <div className="flex-1 min-w-0">
-              <p className="font-semibold text-sm">{c.name}</p>
-              <p className="text-xs text-muted-foreground">{c.currencyName} · {c.currencyCode}</p>
-            </div>
-            {c.popular && (
-              <Badge variant="secondary" className="text-[10px] shrink-0">Popular</Badge>
-            )}
-            <ChevronRight className="w-4 h-4 text-muted-foreground shrink-0" />
-          </button>
-        ))}
+      {/* Country list with scroll controls */}
+      <div className="relative">
+        {/* Scroll up */}
+        <button
+          type="button"
+          aria-label="Scroll up"
+          onClick={() => countryListRef.current?.scrollBy({ top: -180, behavior: 'smooth' })}
+          className="absolute -top-3 left-1/2 -translate-x-1/2 z-10 flex items-center justify-center w-8 h-8 rounded-full bg-card border border-border shadow-md hover:bg-muted transition-colors"
+        >
+          <ChevronUp className="w-4 h-4 text-muted-foreground" />
+        </button>
+
+        {/* Scrollable list */}
+        <div
+          ref={countryListRef}
+          className="space-y-2 overflow-y-auto max-h-[58vh] pr-0.5 scroll-smooth [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+        >
+          {filteredCountries.length === 0 && (
+            <p className="text-sm text-muted-foreground text-center py-8">No countries found</p>
+          )}
+          {filteredCountries.map(c => (
+            <button
+              key={c.code}
+              type="button"
+              onClick={() => { setSelectedCountryCode(c.code); setStep('type'); }}
+              className="w-full text-left rounded-xl border border-border hover:border-primary/50 hover:bg-muted/30 bg-card p-3.5 transition-all flex items-center gap-3.5"
+            >
+              <span className="text-2xl leading-none">{c.flag}</span>
+              <div className="flex-1 min-w-0">
+                <p className="font-semibold text-sm">{c.name}</p>
+                <p className="text-xs text-muted-foreground">{c.currencyName} · {c.currencyCode}</p>
+              </div>
+              {c.popular && (
+                <Badge variant="secondary" className="text-[10px] shrink-0">Popular</Badge>
+              )}
+              <ChevronRight className="w-4 h-4 text-muted-foreground shrink-0" />
+            </button>
+          ))}
+        </div>
+
+        {/* Scroll down */}
+        <button
+          type="button"
+          aria-label="Scroll down"
+          onClick={() => countryListRef.current?.scrollBy({ top: 180, behavior: 'smooth' })}
+          className="absolute -bottom-3 left-1/2 -translate-x-1/2 z-10 flex items-center justify-center w-8 h-8 rounded-full bg-card border border-border shadow-md hover:bg-muted transition-colors"
+        >
+          <ChevronDown className="w-4 h-4 text-muted-foreground" />
+        </button>
       </div>
     </div>
   );
