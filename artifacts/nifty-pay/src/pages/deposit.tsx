@@ -48,9 +48,21 @@ export default function FundWallet() {
     const file = e.target.files?.[0];
     if (!file) return;
     setReceiptName(file.name);
-    const reader = new FileReader();
-    reader.onload = (ev) => setReceiptBase64(ev.target?.result as string);
-    reader.readAsDataURL(file);
+
+    // Compress before encoding — keeps payload well under the server limit
+    const img = new Image();
+    const objectUrl = URL.createObjectURL(file);
+    img.onload = () => {
+      const MAX = 1200;
+      const scale = Math.min(1, MAX / Math.max(img.width, img.height));
+      const canvas = document.createElement('canvas');
+      canvas.width = Math.round(img.width * scale);
+      canvas.height = Math.round(img.height * scale);
+      canvas.getContext('2d')!.drawImage(img, 0, 0, canvas.width, canvas.height);
+      setReceiptBase64(canvas.toDataURL('image/jpeg', 0.75));
+      URL.revokeObjectURL(objectUrl);
+    };
+    img.src = objectUrl;
   };
 
   const handleSubmit = (e: React.FormEvent) => {
