@@ -5,7 +5,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/contexts/auth';
-import { Eye, EyeOff } from 'lucide-react';
+import { PinInput } from '@/components/pin-input';
 
 const API = import.meta.env.BASE_URL.replace(/\/$/, '') + '/api';
 
@@ -15,23 +15,23 @@ export default function Login() {
   const { toast } = useToast();
 
   const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [showPw, setShowPw] = useState(false);
+  const [pin, setPin] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
     setError('');
+    if (pin.length !== 4) { setError('Please enter your 4-digit PIN'); return; }
     setLoading(true);
     try {
       const r = await fetch(`${API}/auth/login`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, password }),
+        body: JSON.stringify({ email, pin }),
       });
       const data = await r.json();
-      if (!r.ok) { setError(data.error ?? 'Login failed'); return; }
+      if (!r.ok) { setError(data.error ?? 'Sign in failed'); return; }
       setAuth(data.token, data.user);
       setLocation('/');
     } catch {
@@ -58,7 +58,7 @@ export default function Login() {
         </div>
 
         {/* Form */}
-        <form onSubmit={handleSubmit} className="space-y-4 bg-card border border-border rounded-2xl p-6 shadow-sm">
+        <form onSubmit={handleSubmit} className="space-y-6 bg-card border border-border rounded-2xl p-6 shadow-sm">
           {error && (
             <div className="text-sm text-red-500 bg-red-500/10 border border-red-500/20 rounded-lg px-3 py-2">
               {error}
@@ -78,35 +78,17 @@ export default function Login() {
             />
           </div>
 
-          <div className="space-y-1.5">
+          <div className="space-y-3">
             <div className="flex items-center justify-between">
-              <Label htmlFor="password">Password</Label>
+              <Label>4-Digit PIN</Label>
               <Link href="/forgot-password" className="text-xs text-primary hover:underline">
-                Forgot password?
+                Forgot PIN?
               </Link>
             </div>
-            <div className="relative">
-              <Input
-                id="password"
-                type={showPw ? 'text' : 'password'}
-                autoComplete="current-password"
-                placeholder="••••••••"
-                value={password}
-                onChange={e => setPassword(e.target.value)}
-                required
-                className="pr-10"
-              />
-              <button
-                type="button"
-                onClick={() => setShowPw(v => !v)}
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
-              >
-                {showPw ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-              </button>
-            </div>
+            <PinInput value={pin} onChange={setPin} disabled={loading} />
           </div>
 
-          <Button type="submit" className="w-full" disabled={loading}>
+          <Button type="submit" className="w-full" disabled={loading || pin.length !== 4}>
             {loading ? 'Signing in…' : 'Sign In'}
           </Button>
         </form>

@@ -6,12 +6,14 @@ import { signToken, requireAuth } from "../middleware/auth";
 
 const router: IRouter = Router();
 
+const PIN_RE = /^\d{4}$/;
+
 // POST /auth/signup
 router.post("/auth/signup", async (req, res): Promise<void> => {
-  const { name, email, password } = req.body ?? {};
+  const { name, email, pin } = req.body ?? {};
 
-  if (!name || !email || !password) {
-    res.status(400).json({ error: "name, email, and password are required" });
+  if (!name || !email || !pin) {
+    res.status(400).json({ error: "name, email, and pin are required" });
     return;
   }
   if (typeof name !== "string" || name.trim().length < 2) {
@@ -22,8 +24,8 @@ router.post("/auth/signup", async (req, res): Promise<void> => {
     res.status(400).json({ error: "Valid email is required" });
     return;
   }
-  if (typeof password !== "string" || password.length < 6) {
-    res.status(400).json({ error: "Password must be at least 6 characters" });
+  if (typeof pin !== "string" || !PIN_RE.test(pin)) {
+    res.status(400).json({ error: "PIN must be exactly 4 digits" });
     return;
   }
 
@@ -35,7 +37,7 @@ router.post("/auth/signup", async (req, res): Promise<void> => {
     return;
   }
 
-  const passwordHash = await bcrypt.hash(String(password), 10);
+  const passwordHash = await bcrypt.hash(pin, 10);
 
   const [user] = await db.insert(usersTable).values({
     name: String(name).trim(),
@@ -62,10 +64,14 @@ router.post("/auth/signup", async (req, res): Promise<void> => {
 
 // POST /auth/login
 router.post("/auth/login", async (req, res): Promise<void> => {
-  const { email, password } = req.body ?? {};
+  const { email, pin } = req.body ?? {};
 
-  if (!email || !password) {
-    res.status(400).json({ error: "email and password are required" });
+  if (!email || !pin) {
+    res.status(400).json({ error: "email and pin are required" });
+    return;
+  }
+  if (typeof pin !== "string" || !PIN_RE.test(pin)) {
+    res.status(400).json({ error: "PIN must be exactly 4 digits" });
     return;
   }
 
@@ -73,13 +79,13 @@ router.post("/auth/login", async (req, res): Promise<void> => {
   const [user] = await db.select().from(usersTable).where(eq(usersTable.email, normalizedEmail));
 
   if (!user) {
-    res.status(401).json({ error: "Invalid email or password" });
+    res.status(401).json({ error: "Invalid email or PIN" });
     return;
   }
 
-  const valid = await bcrypt.compare(String(password), user.passwordHash);
+  const valid = await bcrypt.compare(pin, user.passwordHash);
   if (!valid) {
-    res.status(401).json({ error: "Invalid email or password" });
+    res.status(401).json({ error: "Invalid email or PIN" });
     return;
   }
 
@@ -121,14 +127,14 @@ router.post("/auth/forgot-password", async (req, res): Promise<void> => {
 
 // POST /auth/reset-password
 router.post("/auth/reset-password", async (req, res): Promise<void> => {
-  const { email, otp, password } = req.body ?? {};
+  const { email, otp, pin } = req.body ?? {};
 
-  if (!email || !otp || !password) {
-    res.status(400).json({ error: "email, otp, and password are required" });
+  if (!email || !otp || !pin) {
+    res.status(400).json({ error: "email, otp, and pin are required" });
     return;
   }
-  if (typeof password !== "string" || password.length < 6) {
-    res.status(400).json({ error: "Password must be at least 6 characters" });
+  if (typeof pin !== "string" || !PIN_RE.test(pin)) {
+    res.status(400).json({ error: "PIN must be exactly 4 digits" });
     return;
   }
 
@@ -148,13 +154,13 @@ router.post("/auth/reset-password", async (req, res): Promise<void> => {
     return;
   }
 
-  const passwordHash = await bcrypt.hash(String(password), 10);
+  const passwordHash = await bcrypt.hash(pin, 10);
 
   await db.update(usersTable)
     .set({ passwordHash, resetOtp: null, resetOtpExpiresAt: null, updatedAt: new Date() })
     .where(eq(usersTable.id, user.id));
 
-  res.json({ message: "Password updated successfully. You can now log in." });
+  res.json({ message: "PIN updated successfully. You can now log in." });
 });
 
 // GET /auth/me (protected)

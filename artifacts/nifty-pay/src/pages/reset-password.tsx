@@ -3,7 +3,8 @@ import { Link, useLocation } from 'wouter';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { CheckCircle2, ArrowLeft, Eye, EyeOff } from 'lucide-react';
+import { CheckCircle2, ArrowLeft } from 'lucide-react';
+import { PinInput } from '@/components/pin-input';
 
 const API = import.meta.env.BASE_URL.replace(/\/$/, '') + '/api';
 
@@ -12,9 +13,8 @@ export default function ResetPassword() {
 
   const [email, setEmail] = useState('');
   const [otp, setOtp] = useState('');
-  const [password, setPassword] = useState('');
-  const [confirm, setConfirm] = useState('');
-  const [showPw, setShowPw] = useState(false);
+  const [pin, setPin] = useState('');
+  const [confirmPin, setConfirmPin] = useState('');
   const [loading, setLoading] = useState(false);
   const [done, setDone] = useState(false);
   const [error, setError] = useState('');
@@ -22,15 +22,15 @@ export default function ResetPassword() {
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
     setError('');
-    if (password !== confirm) { setError('Passwords do not match'); return; }
-    if (password.length < 6) { setError('Password must be at least 6 characters'); return; }
+    if (pin.length !== 4) { setError('PIN must be exactly 4 digits'); return; }
+    if (pin !== confirmPin) { setError('PINs do not match'); return; }
 
     setLoading(true);
     try {
       const r = await fetch(`${API}/auth/reset-password`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, otp, password }),
+        body: JSON.stringify({ email, otp, pin }),
       });
       const data = await r.json();
       if (!r.ok) { setError(data.error ?? 'Reset failed'); return; }
@@ -52,8 +52,8 @@ export default function ResetPassword() {
             className="w-16 h-16 rounded-2xl object-cover shadow-lg"
           />
           <div className="text-center">
-            <h1 className="text-2xl font-bold tracking-tight">New Password</h1>
-            <p className="text-sm text-muted-foreground mt-0.5">Enter the code you received and choose a new password</p>
+            <h1 className="text-2xl font-bold tracking-tight">Reset PIN</h1>
+            <p className="text-sm text-muted-foreground mt-0.5">Enter the code you received and choose a new PIN</p>
           </div>
         </div>
 
@@ -62,13 +62,13 @@ export default function ResetPassword() {
             <div className="flex flex-col items-center gap-4 py-4 text-center">
               <CheckCircle2 className="w-12 h-12 text-emerald-500" />
               <div>
-                <p className="font-semibold">Password updated!</p>
-                <p className="text-sm text-muted-foreground mt-1">You can now sign in with your new password.</p>
+                <p className="font-semibold">PIN updated!</p>
+                <p className="text-sm text-muted-foreground mt-1">You can now sign in with your new PIN.</p>
               </div>
               <Button className="w-full mt-2" onClick={() => setLocation('/login')}>Sign In</Button>
             </div>
           ) : (
-            <form onSubmit={handleSubmit} className="space-y-4">
+            <form onSubmit={handleSubmit} className="space-y-6">
               {error && (
                 <div className="text-sm text-red-500 bg-red-500/10 border border-red-500/20 rounded-lg px-3 py-2">
                   {error}
@@ -100,43 +100,20 @@ export default function ResetPassword() {
                   className="text-center tracking-widest text-xl font-mono"
                 />
               </div>
-              <div className="space-y-1.5">
-                <Label htmlFor="password">New Password</Label>
-                <div className="relative">
-                  <Input
-                    id="password"
-                    type={showPw ? 'text' : 'password'}
-                    autoComplete="new-password"
-                    placeholder="Min. 6 characters"
-                    value={password}
-                    onChange={e => setPassword(e.target.value)}
-                    required
-                    minLength={6}
-                    className="pr-10"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setShowPw(v => !v)}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
-                  >
-                    {showPw ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                  </button>
-                </div>
+              <div className="space-y-3">
+                <Label>New 4-Digit PIN</Label>
+                <PinInput value={pin} onChange={setPin} disabled={loading} />
               </div>
-              <div className="space-y-1.5">
-                <Label htmlFor="confirm">Confirm Password</Label>
-                <Input
-                  id="confirm"
-                  type={showPw ? 'text' : 'password'}
-                  autoComplete="new-password"
-                  placeholder="Repeat password"
-                  value={confirm}
-                  onChange={e => setConfirm(e.target.value)}
-                  required
-                />
+              <div className="space-y-3">
+                <Label>Confirm New PIN</Label>
+                <PinInput value={confirmPin} onChange={setConfirmPin} disabled={loading} />
               </div>
-              <Button type="submit" className="w-full" disabled={loading}>
-                {loading ? 'Updating…' : 'Update Password'}
+              <Button
+                type="submit"
+                className="w-full"
+                disabled={loading || pin.length !== 4 || confirmPin.length !== 4}
+              >
+                {loading ? 'Updating…' : 'Update PIN'}
               </Button>
             </form>
           )}

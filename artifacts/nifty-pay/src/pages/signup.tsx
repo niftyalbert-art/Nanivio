@@ -4,7 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useAuth } from '@/contexts/auth';
-import { Eye, EyeOff } from 'lucide-react';
+import { PinInput } from '@/components/pin-input';
 
 const API = import.meta.env.BASE_URL.replace(/\/$/, '') + '/api';
 
@@ -14,24 +14,23 @@ export default function SignUp() {
 
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [confirm, setConfirm] = useState('');
-  const [showPw, setShowPw] = useState(false);
+  const [pin, setPin] = useState('');
+  const [confirmPin, setConfirmPin] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
     setError('');
-    if (password !== confirm) { setError('Passwords do not match'); return; }
-    if (password.length < 6) { setError('Password must be at least 6 characters'); return; }
+    if (pin.length !== 4) { setError('PIN must be exactly 4 digits'); return; }
+    if (pin !== confirmPin) { setError('PINs do not match'); return; }
 
     setLoading(true);
     try {
       const r = await fetch(`${API}/auth/signup`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name, email, password }),
+        body: JSON.stringify({ name, email, pin }),
       });
       const data = await r.json();
       if (!r.ok) { setError(data.error ?? 'Sign up failed'); return; }
@@ -61,7 +60,7 @@ export default function SignUp() {
         </div>
 
         {/* Form */}
-        <form onSubmit={handleSubmit} className="space-y-4 bg-card border border-border rounded-2xl p-6 shadow-sm">
+        <form onSubmit={handleSubmit} className="space-y-6 bg-card border border-border rounded-2xl p-6 shadow-sm">
           {error && (
             <div className="text-sm text-red-500 bg-red-500/10 border border-red-500/20 rounded-lg px-3 py-2">
               {error}
@@ -95,44 +94,17 @@ export default function SignUp() {
             />
           </div>
 
-          <div className="space-y-1.5">
-            <Label htmlFor="password">Password</Label>
-            <div className="relative">
-              <Input
-                id="password"
-                type={showPw ? 'text' : 'password'}
-                autoComplete="new-password"
-                placeholder="Min. 6 characters"
-                value={password}
-                onChange={e => setPassword(e.target.value)}
-                required
-                minLength={6}
-                className="pr-10"
-              />
-              <button
-                type="button"
-                onClick={() => setShowPw(v => !v)}
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
-              >
-                {showPw ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-              </button>
-            </div>
+          <div className="space-y-3">
+            <Label>Choose a 4-Digit PIN</Label>
+            <PinInput value={pin} onChange={setPin} disabled={loading} autoFocus={false} />
           </div>
 
-          <div className="space-y-1.5">
-            <Label htmlFor="confirm">Confirm Password</Label>
-            <Input
-              id="confirm"
-              type={showPw ? 'text' : 'password'}
-              autoComplete="new-password"
-              placeholder="Repeat password"
-              value={confirm}
-              onChange={e => setConfirm(e.target.value)}
-              required
-            />
+          <div className="space-y-3">
+            <Label>Confirm PIN</Label>
+            <PinInput value={confirmPin} onChange={setConfirmPin} disabled={loading} autoFocus={false} />
           </div>
 
-          <Button type="submit" className="w-full" disabled={loading}>
+          <Button type="submit" className="w-full" disabled={loading || pin.length !== 4 || confirmPin.length !== 4}>
             {loading ? 'Creating account…' : 'Create Account'}
           </Button>
 
