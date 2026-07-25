@@ -141,13 +141,25 @@ router.post("/transactions", requireAuth, async (req, res): Promise<void> => {
   const fromRateToUsd = parseFloat(fromRateRow.rateToUsd);
   const toRateToUsd = parseFloat(toRateRow.rateToUsd);
 
-  // Check for global send fee override
-  const [globalFeeSetting] = await db.select().from(settingsTable).where(eq(settingsTable.key, "send_fee_percent"));
-  const globalFee = globalFeeSetting?.value ? parseFloat(globalFeeSetting.value) : NaN;
-  const feePercent = !isNaN(globalFee) && globalFee >= 0 ? globalFee : parseFloat(toRateRow.feePercent);
+  // Load fee settings
+  const allFeeRows = await db.select().from(settingsTable);
+  const feeMap: Record<string, string> = {};
+  for (const r of allFeeRows) feeMap[r.key] = r.value;
+
+  const feeMode = feeMap["fee_mode"] || "percent";
+
+  let fee = 0;
+  if (feeMode === "fixed") {
+    const fixedVal = feeMap["send_fee_fixed"] ? parseFloat(feeMap["send_fee_fixed"]) : 0;
+    fee = isNaN(fixedVal) ? 0 : Math.round(fixedVal * 100) / 100;
+  } else {
+    // percent mode
+    const globalFee = feeMap["send_fee_percent"] ? parseFloat(feeMap["send_fee_percent"]) : NaN;
+    const feePercent = !isNaN(globalFee) && globalFee >= 0 ? globalFee : parseFloat(toRateRow.feePercent);
+    fee = Math.round(((feePercent / 100) * fromAmount) * 100) / 100;
+  }
 
   const currentBalance = parseFloat(wallet.balance);
-  const fee = Math.round(((feePercent / 100) * (1 / fromRateToUsd)) * 100) / 100;
   const totalCost = fromAmount + fee;
 
   if (currentBalance < totalCost) {

@@ -382,33 +382,12 @@ function RatesPanel() {
 // ── Settings Panel ──────────────────────────────────────────────────────────
 function SettingsPanel() {
   const { toast } = useToast();
+
+  // ── ALL hooks must come before any early return ──────────────────────────
   const { data: settings, isLoading, refetch } = useQuery({
     queryKey: ['admin-settings'],
     queryFn: () => apiFetch('/admin/settings'),
   });
-
-  const [form, setForm] = useState<Record<string, string>>({});
-  const [saving, setSaving] = useState<string | null>(null);
-
-  // Populate form when data loads
-  const s = settings as Record<string, string> | undefined;
-
-  const save = async (key: string) => {
-    setSaving(key);
-    try {
-      await apiFetch(`/admin/settings/${key}`, { method: 'PUT', body: JSON.stringify({ value: form[key] ?? '' }) });
-      await refetch();
-      toast({ title: 'Saved ✓' });
-    } catch (e: any) {
-      toast({ title: 'Error', description: e.message, variant: 'destructive' });
-    }
-    setSaving(null);
-  };
-
-  const val = (key: string) => form[key] !== undefined ? form[key] : (s?.[key] ?? '');
-  const set = (key: string, v: string) => setForm(f => ({ ...f, [key]: v }));
-
-  if (isLoading) return <div className="space-y-3">{[...Array(3)].map((_, i) => <Skeleton key={i} className="h-20" />)}</div>;
 
   const { data: pendingResets, isLoading: resetsLoading } = useQuery({
     queryKey: ['admin-pending-resets'],
@@ -421,14 +400,57 @@ function SettingsPanel() {
     queryFn: () => apiFetch('/admin/users'),
   });
 
+  const [form, setForm] = useState<Record<string, string>>({});
+  const [saving, setSaving] = useState<string | null>(null);
+
+  const s = settings as Record<string, string> | undefined;
+  const val = (key: string) => form[key] !== undefined ? form[key] : (s?.[key] ?? '');
+  const set = (key: string, v: string) => setForm(f => ({ ...f, [key]: v }));
+
+  const save = async (key: string) => {
+    setSaving(key);
+    try {
+      await apiFetch(`/admin/settings/${key}`, { method: 'PUT', body: JSON.stringify({ value: form[key] ?? s?.[key] ?? '' }) });
+      await refetch();
+      toast({ title: 'Saved ✓' });
+    } catch (e: any) {
+      toast({ title: 'Error', description: e.message, variant: 'destructive' });
+    }
+    setSaving(null);
+  };
+
+  // Save fee mode + value together
+  const saveFee = async () => {
+    setSaving('fee');
+    try {
+      const mode = val('fee_mode') || 'percent';
+      await apiFetch('/admin/settings/fee_mode', { method: 'PUT', body: JSON.stringify({ value: mode }) });
+      if (mode === 'percent') {
+        await apiFetch('/admin/settings/send_fee_percent', { method: 'PUT', body: JSON.stringify({ value: val('send_fee_percent') }) });
+      } else {
+        await apiFetch('/admin/settings/send_fee_fixed', { method: 'PUT', body: JSON.stringify({ value: val('send_fee_fixed') }) });
+      }
+      await refetch();
+      toast({ title: 'Fee settings saved ✓' });
+    } catch (e: any) {
+      toast({ title: 'Error', description: e.message, variant: 'destructive' });
+    }
+    setSaving(null);
+  };
+
+  // ── Now safe to early-return ─────────────────────────────────────────────
+  if (isLoading) return <div className="space-y-3">{[...Array(4)].map((_, i) => <Skeleton key={i} className="h-20" />)}</div>;
+
+  const feeMode = val('fee_mode') || 'percent';
+
   return (
     <div className="space-y-5">
 
-      {/* Pending Password Resets */}
+      {/* Pending PIN Resets */}
       <Card>
         <CardHeader className="p-4 pb-2">
           <CardTitle className="text-sm font-bold flex items-center gap-2">
-            🔑 Pending Password Resets
+            🔑 Pending PIN Resets
             {(pendingResets as any[] | undefined)?.length ? (
               <span className="ml-auto bg-amber-500 text-white text-[9px] rounded-full px-1.5 py-0.5">
                 {(pendingResets as any[]).length}
@@ -438,7 +460,7 @@ function SettingsPanel() {
           <CardDescription className="text-xs">Users who requested a reset code. Relay the OTP to them manually until email is configured.</CardDescription>
         </CardHeader>
         <CardContent className="p-4 pt-0">
-          {resetsLoading ? <Skeleton className="h-12" /> : (pendingResets as any[] | undefined)?.length === 0 || !(pendingResets as any[])?.length ? (
+          {resetsLoading ? <Skeleton className="h-12" /> : !(pendingResets as any[])?.length ? (
             <p className="text-xs text-muted-foreground py-2">No pending resets 🎉</p>
           ) : (
             <div className="space-y-2">
@@ -488,33 +510,120 @@ function SettingsPanel() {
       <Card>
         <CardHeader className="p-4 pb-2">
           <CardTitle className="text-sm font-bold flex items-center gap-2">
-            <TrendingUp className="w-4 h-4 text-primary" /> Global Send Fee
+            <TrendingUp className="w-4 h-4 text-primary" /> Transfer Fee
           </CardTitle>
           <CardDescription className="text-xs">
-            Overrides per-currency fees for all transfers. Leave blank to use each currency's own fee from the Rates tab.
+            Choose one fee type. Only the active mode is charged to users.
           </CardDescription>
         </CardHeader>
-        <CardContent className="p-4 pt-0 space-y-2">
-          <div className="flex gap-2 items-end">
-            <div className="flex-1 space-y-1">
+        <CardContent className="p-4 pt-0 space-y-4">
+
+          {/* Mode toggle */}
+          <div className="grid grid-cols-2 gap-2">
+            <button
+              type="button"
+              onClick={() => set('fee_mode', 'percent')}
+              className={[
+                'rounded-xl border-2 p-3 text-left transition-all',
+                feeMode === 'percent'
+                  ? 'border-primary bg-primary/10'
+                  : 'border-border bg-card hover:border-primary/40',
+              ].join(' ')}
+            >
+              <p className={`text-xs font-bold ${feeMode === 'percent' ? 'text-primary' : 'text-foreground'}`}>
+                % Percentage Fee
+              </p>
+              <p className="text-[11px] text-muted-foreground mt-0.5">Charged as % of send amount</p>
+              {feeMode === 'percent' && (
+                <span className="mt-1.5 inline-block text-[10px] bg-primary text-primary-foreground px-1.5 py-0.5 rounded-full font-semibold">ACTIVE</span>
+              )}
+            </button>
+            <button
+              type="button"
+              onClick={() => set('fee_mode', 'fixed')}
+              className={[
+                'rounded-xl border-2 p-3 text-left transition-all',
+                feeMode === 'fixed'
+                  ? 'border-primary bg-primary/10'
+                  : 'border-border bg-card hover:border-primary/40',
+              ].join(' ')}
+            >
+              <p className={`text-xs font-bold ${feeMode === 'fixed' ? 'text-primary' : 'text-foreground'}`}>
+                Fixed Fee
+              </p>
+              <p className="text-[11px] text-muted-foreground mt-0.5">Flat amount per transfer</p>
+              {feeMode === 'fixed' && (
+                <span className="mt-1.5 inline-block text-[10px] bg-primary text-primary-foreground px-1.5 py-0.5 rounded-full font-semibold">ACTIVE</span>
+              )}
+            </button>
+          </div>
+
+          {/* Percent input */}
+          {feeMode === 'percent' && (
+            <div className="space-y-1.5">
               <Label className="text-xs">Fee Percentage (%)</Label>
               <Input
                 type="number"
                 step="0.1"
                 min="0"
                 max="100"
-                placeholder="e.g. 3  (blank = use per-currency fee)"
+                placeholder="e.g. 3  (blank = use per-currency fee from Rates tab)"
                 value={val('send_fee_percent')}
                 onChange={e => set('send_fee_percent', e.target.value)}
                 className="font-mono text-sm"
               />
+              <p className="text-[11px] text-muted-foreground">
+                Leave blank to fall back to each currency's own fee set in the Rates tab.
+              </p>
             </div>
-            <Button size="sm" className="shrink-0" onClick={() => save('send_fee_percent')} disabled={saving === 'send_fee_percent'}>
-              {saving === 'send_fee_percent' ? 'Saving…' : 'Save'}
-            </Button>
-          </div>
-          {val('send_fee_percent') !== '' && (
-            <p className="text-xs text-amber-500">⚠️ Global fee override active: {val('send_fee_percent')}% on all transfers</p>
+          )}
+
+          {/* Fixed input */}
+          {feeMode === 'fixed' && (
+            <div className="space-y-1.5">
+              <Label className="text-xs">Fixed Fee Amount (source currency units)</Label>
+              <div className="relative">
+                <Input
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  placeholder="e.g. 5"
+                  value={val('send_fee_fixed')}
+                  onChange={e => set('send_fee_fixed', e.target.value)}
+                  className="font-mono text-sm pr-16"
+                />
+                <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-muted-foreground font-mono">
+                  src currency
+                </span>
+              </div>
+              <p className="text-[11px] text-muted-foreground">
+                Deducted from the user's wallet in the currency they are sending from.
+              </p>
+            </div>
+          )}
+
+          <Button
+            size="sm"
+            className="w-full"
+            onClick={saveFee}
+            disabled={saving === 'fee'}
+          >
+            {saving === 'fee' ? 'Saving…' : 'Save Fee Settings'}
+          </Button>
+
+          {/* Active fee summary */}
+          {feeMode === 'percent' && val('send_fee_percent') !== '' && (
+            <p className="text-xs text-amber-500 flex items-center gap-1">
+              ⚠️ Percentage fee active: <span className="font-mono font-bold">{val('send_fee_percent')}%</span> of send amount
+            </p>
+          )}
+          {feeMode === 'percent' && val('send_fee_percent') === '' && (
+            <p className="text-xs text-muted-foreground">Using per-currency fee from Rates tab.</p>
+          )}
+          {feeMode === 'fixed' && val('send_fee_fixed') !== '' && (
+            <p className="text-xs text-amber-500 flex items-center gap-1">
+              ⚠️ Fixed fee active: <span className="font-mono font-bold">{val('send_fee_fixed')}</span> per transfer
+            </p>
           )}
         </CardContent>
       </Card>

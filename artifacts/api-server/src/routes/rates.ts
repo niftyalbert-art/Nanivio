@@ -31,15 +31,37 @@ router.get("/rates", async (req, res): Promise<void> => {
   const fromRateToUsd = parseFloat(fromRow.rateToUsd);
   const toRateToUsd = parseFloat(toRow.rateToUsd);
 
-  // Check for global send fee override in settings
-  const [globalFeeSetting] = await db.select().from(settingsTable).where(eq(settingsTable.key, "send_fee_percent"));
-  const globalFee = globalFeeSetting?.value ? parseFloat(globalFeeSetting.value) : NaN;
+  // Load fee settings
+  const feeRows = await db.select().from(settingsTable)
+    .where(
+      // fetch all three keys in one query
+      eq(settingsTable.key, "fee_mode")
+    );
+  const allFeeRows = await db.select().from(settingsTable);
+  const feeMap: Record<string, string> = {};
+  for (const r of allFeeRows) feeMap[r.key] = r.value;
+
+  const feeMode = feeMap["fee_mode"] || "percent";
 
   // Convert: from → USD → to
   const rate = toRateToUsd / fromRateToUsd;
   const inverseRate = fromRateToUsd / toRateToUsd;
-  const fee = !isNaN(globalFee) && globalFee >= 0 ? globalFee : parseFloat(toRow.feePercent);
-  const feeAmount = (fee / 100) * (1 / fromRateToUsd);
+
+  let fee = 0;
+  let feeAmount = 0;
+  let feeFixed = 0;
+
+  if (feeMode === "fixed") {
+    feeFixed = feeMap["send_fee_fixed"] ? parseFloat(feeMap["send_fee_fixed"]) : 0;
+    feeFixed = isNaN(feeFixed) ? 0 : feeFixed;
+    fee = 0;
+    feeAmount = feeFixed;
+  } else {
+    // percent mode
+    const globalFee = feeMap["send_fee_percent"] ? parseFloat(feeMap["send_fee_percent"]) : NaN;
+    fee = !isNaN(globalFee) && globalFee >= 0 ? globalFee : parseFloat(toRow.feePercent);
+    feeAmount = (fee / 100) * (1 / fromRateToUsd);
+  }
 
   const result = {
     from,

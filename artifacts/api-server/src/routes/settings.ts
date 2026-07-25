@@ -8,7 +8,9 @@ const router: IRouter = Router();
 const DEFAULT_SETTINGS: Record<string, string> = {
   whatsapp_link: "https://wa.me/971501234567",
   telegram_link: "https://t.me/niviopay_support",
-  send_fee_percent: "",   // empty = use per-currency fee from exchange_rates
+  send_fee_percent: "",        // used when fee_mode = "percent"; empty = per-currency fee
+  send_fee_fixed: "",          // used when fee_mode = "fixed"; flat amount in source currency
+  fee_mode: "percent",         // "percent" | "fixed"
   support_hours: "Available 8am–10pm UAE time · Usually replies within 30 minutes",
 };
 
