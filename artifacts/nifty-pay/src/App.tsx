@@ -21,6 +21,7 @@ import SignUp from '@/pages/signup';
 import ForgotPassword from '@/pages/forgot-password';
 import ResetPassword from '@/pages/reset-password';
 import NotFound from '@/pages/not-found';
+import { InstallBanner } from '@/components/install-banner';
 
 const queryClient = new QueryClient();
 
@@ -78,6 +79,7 @@ function App() {
         <TooltipProvider>
           <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, '')}>
             <Router />
+            <InstallBanner />
           </WouterRouter>
           <Toaster />
         </TooltipProvider>
