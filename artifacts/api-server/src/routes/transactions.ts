@@ -189,7 +189,7 @@ router.post("/transactions", requireAuth, async (req, res): Promise<void> => {
       toAmount: String(Math.round(toAmount * 100) / 100),
       exchangeRate: String(Math.round(exchangeRate * 10000) / 10000),
       fee: String(fee),
-      status: "completed",
+      status: "pending",
       recipientName,
       recipientCountry,
       recipientFlag,

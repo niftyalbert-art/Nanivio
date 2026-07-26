@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useRef, useEffect, useCallback } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
@@ -546,53 +546,156 @@ function UsersPanel() {
   );
 }
 
-// ── Transactions Panel ───────────────────────────────────────────────────────
-function TransactionsPanel() {
+// ── Sends Panel (international money transfers) ──────────────────────────────
+function SendsPanel() {
+  const { toast } = useToast();
+  const qc = useQueryClient();
+  const [adminNote, setAdminNote] = useState<Record<number, string>>({});
+
   const { data: txns, isLoading } = useQuery({
     queryKey: ['admin-transactions'],
     queryFn: () => apiFetch('/admin/transactions'),
-    refetchInterval: 30000,
+    refetchInterval: 15000,
   });
 
-  if (isLoading) return <div className="space-y-2">{[...Array(4)].map((_, i) => <Skeleton key={i} className="h-20" />)}</div>;
+  const approve = useMutation({
+    mutationFn: ({ id }: { id: number }) =>
+      apiFetch(`/admin/transactions/${id}/approve`, { method: 'PUT', body: JSON.stringify({}) }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['admin-transactions'] });
+      toast({ title: '✅ Send approved — funds released to recipient' });
+    },
+    onError: (e: any) => toast({ title: 'Error', description: e.message, variant: 'destructive' }),
+  });
+
+  const reject = useMutation({
+    mutationFn: ({ id }: { id: number }) =>
+      apiFetch(`/admin/transactions/${id}/reject`, { method: 'PUT', body: JSON.stringify({}) }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['admin-transactions'] });
+      toast({ title: '↩️ Send rejected — wallet refunded' });
+    },
+    onError: (e: any) => toast({ title: 'Error', description: e.message, variant: 'destructive' }),
+  });
+
+  if (isLoading) return <div className="space-y-3">{[...Array(3)].map((_, i) => <Skeleton key={i} className="h-44" />)}</div>;
 
   const list = (txns as any[] | undefined) ?? [];
+  const pending = list.filter((t: any) => t.status === 'pending');
+  const done = list.filter((t: any) => t.status !== 'pending');
+
   return (
-    <div className="space-y-2">
-      <p className="text-xs text-muted-foreground">{list.length} total send transaction{list.length !== 1 ? 's' : ''}</p>
-      {list.length === 0 && (
-        <Card><CardContent className="p-8 text-center">
-          <ArrowLeftRight className="w-8 h-8 mx-auto mb-2 text-muted-foreground opacity-30" />
-          <p className="text-sm text-muted-foreground">No transactions yet</p>
+    <div className="space-y-4">
+      {pending.length === 0 && (
+        <Card><CardContent className="py-10 text-center">
+          <CheckCircle2 className="w-8 h-8 mx-auto mb-2 text-emerald-500 opacity-50" />
+          <p className="text-sm text-muted-foreground">No pending sends 🎉</p>
         </CardContent></Card>
       )}
-      {list.map((tx: any) => (
-        <Card key={tx.id}>
-          <CardContent className="p-3">
-            <div className="flex items-center gap-3">
-              <div className="w-9 h-9 rounded-full bg-muted flex items-center justify-center text-lg shrink-0">
-                {tx.recipientFlag}
-              </div>
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center justify-between gap-2 mb-0.5">
-                  <p className="font-semibold text-sm truncate">{tx.recipientName}</p>
-                  <Badge className={`text-[10px] px-1.5 py-0 shrink-0 ${statusColor(tx.status)}`}>{tx.status}</Badge>
+
+      {pending.map((tx: any) => (
+        <Card key={tx.id} className="border-amber-500/40 shadow-sm">
+          <CardContent className="p-4 space-y-3">
+            {/* Header — user + status */}
+            <div className="flex items-start justify-between gap-2">
+              <div className="flex items-center gap-2.5 min-w-0">
+                <div className="w-9 h-9 rounded-full bg-primary/20 text-primary font-bold flex items-center justify-center text-sm shrink-0">
+                  {(tx.userName ?? '?')[0]?.toUpperCase()}
                 </div>
-                <p className="text-xs text-muted-foreground">
-                  {tx.fromAmount.toLocaleString('en-US', { minimumFractionDigits: 2 })} {tx.fromCurrency} → {tx.toAmount.toLocaleString('en-US', { minimumFractionDigits: 2 })} {tx.toCurrency}
-                </p>
-                <p className="text-xs text-muted-foreground truncate">
-                  {tx.recipientCountry} · by <span className="font-medium">{tx.userName ?? 'Unknown'}</span>
-                </p>
+                <div className="min-w-0">
+                  <p className="font-bold text-sm leading-tight truncate">{tx.userName ?? 'Unknown User'}</p>
+                  <p className="text-[11px] text-muted-foreground truncate">{tx.userEmail ?? '—'}</p>
+                </div>
               </div>
-              <div className="text-right shrink-0">
-                <p className="text-xs text-muted-foreground">{formatDistanceToNow(new Date(tx.createdAt))} ago</p>
-                {tx.fee > 0 && <p className="text-[10px] text-muted-foreground">Fee: {tx.fee} {tx.fromCurrency}</p>}
+              <div className="flex flex-col items-end gap-1 shrink-0">
+                <Badge className={statusColor(tx.status)}>{tx.status}</Badge>
+                <span className="text-[10px] text-muted-foreground">{formatDistanceToNow(new Date(tx.createdAt))} ago</span>
               </div>
+            </div>
+
+            {/* Send details */}
+            <div className="grid grid-cols-2 gap-2 text-xs">
+              <div className="bg-primary/8 border border-primary/20 rounded-lg p-2.5">
+                <p className="text-muted-foreground mb-0.5">Sending</p>
+                <p className="font-bold font-mono text-base">{tx.fromAmount.toLocaleString('en-US', { minimumFractionDigits: 2 })} {tx.fromCurrency}</p>
+              </div>
+              <div className="bg-emerald-500/8 border border-emerald-500/20 rounded-lg p-2.5">
+                <p className="text-muted-foreground mb-0.5">Recipient Gets ≈</p>
+                <p className="font-bold font-mono text-base text-emerald-600 dark:text-emerald-400">{tx.toAmount.toLocaleString('en-US', { minimumFractionDigits: 2 })} {tx.toCurrency}</p>
+              </div>
+              <div className="bg-muted/50 rounded-lg p-2.5">
+                <p className="text-muted-foreground mb-0.5">Recipient</p>
+                <p className="font-semibold">{tx.recipientFlag} {tx.recipientName}</p>
+                <p className="text-muted-foreground">{tx.recipientCountry}</p>
+              </div>
+              <div className="bg-muted/50 rounded-lg p-2.5">
+                <p className="text-muted-foreground mb-0.5">Fee / Rate</p>
+                <p className="font-mono">{tx.fee > 0 ? `${tx.fee} ${tx.fromCurrency}` : 'No fee'}</p>
+                <p className="text-muted-foreground text-[10px] mt-0.5">1 {tx.fromCurrency} ≈ {(tx.toAmount / tx.fromAmount).toFixed(4)} {tx.toCurrency}</p>
+              </div>
+            </div>
+
+            {tx.note && (
+              <div className="bg-muted/40 rounded-lg px-3 py-2 text-xs">
+                <span className="text-muted-foreground font-medium">Note: </span>{tx.note}
+              </div>
+            )}
+
+            <Input
+              placeholder="Admin note (optional — for records)"
+              value={adminNote[tx.id] || ''}
+              onChange={e => setAdminNote(n => ({ ...n, [tx.id]: e.target.value }))}
+              className="text-xs"
+            />
+
+            <div className="flex gap-2 pt-0.5">
+              <Button
+                size="sm"
+                className="flex-1 bg-emerald-600 hover:bg-emerald-700 font-semibold"
+                onClick={() => approve.mutate({ id: tx.id })}
+                disabled={approve.isPending || reject.isPending}
+              >
+                <CheckCircle2 className="w-3.5 h-3.5 mr-1.5" /> Approve Send
+              </Button>
+              <Button
+                size="sm"
+                variant="destructive"
+                className="flex-1 font-semibold"
+                onClick={() => reject.mutate({ id: tx.id })}
+                disabled={approve.isPending || reject.isPending}
+              >
+                <XCircle className="w-3.5 h-3.5 mr-1.5" /> Reject & Refund
+              </Button>
             </div>
           </CardContent>
         </Card>
       ))}
+
+      {done.length > 0 && (
+        <div className="space-y-2">
+          <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground pt-2">Processed ({done.length})</p>
+          {done.map((tx: any) => (
+            <Card key={tx.id} className="opacity-75">
+              <CardContent className="p-3">
+                <div className="flex items-center gap-3">
+                  <div className="w-8 h-8 rounded-full bg-muted flex items-center justify-center text-base shrink-0">{tx.recipientFlag}</div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-1.5">
+                      <p className="text-sm font-semibold truncate">{tx.recipientName} ({tx.recipientCountry})</p>
+                      <Badge className={`${statusColor(tx.status)} text-[10px] px-1.5 py-0 shrink-0`}>{tx.status}</Badge>
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      {tx.fromAmount.toLocaleString()} {tx.fromCurrency} → {tx.toAmount.toLocaleString()} {tx.toCurrency}
+                      {tx.userName ? ` · by ${tx.userName}` : ''}
+                    </p>
+                  </div>
+                  <p className="text-[10px] text-muted-foreground shrink-0">{formatDistanceToNow(new Date(tx.createdAt))} ago</p>
+                </div>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
@@ -951,23 +1054,90 @@ function PaymentMethodsPanel() {
   );
 }
 
+// ── Notification sound (Web Audio API — no external file) ────────────────────
+function playNotificationSound(type: 'deposit' | 'send' | 'ticket' | 'withdrawal') {
+  try {
+    const ctx = new AudioContext();
+    // Different chime patterns per event type
+    const patterns: Record<string, { freqs: number[]; color: string }> = {
+      deposit:    { freqs: [523.25, 659.25, 783.99], color: 'major'   }, // C-E-G ascending
+      send:       { freqs: [392, 493.88, 587.33],   color: 'minor'    }, // G-B-D ascending
+      ticket:     { freqs: [440, 550, 660],          color: 'alert'    }, // double-tap feel
+      withdrawal: { freqs: [349.23, 440, 523.25],   color: 'neutral'  },
+    };
+    const { freqs } = patterns[type] ?? patterns.deposit;
+    freqs.forEach((freq, i) => {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.frequency.value = freq;
+      osc.type = 'sine';
+      const t0 = ctx.currentTime + i * 0.16;
+      gain.gain.setValueAtTime(0, t0);
+      gain.gain.linearRampToValueAtTime(0.28, t0 + 0.04);
+      gain.gain.exponentialRampToValueAtTime(0.001, t0 + 0.45);
+      osc.start(t0);
+      osc.stop(t0 + 0.5);
+    });
+  } catch { /* AudioContext may be unavailable in some browsers */ }
+}
+
 // ── Main Admin Page ─────────────────────────────────────────────────────────
 export default function Admin() {
   const [username, setUsername] = useState('');
   const [pin, setPin] = useState('');
   const [loginLoading, setLoginLoading] = useState(false);
-  // Persist admin session in sessionStorage — never embed the password in client code
   const [authed, setAuthed] = useState(() => !!sessionStorage.getItem(ADMIN_JWT_KEY));
+  const [activeTab, setActiveTab] = useState('deposits');
   const { toast } = useToast();
   const qc = useQueryClient();
 
-  const { data: deposits } = useQuery({ queryKey: ['admin-deposits'], queryFn: () => apiFetch('/admin/deposits'), enabled: authed });
-  const { data: withdrawals } = useQuery({ queryKey: ['admin-withdrawals'], queryFn: () => apiFetch('/admin/withdrawals'), enabled: authed });
-  const { data: tickets } = useQuery({ queryKey: ['admin-tickets'], queryFn: () => apiFetch('/tickets'), enabled: authed });
+  // ── Polling queries for live counts ──────────────────────────────────────
+  const { data: deposits }     = useQuery({ queryKey: ['admin-deposits'],     queryFn: () => apiFetch('/admin/deposits'),     enabled: authed, refetchInterval: 12000 });
+  const { data: withdrawals }  = useQuery({ queryKey: ['admin-withdrawals'],  queryFn: () => apiFetch('/admin/withdrawals'),  enabled: authed, refetchInterval: 12000 });
+  const { data: tickets }      = useQuery({ queryKey: ['admin-tickets'],      queryFn: () => apiFetch('/tickets'),            enabled: authed, refetchInterval: 12000 });
+  const { data: transactions } = useQuery({ queryKey: ['admin-transactions'], queryFn: () => apiFetch('/admin/transactions'), enabled: authed, refetchInterval: 12000 });
 
-  const pendingDeposits = (deposits as any[] | undefined)?.filter(d => d.status === 'pending').length ?? 0;
-  const pendingWithdrawals = (withdrawals as any[] | undefined)?.filter(w => w.status === 'pending').length ?? 0;
-  const openTickets = (tickets as any[] | undefined)?.filter(t => t.status === 'open').length ?? 0;
+  const pendingDeposits    = (deposits     as any[] | undefined)?.filter(d => d.status === 'pending').length ?? 0;
+  const pendingWithdrawals = (withdrawals  as any[] | undefined)?.filter(w => w.status === 'pending').length ?? 0;
+  const openTickets        = (tickets      as any[] | undefined)?.filter(t => t.status === 'open').length    ?? 0;
+  const pendingSends       = (transactions as any[] | undefined)?.filter(t => t.status === 'pending').length ?? 0;
+
+  // ── Notification engine — fire sound+toast when counts rise ─────────────
+  const prevCounts = useRef({ deposits: -1, withdrawals: -1, tickets: -1, sends: -1 });
+  const isFirstLoad = useRef(true);
+
+  useEffect(() => {
+    if (!authed) return;
+    // Skip the very first data load — only alert on NEW arrivals
+    if (isFirstLoad.current) {
+      if (pendingDeposits >= 0 && pendingWithdrawals >= 0 && openTickets >= 0 && pendingSends >= 0) {
+        prevCounts.current = { deposits: pendingDeposits, withdrawals: pendingWithdrawals, tickets: openTickets, sends: pendingSends };
+        isFirstLoad.current = false;
+      }
+      return;
+    }
+    if (pendingDeposits > prevCounts.current.deposits) {
+      playNotificationSound('deposit');
+      toast({ title: '🟡 New Deposit Request', description: 'A user submitted a deposit with receipt.' });
+    }
+    if (pendingSends > prevCounts.current.sends) {
+      playNotificationSound('send');
+      toast({ title: '🔵 New Send Request', description: 'A user initiated an international transfer.' });
+    }
+    if (pendingWithdrawals > prevCounts.current.withdrawals) {
+      playNotificationSound('withdrawal');
+      toast({ title: '🟠 New Withdrawal', description: 'A new withdrawal request is waiting.' });
+    }
+    if (openTickets > prevCounts.current.tickets) {
+      playNotificationSound('ticket');
+      toast({ title: '📩 New Support Ticket', description: 'A user opened a support ticket.' });
+    }
+    prevCounts.current = { deposits: pendingDeposits, withdrawals: pendingWithdrawals, tickets: openTickets, sends: pendingSends };
+  }, [pendingDeposits, pendingWithdrawals, openTickets, pendingSends, authed]);
+
+  const goTab = useCallback((tab: string) => setActiveTab(tab), []);
 
   const attempt = async () => {
     setLoginLoading(true);
@@ -977,25 +1147,19 @@ export default function Admin() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ username: username.trim().toLowerCase(), password: pin }),
       });
-      if (!r.ok) {
-        toast({ title: 'Invalid credentials', variant: 'destructive' });
-        return;
-      }
+      if (!r.ok) { toast({ title: 'Invalid credentials', variant: 'destructive' }); return; }
       const { token } = await r.json();
       sessionStorage.setItem(ADMIN_JWT_KEY, token);
       setAuthed(true);
       qc.invalidateQueries();
     } catch {
       toast({ title: 'Network error', description: 'Please try again.', variant: 'destructive' });
-    } finally {
-      setLoginLoading(false);
-    }
+    } finally { setLoginLoading(false); }
   };
 
   if (!authed) {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center gap-8 p-4 bg-background">
-        {/* Branding */}
         <div className="flex flex-col items-center gap-3">
           <img src={`${import.meta.env.BASE_URL}logo.png`} alt="Nivio" className="w-16 h-16 rounded-2xl shadow-xl" />
           <div className="text-center">
@@ -1003,8 +1167,6 @@ export default function Admin() {
             <p className="text-xs text-muted-foreground mt-0.5 uppercase tracking-widest">Admin Portal</p>
           </div>
         </div>
-
-        {/* Login card */}
         <Card className="w-full max-w-sm shadow-2xl border-border/60">
           <CardHeader className="pb-2 pt-6 px-6">
             <CardTitle className="text-base font-bold">Sign in to continue</CardTitle>
@@ -1013,35 +1175,38 @@ export default function Admin() {
           <CardContent className="px-6 pb-6 space-y-4">
             <div className="space-y-1.5">
               <Label className="text-xs font-medium">Username</Label>
-              <Input
-                placeholder="admin"
-                value={username}
-                onChange={e => setUsername(e.target.value)}
-                autoComplete="username"
-                onKeyDown={e => { if (e.key === 'Enter') attempt(); }}
-              />
+              <Input placeholder="admin" value={username} onChange={e => setUsername(e.target.value)} autoComplete="username" onKeyDown={e => { if (e.key === 'Enter') attempt(); }} />
             </div>
             <div className="space-y-1.5">
               <Label className="text-xs font-medium">Password</Label>
-              <Input
-                type="password"
-                placeholder="••••••••••••"
-                value={pin}
-                onChange={e => setPin(e.target.value)}
-                autoComplete="current-password"
-                onKeyDown={e => { if (e.key === 'Enter') attempt(); }}
-              />
+              <Input type="password" placeholder="••••••••••••" value={pin} onChange={e => setPin(e.target.value)} autoComplete="current-password" onKeyDown={e => { if (e.key === 'Enter') attempt(); }} />
             </div>
             <Button className="w-full font-semibold mt-1" onClick={attempt} disabled={loginLoading}>
               {loginLoading ? 'Signing in…' : 'Sign In'}
             </Button>
           </CardContent>
         </Card>
-
         <p className="text-xs text-muted-foreground">Nivio · Admin Portal · Restricted Access</p>
       </div>
     );
   }
+
+  // ── Stat card helper ─────────────────────────────────────────────────────
+  const StatCard = ({ label, count, tab, icon: Icon, accentClass }: { label: string; count: number; tab: string; icon: any; accentClass: string }) => (
+    <button
+      onClick={() => goTab(tab)}
+      className={`relative flex flex-col items-center gap-1.5 p-3 rounded-xl border-2 transition-all text-center w-full
+        ${activeTab === tab ? 'border-primary bg-primary/5 shadow-sm' : 'border-border bg-card hover:border-primary/40 hover:bg-muted/30'}`}
+    >
+      {/* Red / green pulse dot */}
+      <span className={`absolute top-2 right-2 w-2.5 h-2.5 rounded-full shadow-sm
+        ${count > 0 ? 'bg-red-500 animate-pulse' : 'bg-emerald-500'}`}
+      />
+      <Icon className={`w-4 h-4 ${accentClass}`} />
+      <span className="text-2xl font-extrabold leading-none">{count}</span>
+      <span className="text-[11px] text-muted-foreground font-medium leading-tight">{label}</span>
+    </button>
+  );
 
   return (
     <div className="min-h-screen bg-background p-4 md:p-6 max-w-2xl mx-auto space-y-5">
@@ -1053,48 +1218,41 @@ export default function Admin() {
         <Button variant="outline" size="sm" onClick={() => { sessionStorage.removeItem(ADMIN_JWT_KEY); setAuthed(false); qc.clear(); }}>Sign Out</Button>
       </div>
 
-      {/* Summary cards */}
-      <div className="grid grid-cols-3 gap-3">
-        {[
-          { label: 'Deposits', count: pendingDeposits, icon: ArrowDownLeft, color: 'text-primary' },
-          { label: 'Withdrawals', count: pendingWithdrawals, icon: ArrowUpRight, color: 'text-amber-500' },
-          { label: 'Tickets', count: openTickets, icon: MessageSquare, color: 'text-blue-500' },
-        ].map(({ label, count, icon: Icon, color }) => (
-          <Card key={label}>
-            <CardContent className="p-3 text-center">
-              <Icon className={`w-4 h-4 mx-auto mb-1 ${color}`} />
-              <p className="text-xl font-bold">{count}</p>
-              <p className="text-xs text-muted-foreground">{label}</p>
-            </CardContent>
-          </Card>
-        ))}
+      {/* 4 clickable stat cards */}
+      <div className="grid grid-cols-4 gap-2">
+        <StatCard label="Deposit"    count={pendingDeposits}    tab="deposits"      icon={ArrowDownLeft}  accentClass="text-primary" />
+        <StatCard label="Send"       count={pendingSends}       tab="sends"         icon={ArrowLeftRight} accentClass="text-blue-500" />
+        <StatCard label="Withdrawal" count={pendingWithdrawals} tab="withdrawals"   icon={ArrowUpRight}   accentClass="text-amber-500" />
+        <StatCard label="Ticket"     count={openTickets}        tab="tickets"       icon={MessageSquare}  accentClass="text-purple-500" />
       </div>
 
-      <Tabs defaultValue="deposits">
+      <Tabs value={activeTab} onValueChange={setActiveTab}>
         <TabsList className="flex w-full overflow-x-auto gap-0.5 h-auto p-1 flex-nowrap">
-          <TabsTrigger value="deposits" className="text-[11px] shrink-0 flex-1 min-w-[52px]">
-            Dep{pendingDeposits > 0 && <span className="ml-1 bg-amber-500 text-white text-[9px] rounded-full w-3.5 h-3.5 inline-flex items-center justify-center">{pendingDeposits}</span>}
+          <TabsTrigger value="deposits" className="text-[11px] shrink-0 flex-1 min-w-[48px]">
+            Dep{pendingDeposits > 0 && <span className="ml-1 bg-red-500 text-white text-[9px] rounded-full w-3.5 h-3.5 inline-flex items-center justify-center font-bold">{pendingDeposits}</span>}
           </TabsTrigger>
-          <TabsTrigger value="withdrawals" className="text-[11px] shrink-0 flex-1 min-w-[52px]">
-            Send{pendingWithdrawals > 0 && <span className="ml-1 bg-amber-500 text-white text-[9px] rounded-full w-3.5 h-3.5 inline-flex items-center justify-center">{pendingWithdrawals}</span>}
+          <TabsTrigger value="sends" className="text-[11px] shrink-0 flex-1 min-w-[48px]">
+            Send{pendingSends > 0 && <span className="ml-1 bg-red-500 text-white text-[9px] rounded-full w-3.5 h-3.5 inline-flex items-center justify-center font-bold">{pendingSends}</span>}
           </TabsTrigger>
-          <TabsTrigger value="transactions" className="text-[11px] shrink-0 flex-1 min-w-[52px]">Txns</TabsTrigger>
-          <TabsTrigger value="users" className="text-[11px] shrink-0 flex-1 min-w-[52px]">Users</TabsTrigger>
-          <TabsTrigger value="tickets" className="text-[11px] shrink-0 flex-1 min-w-[52px]">
-            Tickets{openTickets > 0 && <span className="ml-1 bg-blue-500 text-white text-[9px] rounded-full w-3.5 h-3.5 inline-flex items-center justify-center">{openTickets}</span>}
+          <TabsTrigger value="withdrawals" className="text-[11px] shrink-0 flex-1 min-w-[48px]">
+            W/draw{pendingWithdrawals > 0 && <span className="ml-1 bg-red-500 text-white text-[9px] rounded-full w-3.5 h-3.5 inline-flex items-center justify-center font-bold">{pendingWithdrawals}</span>}
           </TabsTrigger>
-          <TabsTrigger value="methods" className="text-[11px] shrink-0 flex-1 min-w-[52px]">Methods</TabsTrigger>
-          <TabsTrigger value="rates" className="text-[11px] shrink-0 flex-1 min-w-[52px]">Rates</TabsTrigger>
-          <TabsTrigger value="settings" className="text-[11px] shrink-0 flex-1 min-w-[44px]"><Settings2 className="w-3 h-3" /></TabsTrigger>
+          <TabsTrigger value="users" className="text-[11px] shrink-0 flex-1 min-w-[44px]">Users</TabsTrigger>
+          <TabsTrigger value="tickets" className="text-[11px] shrink-0 flex-1 min-w-[48px]">
+            Tickets{openTickets > 0 && <span className="ml-1 bg-red-500 text-white text-[9px] rounded-full w-3.5 h-3.5 inline-flex items-center justify-center font-bold">{openTickets}</span>}
+          </TabsTrigger>
+          <TabsTrigger value="methods" className="text-[11px] shrink-0 flex-1 min-w-[44px]">Methods</TabsTrigger>
+          <TabsTrigger value="rates" className="text-[11px] shrink-0 flex-1 min-w-[44px]">Rates</TabsTrigger>
+          <TabsTrigger value="settings" className="text-[11px] shrink-0 flex-1 min-w-[40px]"><Settings2 className="w-3 h-3" /></TabsTrigger>
         </TabsList>
-        <TabsContent value="deposits" className="mt-4"><DepositsPanel /></TabsContent>
+        <TabsContent value="deposits"    className="mt-4"><DepositsPanel /></TabsContent>
+        <TabsContent value="sends"       className="mt-4"><SendsPanel /></TabsContent>
         <TabsContent value="withdrawals" className="mt-4"><WithdrawalsPanel /></TabsContent>
-        <TabsContent value="transactions" className="mt-4"><TransactionsPanel /></TabsContent>
-        <TabsContent value="users" className="mt-4"><UsersPanel /></TabsContent>
-        <TabsContent value="tickets" className="mt-4"><TicketsPanel /></TabsContent>
-        <TabsContent value="methods" className="mt-4"><PaymentMethodsPanel /></TabsContent>
-        <TabsContent value="rates" className="mt-4"><RatesPanel /></TabsContent>
-        <TabsContent value="settings" className="mt-4"><SettingsPanel /></TabsContent>
+        <TabsContent value="users"       className="mt-4"><UsersPanel /></TabsContent>
+        <TabsContent value="tickets"     className="mt-4"><TicketsPanel /></TabsContent>
+        <TabsContent value="methods"     className="mt-4"><PaymentMethodsPanel /></TabsContent>
+        <TabsContent value="rates"       className="mt-4"><RatesPanel /></TabsContent>
+        <TabsContent value="settings"    className="mt-4"><SettingsPanel /></TabsContent>
       </Tabs>
     </div>
   );

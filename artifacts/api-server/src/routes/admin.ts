@@ -1,5 +1,5 @@
 import { Router, type IRouter } from "express";
-import { eq, sql, isNotNull, desc } from "drizzle-orm";
+import { eq, sql, isNotNull, desc, and } from "drizzle-orm";
 import { db, depositsTable, withdrawalsTable, walletsTable, paymentMethodsTable, exchangeRatesTable, usersTable, transactionsTable } from "@workspace/db";
 import { adminOnly, signAdminToken } from "../middleware/auth";
 
@@ -299,6 +299,47 @@ router.get("/admin/users", adminOnly, async (_req, res): Promise<void> => {
     ...u,
     createdAt: u.createdAt instanceof Date ? u.createdAt.toISOString() : String(u.createdAt),
   })));
+});
+
+// ── Transactions (sends) approve / reject ────────────────────────────────
+router.put("/admin/transactions/:id/approve", adminOnly, async (req, res): Promise<void> => {
+  const id = parseInt(req.params.id as string, 10);
+  if (isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
+
+  const [tx] = await db.select().from(transactionsTable).where(eq(transactionsTable.id, id));
+  if (!tx) { res.status(404).json({ error: "Transaction not found" }); return; }
+  if (tx.status !== "pending") { res.status(400).json({ error: "Already processed" }); return; }
+
+  const [updated] = await db
+    .update(transactionsTable)
+    .set({ status: "completed" })
+    .where(eq(transactionsTable.id, id))
+    .returning();
+
+  res.json({ ...updated, fromAmount: parseFloat(updated.fromAmount), toAmount: parseFloat(updated.toAmount), fee: parseFloat(updated.fee) });
+});
+
+router.put("/admin/transactions/:id/reject", adminOnly, async (req, res): Promise<void> => {
+  const id = parseInt(req.params.id as string, 10);
+  if (isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
+
+  const [tx] = await db.select().from(transactionsTable).where(eq(transactionsTable.id, id));
+  if (!tx) { res.status(404).json({ error: "Transaction not found" }); return; }
+  if (tx.status !== "pending") { res.status(400).json({ error: "Already processed" }); return; }
+
+  // Refund the sender's wallet
+  await db
+    .update(walletsTable)
+    .set({ balance: sql`${walletsTable.balance} + ${parseFloat(tx.fromAmount) + parseFloat(tx.fee)}`, updatedAt: new Date() })
+    .where(and(eq(walletsTable.userId, tx.userId!), eq(walletsTable.currencyCode, tx.fromCurrency)));
+
+  const [updated] = await db
+    .update(transactionsTable)
+    .set({ status: "failed" })
+    .where(eq(transactionsTable.id, id))
+    .returning();
+
+  res.json({ ...updated, fromAmount: parseFloat(updated.fromAmount), toAmount: parseFloat(updated.toAmount), fee: parseFloat(updated.fee) });
 });
 
 // ── All transactions (admin view) ────────────────────────────────────────
