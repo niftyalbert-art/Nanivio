@@ -1,13 +1,13 @@
 import { useEffect, useState } from 'react';
 
 export type InstallState =
-  | 'unsupported'   // browser never fired beforeinstallprompt
-  | 'dismissed'     // user closed the banner (stored 7 days)
-  | 'installed'     // appinstalled event fired, or already standalone
-  | 'promptable';   // ready to show
+  | 'unknown'     // page just loaded, awaiting beforeinstallprompt (show manual guide)
+  | 'promptable'  // native browser prompt ready
+  | 'dismissed'   // user closed the banner this session
+  | 'installed';  // already installed / standalone
 
 const DISMISS_KEY = 'nivio_install_dismissed_until';
-const DISMISS_DAYS = 7;
+const DISMISS_DAYS = 3;
 
 function isStandalone() {
   return (
@@ -27,10 +27,9 @@ export function useInstallPrompt() {
   const [state, setState] = useState<InstallState>(() => {
     if (isStandalone()) return 'installed';
     if (wasDismissedRecently()) return 'dismissed';
-    return 'unsupported';
+    return 'unknown';
   });
 
-  // Capture the native browser prompt event
   const [promptEvent, setPromptEvent] = useState<any>(null);
 
   useEffect(() => {
@@ -67,7 +66,8 @@ export function useInstallPrompt() {
   };
 
   const dismiss = () => {
-    // Session-only dismiss — no localStorage, so banner reappears on next visit
+    const until = Date.now() + DISMISS_DAYS * 24 * 60 * 60 * 1000;
+    localStorage.setItem(DISMISS_KEY, String(until));
     setState('dismissed');
   };
 
