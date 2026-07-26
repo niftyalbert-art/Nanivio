@@ -24,11 +24,38 @@ router.post("/admin/login", async (req, res): Promise<void> => {
 // ── Admin list views (all records, not user-scoped) ────────────────────────
 
 router.get("/admin/deposits", adminOnly, async (_req, res): Promise<void> => {
-  const rows = await db.select().from(depositsTable).orderBy(desc(depositsTable.createdAt));
+  const rows = await db
+    .select({
+      id: depositsTable.id,
+      userId: depositsTable.userId,
+      walletId: depositsTable.walletId,
+      paymentMethodId: depositsTable.paymentMethodId,
+      amount: depositsTable.amount,
+      currencyCode: depositsTable.currencyCode,
+      externalTransactionId: depositsTable.externalTransactionId,
+      receiptImage: depositsTable.receiptImage,
+      status: depositsTable.status,
+      note: depositsTable.note,
+      adminNoteInternal: depositsTable.adminNoteInternal,
+      processedAt: depositsTable.processedAt,
+      createdAt: depositsTable.createdAt,
+      // joined fields
+      userName: usersTable.name,
+      userEmail: usersTable.email,
+      paymentMethodName: paymentMethodsTable.name,
+      paymentMethodType: paymentMethodsTable.type,
+      paymentMethodEmoji: paymentMethodsTable.logoEmoji,
+    })
+    .from(depositsTable)
+    .leftJoin(usersTable, eq(depositsTable.userId, usersTable.id))
+    .leftJoin(paymentMethodsTable, eq(depositsTable.paymentMethodId, paymentMethodsTable.id))
+    .orderBy(desc(depositsTable.createdAt));
+
   res.json(rows.map(d => ({
     ...d,
     amount: typeof d.amount === "string" ? parseFloat(d.amount) : d.amount,
     createdAt: d.createdAt instanceof Date ? d.createdAt.toISOString() : String(d.createdAt),
+    processedAt: d.processedAt instanceof Date ? d.processedAt.toISOString() : (d.processedAt ? String(d.processedAt) : null),
   })));
 });
 

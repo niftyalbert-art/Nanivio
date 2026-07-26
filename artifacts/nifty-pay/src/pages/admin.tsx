@@ -38,17 +38,39 @@ const statusColor = (s: string) => {
   }
 };
 
+// ── Receipt lightbox ────────────────────────────────────────────────────────
+function ReceiptLightbox({ src, onClose }: { src: string; onClose: () => void }) {
+  return (
+    <div
+      className="fixed inset-0 z-50 bg-black/90 flex items-center justify-center p-4"
+      onClick={onClose}
+    >
+      <button
+        className="absolute top-4 right-4 text-white/70 hover:text-white bg-black/40 rounded-full w-9 h-9 flex items-center justify-center text-xl"
+        onClick={onClose}
+      >✕</button>
+      <img
+        src={src}
+        alt="Receipt full view"
+        className="max-w-full max-h-full rounded-xl object-contain"
+        onClick={e => e.stopPropagation()}
+      />
+    </div>
+  );
+}
+
 // ── Deposits Panel ──────────────────────────────────────────────────────────
 function DepositsPanel() {
   const { toast } = useToast();
   const qc = useQueryClient();
-  const { data: deposits, isLoading } = useQuery({ queryKey: ['admin-deposits'], queryFn: () => apiFetch('/admin/deposits') });
+  const { data: deposits, isLoading } = useQuery({ queryKey: ['admin-deposits'], queryFn: () => apiFetch('/admin/deposits'), refetchInterval: 20000 });
   const [note, setNote] = useState<Record<number, string>>({});
+  const [lightbox, setLightbox] = useState<string | null>(null);
 
   const approve = useMutation({
     mutationFn: ({ id, adminNote }: { id: number; adminNote?: string }) =>
       apiFetch(`/admin/deposits/${id}/approve`, { method: 'PUT', body: JSON.stringify({ adminNote }) }),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['admin-deposits'] }); toast({ title: 'Deposit approved ✓' }); },
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['admin-deposits'] }); toast({ title: 'Deposit approved ✓', description: 'Wallet has been credited.' }); },
     onError: (e: any) => toast({ title: 'Error', description: e.message, variant: 'destructive' }),
   });
   const reject = useMutation({
@@ -58,57 +80,150 @@ function DepositsPanel() {
     onError: (e: any) => toast({ title: 'Error', description: e.message, variant: 'destructive' }),
   });
 
-  if (isLoading) return <div className="space-y-3">{[...Array(3)].map((_, i) => <Skeleton key={i} className="h-36" />)}</div>;
+  if (isLoading) return <div className="space-y-3">{[...Array(3)].map((_, i) => <Skeleton key={i} className="h-48" />)}</div>;
   const pending = (deposits as any[] | undefined)?.filter(d => d.status === 'pending') ?? [];
   const done = (deposits as any[] | undefined)?.filter(d => d.status !== 'pending') ?? [];
 
   return (
-    <div className="space-y-4">
-      {pending.length === 0 && <p className="text-sm text-muted-foreground text-center py-6">No pending deposits 🎉</p>}
-      {pending.map((d: any) => (
-        <Card key={d.id} className="border-amber-500/30">
-          <CardContent className="p-4 space-y-3">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="font-bold text-sm">Deposit #{d.id}</p>
-                <p className="text-xs text-muted-foreground">{formatDistanceToNow(new Date(d.createdAt))} ago · {d.currencyCode}</p>
+    <>
+      {lightbox && <ReceiptLightbox src={lightbox} onClose={() => setLightbox(null)} />}
+
+      <div className="space-y-4">
+        {pending.length === 0 && (
+          <Card><CardContent className="py-10 text-center">
+            <CheckCircle2 className="w-8 h-8 mx-auto mb-2 text-emerald-500 opacity-50" />
+            <p className="text-sm text-muted-foreground">No pending deposits 🎉</p>
+          </CardContent></Card>
+        )}
+
+        {pending.map((d: any) => (
+          <Card key={d.id} className="border-amber-500/40 shadow-sm">
+            <CardContent className="p-4 space-y-3">
+
+              {/* Header — user + status */}
+              <div className="flex items-start justify-between gap-2">
+                <div className="flex items-center gap-2.5 min-w-0">
+                  <div className="w-9 h-9 rounded-full bg-amber-500/15 text-amber-600 font-bold flex items-center justify-center text-sm shrink-0">
+                    {(d.userName ?? '?')[0]?.toUpperCase()}
+                  </div>
+                  <div className="min-w-0">
+                    <p className="font-bold text-sm leading-tight truncate">{d.userName ?? 'Unknown User'}</p>
+                    <p className="text-[11px] text-muted-foreground truncate">{d.userEmail ?? '—'}</p>
+                  </div>
+                </div>
+                <div className="flex flex-col items-end gap-1 shrink-0">
+                  <Badge className={statusColor(d.status)}>{d.status}</Badge>
+                  <span className="text-[10px] text-muted-foreground">{formatDistanceToNow(new Date(d.createdAt))} ago</span>
+                </div>
               </div>
-              <Badge className={statusColor(d.status)}>{d.status}</Badge>
-            </div>
-            <div className="grid grid-cols-2 gap-2 text-xs">
-              <div className="bg-muted/50 rounded-lg p-2"><p className="text-muted-foreground">Amount</p><p className="font-bold font-mono">{parseFloat(d.amount).toLocaleString()} {d.currencyCode}</p></div>
-              <div className="bg-muted/50 rounded-lg p-2"><p className="text-muted-foreground">Tx ID</p><p className="font-mono truncate">{d.externalTransactionId}</p></div>
-            </div>
-            {d.receiptImage && (
-              <img src={d.receiptImage} alt="Receipt" className="rounded-lg w-full max-h-48 object-contain bg-muted" />
-            )}
-            <Input placeholder="Admin note (optional)" value={note[d.id] || ''} onChange={e => setNote(n => ({ ...n, [d.id]: e.target.value }))} className="text-xs" />
-            <div className="flex gap-2">
-              <Button size="sm" className="flex-1 bg-emerald-600 hover:bg-emerald-700" onClick={() => approve.mutate({ id: d.id, adminNote: note[d.id] })} disabled={approve.isPending}>
-                <CheckCircle2 className="w-3.5 h-3.5 mr-1" /> Approve & Credit
-              </Button>
-              <Button size="sm" variant="destructive" className="flex-1" onClick={() => reject.mutate({ id: d.id, adminNote: note[d.id] })} disabled={reject.isPending}>
-                <XCircle className="w-3.5 h-3.5 mr-1" /> Reject
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
-      ))}
-      {done.length > 0 && (
-        <div className="space-y-2">
-          <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Processed</p>
-          {done.map((d: any) => (
-            <Card key={d.id} className="opacity-70">
-              <CardContent className="p-3 flex items-center justify-between gap-3">
-                <div><p className="text-sm font-semibold">#{d.id} — {parseFloat(d.amount).toLocaleString()} {d.currencyCode}</p>
-                  <p className="text-xs text-muted-foreground">{d.externalTransactionId}</p></div>
-                <Badge className={statusColor(d.status)}>{d.status}</Badge>
-              </CardContent>
-            </Card>
-          ))}
-        </div>
-      )}
-    </div>
+
+              {/* Payment method pill */}
+              {d.paymentMethodName && (
+                <div className="flex items-center gap-1.5 text-xs bg-muted/60 rounded-lg px-2.5 py-1.5 w-fit">
+                  <span>{d.paymentMethodEmoji}</span>
+                  <span className="font-medium">{d.paymentMethodName}</span>
+                </div>
+              )}
+
+              {/* Amount + Tx ID */}
+              <div className="grid grid-cols-2 gap-2 text-xs">
+                <div className="bg-emerald-500/8 border border-emerald-500/20 rounded-lg p-2.5">
+                  <p className="text-muted-foreground mb-0.5">Amount</p>
+                  <p className="font-bold font-mono text-emerald-600 dark:text-emerald-400 text-sm">{parseFloat(d.amount).toLocaleString()} {d.currencyCode}</p>
+                </div>
+                <div className="bg-muted/50 rounded-lg p-2.5">
+                  <p className="text-muted-foreground mb-0.5">Reference ID</p>
+                  <p className="font-mono font-semibold truncate">{d.externalTransactionId}</p>
+                </div>
+              </div>
+
+              {/* Receipt image — tap to expand */}
+              {d.receiptImage ? (
+                <div className="space-y-1">
+                  <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Payment Receipt</p>
+                  <button
+                    type="button"
+                    onClick={() => setLightbox(d.receiptImage)}
+                    className="w-full relative group rounded-xl overflow-hidden border-2 border-primary/20 hover:border-primary/60 transition-colors"
+                  >
+                    <img
+                      src={d.receiptImage}
+                      alt="Receipt"
+                      className="w-full max-h-52 object-contain bg-muted/40"
+                    />
+                    <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors flex items-center justify-center">
+                      <span className="opacity-0 group-hover:opacity-100 transition-opacity bg-black/60 text-white text-xs px-3 py-1.5 rounded-full font-medium">
+                        Tap to expand
+                      </span>
+                    </div>
+                  </button>
+                </div>
+              ) : (
+                <div className="border-2 border-dashed border-border rounded-xl p-4 text-center">
+                  <p className="text-xs text-muted-foreground">⚠️ No receipt uploaded</p>
+                </div>
+              )}
+
+              {/* Admin note */}
+              <Input
+                placeholder="Add a note for your records (optional)"
+                value={note[d.id] || ''}
+                onChange={e => setNote(n => ({ ...n, [d.id]: e.target.value }))}
+                className="text-xs"
+              />
+
+              {/* Actions */}
+              <div className="flex gap-2 pt-0.5">
+                <Button
+                  size="sm"
+                  className="flex-1 bg-emerald-600 hover:bg-emerald-700 font-semibold"
+                  onClick={() => approve.mutate({ id: d.id, adminNote: note[d.id] })}
+                  disabled={approve.isPending || reject.isPending}
+                >
+                  <CheckCircle2 className="w-3.5 h-3.5 mr-1.5" /> Approve & Credit
+                </Button>
+                <Button
+                  size="sm"
+                  variant="destructive"
+                  className="flex-1 font-semibold"
+                  onClick={() => reject.mutate({ id: d.id, adminNote: note[d.id] })}
+                  disabled={approve.isPending || reject.isPending}
+                >
+                  <XCircle className="w-3.5 h-3.5 mr-1.5" /> Reject
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        ))}
+
+        {done.length > 0 && (
+          <div className="space-y-2">
+            <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground pt-2">Processed ({done.length})</p>
+            {done.map((d: any) => (
+              <Card key={d.id} className="opacity-75">
+                <CardContent className="p-3">
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-1.5">
+                        <p className="text-sm font-semibold">#{d.id} — {parseFloat(d.amount).toLocaleString()} {d.currencyCode}</p>
+                        <Badge className={`${statusColor(d.status)} text-[10px] px-1.5 py-0`}>{d.status}</Badge>
+                      </div>
+                      <p className="text-xs text-muted-foreground truncate">{d.userName ?? '—'} · {d.externalTransactionId}</p>
+                      {d.adminNoteInternal && <p className="text-xs text-muted-foreground italic mt-0.5">Note: {d.adminNoteInternal}</p>}
+                    </div>
+                    {d.receiptImage && (
+                      <button onClick={() => setLightbox(d.receiptImage)} className="shrink-0">
+                        <img src={d.receiptImage} alt="Receipt" className="w-12 h-12 rounded-lg object-cover border border-border hover:opacity-80 transition-opacity" />
+                      </button>
+                    )}
+                  </div>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        )}
+      </div>
+    </>
   );
 }
 
