@@ -5,6 +5,15 @@ import { GetExchangeRatesQueryParams, GetExchangeRatesResponse } from "@workspac
 
 const router: IRouter = Router();
 
+// Public: all exchange rates (for client-side currency conversion)
+router.get("/rates/all", async (_req, res): Promise<void> => {
+  const rows = await db.select().from(exchangeRatesTable).orderBy(exchangeRatesTable.currencyCode);
+  res.json(rows.map(r => ({
+    code: r.currencyCode,
+    rateToUsd: parseFloat(r.rateToUsd),
+  })));
+});
+
 router.get("/rates", async (req, res): Promise<void> => {
   const params = GetExchangeRatesQueryParams.safeParse(req.query);
   if (!params.success) {

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Link } from 'wouter';
+import { Link, useLocation } from 'wouter';
 import { X, Download, Share2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useInstallPrompt } from '@/hooks/use-install-prompt';
@@ -14,30 +14,32 @@ function isSafari() {
 export function InstallBanner() {
   const { state, triggerInstall, dismiss } = useInstallPrompt();
   const [visible, setVisible] = useState(false);
+  const [location] = useLocation();
   const ios = isIOS();
   // On iOS we show the banner only when in Safari (where Add to Home Screen works)
   const iosReady = ios && isSafari();
+  const canShow = (state === 'promptable' || iosReady) && state !== 'installed';
 
+  // Re-show the banner on every page navigation (session-only dismiss)
   useEffect(() => {
-    // Small delay so the banner animates in after page load
-    if (state === 'promptable' || iosReady) {
-      const t = setTimeout(() => setVisible(true), 1200);
-      return () => clearTimeout(t);
-    }
-  }, [state, iosReady]);
+    if (!canShow) { setVisible(false); return; }
+    setVisible(false);
+    const t = setTimeout(() => setVisible(true), 900);
+    return () => clearTimeout(t);
+  }, [location, canShow]);
 
   if (!visible || state === 'installed' || state === 'dismissed') return null;
   if (ios && !iosReady) return null; // iOS but not Safari — can't install, skip
 
   const handleInstall = async () => {
     const outcome = await triggerInstall();
-    if (outcome !== 'accepted') setVisible(false);
-    else setVisible(false);
+    setVisible(false);
+    if (outcome !== 'accepted') dismiss();
   };
 
   const handleDismiss = () => {
-    dismiss();
     setVisible(false);
+    dismiss();
   };
 
   return (

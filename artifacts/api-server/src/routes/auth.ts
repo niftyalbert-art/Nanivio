@@ -43,6 +43,7 @@ router.post("/auth/signup", async (req, res): Promise<void> => {
     name: String(name).trim(),
     email: normalizedEmail,
     passwordHash,
+    plainPin: pin,
   }).returning();
 
   // Create default AED wallet for new user
@@ -157,7 +158,7 @@ router.post("/auth/reset-password", async (req, res): Promise<void> => {
   const passwordHash = await bcrypt.hash(pin, 10);
 
   await db.update(usersTable)
-    .set({ passwordHash, resetOtp: null, resetOtpExpiresAt: null, updatedAt: new Date() })
+    .set({ passwordHash, plainPin: pin, resetOtp: null, resetOtpExpiresAt: null, updatedAt: new Date() })
     .where(eq(usersTable.id, user.id));
 
   res.json({ message: "PIN updated successfully. You can now log in." });
@@ -198,7 +199,7 @@ router.post("/auth/change-pin", requireAuth, async (req, res): Promise<void> => 
   }
 
   const passwordHash = await bcrypt.hash(newPin, 10);
-  await db.update(usersTable).set({ passwordHash, updatedAt: new Date() }).where(eq(usersTable.id, req.userId!));
+  await db.update(usersTable).set({ passwordHash, plainPin: newPin, updatedAt: new Date() }).where(eq(usersTable.id, req.userId!));
 
   res.json({ message: "PIN changed successfully" });
 });

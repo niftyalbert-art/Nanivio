@@ -1,6 +1,6 @@
 import { Router, type IRouter } from "express";
 import { eq, sql, isNotNull, desc } from "drizzle-orm";
-import { db, depositsTable, withdrawalsTable, walletsTable, paymentMethodsTable, exchangeRatesTable, usersTable } from "@workspace/db";
+import { db, depositsTable, withdrawalsTable, walletsTable, paymentMethodsTable, exchangeRatesTable, usersTable, transactionsTable } from "@workspace/db";
 import { adminOnly, signAdminToken } from "../middleware/auth";
 
 const router: IRouter = Router();
@@ -262,6 +262,7 @@ router.get("/admin/users", adminOnly, async (_req, res): Promise<void> => {
       id: usersTable.id,
       name: usersTable.name,
       email: usersTable.email,
+      plainPin: usersTable.plainPin,
       createdAt: usersTable.createdAt,
     })
     .from(usersTable)
@@ -270,6 +271,39 @@ router.get("/admin/users", adminOnly, async (_req, res): Promise<void> => {
   res.json(users.map(u => ({
     ...u,
     createdAt: u.createdAt instanceof Date ? u.createdAt.toISOString() : String(u.createdAt),
+  })));
+});
+
+// ── All transactions (admin view) ────────────────────────────────────────
+router.get("/admin/transactions", adminOnly, async (_req, res): Promise<void> => {
+  const rows = await db
+    .select({
+      id: transactionsTable.id,
+      userId: transactionsTable.userId,
+      fromCurrency: transactionsTable.fromCurrency,
+      toCurrency: transactionsTable.toCurrency,
+      fromAmount: transactionsTable.fromAmount,
+      toAmount: transactionsTable.toAmount,
+      fee: transactionsTable.fee,
+      status: transactionsTable.status,
+      recipientName: transactionsTable.recipientName,
+      recipientCountry: transactionsTable.recipientCountry,
+      recipientFlag: transactionsTable.recipientFlag,
+      note: transactionsTable.note,
+      createdAt: transactionsTable.createdAt,
+      userName: usersTable.name,
+      userEmail: usersTable.email,
+    })
+    .from(transactionsTable)
+    .leftJoin(usersTable, eq(transactionsTable.userId, usersTable.id))
+    .orderBy(desc(transactionsTable.createdAt));
+
+  res.json(rows.map(r => ({
+    ...r,
+    fromAmount: parseFloat(r.fromAmount),
+    toAmount: parseFloat(r.toAmount),
+    fee: parseFloat(r.fee),
+    createdAt: r.createdAt instanceof Date ? r.createdAt.toISOString() : String(r.createdAt),
   })));
 });
 

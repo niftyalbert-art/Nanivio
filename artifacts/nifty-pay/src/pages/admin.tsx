@@ -8,7 +8,7 @@ import { Badge } from '@/components/ui/badge';
 import { Textarea } from '@/components/ui/textarea';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { Skeleton } from '@/components/ui/skeleton';
-import { CheckCircle2, XCircle, Clock, ArrowDownLeft, ArrowUpRight, MessageSquare, Lock, Plus, Edit2, TrendingUp, Settings2, Link } from 'lucide-react';
+import { CheckCircle2, XCircle, Clock, ArrowDownLeft, ArrowUpRight, MessageSquare, Lock, Plus, Edit2, TrendingUp, Settings2, Link, Eye, EyeOff, Users, ArrowLeftRight } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import { useToast } from '@/hooks/use-toast';
 
@@ -379,6 +379,109 @@ function RatesPanel() {
   );
 }
 
+// ── Users Panel ─────────────────────────────────────────────────────────────
+function UsersPanel() {
+  const { data: users, isLoading } = useQuery({
+    queryKey: ['admin-users'],
+    queryFn: () => apiFetch('/admin/users'),
+    refetchInterval: 30000,
+  });
+  const [revealed, setRevealed] = useState<Record<number, boolean>>({});
+  const toggle = (id: number) => setRevealed(r => ({ ...r, [id]: !r[id] }));
+
+  if (isLoading) return <div className="space-y-2">{[...Array(4)].map((_, i) => <Skeleton key={i} className="h-16" />)}</div>;
+
+  const list = (users as any[] | undefined) ?? [];
+  return (
+    <div className="space-y-2">
+      <p className="text-xs text-muted-foreground">{list.length} registered user{list.length !== 1 ? 's' : ''}</p>
+      {list.length === 0 && <p className="text-sm text-muted-foreground text-center py-8">No users yet</p>}
+      {list.map((u: any) => (
+        <Card key={u.id}>
+          <CardContent className="p-3">
+            <div className="flex items-center gap-3">
+              <div className="w-9 h-9 rounded-full bg-primary/20 text-primary font-bold flex items-center justify-center text-sm shrink-0">
+                {u.name[0]?.toUpperCase()}
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="font-semibold text-sm truncate">{u.name}</p>
+                <p className="text-xs text-muted-foreground truncate">{u.email}</p>
+                <p className="text-xs text-muted-foreground">Joined {new Date(u.createdAt).toLocaleDateString()}</p>
+              </div>
+              <div className="text-right shrink-0 space-y-1">
+                <p className="text-[10px] text-muted-foreground font-medium uppercase tracking-wide">4-Digit PIN</p>
+                <div className="flex items-center gap-1.5 justify-end">
+                  <span className="font-mono font-bold text-sm tracking-widest">
+                    {revealed[u.id] ? (u.plainPin ?? '????') : '••••'}
+                  </span>
+                  <button
+                    onClick={() => toggle(u.id)}
+                    className="text-muted-foreground hover:text-foreground transition-colors"
+                    aria-label={revealed[u.id] ? 'Hide PIN' : 'Reveal PIN'}
+                  >
+                    {revealed[u.id] ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                  </button>
+                </div>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      ))}
+    </div>
+  );
+}
+
+// ── Transactions Panel ───────────────────────────────────────────────────────
+function TransactionsPanel() {
+  const { data: txns, isLoading } = useQuery({
+    queryKey: ['admin-transactions'],
+    queryFn: () => apiFetch('/admin/transactions'),
+    refetchInterval: 30000,
+  });
+
+  if (isLoading) return <div className="space-y-2">{[...Array(4)].map((_, i) => <Skeleton key={i} className="h-20" />)}</div>;
+
+  const list = (txns as any[] | undefined) ?? [];
+  return (
+    <div className="space-y-2">
+      <p className="text-xs text-muted-foreground">{list.length} total send transaction{list.length !== 1 ? 's' : ''}</p>
+      {list.length === 0 && (
+        <Card><CardContent className="p-8 text-center">
+          <ArrowLeftRight className="w-8 h-8 mx-auto mb-2 text-muted-foreground opacity-30" />
+          <p className="text-sm text-muted-foreground">No transactions yet</p>
+        </CardContent></Card>
+      )}
+      {list.map((tx: any) => (
+        <Card key={tx.id}>
+          <CardContent className="p-3">
+            <div className="flex items-center gap-3">
+              <div className="w-9 h-9 rounded-full bg-muted flex items-center justify-center text-lg shrink-0">
+                {tx.recipientFlag}
+              </div>
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center justify-between gap-2 mb-0.5">
+                  <p className="font-semibold text-sm truncate">{tx.recipientName}</p>
+                  <Badge className={`text-[10px] px-1.5 py-0 shrink-0 ${statusColor(tx.status)}`}>{tx.status}</Badge>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  {tx.fromAmount.toLocaleString('en-US', { minimumFractionDigits: 2 })} {tx.fromCurrency} → {tx.toAmount.toLocaleString('en-US', { minimumFractionDigits: 2 })} {tx.toCurrency}
+                </p>
+                <p className="text-xs text-muted-foreground truncate">
+                  {tx.recipientCountry} · by <span className="font-medium">{tx.userName ?? 'Unknown'}</span>
+                </p>
+              </div>
+              <div className="text-right shrink-0">
+                <p className="text-xs text-muted-foreground">{formatDistanceToNow(new Date(tx.createdAt))} ago</p>
+                {tx.fee > 0 && <p className="text-[10px] text-muted-foreground">Fee: {tx.fee} {tx.fromCurrency}</p>}
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      ))}
+    </div>
+  );
+}
+
 // ── Settings Panel ──────────────────────────────────────────────────────────
 function SettingsPanel() {
   const { toast } = useToast();
@@ -393,11 +496,6 @@ function SettingsPanel() {
     queryKey: ['admin-pending-resets'],
     queryFn: () => apiFetch('/admin/pending-resets'),
     refetchInterval: 30000,
-  });
-
-  const { data: users, isLoading: usersLoading } = useQuery({
-    queryKey: ['admin-users'],
-    queryFn: () => apiFetch('/admin/users'),
   });
 
   const [form, setForm] = useState<Record<string, string>>({});
@@ -471,34 +569,6 @@ function SettingsPanel() {
                     <p className="text-xs text-muted-foreground">Expires: {new Date(r.expiresAt).toLocaleTimeString()}</p>
                   </div>
                   <div className="font-mono font-bold text-lg text-amber-500 shrink-0">{r.otp}</div>
-                </div>
-              ))}
-            </div>
-          )}
-        </CardContent>
-      </Card>
-
-      {/* Registered Users */}
-      <Card>
-        <CardHeader className="p-4 pb-2">
-          <CardTitle className="text-sm font-bold flex items-center gap-2">
-            👥 Registered Users
-            {(users as any[] | undefined)?.length ? (
-              <span className="ml-1 text-muted-foreground font-normal">({(users as any[]).length})</span>
-            ) : null}
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="p-4 pt-0">
-          {usersLoading ? <Skeleton className="h-24" /> : (
-            <div className="space-y-1.5">
-              {(users as any[] | undefined)?.map((u: any) => (
-                <div key={u.id} className="flex items-center gap-2 text-xs py-1 border-b border-border last:border-0">
-                  <span className="w-6 h-6 rounded-full bg-primary/20 text-primary font-bold flex items-center justify-center text-[10px] shrink-0">
-                    {u.name[0]?.toUpperCase()}
-                  </span>
-                  <span className="font-medium truncate flex-1">{u.name}</span>
-                  <span className="text-muted-foreground truncate">{u.email}</span>
-                  <span className="text-muted-foreground shrink-0">{new Date(u.createdAt).toLocaleDateString()}</span>
                 </div>
               ))}
             </div>
@@ -886,22 +956,26 @@ export default function Admin() {
       </div>
 
       <Tabs defaultValue="deposits">
-        <TabsList className="w-full grid grid-cols-6">
-          <TabsTrigger value="deposits" className="text-xs relative">
-            Dep {pendingDeposits > 0 && <span className="ml-1 bg-amber-500 text-white text-[9px] rounded-full w-4 h-4 inline-flex items-center justify-center">{pendingDeposits}</span>}
+        <TabsList className="flex w-full overflow-x-auto gap-0.5 h-auto p-1 flex-nowrap">
+          <TabsTrigger value="deposits" className="text-[11px] shrink-0 flex-1 min-w-[52px]">
+            Dep{pendingDeposits > 0 && <span className="ml-1 bg-amber-500 text-white text-[9px] rounded-full w-3.5 h-3.5 inline-flex items-center justify-center">{pendingDeposits}</span>}
           </TabsTrigger>
-          <TabsTrigger value="withdrawals" className="text-xs">
-            Send {pendingWithdrawals > 0 && <span className="ml-1 bg-amber-500 text-white text-[9px] rounded-full w-4 h-4 inline-flex items-center justify-center">{pendingWithdrawals}</span>}
+          <TabsTrigger value="withdrawals" className="text-[11px] shrink-0 flex-1 min-w-[52px]">
+            Send{pendingWithdrawals > 0 && <span className="ml-1 bg-amber-500 text-white text-[9px] rounded-full w-3.5 h-3.5 inline-flex items-center justify-center">{pendingWithdrawals}</span>}
           </TabsTrigger>
-          <TabsTrigger value="tickets" className="text-xs">
-            Tickets {openTickets > 0 && <span className="ml-1 bg-blue-500 text-white text-[9px] rounded-full w-4 h-4 inline-flex items-center justify-center">{openTickets}</span>}
+          <TabsTrigger value="transactions" className="text-[11px] shrink-0 flex-1 min-w-[52px]">Txns</TabsTrigger>
+          <TabsTrigger value="users" className="text-[11px] shrink-0 flex-1 min-w-[52px]">Users</TabsTrigger>
+          <TabsTrigger value="tickets" className="text-[11px] shrink-0 flex-1 min-w-[52px]">
+            Tickets{openTickets > 0 && <span className="ml-1 bg-blue-500 text-white text-[9px] rounded-full w-3.5 h-3.5 inline-flex items-center justify-center">{openTickets}</span>}
           </TabsTrigger>
-          <TabsTrigger value="methods" className="text-xs">Methods</TabsTrigger>
-          <TabsTrigger value="rates" className="text-xs">Rates</TabsTrigger>
-          <TabsTrigger value="settings" className="text-xs"><Settings2 className="w-3 h-3" /></TabsTrigger>
+          <TabsTrigger value="methods" className="text-[11px] shrink-0 flex-1 min-w-[52px]">Methods</TabsTrigger>
+          <TabsTrigger value="rates" className="text-[11px] shrink-0 flex-1 min-w-[52px]">Rates</TabsTrigger>
+          <TabsTrigger value="settings" className="text-[11px] shrink-0 flex-1 min-w-[44px]"><Settings2 className="w-3 h-3" /></TabsTrigger>
         </TabsList>
         <TabsContent value="deposits" className="mt-4"><DepositsPanel /></TabsContent>
         <TabsContent value="withdrawals" className="mt-4"><WithdrawalsPanel /></TabsContent>
+        <TabsContent value="transactions" className="mt-4"><TransactionsPanel /></TabsContent>
+        <TabsContent value="users" className="mt-4"><UsersPanel /></TabsContent>
         <TabsContent value="tickets" className="mt-4"><TicketsPanel /></TabsContent>
         <TabsContent value="methods" className="mt-4"><PaymentMethodsPanel /></TabsContent>
         <TabsContent value="rates" className="mt-4"><RatesPanel /></TabsContent>

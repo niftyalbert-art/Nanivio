@@ -67,8 +67,7 @@ export function useInstallPrompt() {
   };
 
   const dismiss = () => {
-    const until = Date.now() + DISMISS_DAYS * 24 * 60 * 60 * 1000;
-    localStorage.setItem(DISMISS_KEY, String(until));
+    // Session-only dismiss — no localStorage, so banner reappears on next visit
     setState('dismissed');
   };
 
