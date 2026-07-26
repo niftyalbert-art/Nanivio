@@ -163,7 +163,7 @@ router.post("/transactions", requireAuth, async (req, res): Promise<void> => {
   const totalCost = fromAmount + fee;
 
   if (currentBalance < totalCost) {
-    res.status(400).json({ error: "Insufficient balance" });
+    res.status(400).json({ error: "Insufficient balance. Please kindly add transfer fee." });
     return;
   }
 

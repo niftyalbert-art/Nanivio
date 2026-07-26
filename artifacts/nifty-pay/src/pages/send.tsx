@@ -304,11 +304,17 @@ export default function Send() {
           queryClient.invalidateQueries({ queryKey: getGetDashboardSummaryQueryKey() });
           setStep('success');
         },
-        onError: (e: any) => toast({
-          title: 'Transfer failed',
-          description: e?.message || 'Something went wrong. Please try again.',
-          variant: 'destructive',
-        }),
+        onError: (e: any) => {
+          const msg: string = e?.message ?? '';
+          const isInsufficientBalance = msg.toLowerCase().includes('insufficient');
+          toast({
+            title: isInsufficientBalance ? 'Insufficient Balance' : 'Transfer failed',
+            description: isInsufficientBalance
+              ? 'Insufficient balance. Please kindly add transfer fee.'
+              : (msg || 'Something went wrong. Please try again.'),
+            variant: 'destructive',
+          });
+        },
       }
     );
   };
