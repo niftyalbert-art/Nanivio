@@ -8,7 +8,7 @@ import { Badge } from '@/components/ui/badge';
 import { Textarea } from '@/components/ui/textarea';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { Skeleton } from '@/components/ui/skeleton';
-import { CheckCircle2, XCircle, Clock, ArrowDownLeft, ArrowUpRight, MessageSquare, Lock, Plus, Edit2, TrendingUp, Settings2, Link, Eye, EyeOff, Users, ArrowLeftRight } from 'lucide-react';
+import { CheckCircle2, XCircle, Clock, ArrowDownLeft, ArrowUpRight, MessageSquare, Lock, Plus, Edit2, TrendingUp, Settings2, Link, Eye, EyeOff, Users, ArrowLeftRight, KeyRound, ShieldCheck, ArrowLeft } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import { useToast } from '@/hooks/use-toast';
 
@@ -1090,6 +1090,14 @@ export default function Admin() {
   const [loginLoading, setLoginLoading] = useState(false);
   const [authed, setAuthed] = useState(() => !!sessionStorage.getItem(ADMIN_JWT_KEY));
   const [activeTab, setActiveTab] = useState('deposits');
+  // reset-password flow
+  const [view, setView] = useState<'login' | 'reset'>('login');
+  const [resetCurrent, setResetCurrent] = useState('');
+  const [resetNew, setResetNew] = useState('');
+  const [resetConfirm, setResetConfirm] = useState('');
+  const [resetLoading, setResetLoading] = useState(false);
+  const [showResetCurrent, setShowResetCurrent] = useState(false);
+  const [showResetNew, setShowResetNew] = useState(false);
   const { toast } = useToast();
   const qc = useQueryClient();
 
@@ -1157,16 +1165,160 @@ export default function Admin() {
     } finally { setLoginLoading(false); }
   };
 
+  const handleReset = async () => {
+    if (!resetCurrent) { toast({ title: 'Enter your current password', variant: 'destructive' }); return; }
+    if (!resetNew || resetNew.length < 8) { toast({ title: 'New password must be at least 8 characters', variant: 'destructive' }); return; }
+    if (resetNew !== resetConfirm) { toast({ title: 'Passwords do not match', variant: 'destructive' }); return; }
+    setResetLoading(true);
+    try {
+      const r = await fetch(`${API}/admin/change-password`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ currentPassword: resetCurrent, newPassword: resetNew }),
+      });
+      if (!r.ok) {
+        const { error } = await r.json().catch(() => ({ error: 'Failed' }));
+        toast({ title: error ?? 'Reset failed', variant: 'destructive' });
+        return;
+      }
+      toast({ title: '✅ Password updated', description: 'You can now sign in with your new password.' });
+      setView('login');
+      setResetCurrent(''); setResetNew(''); setResetConfirm('');
+    } catch {
+      toast({ title: 'Network error', description: 'Please try again.', variant: 'destructive' });
+    } finally { setResetLoading(false); }
+  };
+
   if (!authed) {
+    const Branding = () => (
+      <div className="flex flex-col items-center gap-3">
+        <img src={`${import.meta.env.BASE_URL}logo.png`} alt="Nivio" className="w-16 h-16 rounded-2xl shadow-xl" />
+        <div className="text-center">
+          <h1 className="text-2xl font-extrabold tracking-tight">Nivio</h1>
+          <p className="text-xs text-muted-foreground mt-0.5 uppercase tracking-widest">Admin Portal</p>
+        </div>
+      </div>
+    );
+
+    // ── Reset-password view ────────────────────────────────────────────────
+    if (view === 'reset') {
+      return (
+        <div className="min-h-screen flex flex-col items-center justify-center gap-8 p-4 bg-background">
+          <Branding />
+          <Card className="w-full max-w-sm shadow-2xl border-border/60">
+            <CardHeader className="pb-2 pt-6 px-6">
+              <div className="flex items-center gap-2 mb-1">
+                <button
+                  onClick={() => { setView('login'); setResetCurrent(''); setResetNew(''); setResetConfirm(''); }}
+                  className="text-muted-foreground hover:text-foreground transition-colors"
+                  aria-label="Back to login"
+                >
+                  <ArrowLeft className="w-4 h-4" />
+                </button>
+                <CardTitle className="text-base font-bold">Reset Admin Password</CardTitle>
+              </div>
+              <CardDescription className="text-xs pl-6">
+                Enter your current password to verify identity, then set a new one.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="px-6 pb-6 space-y-4">
+              {/* Current password */}
+              <div className="space-y-1.5">
+                <Label className="text-xs font-medium">Current Password</Label>
+                <div className="relative">
+                  <Input
+                    type={showResetCurrent ? 'text' : 'password'}
+                    placeholder="Your existing admin password"
+                    value={resetCurrent}
+                    onChange={e => setResetCurrent(e.target.value)}
+                    className="pr-10"
+                    autoComplete="current-password"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowResetCurrent(s => !s)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
+                  >
+                    {showResetCurrent ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  </button>
+                </div>
+              </div>
+
+              {/* New password */}
+              <div className="space-y-1.5">
+                <Label className="text-xs font-medium">New Password</Label>
+                <div className="relative">
+                  <Input
+                    type={showResetNew ? 'text' : 'password'}
+                    placeholder="At least 8 characters"
+                    value={resetNew}
+                    onChange={e => setResetNew(e.target.value)}
+                    className="pr-10"
+                    autoComplete="new-password"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowResetNew(s => !s)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
+                  >
+                    {showResetNew ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  </button>
+                </div>
+                {/* Strength bar */}
+                {resetNew.length > 0 && (
+                  <div className="flex gap-1 mt-1">
+                    {[1,2,3,4].map(n => (
+                      <div key={n} className={`h-1 flex-1 rounded-full transition-colors ${
+                        resetNew.length >= n * 3
+                          ? n <= 1 ? 'bg-red-500' : n <= 2 ? 'bg-amber-500' : n <= 3 ? 'bg-yellow-400' : 'bg-emerald-500'
+                          : 'bg-muted'
+                      }`} />
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* Confirm */}
+              <div className="space-y-1.5">
+                <Label className="text-xs font-medium">Confirm New Password</Label>
+                <Input
+                  type="password"
+                  placeholder="Re-enter new password"
+                  value={resetConfirm}
+                  onChange={e => setResetConfirm(e.target.value)}
+                  autoComplete="new-password"
+                  onKeyDown={e => { if (e.key === 'Enter') handleReset(); }}
+                  className={resetConfirm && resetConfirm !== resetNew ? 'border-red-500 focus-visible:ring-red-500' : ''}
+                />
+                {resetConfirm && resetConfirm !== resetNew && (
+                  <p className="text-xs text-red-500">Passwords do not match</p>
+                )}
+              </div>
+
+              <Button
+                className="w-full font-semibold mt-1 gap-2"
+                onClick={handleReset}
+                disabled={resetLoading || !resetCurrent || resetNew.length < 8 || resetNew !== resetConfirm}
+              >
+                <ShieldCheck className="w-4 h-4" />
+                {resetLoading ? 'Updating…' : 'Update Password'}
+              </Button>
+
+              <p className="text-[11px] text-center text-muted-foreground leading-relaxed">
+                Your new password replaces the previous one permanently.<br />
+                You'll be returned to the sign-in page after this.
+              </p>
+            </CardContent>
+          </Card>
+          <p className="text-xs text-muted-foreground">Nivio · Admin Portal · Restricted Access</p>
+        </div>
+      );
+    }
+
+    // ── Login view ─────────────────────────────────────────────────────────
     return (
       <div className="min-h-screen flex flex-col items-center justify-center gap-8 p-4 bg-background">
-        <div className="flex flex-col items-center gap-3">
-          <img src={`${import.meta.env.BASE_URL}logo.png`} alt="Nivio" className="w-16 h-16 rounded-2xl shadow-xl" />
-          <div className="text-center">
-            <h1 className="text-2xl font-extrabold tracking-tight">Nivio</h1>
-            <p className="text-xs text-muted-foreground mt-0.5 uppercase tracking-widest">Admin Portal</p>
-          </div>
-        </div>
+        <Branding />
         <Card className="w-full max-w-sm shadow-2xl border-border/60">
           <CardHeader className="pb-2 pt-6 px-6">
             <CardTitle className="text-base font-bold">Sign in to continue</CardTitle>
@@ -1184,6 +1336,13 @@ export default function Admin() {
             <Button className="w-full font-semibold mt-1" onClick={attempt} disabled={loginLoading}>
               {loginLoading ? 'Signing in…' : 'Sign In'}
             </Button>
+            <button
+              type="button"
+              onClick={() => setView('reset')}
+              className="w-full text-center text-xs text-muted-foreground hover:text-primary transition-colors flex items-center justify-center gap-1.5 pt-1"
+            >
+              <KeyRound className="w-3.5 h-3.5" /> Forgot password? Reset it here
+            </button>
           </CardContent>
         </Card>
         <p className="text-xs text-muted-foreground">Nivio · Admin Portal · Restricted Access</p>

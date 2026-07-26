@@ -1,24 +1,63 @@
 import { Router, type IRouter } from "express";
 import { eq, sql, isNotNull, desc, and } from "drizzle-orm";
-import { db, depositsTable, withdrawalsTable, walletsTable, paymentMethodsTable, exchangeRatesTable, usersTable, transactionsTable } from "@workspace/db";
+import { db, depositsTable, withdrawalsTable, walletsTable, paymentMethodsTable, exchangeRatesTable, usersTable, transactionsTable, settingsTable } from "@workspace/db";
 import { adminOnly, signAdminToken } from "../middleware/auth";
+import bcrypt from "bcryptjs";
 
 const router: IRouter = Router();
 
+// ── Helper: verify the submitted password against DB hash or env-var fallback
+async function verifyAdminPassword(submitted: string): Promise<boolean> {
+  // 1. Try the bcrypt hash stored in settings (set after first password change)
+  const [row] = await db.select().from(settingsTable).where(eq(settingsTable.key, "admin_password_hash"));
+  if (row?.value) {
+    return bcrypt.compare(submitted, row.value);
+  }
+  // 2. Fall back to the plain ADMIN_PASSWORD env var (original setup)
+  const envPass = process.env.ADMIN_PASSWORD;
+  return !!envPass && submitted === envPass;
+}
+
 // ── Admin login — issues a short-lived JWT (no static key in client code) ─
 router.post("/admin/login", async (req, res): Promise<void> => {
-  const adminPassword = process.env.ADMIN_PASSWORD;
-  if (!adminPassword) {
-    res.status(503).json({ error: "ADMIN_PASSWORD not configured on server" });
+  const { password } = req.body ?? {};
+  if (!password) {
+    res.status(400).json({ error: "Password required" });
     return;
   }
-  const { password } = req.body ?? {};
-  if (!password || password !== adminPassword) {
+  const ok = await verifyAdminPassword(password);
+  if (!ok) {
     res.status(401).json({ error: "Invalid credentials" });
     return;
   }
   const token = signAdminToken();
   res.json({ token });
+});
+
+// ── Admin change-password (also used as "forgot password" reset) ───────────
+// Caller must prove they know the CURRENT password (env var or stored hash).
+// On success, the new password is stored as a bcrypt hash in the settings table,
+// and all future logins use that hash instead of the env var.
+router.post("/admin/change-password", async (req, res): Promise<void> => {
+  const { currentPassword, newPassword } = req.body ?? {};
+  if (!currentPassword || !newPassword) {
+    res.status(400).json({ error: "currentPassword and newPassword are required" });
+    return;
+  }
+  if (newPassword.length < 8) {
+    res.status(400).json({ error: "New password must be at least 8 characters" });
+    return;
+  }
+  const ok = await verifyAdminPassword(currentPassword);
+  if (!ok) {
+    res.status(401).json({ error: "Current password is incorrect" });
+    return;
+  }
+  const hash = await bcrypt.hash(newPassword, 12);
+  await db.insert(settingsTable)
+    .values({ key: "admin_password_hash", value: hash, updatedAt: new Date() })
+    .onConflictDoUpdate({ target: settingsTable.key, set: { value: hash, updatedAt: new Date() } });
+  res.json({ ok: true });
 });
 
 // ── Admin list views (all records, not user-scoped) ────────────────────────
