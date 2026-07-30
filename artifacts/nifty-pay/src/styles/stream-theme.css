@@ -60,22 +60,32 @@
     padding-bottom: 12px;
   }
 
-  /* Channel container fills the wrapper div */
+  /* ── Channel: force single-column layout ── */
   .str-chat__channel {
     flex: 1;
     min-height: 0;
-    display: flex;
-    flex-direction: column;
+    display: flex !important;
+    flex-direction: column !important;
     overflow: hidden;
+    width: 100% !important;
+  }
+
+  /* Hide Thread panel entirely — it renders as a side panel on desktop
+     but breaks the single-column mobile layout */
+  .str-chat__thread,
+  .str-chat__thread-container {
+    display: none !important;
   }
 
   /* Window fills remaining height after our custom header */
   .str-chat__main-panel {
-    flex: 1;
-    min-height: 0;
-    display: flex;
-    flex-direction: column;
+    flex: 1 !important;
+    min-height: 0 !important;
+    display: flex !important;
+    flex-direction: column !important;
     overflow: hidden;
+    width: 100% !important;
+    max-width: 100% !important;
   }
 
   /* Message list scrolls within the available space */
@@ -86,9 +96,10 @@
     -webkit-overflow-scrolling: touch;
   }
 
-  /* Composer is fixed-height at the bottom, never grows past the screen */
+  /* Composer pinned at the bottom, never grows past the screen */
   .str-chat__message-input {
-    flex-shrink: 0;
+    flex-shrink: 0 !important;
+    width: 100% !important;
   }
 }
 
