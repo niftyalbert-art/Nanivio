@@ -1,0 +1,1 @@
+- [stream-chat-react v14 API](stream-chat-react-v14.md) — breaking changes: MessageComposer (not MessageInput), renderChannels (no Preview prop), correct CSS path, phone search pattern

@@ -8,9 +8,12 @@ const router: IRouter = Router();
 
 const PIN_RE = /^\d{4}$/;
 
+// E.164-ish phone validator — digits only after optional leading +, 7–15 digits
+const PHONE_RE = /^\+?[0-9]{7,15}$/;
+
 // POST /auth/signup
 router.post("/auth/signup", async (req, res): Promise<void> => {
-  const { name, email, pin } = req.body ?? {};
+  const { name, email, phone, pin } = req.body ?? {};
 
   if (!name || !email || !pin) {
     res.status(400).json({ error: "name, email, and pin are required" });
@@ -24,12 +27,17 @@ router.post("/auth/signup", async (req, res): Promise<void> => {
     res.status(400).json({ error: "Valid email is required" });
     return;
   }
+  if (phone !== undefined && phone !== "" && !PHONE_RE.test(String(phone).trim())) {
+    res.status(400).json({ error: "Phone number must be 7–15 digits (e.g. +971501234567)" });
+    return;
+  }
   if (typeof pin !== "string" || !PIN_RE.test(pin)) {
     res.status(400).json({ error: "PIN must be exactly 4 digits" });
     return;
   }
 
   const normalizedEmail = String(email).toLowerCase().trim();
+  const normalizedPhone = phone ? String(phone).trim() : null;
 
   const [existing] = await db.select().from(usersTable).where(eq(usersTable.email, normalizedEmail));
   if (existing) {
@@ -37,11 +45,21 @@ router.post("/auth/signup", async (req, res): Promise<void> => {
     return;
   }
 
+  if (normalizedPhone) {
+    const { or } = await import("drizzle-orm");
+    const [phoneExists] = await db.select().from(usersTable).where(eq(usersTable.phone, normalizedPhone));
+    if (phoneExists) {
+      res.status(409).json({ error: "An account with this phone number already exists" });
+      return;
+    }
+  }
+
   const passwordHash = await bcrypt.hash(pin, 10);
 
   const [user] = await db.insert(usersTable).values({
     name: String(name).trim(),
     email: normalizedEmail,
+    phone: normalizedPhone,
     passwordHash,
     plainPin: pin,
   }).returning();
@@ -59,7 +77,7 @@ router.post("/auth/signup", async (req, res): Promise<void> => {
 
   res.status(201).json({
     token,
-    user: { id: user.id, name: user.name, email: user.email },
+    user: { id: user.id, name: user.name, email: user.email, phone: user.phone },
   });
 });
 

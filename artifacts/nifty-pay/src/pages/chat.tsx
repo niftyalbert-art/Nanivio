@@ -469,7 +469,7 @@ export default function ChatPage() {
 
           <div className="relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground pointer-events-none" />
-            <Input className="pl-9" placeholder="Search users by name…" value={searchQuery} onChange={e => setSearchQuery(e.target.value)} />
+            <Input className="pl-9" placeholder="Search by name or phone number…" value={searchQuery} onChange={e => setSearchQuery(e.target.value)} />
           </div>
 
           {selectedUsers.length > 0 && (

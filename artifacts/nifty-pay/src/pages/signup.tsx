@@ -14,6 +14,7 @@ export default function SignUp() {
 
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
+  const [phone, setPhone] = useState('');
   const [pin, setPin] = useState('');
   const [confirmPin, setConfirmPin] = useState('');
   const [loading, setLoading] = useState(false);
@@ -30,7 +31,7 @@ export default function SignUp() {
       const r = await fetch(`${API}/auth/signup`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name, email, pin }),
+        body: JSON.stringify({ name, email, phone: phone.trim() || undefined, pin }),
       });
       const data = await r.json();
       if (!r.ok) { setError(data.error ?? 'Sign up failed'); return; }
@@ -92,6 +93,21 @@ export default function SignUp() {
               onChange={e => setEmail(e.target.value)}
               required
             />
+          </div>
+
+          <div className="space-y-1.5">
+            <Label htmlFor="phone">
+              Phone Number <span className="text-muted-foreground font-normal">(optional)</span>
+            </Label>
+            <Input
+              id="phone"
+              type="tel"
+              autoComplete="tel"
+              placeholder="+971501234567"
+              value={phone}
+              onChange={e => setPhone(e.target.value)}
+            />
+            <p className="text-xs text-muted-foreground">Others can find you by phone number in chat.</p>
           </div>
 
           <div className="space-y-3">
