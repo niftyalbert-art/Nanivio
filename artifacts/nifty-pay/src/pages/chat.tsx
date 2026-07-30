@@ -181,7 +181,7 @@ function ChatInner({
               <Plus className="w-3.5 h-3.5" /> New Chat
             </Button>
           </div>
-          <div className="flex-1 overflow-y-auto overscroll-contain">
+          <div className="flex-1 overflow-y-auto overscroll-contain pb-2">
             <ChannelList
               filters={channelFilters}
               sort={channelSort}
@@ -484,7 +484,13 @@ export default function ChatPage() {
   }
 
   return (
-    <div className="h-full flex flex-col overflow-hidden">
+    /*
+     * Mobile layout:  100dvh minus sticky header (56px) minus fixed bottom nav (56px).
+     * Using 100dvh (dynamic) means the box shrinks when the virtual keyboard opens,
+     * keeping the composer pinned just above the keyboard instead of hidden under it.
+     * Desktop: h-full works fine — no fixed nav, no sticky header offset.
+     */
+    <div className="flex flex-col overflow-hidden md:h-full h-[calc(100dvh-56px-56px)]">
       {incomingCall && (
         <IncomingCallBanner
           callerName={

@@ -34,5 +34,38 @@
 /* Make message input match our theme */
 .str-chat__message-input { border-top: 1px solid rgba(240, 246, 252, 0.08); }
 
+/* ── Mobile composer fixes ────────────────────────────────────────────────────
+   1. font-size ≥ 16px prevents iOS Safari from auto-zooming when the textarea
+      is tapped — without this the whole page zooms and the layout breaks.
+   2. padding-bottom + env(safe-area-inset-bottom) clears the home indicator on
+      notch-family iPhones so the composer row sits above it.
+   3. max-height caps the growing textarea so it never pushes the message list
+      completely off screen on small phones.
+── */
+@media (max-width: 767px) {
+  .str-chat__message-input {
+    padding-bottom: max(8px, env(safe-area-inset-bottom));
+  }
+
+  .str-chat__message-input textarea,
+  .str-chat__message-input [contenteditable] {
+    font-size: 16px !important; /* prevent iOS auto-zoom */
+    max-height: 120px;
+    line-height: 1.45;
+  }
+
+  /* Give the message list a touch-friendly bottom gap so the last message
+     isn't hidden behind the composer bar */
+  .str-chat__list {
+    padding-bottom: 12px;
+  }
+
+  /* Ensure the channel Window fills its container on mobile */
+  .str-chat__main-panel {
+    min-height: 0;
+    flex: 1;
+  }
+}
+
 /* ── Stream Video overrides ── */
 .str-video { --str-video__primary-color: #2dd4bf; font-family: 'Inter', ui-sans-serif, sans-serif; }
