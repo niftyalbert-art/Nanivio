@@ -313,26 +313,39 @@ export default function ChatPage() {
       : { id: '__init__', name: '' },
   });
 
-  /* init video client */
+  /* init video client — uses a dedicated video token from @stream-io/node-sdk */
   useEffect(() => {
     if (!streamData) return;
-    const vc = new StreamVideoClient({
-      apiKey: streamData.apiKey,
-      user: { id: streamData.userId, name: streamData.userName },
-      token: streamData.token,
-    });
-    setVideoClient(vc);
-    vc.on('call.ring', (event: any) => {
-      stopRingtoneRef.current?.();
-      stopRingtoneRef.current = createRingtone('incoming');
-      setIncomingCall(event.call);
-    });
+    let cancelled = false;
+    const authToken = localStorage.getItem('nivio_token');
+    fetch(`${API}/stream/video-token`, { headers: { Authorization: `Bearer ${authToken}` } })
+      .then(r => r.json())
+      .then(({ token }: { token: string }) => {
+        if (cancelled) return;
+        const vc = new StreamVideoClient({
+          apiKey: streamData.apiKey,
+          user: { id: streamData.userId, name: streamData.userName },
+          token,
+        });
+        setVideoClient(vc);
+        vc.on('call.ring', (event: any) => {
+          stopRingtoneRef.current?.();
+          stopRingtoneRef.current = createRingtone('incoming');
+          setIncomingCall(event.call);
+        });
+      })
+      .catch((e) => {
+        console.error('Video client init failed:', e);
+      });
     return () => {
+      cancelled = true;
+      setVideoClient(prev => {
+        prev?.disconnectUser().catch(() => {});
+        return null;
+      });
       stopRingtoneRef.current?.();
-      vc.disconnectUser().catch(() => {});
-      setVideoClient(null);
     };
-  }, [streamData?.token]);
+  }, [streamData?.userId]);
 
   /* search users */
   useEffect(() => {
@@ -371,21 +384,39 @@ export default function ChatPage() {
   };
 
   const handleStartCall = useCallback(async (type: 'audio' | 'video', ch: StreamChannel) => {
-    if (!videoClient) return;
+    if (!videoClient) {
+      toast({ title: 'Video not ready', description: 'Please wait a moment and try again.', variant: 'destructive' });
+      return;
+    }
     stopRingtoneRef.current?.();
     stopRingtoneRef.current = createRingtone('outgoing');
     try {
-      const callId = `nivio-${ch.id ?? Date.now()}`;
-      const call = videoClient.call('default', callId);
+      // Use a stable call ID per channel so retries rejoin the same call
+      const callId = `nivio-${(ch.id ?? Date.now()).toString().replace(/[^a-zA-Z0-9_-]/g, '-')}`;
+      const callType = type === 'audio' ? 'audio_room' : 'default';
+      const call = videoClient.call(callType, callId);
       const memberIds = Object.keys(ch.state?.members ?? {});
-      await call.getOrCreate({ ring: true, data: { members: memberIds.map(id => ({ user_id: id })) } });
-      await call.join();
+      // Members must be passed at the top level for ringing to work in SDK v1
+      await call.getOrCreate({
+        ring: true,
+        members_limit: memberIds.length + 1,
+        data: {
+          members: memberIds.map(id => ({ user_id: id })),
+          settings_override: {
+            audio: { default_device: type === 'audio' ? 'speaker' : 'earpiece', noise_cancellation: { mode: 'disabled' } },
+            video: { enabled: type === 'video' },
+          },
+        },
+      });
+      await call.join({ create: false });
       stopRingtoneRef.current?.();
       stopRingtoneRef.current = null;
       setActiveCall(call);
-    } catch {
+    } catch (e: any) {
       stopRingtoneRef.current?.();
-      toast({ title: 'Call failed', variant: 'destructive' });
+      const msg = e?.message ?? String(e);
+      console.error('Call failed:', msg);
+      toast({ title: 'Call failed', description: msg, variant: 'destructive' });
     }
   }, [videoClient]);
 

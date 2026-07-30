@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { StreamChat } from 'stream-chat';
+import { StreamClient } from '@stream-io/node-sdk';
 import { eq } from 'drizzle-orm';
 import { db, usersTable } from '@workspace/db';
 import { requireAuth } from '../middleware/auth';
@@ -13,7 +14,14 @@ function getClient() {
   return StreamChat.getInstance(key, secret);
 }
 
-// GET /stream/token — generate user token + upsert user (including phone)
+function getVideoServerClient() {
+  const key = process.env.STREAM_API_KEY;
+  const secret = process.env.STREAM_API_SECRET;
+  if (!key || !secret) throw new Error('Stream credentials not configured');
+  return new StreamClient(key, secret);
+}
+
+// GET /stream/token — generate chat token + upsert user (including phone)
 router.get('/stream/token', requireAuth, async (req, res): Promise<void> => {
   try {
     const client = getClient();
@@ -24,6 +32,21 @@ router.get('/stream/token', requireAuth, async (req, res): Promise<void> => {
     const phone = dbUser?.phone ?? undefined;
     await client.upsertUser({ id: userId, name: userName, ...(phone ? { phone } : {}) });
     const token = client.createToken(userId);
+    res.json({ token, userId, userName, apiKey: process.env.STREAM_API_KEY });
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// GET /stream/video-token — generate a video-capable token via @stream-io/node-sdk
+router.get('/stream/video-token', requireAuth, async (req, res): Promise<void> => {
+  try {
+    const videoClient = getVideoServerClient();
+    const userId = String(req.userId!);
+    const userName = (req as any).userName ?? 'User';
+    // Upsert user into Stream Video as well
+    await videoClient.upsertUsers({ users: { [userId]: { id: userId, name: userName } } });
+    const token = videoClient.generateUserToken({ user_id: userId });
     res.json({ token, userId, userName, apiKey: process.env.STREAM_API_KEY });
   } catch (e: any) {
     res.status(500).json({ error: e.message });
