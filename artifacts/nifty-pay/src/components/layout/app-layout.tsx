@@ -1,5 +1,5 @@
 import { Link, useLocation } from 'wouter';
-import { Home, Send, Receipt, Globe, Wallet, BarChart3, User } from 'lucide-react';
+import { Home, Send, Receipt, Globe, Wallet, BarChart3, User, MessageSquare } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useGetUserProfile } from '@workspace/api-client-react';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
@@ -10,14 +10,15 @@ interface AppLayoutProps {
 }
 
 const navigation = [
-  { name: 'Home',         href: '/',             icon: Home },
-  { name: 'Send',         href: '/send',          icon: Send },
-  { name: 'Transactions', href: '/transactions',  icon: Receipt },
-  { name: 'Wallets',      href: '/wallets',       icon: Wallet },
-  { name: 'Account',      href: '/account',       icon: User },
+  { name: 'Home',     href: '/',             icon: Home },
+  { name: 'Send',     href: '/send',         icon: Send },
+  { name: 'Chat',     href: '/chat',         icon: MessageSquare },
+  { name: 'Wallets',  href: '/wallets',      icon: Wallet },
+  { name: 'Account',  href: '/account',      icon: User },
 ];
 
 const sidebarExtra = [
+  { name: 'Transactions', href: '/transactions',  icon: Receipt },
   { name: 'Countries',    href: '/countries',     icon: Globe },
   { name: 'Stats',        href: '/stats',         icon: BarChart3 },
 ];

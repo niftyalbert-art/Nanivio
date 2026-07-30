@@ -14,6 +14,7 @@ import Stats from '@/pages/stats';
 import Deposit from '@/pages/deposit';
 import Withdraw from '@/pages/withdraw';
 import Account from '@/pages/account';
+import Chat from '@/pages/chat';
 import Admin from '@/pages/admin';
 import Install from '@/pages/install';
 import Login from '@/pages/login';
@@ -64,6 +65,7 @@ function Router() {
             <Route path="/deposit" component={Deposit} />
             <Route path="/withdraw" component={Withdraw} />
             <Route path="/account" component={Account} />
+            <Route path="/chat" component={Chat} />
             <Route component={NotFound} />
           </Switch>
         </AppLayout>

@@ -1,0 +1,38 @@
+@import 'stream-chat-react/dist/css/index.css';
+@import '@stream-io/video-react-sdk/dist/css/styles.css';
+
+/* ── Nivio dark theme overrides for Stream Chat ── */
+.str-chat__theme-dark {
+  --str-chat__primary-color: #2dd4bf;
+  --str-chat__active-primary-color: #14b8a6;
+  --str-chat__background-color: #0d1117;
+  --str-chat__secondary-background-color: #161b22;
+  --str-chat__tertiary-background-color: #21262d;
+  --str-chat__channel-list-background-color: #0d1117;
+  --str-chat__text-color: #f0f6fc;
+  --str-chat__secondary-text-color: #8b949e;
+  --str-chat__disabled-color: rgba(240, 246, 252, 0.2);
+  --str-chat__border-color: rgba(240, 246, 252, 0.08);
+  --str-chat__message-bubble-background-color: #21262d;
+  --str-chat__own-message-bubble-background-color: #2dd4bf;
+  --str-chat__own-message-bubble-text-color: #0d1117;
+  --str-chat__message-input-background-color: #161b22;
+  --str-chat__message-input-border-color: rgba(240, 246, 252, 0.08);
+  --str-chat__font-family: 'Inter', ui-sans-serif, sans-serif;
+  --str-chat__border-radius-md: 14px;
+  --str-chat__border-radius-sm: 8px;
+  --str-chat__border-radius-lg: 20px;
+  font-family: 'Inter', ui-sans-serif, sans-serif;
+}
+
+/* Remove Stream's built-in channel list header (we render our own) */
+.str-chat__channel-list-messenger__main .str-chat__channel-list-header { display: none; }
+
+/* Tighten message list padding */
+.str-chat__list { padding: 8px 0; }
+
+/* Make message input match our theme */
+.str-chat__message-input { border-top: 1px solid rgba(240, 246, 252, 0.08); }
+
+/* ── Stream Video overrides ── */
+.str-video { --str-video__primary-color: #2dd4bf; font-family: 'Inter', ui-sans-serif, sans-serif; }

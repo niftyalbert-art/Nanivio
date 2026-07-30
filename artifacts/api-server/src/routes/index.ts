@@ -12,6 +12,7 @@ import withdrawalsRouter from "./withdrawals";
 import adminRouter from "./admin";
 import ticketsRouter from "./tickets";
 import settingsRouter from "./settings";
+import streamRouter from "./stream";
 
 const router: IRouter = Router();
 
@@ -28,5 +29,6 @@ router.use(withdrawalsRouter);
 router.use(adminRouter);
 router.use(ticketsRouter);
 router.use(settingsRouter);
+router.use(streamRouter);
 
 export default router;
