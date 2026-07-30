@@ -388,6 +388,29 @@ export default function ChatPage() {
       toast({ title: 'Video not ready', description: 'Please wait a moment and try again.', variant: 'destructive' });
       return;
     }
+
+    // Resolve the other member's Stream user ID (= their DB id as string)
+    const members = Object.values(ch.state?.members ?? {}) as any[];
+    const other = members.find((m: any) => m.user_id !== streamData?.userId);
+    if (other?.user_id) {
+      try {
+        const authToken = localStorage.getItem('nivio_token');
+        const prefs = await fetch(`${API}/user/calling-settings/${other.user_id}`, {
+          headers: { Authorization: `Bearer ${authToken}` },
+        }).then(r => r.json());
+        if (!prefs.callsEnabled) {
+          toast({ title: 'Calls not allowed', description: `${other.user?.name ?? 'This user'} has disabled calls.`, variant: 'destructive' });
+          return;
+        }
+        if (type === 'video' && !prefs.videoCallsEnabled) {
+          toast({ title: 'Video calls not allowed', description: `${other.user?.name ?? 'This user'} has disabled video calls.`, variant: 'destructive' });
+          return;
+        }
+      } catch {
+        // If the check fails, allow the call to proceed rather than blocking
+      }
+    }
+
     stopRingtoneRef.current?.();
     stopRingtoneRef.current = createRingtone('outgoing');
     try {

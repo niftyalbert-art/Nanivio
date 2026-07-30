@@ -15,7 +15,8 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
-import { Copy, Check, ArrowDownLeft, ArrowUpLeft, MessageSquare, CheckCircle2, ExternalLink, Send, LogOut, ShieldCheck, ChevronDown, ChevronUp } from 'lucide-react';
+import { Copy, Check, ArrowDownLeft, ArrowUpLeft, MessageSquare, CheckCircle2, ExternalLink, Send, LogOut, ShieldCheck, ChevronDown, ChevronUp, Phone, Video } from 'lucide-react';
+import { Switch } from '@/components/ui/switch';
 import { formatDistanceToNow } from 'date-fns';
 import { useToast } from '@/hooks/use-toast';
 import { PinInput } from '@/components/pin-input';
@@ -34,6 +35,39 @@ export default function Account() {
   const { data: deposits, isLoading: depositsLoading } = useGetDeposits();
   const { data: withdrawals, isLoading: withdrawalsLoading } = useGetWithdrawals();
   const [copied, setCopied] = useState<string | null>(null);
+  const queryClient = useQueryClient();
+
+  // Calling settings
+  const { data: callingSettings, isLoading: callingSettingsLoading } = useQuery<{ callsEnabled: boolean; videoCallsEnabled: boolean }>({
+    queryKey: ['calling-settings'],
+    queryFn: () => fetch(`${API_BASE}/user/calling-settings`, {
+      headers: { Authorization: `Bearer ${token}` },
+    }).then(r => r.json()),
+    enabled: !!token,
+  });
+
+  const updateCallingSettings = useMutation({
+    mutationFn: async (patch: { callsEnabled?: boolean; videoCallsEnabled?: boolean }) => {
+      const r = await fetch(`${API_BASE}/user/calling-settings`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify(patch),
+      });
+      if (!r.ok) throw new Error('Failed to save');
+      return r.json();
+    },
+    onMutate: async (patch) => {
+      await queryClient.cancelQueries({ queryKey: ['calling-settings'] });
+      const prev = queryClient.getQueryData<{ callsEnabled: boolean; videoCallsEnabled: boolean }>(['calling-settings']);
+      queryClient.setQueryData(['calling-settings'], (old: any) => ({ ...old, ...patch }));
+      return { prev };
+    },
+    onError: (_e, _v, ctx: any) => {
+      queryClient.setQueryData(['calling-settings'], ctx?.prev);
+      toast({ title: 'Could not save setting', variant: 'destructive' });
+    },
+    onSettled: () => queryClient.invalidateQueries({ queryKey: ['calling-settings'] }),
+  });
 
   // Change PIN
   const [showChangePinForm, setShowChangePinForm] = useState(false);
@@ -192,6 +226,70 @@ export default function Account() {
               )}
             </div>
           )}
+        </CardContent>
+      </Card>
+
+      {/* ── Calls & Messaging ─────────────────────────────────────── */}
+      <Card>
+        <CardContent className="p-0">
+          <div className="p-4 flex items-center gap-3">
+            <div className="w-9 h-9 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
+              <Phone className="w-4 h-4 text-primary" />
+            </div>
+            <div>
+              <p className="font-semibold text-sm">Calls &amp; Messaging</p>
+              <p className="text-xs text-muted-foreground">Control who can call you in Nivio chat</p>
+            </div>
+          </div>
+
+          <div className="border-t border-border">
+            {callingSettingsLoading ? (
+              <div className="px-4 py-3 space-y-3">
+                <div className="h-9 bg-muted/50 rounded-lg animate-pulse" />
+                <div className="h-9 bg-muted/50 rounded-lg animate-pulse" />
+              </div>
+            ) : (
+              <div className="divide-y divide-border">
+                {/* Allow audio calls */}
+                <div className="flex items-center justify-between px-4 py-3 gap-4">
+                  <div className="flex items-center gap-3 min-w-0">
+                    <Phone className="w-4 h-4 text-muted-foreground shrink-0" />
+                    <div className="min-w-0">
+                      <p className="text-sm font-medium">Allow audio calls</p>
+                      <p className="text-xs text-muted-foreground">Others can start a voice call with you</p>
+                    </div>
+                  </div>
+                  <Switch
+                    checked={callingSettings?.callsEnabled ?? true}
+                    disabled={updateCallingSettings.isPending}
+                    onCheckedChange={(v) => updateCallingSettings.mutate({ callsEnabled: v })}
+                  />
+                </div>
+
+                {/* Allow video calls */}
+                <div className="flex items-center justify-between px-4 py-3 gap-4">
+                  <div className="flex items-center gap-3 min-w-0">
+                    <Video className="w-4 h-4 text-muted-foreground shrink-0" />
+                    <div className="min-w-0">
+                      <p className="text-sm font-medium">Allow video calls</p>
+                      <p className="text-xs text-muted-foreground">Others can start a video call with you</p>
+                    </div>
+                  </div>
+                  <Switch
+                    checked={callingSettings?.videoCallsEnabled ?? true}
+                    disabled={updateCallingSettings.isPending || !(callingSettings?.callsEnabled ?? true)}
+                    onCheckedChange={(v) => updateCallingSettings.mutate({ videoCallsEnabled: v })}
+                  />
+                </div>
+
+                {!(callingSettings?.callsEnabled ?? true) && (
+                  <p className="px-4 py-2 text-xs text-amber-500 bg-amber-500/5">
+                    Calls are disabled — others will see a "calls not allowed" notice when they try to reach you.
+                  </p>
+                )}
+              </div>
+            )}
+          </div>
         </CardContent>
       </Card>
 

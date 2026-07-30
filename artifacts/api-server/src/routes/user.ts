@@ -84,4 +84,40 @@ router.get("/user/dashboard", requireAuth, async (req, res): Promise<void> => {
   res.json(GetDashboardSummaryResponse.parse(summary));
 });
 
+// GET /user/calling-settings — own call preferences
+router.get('/user/calling-settings', requireAuth, async (req, res): Promise<void> => {
+  try {
+    const [user] = await db.select({ callsEnabled: usersTable.callsEnabled, videoCallsEnabled: usersTable.videoCallsEnabled })
+      .from(usersTable).where(eq(usersTable.id, req.userId!));
+    if (!user) { res.status(404).json({ error: 'User not found' }); return; }
+    res.json(user);
+  } catch (e: any) { res.status(500).json({ error: e.message }); }
+});
+
+// PATCH /user/calling-settings — update own call preferences
+router.patch('/user/calling-settings', requireAuth, async (req, res): Promise<void> => {
+  try {
+    const { callsEnabled, videoCallsEnabled } = req.body as { callsEnabled?: boolean; videoCallsEnabled?: boolean };
+    const patch: Partial<typeof usersTable.$inferInsert> = {};
+    if (typeof callsEnabled === 'boolean') patch.callsEnabled = callsEnabled;
+    if (typeof videoCallsEnabled === 'boolean') patch.videoCallsEnabled = videoCallsEnabled;
+    if (Object.keys(patch).length === 0) { res.status(400).json({ error: 'No valid fields' }); return; }
+    await db.update(usersTable).set(patch).where(eq(usersTable.id, req.userId!));
+    res.json({ ok: true });
+  } catch (e: any) { res.status(500).json({ error: e.message }); }
+});
+
+// GET /user/calling-settings/:streamUserId — check another user's call preferences (auth required)
+// Stream user IDs are the numeric DB id cast to string, so we parseInt them back.
+router.get('/user/calling-settings/:streamUserId', requireAuth, async (req, res): Promise<void> => {
+  try {
+    const targetId = parseInt(req.params.streamUserId, 10);
+    if (isNaN(targetId)) { res.status(400).json({ error: 'Invalid user id' }); return; }
+    const [user] = await db.select({ callsEnabled: usersTable.callsEnabled, videoCallsEnabled: usersTable.videoCallsEnabled })
+      .from(usersTable).where(eq(usersTable.id, targetId));
+    if (!user) { res.status(404).json({ error: 'User not found' }); return; }
+    res.json(user);
+  } catch (e: any) { res.status(500).json({ error: e.message }); }
+});
+
 export default router;
