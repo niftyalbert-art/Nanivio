@@ -35,11 +35,13 @@ function ChannelItem({
   active,
   myUserId,
   onSelect,
+  tick: _tick, // consumed only to force re-render when new messages arrive
 }: {
   channel: StreamChannel;
   active: boolean;
   myUserId: string;
   onSelect: () => void;
+  tick: number;
 }) {
   const members = Object.values(channel.state.members ?? {});
   const other = members.find((m: any) => m.user_id !== myUserId);
@@ -141,15 +143,21 @@ function ChatInner({
   setActiveChannelRef: React.MutableRefObject<((ch: StreamChannel | undefined) => void) | null>;
 }) {
   const { client, channel: activeChannel, setActiveChannel } = useChatContext();
+  // Increment on every incoming message → forces ChannelItem re-renders so
+  // unread badges and last-message previews refresh in real time.
+  const [tick, setTick] = useState(0);
 
   useEffect(() => {
     setActiveChannelRef.current = setActiveChannel as any;
   }, [setActiveChannel, setActiveChannelRef]);
 
-  // New message sound
+  // New message: play sound + refresh channel list badges
   useEffect(() => {
     const handler = (event: any) => {
-      if (event.message?.user?.id !== streamData.userId) playMessageNotification();
+      if (event.message?.user?.id !== streamData.userId) {
+        playMessageNotification();
+      }
+      setTick(t => t + 1);
     };
     client.on('message.new', handler);
     return () => { client.off('message.new', handler); };
@@ -201,6 +209,7 @@ function ChatInner({
                         channel={ch}
                         active={ch.cid === activeChannel?.cid}
                         myUserId={streamData.userId}
+                        tick={tick}
                         onSelect={() => {
                           setActiveChannel(ch);
                           ch.markRead?.().catch(() => {});
@@ -216,36 +225,47 @@ function ChatInner({
       ) : (
         /* ── active channel ── */
         <Channel channel={activeChannel}>
-          <Window>
-            <div className="flex items-center gap-3 px-3 py-2.5 border-b border-border/40 shrink-0">
-              <button
-                onClick={() => (setActiveChannel as any)(undefined)}
-                className="text-muted-foreground hover:text-foreground transition-colors p-1"
-              >
-                <ArrowLeft className="w-5 h-5" />
-              </button>
-              <Avatar className="w-9 h-9 shrink-0">
-                <AvatarFallback className="bg-primary/20 text-primary font-bold text-sm">
-                  {((activeChannel.data as any)?.name ?? 'C').slice(0, 2).toUpperCase()}
-                </AvatarFallback>
-              </Avatar>
-              <div className="flex-1 min-w-0">
-                <p className="font-semibold text-sm truncate">
-                  {(activeChannel.data as any)?.name ?? 'Chat'}
-                </p>
-                <p className="text-[11px] text-muted-foreground">
-                  {Object.keys(activeChannel.state?.members ?? {}).length} members
-                </p>
-              </div>
-              <div className="flex items-center gap-0.5">
-                <Button size="icon" variant="ghost" className="w-9 h-9 shrink-0" onClick={() => onStartCall('audio', activeChannel)}>
-                  <Phone className="w-4 h-4" />
-                </Button>
-                <Button size="icon" variant="ghost" className="w-9 h-9 shrink-0" onClick={() => onStartCall('video', activeChannel)}>
-                  <Video className="w-4 h-4" />
-                </Button>
-              </div>
+          {/* Header lives OUTSIDE Window so it's never clipped by Window's internal flex layout */}
+          <div className="flex items-center gap-3 px-3 py-2.5 border-b border-border/40 shrink-0 bg-background">
+            <button
+              onClick={() => (setActiveChannel as any)(undefined)}
+              className="text-muted-foreground hover:text-foreground transition-colors p-1 shrink-0"
+            >
+              <ArrowLeft className="w-5 h-5" />
+            </button>
+            <Avatar className="w-9 h-9 shrink-0">
+              <AvatarFallback className="bg-primary/20 text-primary font-bold text-sm">
+                {((activeChannel.data as any)?.name ?? 'C').slice(0, 2).toUpperCase()}
+              </AvatarFallback>
+            </Avatar>
+            <div className="flex-1 min-w-0">
+              <p className="font-semibold text-sm truncate">
+                {(activeChannel.data as any)?.name ?? 'Chat'}
+              </p>
+              <p className="text-[11px] text-muted-foreground">
+                {Object.keys(activeChannel.state?.members ?? {}).length} members
+              </p>
             </div>
+            <div className="flex items-center gap-0.5 shrink-0">
+              <Button
+                size="icon" variant="ghost"
+                className="w-10 h-10 rounded-full text-muted-foreground hover:text-foreground hover:bg-primary/10"
+                title="Audio call"
+                onClick={() => onStartCall('audio', activeChannel)}
+              >
+                <Phone className="w-4 h-4" />
+              </Button>
+              <Button
+                size="icon" variant="ghost"
+                className="w-10 h-10 rounded-full text-muted-foreground hover:text-foreground hover:bg-primary/10"
+                title="Video call"
+                onClick={() => onStartCall('video', activeChannel)}
+              >
+                <Video className="w-4 h-4" />
+              </Button>
+            </div>
+          </div>
+          <Window>
             <MessageList />
             <MessageComposer additionalTextareaProps={{ placeholder: 'Message…' }} />
           </Window>
