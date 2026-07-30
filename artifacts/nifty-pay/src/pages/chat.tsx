@@ -581,10 +581,13 @@ export default function ChatPage() {
         client={chatClient}
         theme="str-chat__theme-dark"
         customClasses={{
-          // Channel's container div class. We keep str-chat__channel for theme
-          // variables to apply, then force a flex column via Tailwind !important
-          // so the header and message area stack vertically instead of side-by-side.
+          // Channel's outer container — keep the class so theme CSS vars apply,
+          // force column so header + messages stack vertically.
           channel: 'str-chat__channel !flex !flex-col flex-1 min-h-0 overflow-hidden',
+          // ChannelInner wraps children in .str-chat__container which defaults to
+          // flex-direction:row — the real cause of the side-by-side layout bug.
+          // Override it to column here (CSS rule in stream-theme.css is the backup).
+          chatContainer: 'str-chat__container !flex !flex-col flex-1 min-h-0 overflow-hidden w-full',
         }}
       >
         <ChatInner

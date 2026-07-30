@@ -22,6 +22,26 @@ Use `customClasses.channel` on `<Chat>` to override the Channel container class.
 ```
 `!flex` and `!flex-col` use Tailwind's `!important` modifier to force the column layout. Keep `str-chat__channel` in the string so theme CSS variables still apply.
 
+## The REAL root cause — str-chat__container (not str-chat__channel)
+
+`ChannelInner` wraps all `children` in an inner `<div class="str-chat__container">` before passing them to `ChannelContainer`. This div has `display:flex` with **no `flex-direction`**, so it defaults to **row** — making the channel header and message area appear side-by-side. The `.str-chat__channel` outer div was already `flex-direction:column` in Stream's own CSS, so fixing only that div never helped.
+
+Two-layer fix:
+1. CSS override in `stream-theme.css`:
+   ```css
+   .str-chat__channel .str-chat__container, .str-chat__container {
+     display: flex !important; flex-direction: column !important;
+     flex: 1 !important; min-height: 0 !important;
+     overflow: hidden !important; width: 100% !important; height: 100% !important;
+   }
+   ```
+2. `customClasses.chatContainer` on `<Chat>`:
+   ```jsx
+   chatContainer: 'str-chat__container !flex !flex-col flex-1 min-h-0 overflow-hidden w-full'
+   ```
+
+**Why:** `customClasses.channel` controls `ChannelContainer` (outer div). `customClasses.chatContainer` controls the inner `str-chat__container` div. Both need to be column for the layout to work.
+
 ## Never use Window or Thread on mobile
 `<Window>` wraps children in `.str-chat__main-panel` (flex-row) and `<Thread>` renders a permanent side panel (~30% width) even when empty — its empty state shows "Send a message to start the conversation". Both components break mobile layout. Remove them; `MessageList` and `MessageComposer` only need `<Channel>` context.
 

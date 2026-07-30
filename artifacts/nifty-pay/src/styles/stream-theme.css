@@ -70,6 +70,23 @@
     width: 100% !important;
   }
 
+  /*
+   * THE REAL CULPRIT: ChannelInner wraps children in a .str-chat__container div
+   * that has `display:flex` with no direction (defaults to row).
+   * This makes the channel header and message list appear side-by-side.
+   * Force it to column so the layout stacks vertically.
+   */
+  .str-chat__channel .str-chat__container,
+  .str-chat__container {
+    display: flex !important;
+    flex-direction: column !important;
+    flex: 1 !important;
+    min-height: 0 !important;
+    overflow: hidden !important;
+    width: 100% !important;
+    height: 100% !important;
+  }
+
   /* Hide Thread panel entirely — it renders as a side panel on desktop
      but breaks the single-column mobile layout */
   .str-chat__thread,
