@@ -3,7 +3,7 @@ import '@/styles/stream-theme.css';
 import { useState, useEffect, useRef, useCallback } from 'react';
 import {
   Chat, Channel, ChannelList, MessageList, MessageComposer,
-  Window, Thread, useCreateChatClient, useChatContext,
+  useCreateChatClient, useChatContext,
 } from 'stream-chat-react';
 import {
   StreamVideo, StreamVideoClient, StreamCall,
@@ -224,9 +224,17 @@ function ChatInner({
         </div>
       ) : (
         /* ── active channel ── */
-        <div className="flex flex-col flex-1 min-h-0 overflow-hidden">
         <Channel channel={activeChannel}>
-          {/* Header lives OUTSIDE Window so it's never clipped by Window's internal flex layout */}
+          {/*
+           * We intentionally skip Stream's <Window> and <Thread> components.
+           * Window wraps its children in a flex-ROW div (.str-chat__main-panel)
+           * that breaks mobile layout by placing the Thread panel beside the
+           * message list. Thread renders a permanent side panel even when empty.
+           * MessageList and MessageComposer only need Channel context — they
+           * work fine inside our own flex container.
+           */}
+
+          {/* ── channel header ── */}
           <div className="flex items-center gap-3 px-3 py-2.5 border-b border-border/40 shrink-0 bg-background">
             <button
               onClick={() => (setActiveChannel as any)(undefined)}
@@ -266,13 +274,17 @@ function ChatInner({
               </Button>
             </div>
           </div>
-          <Window>
-            <MessageList />
-            <MessageComposer additionalTextareaProps={{ placeholder: 'Message…' }} />
-          </Window>
-          <Thread />
+
+          {/* ── messages + composer in a plain flex column ── */}
+          <div className="flex flex-col flex-1 min-h-0 overflow-hidden w-full">
+            <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain">
+              <MessageList />
+            </div>
+            <div className="shrink-0 w-full">
+              <MessageComposer additionalTextareaProps={{ placeholder: 'Message…' }} />
+            </div>
+          </div>
         </Channel>
-        </div>
       )}
     </div>
   );
