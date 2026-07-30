@@ -15,13 +15,12 @@ import { useToast } from '@/hooks/use-toast';
 import { playMessageNotification, createRingtone } from '@/lib/sounds';
 import {
   MessageSquare, Phone, Video, ArrowLeft, Plus, Users,
-  Search, X, Check, PhoneCall,
+  Search, X, Check, PhoneCall, Sparkles, Bell,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
-import { Badge } from '@/components/ui/badge';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Dialog, DialogContent } from '@/components/ui/dialog';
 import { cn } from '@/lib/utils';
 
 const API = `${import.meta.env.BASE_URL}api`;
@@ -143,25 +142,54 @@ function ChatInner({
   setActiveChannelRef: React.MutableRefObject<((ch: StreamChannel | undefined) => void) | null>;
 }) {
   const { client, channel: activeChannel, setActiveChannel } = useChatContext();
-  // Increment on every incoming message → forces ChannelItem re-renders so
-  // unread badges and last-message previews refresh in real time.
   const [tick, setTick] = useState(0);
+  // In-app flash: { name, text } shown for 3 s when a message arrives in a background channel
+  const [msgFlash, setMsgFlash] = useState<{ name: string; text: string } | null>(null);
+  const flashTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     setActiveChannelRef.current = setActiveChannel as any;
   }, [setActiveChannel, setActiveChannelRef]);
 
-  // New message: play sound + refresh channel list badges
+  // New message: sound + browser notification + in-app flash
   useEffect(() => {
     const handler = (event: any) => {
-      if (event.message?.user?.id !== streamData.userId) {
+      const isFromOther = event.message?.user?.id !== streamData.userId;
+      if (isFromOther) {
         playMessageNotification();
+
+        const senderName: string = event.message?.user?.name ?? 'New message';
+        const preview: string = event.message?.text
+          ?? (event.message?.attachments?.length ? '📎 Attachment' : 'Sent you a message');
+
+        // Browser / PWA notification (works when app is backgrounded or screen is off)
+        if ('Notification' in window && Notification.permission === 'granted') {
+          try {
+            new Notification(senderName, {
+              body: preview.length > 80 ? preview.slice(0, 77) + '…' : preview,
+              icon: '/icons/icon-192.png',
+              badge: '/icons/icon-192.png',
+              tag: String(event.channel_id ?? ''),   // collapses dupes from same chat
+              silent: true,                           // we handle sound ourselves
+            });
+          } catch { /* Safari may block non-HTTPS contexts */ }
+        }
+
+        // In-app flash banner when the message is NOT in the currently open channel
+        if (event.channel_id !== (activeChannel as any)?.id) {
+          if (flashTimerRef.current) clearTimeout(flashTimerRef.current);
+          setMsgFlash({ name: senderName, text: preview.length > 50 ? preview.slice(0, 47) + '…' : preview });
+          flashTimerRef.current = setTimeout(() => setMsgFlash(null), 3500);
+        }
       }
       setTick(t => t + 1);
     };
     client.on('message.new', handler);
-    return () => { client.off('message.new', handler); };
-  }, [client, streamData.userId]);
+    return () => {
+      client.off('message.new', handler);
+      if (flashTimerRef.current) clearTimeout(flashTimerRef.current);
+    };
+  }, [client, streamData.userId, activeChannel]);
 
   const channelFilters = { type: 'messaging', members: { $in: [streamData.userId] } };
   const channelSort = [{ last_message_at: -1 }] as const;
@@ -169,6 +197,26 @@ function ChatInner({
 
   return (
     <div className="flex flex-col h-full overflow-hidden">
+
+      {/* ── In-app message flash banner ── */}
+      {msgFlash && (
+        <div
+          className="absolute top-2 inset-x-3 z-50 flex items-center gap-3 px-4 py-3 rounded-2xl border border-primary/30 bg-card/95 backdrop-blur-md shadow-xl shadow-black/30 animate-in slide-in-from-top-3 duration-300"
+          style={{ boxShadow: '0 0 0 1px rgba(45,212,191,0.12), 0 8px 32px rgba(0,0,0,0.4)' }}
+        >
+          <div className="w-8 h-8 rounded-full bg-primary/20 flex items-center justify-center shrink-0">
+            <Bell className="w-3.5 h-3.5 text-primary animate-pulse" />
+          </div>
+          <div className="flex-1 min-w-0">
+            <p className="text-xs font-bold text-foreground truncate">{msgFlash.name}</p>
+            <p className="text-[11px] text-muted-foreground truncate">{msgFlash.text}</p>
+          </div>
+          <button onClick={() => setMsgFlash(null)} className="text-muted-foreground hover:text-foreground shrink-0">
+            <X className="w-3.5 h-3.5" />
+          </button>
+        </div>
+      )}
+
       {!activeChannel ? (
         /* ── channel list ── */
         <div className="flex flex-col h-full">
@@ -304,6 +352,14 @@ export default function ChatPage() {
   const [selectedUsers, setSelectedUsers] = useState<SUser[]>([]);
   const [groupName, setGroupName] = useState('');
   const [creating, setCreating] = useState(false);
+
+  /* request browser notification permission (delayed so it doesn't fire on first paint) */
+  useEffect(() => {
+    if ('Notification' in window && Notification.permission === 'default') {
+      const tid = setTimeout(() => Notification.requestPermission(), 2500);
+      return () => clearTimeout(tid);
+    }
+  }, []);
 
   /* fetch token */
   useEffect(() => {
@@ -539,85 +595,183 @@ export default function ChatPage() {
         />
       </Chat>
 
-      {/* new chat dialog */}
+      {/* ── Premium New Chat / New Group dialog ── */}
       <Dialog open={showNewChat} onOpenChange={(o) => { if (!o) closeNewChat(); }}>
-        <DialogContent className="max-w-sm gap-4">
-          <DialogHeader>
-            <div className="flex items-center gap-2">
-              <DialogTitle>{isGroup ? 'New Group' : 'New Message'}</DialogTitle>
-              <div className="ml-auto flex items-center gap-1">
+        <DialogContent className="max-w-sm p-0 gap-0 overflow-hidden border border-white/8 shadow-2xl shadow-black/60 rounded-2xl">
+
+          {/* gradient header */}
+          <div className="relative px-5 pt-6 pb-4 overflow-hidden"
+            style={{ background: 'linear-gradient(135deg, rgba(45,212,191,0.12) 0%, rgba(20,184,166,0.06) 50%, transparent 100%)' }}>
+            {/* top shimmer line */}
+            <div className="absolute top-0 inset-x-0 h-px bg-gradient-to-r from-transparent via-primary/50 to-transparent" />
+
+            {/* title + type toggle */}
+            <div className="flex items-start justify-between mb-5">
+              <div>
+                <div className="flex items-center gap-2">
+                  <Sparkles className="w-4 h-4 text-primary" />
+                  <h2 className="text-lg font-bold tracking-tight">
+                    {isGroup ? 'New Group' : 'New Message'}
+                  </h2>
+                </div>
+                <p className="text-xs text-muted-foreground mt-0.5 ml-6">
+                  {isGroup ? 'Create a group conversation' : 'Start a private conversation'}
+                </p>
+              </div>
+
+              {/* DM / Group pill toggle */}
+              <div className="flex items-center p-1 bg-black/30 rounded-xl gap-0.5 shrink-0 border border-white/8">
                 <button
                   onClick={() => setIsGroup(false)}
-                  className={cn('flex items-center gap-1 text-xs px-2 py-1 rounded-md transition-colors', !isGroup ? 'bg-primary/15 text-primary font-semibold' : 'text-muted-foreground hover:text-foreground')}
+                  className={cn(
+                    'flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg font-medium transition-all duration-200',
+                    !isGroup ? 'bg-primary text-black shadow shadow-primary/40' : 'text-muted-foreground hover:text-foreground',
+                  )}
                 >
                   <MessageSquare className="w-3 h-3" /> DM
                 </button>
                 <button
                   onClick={() => setIsGroup(true)}
-                  className={cn('flex items-center gap-1 text-xs px-2 py-1 rounded-md transition-colors', isGroup ? 'bg-primary/15 text-primary font-semibold' : 'text-muted-foreground hover:text-foreground')}
+                  className={cn(
+                    'flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg font-medium transition-all duration-200',
+                    isGroup ? 'bg-primary text-black shadow shadow-primary/40' : 'text-muted-foreground hover:text-foreground',
+                  )}
                 >
                   <Users className="w-3 h-3" /> Group
                 </button>
               </div>
             </div>
-          </DialogHeader>
 
-          {isGroup && (
-            <Input placeholder="Group name…" value={groupName} onChange={e => setGroupName(e.target.value)} />
-          )}
+            {/* group name */}
+            {isGroup && (
+              <Input
+                placeholder="Group name…"
+                value={groupName}
+                onChange={e => setGroupName(e.target.value)}
+                className="mb-3 h-10 rounded-xl bg-black/30 border-white/10 text-sm focus-visible:border-primary/60 focus-visible:ring-primary/20"
+              />
+            )}
 
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground pointer-events-none" />
-            <Input className="pl-9" placeholder="Search by name or phone number…" value={searchQuery} onChange={e => setSearchQuery(e.target.value)} />
+            {/* search bar */}
+            <div className="relative">
+              <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground pointer-events-none" />
+              <Input
+                className="pl-10 h-11 rounded-xl bg-black/30 border-white/10 text-sm focus-visible:border-primary/60 focus-visible:ring-1 focus-visible:ring-primary/20"
+                placeholder="Search by name or phone…"
+                value={searchQuery}
+                onChange={e => setSearchQuery(e.target.value)}
+                autoFocus
+              />
+            </div>
           </div>
 
+          {/* selected user chips */}
           {selectedUsers.length > 0 && (
-            <div className="flex flex-wrap gap-1.5">
+            <div className="px-4 py-2.5 flex flex-wrap gap-2 border-y border-white/6 bg-primary/5">
               {selectedUsers.map(u => (
-                <Badge key={u.id} variant="secondary" className="gap-1 pr-1.5">
+                <div key={u.id}
+                  className="flex items-center gap-1.5 bg-primary/15 border border-primary/25 text-primary px-2.5 py-1 rounded-full text-xs font-semibold"
+                >
+                  <span className="w-4 h-4 bg-primary/30 rounded-full flex items-center justify-center text-[8px] font-bold">
+                    {(u.name ?? u.id).slice(0, 1).toUpperCase()}
+                  </span>
                   {u.name ?? u.id}
-                  <button onClick={() => toggleUser(u)} className="hover:text-destructive transition-colors ml-0.5">
+                  <button onClick={() => toggleUser(u)} className="ml-0.5 hover:text-destructive transition-colors">
                     <X className="w-3 h-3" />
                   </button>
-                </Badge>
+                </div>
               ))}
             </div>
           )}
 
-          {searchResults.length > 0 && (
-            <div className="max-h-48 overflow-y-auto rounded-xl border border-border divide-y divide-border/40">
-              {searchResults.map(u => {
+          {/* results list */}
+          <div className="max-h-56 overflow-y-auto overscroll-contain">
+            {searchResults.length > 0 ? (
+              searchResults.map(u => {
                 const sel = selectedUsers.some(x => x.id === u.id);
                 return (
                   <button
                     key={u.id}
-                    className="w-full flex items-center gap-3 px-3 py-2.5 hover:bg-muted/40 transition-colors text-left"
+                    className={cn(
+                      'w-full flex items-center gap-3.5 px-4 py-3 transition-colors text-left border-b border-white/5 last:border-0',
+                      sel ? 'bg-primary/8' : 'hover:bg-white/4 active:bg-white/6',
+                    )}
                     onClick={() => isGroup ? toggleUser(u) : setSelectedUsers([u])}
                   >
-                    <Avatar className="w-8 h-8 shrink-0">
-                      <AvatarFallback className="bg-primary/20 text-primary text-xs font-bold">
-                        {(u.name ?? u.id).slice(0, 2).toUpperCase()}
-                      </AvatarFallback>
-                    </Avatar>
-                    <span className="flex-1 text-sm font-medium">{u.name ?? u.id}</span>
-                    {sel && <Check className="w-4 h-4 text-primary shrink-0" />}
+                    {/* avatar + online dot */}
+                    <div className="relative shrink-0">
+                      <Avatar className="w-11 h-11">
+                        <AvatarFallback
+                          className="font-bold text-sm"
+                          style={{ background: 'linear-gradient(135deg, rgba(45,212,191,0.3), rgba(20,184,166,0.15))', color: '#2dd4bf' }}
+                        >
+                          {(u.name ?? u.id).slice(0, 2).toUpperCase()}
+                        </AvatarFallback>
+                      </Avatar>
+                      <span className="absolute bottom-0 right-0 w-3 h-3 bg-emerald-400 rounded-full border-2 border-background ring-1 ring-emerald-400/30" />
+                    </div>
+
+                    <div className="flex-1 min-w-0">
+                      <p className="font-semibold text-sm leading-tight">{u.name ?? u.id}</p>
+                      <p className="text-[11px] text-muted-foreground mt-0.5">
+                        {isGroup ? (sel ? '✓ Added to group' : 'Tap to add') : 'Tap to message'}
+                      </p>
+                    </div>
+
+                    {/* checkbox */}
+                    <div className={cn(
+                      'w-6 h-6 rounded-full border-2 flex items-center justify-center transition-all duration-150 shrink-0',
+                      sel ? 'bg-primary border-primary shadow shadow-primary/40' : 'border-white/20',
+                    )}>
+                      {sel && <Check className="w-3.5 h-3.5 text-black" />}
+                    </div>
                   </button>
                 );
-              })}
-            </div>
-          )}
+              })
+            ) : searchQuery.trim() ? (
+              <div className="flex flex-col items-center justify-center py-10 gap-2 text-center px-4">
+                <div className="w-10 h-10 bg-muted/40 rounded-full flex items-center justify-center">
+                  <Search className="w-4 h-4 text-muted-foreground" />
+                </div>
+                <p className="text-sm font-medium">No users found</p>
+                <p className="text-xs text-muted-foreground">Try a different name or phone number</p>
+              </div>
+            ) : (
+              <div className="flex flex-col items-center justify-center py-10 gap-2 text-center px-4">
+                <div className="w-10 h-10 bg-primary/10 rounded-full flex items-center justify-center">
+                  <Search className="w-4 h-4 text-primary/50" />
+                </div>
+                <p className="text-sm text-muted-foreground">Search for someone to connect with</p>
+              </div>
+            )}
+          </div>
 
-          {searchQuery.trim() && searchResults.length === 0 && (
-            <p className="text-center text-sm text-muted-foreground py-3">No users found</p>
-          )}
+          {/* CTA */}
+          <div className="p-4 border-t border-white/6 bg-black/20">
+            <Button
+              className="w-full h-12 font-semibold rounded-xl text-sm text-black disabled:opacity-40 transition-all duration-200 active:scale-[0.98]"
+              style={{
+                background: selectedUsers.length > 0 && !(isGroup && !groupName.trim())
+                  ? 'linear-gradient(135deg, #2dd4bf, #14b8a6)'
+                  : undefined,
+                boxShadow: selectedUsers.length > 0 ? '0 4px 20px rgba(45,212,191,0.35)' : undefined,
+              }}
+              onClick={startChat}
+              disabled={selectedUsers.length === 0 || creating || (isGroup && !groupName.trim())}
+            >
+              {creating ? (
+                <span className="flex items-center gap-2">
+                  <span className="w-4 h-4 border-2 border-black/30 border-t-black rounded-full animate-spin" />
+                  Starting…
+                </span>
+              ) : isGroup ? (
+                `Create Group${selectedUsers.length > 0 ? ` · ${selectedUsers.length} member${selectedUsers.length !== 1 ? 's' : ''}` : ''}`
+              ) : (
+                'Start Conversation →'
+              )}
+            </Button>
+          </div>
 
-          <Button
-            className="w-full font-semibold"
-            onClick={startChat}
-            disabled={selectedUsers.length === 0 || creating || (isGroup && !groupName.trim())}
-          >
-            {creating ? 'Starting…' : isGroup ? `Create Group${selectedUsers.length > 0 ? ` (${selectedUsers.length})` : ''}` : 'Start Chat'}
-          </Button>
         </DialogContent>
       </Dialog>
     </div>
