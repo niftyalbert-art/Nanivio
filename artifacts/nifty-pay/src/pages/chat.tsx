@@ -191,9 +191,13 @@ function ChatInner({
     };
   }, [client, streamData.userId, activeChannel]);
 
+  // Inline contact search — filters the existing channel list without opening the New Chat dialog
+  const [contactFilter, setContactFilter] = useState('');
+
   const channelFilters = { type: 'messaging', members: { $in: [streamData.userId] } };
-  const channelSort = [{ last_message_at: -1 }] as const;
-  const channelOptions = { limit: 30, state: true, presence: true, watch: true };
+  // Secondary sort by created_at so brand-new channels (no messages yet) still appear at top
+  const channelSort = [{ last_message_at: -1 }, { created_at: -1 }] as const;
+  const channelOptions = { limit: 50, state: true, presence: true, watch: true, message_limit: 1 };
 
   return (
     <div className="flex flex-col h-full overflow-hidden">
@@ -220,15 +224,37 @@ function ChatInner({
       {!activeChannel ? (
         /* ── channel list ── */
         <div className="flex flex-col h-full">
-          <div className="flex items-center justify-between px-4 py-3 border-b border-border/40 shrink-0">
-            <div>
-              <h1 className="text-lg font-bold">Messages</h1>
-              <p className="text-xs text-muted-foreground">Chats &amp; Groups</p>
+          {/* header */}
+          <div className="px-4 pt-3 pb-2 border-b border-border/40 shrink-0 space-y-2.5">
+            <div className="flex items-center justify-between">
+              <div>
+                <h1 className="text-lg font-bold">Messages</h1>
+                <p className="text-xs text-muted-foreground">Chats &amp; Groups</p>
+              </div>
+              <Button size="sm" className="gap-1.5 h-8 text-xs" onClick={onNewChat}>
+                <Plus className="w-3.5 h-3.5" /> New Chat
+              </Button>
             </div>
-            <Button size="sm" className="gap-1.5 h-8 text-xs" onClick={onNewChat}>
-              <Plus className="w-3.5 h-3.5" /> New Chat
-            </Button>
+            {/* inline contact filter — finds existing conversations without opening New Chat */}
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground pointer-events-none" />
+              <Input
+                className="pl-8 h-9 text-sm rounded-xl bg-muted/40 border-border/30 focus-visible:border-primary/40 focus-visible:ring-primary/10"
+                placeholder="Search conversations…"
+                value={contactFilter}
+                onChange={e => setContactFilter(e.target.value)}
+              />
+              {contactFilter && (
+                <button
+                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                  onClick={() => setContactFilter('')}
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              )}
+            </div>
           </div>
+
           <div className="flex-1 overflow-y-auto overscroll-contain pb-2">
             <ChannelList
               filters={channelFilters}
@@ -236,6 +262,19 @@ function ChatInner({
               options={channelOptions}
               setActiveChannelOnMount={false}
               renderChannels={(channels: StreamChannel[]) => {
+                // Filter locally by contact name / group name when the user types
+                const visible = contactFilter.trim()
+                  ? channels.filter(ch => {
+                      const chMembers = Object.values(ch.state.members ?? {});
+                      const other = chMembers.find((m: any) => m.user_id !== streamData.userId);
+                      const name: string =
+                        (ch.data as any)?.name ??
+                        (other as any)?.user?.name ??
+                        '';
+                      return name.toLowerCase().includes(contactFilter.toLowerCase());
+                    })
+                  : channels;
+
                 if (channels.length === 0) {
                   return (
                     <div className="flex flex-col items-center justify-center py-24 gap-4 px-6 text-center">
@@ -249,9 +288,27 @@ function ChatInner({
                     </div>
                   );
                 }
+
+                if (visible.length === 0) {
+                  return (
+                    <div className="flex flex-col items-center justify-center py-16 gap-3 px-6 text-center">
+                      <div className="w-10 h-10 bg-muted/50 rounded-full flex items-center justify-center">
+                        <Search className="w-4 h-4 text-muted-foreground" />
+                      </div>
+                      <p className="text-sm text-muted-foreground">No conversations match &ldquo;{contactFilter}&rdquo;</p>
+                      <button
+                        className="text-xs text-primary underline underline-offset-2"
+                        onClick={onNewChat}
+                      >
+                        Start a new chat with this person
+                      </button>
+                    </div>
+                  );
+                }
+
                 return (
                   <>
-                    {channels.map((ch) => (
+                    {visible.map((ch) => (
                       <ChannelItem
                         key={ch.cid}
                         channel={ch}
@@ -259,6 +316,7 @@ function ChatInner({
                         myUserId={streamData.userId}
                         tick={tick}
                         onSelect={() => {
+                          setContactFilter('');   // clear filter so back-navigation shows full list
                           setActiveChannel(ch);
                           ch.markRead?.().catch(() => {});
                         }}
