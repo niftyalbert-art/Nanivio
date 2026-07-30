@@ -59,6 +59,8 @@ export default defineConfig({
       },
       workbox: {
         globPatterns: ['**/*.{js,css,html,ico,png,svg,woff2}'],
+        // Stream Chat + Video SDK chunks each exceed the 2 MiB default — raise to 5 MiB
+        maximumFileSizeToCacheInBytes: 5 * 1024 * 1024,
         runtimeCaching: [
           {
             urlPattern: /^https:\/\/fonts\.googleapis\.com\/.*/i,
@@ -98,6 +100,15 @@ export default defineConfig({
   build: {
     outDir: path.resolve(import.meta.dirname, 'dist/public'),
     emptyOutDir: true,
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          'vendor-react': ['react', 'react-dom'],
+          'vendor-stream-chat': ['stream-chat', 'stream-chat-react'],
+          'vendor-stream-video': ['@stream-io/video-react-sdk'],
+        },
+      },
+    },
   },
   server: {
     port,
