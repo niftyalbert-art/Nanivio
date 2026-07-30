@@ -224,14 +224,14 @@ function ChatInner({
         </div>
       ) : (
         /* ── active channel ── */
-        <Channel channel={activeChannel}>
+        <Channel
+          channel={activeChannel}
+          className="!flex !flex-col flex-1 min-h-0 overflow-hidden w-full"
+        >
           {/*
-           * We intentionally skip Stream's <Window> and <Thread> components.
-           * Window wraps its children in a flex-ROW div (.str-chat__main-panel)
-           * that breaks mobile layout by placing the Thread panel beside the
-           * message list. Thread renders a permanent side panel even when empty.
-           * MessageList and MessageComposer only need Channel context — they
-           * work fine inside our own flex container.
+           * className on Channel forces its rendered .str-chat__channel div to
+           * be a flex column via Tailwind's !important modifier, overriding
+           * Stream's default flex-row layout that causes side-by-side rendering.
            */}
 
           {/* ── channel header ── */}
