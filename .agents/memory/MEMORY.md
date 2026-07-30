@@ -1,1 +1,2 @@
 - [stream-chat-react v14 API](stream-chat-react-v14.md) — breaking changes: MessageComposer (not MessageInput), renderChannels (no Preview prop), correct CSS path, phone search pattern
+- [Stream Chat mobile layout](stream-chat-mobile-layout.md) — never use Window/Thread; render MessageList+MessageComposer in plain Tailwind div; build cmd requires PORT=18638 BASE_PATH=/
