@@ -325,7 +325,10 @@ function ChatInner({
               <MessageList />
             </div>
             <div className="shrink-0 w-full">
-              <MessageComposer additionalTextareaProps={{ placeholder: 'Message…' }} />
+              <MessageComposer
+                additionalTextareaProps={{ placeholder: 'Message…' }}
+                audioRecordingEnabled
+              />
             </div>
           </div>
         </Channel>
