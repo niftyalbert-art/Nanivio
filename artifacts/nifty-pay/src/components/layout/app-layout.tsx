@@ -1,5 +1,5 @@
 import { Link, useLocation } from 'wouter';
-import { Home, Send, Receipt, Globe, Wallet, BarChart3, User, MessageSquare } from 'lucide-react';
+import { Home, Send, Receipt, Globe, Wallet, BarChart3, User, MessagesSquare } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useGetUserProfile } from '@workspace/api-client-react';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
@@ -12,7 +12,7 @@ interface AppLayoutProps {
 const navigation = [
   { name: 'Home',     href: '/',             icon: Home },
   { name: 'Send',     href: '/send',         icon: Send },
-  { name: 'Chat',     href: '/chat',         icon: MessageSquare },
+  { name: 'Chat',     href: '/chat',         icon: MessagesSquare },
   { name: 'Wallets',  href: '/wallets',      icon: Wallet },
   { name: 'Account',  href: '/account',      icon: User },
 ];
@@ -108,17 +108,59 @@ export function AppLayout({ children }: AppLayoutProps) {
       </main>
 
       {/* Bottom Navigation — mobile only (5 tabs) */}
-      <nav className="md:hidden fixed bottom-0 left-0 right-0 z-50 bg-sidebar/95 backdrop-blur border-t border-sidebar-border flex items-center">
+      <nav className="md:hidden fixed bottom-0 left-0 right-0 z-50 bg-sidebar/95 backdrop-blur border-t border-sidebar-border flex items-end">
         {navigation.map((item) => {
           const isActive = location === item.href;
           const Icon = item.icon;
+
+          /* ── Chat tab: premium raised FAB ── */
+          if (item.href === '/chat') {
+            return (
+              <Link
+                key={item.name}
+                href={item.href}
+                className="flex-1 flex flex-col items-center pb-2"
+                style={{ marginTop: '-18px' }}
+              >
+                {/* Outer glow ring — only when active */}
+                <span
+                  className={cn(
+                    'relative flex items-center justify-center rounded-full transition-all duration-300',
+                    isActive
+                      ? 'shadow-[0_0_0_4px_rgba(45,212,191,0.18),0_0_24px_6px_rgba(45,212,191,0.22)]'
+                      : 'shadow-[0_4px_18px_0_rgba(45,212,191,0.25)]',
+                  )}
+                >
+                  {/* Gradient pill */}
+                  <span
+                    className={cn(
+                      'flex items-center justify-center w-14 h-14 rounded-full transition-transform duration-200 active:scale-95',
+                      isActive
+                        ? 'bg-gradient-to-br from-teal-400 via-primary to-teal-600'
+                        : 'bg-gradient-to-br from-teal-500 to-teal-700',
+                    )}
+                    style={{
+                      boxShadow: isActive
+                        ? '0 6px 24px rgba(45,212,191,0.55), inset 0 1px 0 rgba(255,255,255,0.2)'
+                        : '0 4px 16px rgba(45,212,191,0.35), inset 0 1px 0 rgba(255,255,255,0.15)',
+                    }}
+                  >
+                    <Icon className="w-6 h-6 text-black/80 drop-shadow-sm" />
+                  </span>
+                </span>
+                {/* No label — icon speaks for itself */}
+              </Link>
+            );
+          }
+
+          /* ── Regular tabs ── */
           return (
             <Link
               key={item.name}
               href={item.href}
               className={cn(
                 'flex-1 flex flex-col items-center gap-0.5 py-2 px-1 text-[10px] font-medium transition-colors',
-                isActive ? 'text-primary' : 'text-muted-foreground'
+                isActive ? 'text-primary' : 'text-muted-foreground',
               )}
             >
               <Icon className={cn('w-5 h-5', isActive && 'text-primary')} />
