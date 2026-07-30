@@ -224,6 +224,7 @@ function ChatInner({
         </div>
       ) : (
         /* ── active channel ── */
+        <div className="flex flex-col flex-1 min-h-0 overflow-hidden">
         <Channel channel={activeChannel}>
           {/* Header lives OUTSIDE Window so it's never clipped by Window's internal flex layout */}
           <div className="flex items-center gap-3 px-3 py-2.5 border-b border-border/40 shrink-0 bg-background">
@@ -271,6 +272,7 @@ function ChatInner({
           </Window>
           <Thread />
         </Channel>
+        </div>
       )}
     </div>
   );
