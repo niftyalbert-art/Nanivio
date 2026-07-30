@@ -224,14 +224,10 @@ function ChatInner({
         </div>
       ) : (
         /* ── active channel ── */
-        <Channel
-          channel={activeChannel}
-          className="!flex !flex-col flex-1 min-h-0 overflow-hidden w-full"
-        >
+        <Channel channel={activeChannel}>
           {/*
-           * className on Channel forces its rendered .str-chat__channel div to
-           * be a flex column via Tailwind's !important modifier, overriding
-           * Stream's default flex-row layout that causes side-by-side rendering.
+           * Layout is controlled by customClasses.channel on <Chat> above,
+           * which replaces str-chat__channel's default flex-row with flex-col.
            */}
 
           {/* ── channel header ── */}
@@ -525,7 +521,16 @@ export default function ChatPage() {
         </div>
       )}
 
-      <Chat client={chatClient} theme="str-chat__theme-dark">
+      <Chat
+        client={chatClient}
+        theme="str-chat__theme-dark"
+        customClasses={{
+          // Channel's container div class. We keep str-chat__channel for theme
+          // variables to apply, then force a flex column via Tailwind !important
+          // so the header and message area stack vertically instead of side-by-side.
+          channel: 'str-chat__channel !flex !flex-col flex-1 min-h-0 overflow-hidden',
+        }}
+      >
         <ChatInner
           streamData={streamData}
           onStartCall={handleStartCall}
