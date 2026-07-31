@@ -4,6 +4,7 @@ import { cn } from '@/lib/utils';
 import { useGetUserProfile } from '@workspace/api-client-react';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Skeleton } from '@/components/ui/skeleton';
+import { useState, useEffect } from 'react';
 
 interface AppLayoutProps {
   children: React.ReactNode;
@@ -26,6 +27,21 @@ const sidebarExtra = [
 export function AppLayout({ children }: AppLayoutProps) {
   const [location] = useLocation();
   const { data: profile, isLoading: profileLoading } = useGetUserProfile();
+
+  // Unread message badge — driven by the 'nivio:unread' CustomEvent dispatched from chat.tsx
+  const [chatUnread, setChatUnread] = useState(false);
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const count = (e as CustomEvent<number>).detail;
+      if (location !== '/chat') setChatUnread(count > 0);
+    };
+    window.addEventListener('nivio:unread', handler as EventListener);
+    return () => window.removeEventListener('nivio:unread', handler as EventListener);
+  }, [location]);
+  // Clear badge when user navigates to the chat tab
+  useEffect(() => {
+    if (location === '/chat') setChatUnread(false);
+  }, [location]);
 
   const allSidebar = [...navigation, ...sidebarExtra];
 
@@ -146,6 +162,12 @@ export function AppLayout({ children }: AppLayoutProps) {
                     }}
                   >
                     <Icon className="w-6 h-6 text-black/80 drop-shadow-sm" />
+                    {/* Unread notification — pulsing red dot */}
+                    {chatUnread && !isActive && (
+                      <span className="absolute top-0 right-0 w-4 h-4 bg-red-500 rounded-full border-2 border-background flex items-center justify-center shadow-lg shadow-red-500/60">
+                        <span className="w-2 h-2 bg-red-400 rounded-full animate-ping absolute" />
+                      </span>
+                    )}
                   </span>
                 </span>
                 {/* No label — icon speaks for itself */}

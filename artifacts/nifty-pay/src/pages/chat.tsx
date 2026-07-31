@@ -3,8 +3,14 @@ import '@/styles/stream-theme.css';
 import { useState, useEffect, useRef, useCallback } from 'react';
 import {
   Chat, Channel, ChannelList, MessageList, MessageComposer,
-  useCreateChatClient, useChatContext,
+  useCreateChatClient, useChatContext, useMessageComposerController,
 } from 'stream-chat-react';
+import Picker from '@emoji-mart/react';
+import data from '@emoji-mart/data';
+import { SearchIndex } from 'emoji-mart';
+
+// Build the emoji search index once at module load (powers the :emoji: autocomplete)
+SearchIndex.build(data as any).catch(() => {});
 import {
   StreamVideo, StreamVideoClient, StreamCall,
   SpeakerLayout, CallControls, useCallStateHooks,
@@ -90,6 +96,61 @@ function ChannelItem({
         </p>
       </div>
     </button>
+  );
+}
+
+/* ─── emoji picker (injected into Stream's Channel component context) ─── */
+function StreamEmojiPicker() {
+  const [open, setOpen] = useState(false);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const messageComposer = useMessageComposerController();
+
+  // Close picker when clicking outside
+  useEffect(() => {
+    if (!open) return;
+    const handler = (e: MouseEvent) => {
+      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
+        setOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [open]);
+
+  return (
+    <div ref={containerRef} className="relative">
+      <button
+        type="button"
+        aria-label="Open emoji picker"
+        onClick={() => setOpen(o => !o)}
+        className={cn(
+          'w-8 h-8 flex items-center justify-center rounded-full text-lg transition-colors',
+          open ? 'bg-primary/15 text-primary' : 'text-muted-foreground hover:text-foreground hover:bg-muted/40',
+        )}
+      >
+        😊
+      </button>
+
+      {open && (
+        <div
+          className="absolute z-[200] shadow-2xl rounded-2xl overflow-hidden"
+          style={{ bottom: '44px', left: '-8px' }}
+        >
+          <Picker
+            data={data}
+            theme="dark"
+            set="native"
+            previewPosition="none"
+            skinTonePosition="none"
+            maxFrequentRows={2}
+            onEmojiSelect={(emoji: any) => {
+              messageComposer.textComposer.insertText({ text: emoji.native });
+              setOpen(false);
+            }}
+          />
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -181,6 +242,10 @@ function ChatInner({
           setMsgFlash({ name: senderName, text: preview.length > 50 ? preview.slice(0, 47) + '…' : preview });
           flashTimerRef.current = setTimeout(() => setMsgFlash(null), 3500);
         }
+
+        // Update the chat FAB unread badge (listened to in app-layout.tsx)
+        const totalUnread = (client.user as any)?.total_unread_count ?? 1;
+        window.dispatchEvent(new CustomEvent('nivio:unread', { detail: totalUnread }));
       }
       setTick(t => t + 1);
     };
@@ -330,7 +395,7 @@ function ChatInner({
         </div>
       ) : (
         /* ── active channel ── */
-        <Channel channel={activeChannel}>
+        <Channel channel={activeChannel} EmojiPicker={StreamEmojiPicker}>
           {/*
            * Layout is controlled by customClasses.channel on <Chat> above,
            * which replaces str-chat__channel's default flex-row with flex-col.
@@ -386,6 +451,7 @@ function ChatInner({
               <MessageComposer
                 additionalTextareaProps={{ placeholder: 'Message…' }}
                 audioRecordingEnabled
+                emojiSearchIndex={SearchIndex}
               />
             </div>
           </div>
