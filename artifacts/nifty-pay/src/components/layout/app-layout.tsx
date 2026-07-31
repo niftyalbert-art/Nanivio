@@ -4,7 +4,8 @@ import { cn } from '@/lib/utils';
 import { useGetUserProfile } from '@workspace/api-client-react';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Skeleton } from '@/components/ui/skeleton';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
+import { useStreamChat } from '@/contexts/stream-chat';
 
 interface AppLayoutProps {
   children: React.ReactNode;
@@ -28,16 +29,44 @@ export function AppLayout({ children }: AppLayoutProps) {
   const [location] = useLocation();
   const { data: profile, isLoading: profileLoading } = useGetUserProfile();
 
-  // Unread message badge — driven by the 'nivio:unread' CustomEvent dispatched from chat.tsx
+  // Persistent Stream client — drives real-time badge from ANY page
+  const { chatClient, streamData } = useStreamChat();
+  const locationRef = useRef(location);
+  useEffect(() => { locationRef.current = location; }, [location]);
+
   const [chatUnread, setChatUnread] = useState(false);
+
+  // Listen for chat requests (notification.invited) and new messages from the
+  // persistent client so the badge fires even when the user is NOT on /chat
   useEffect(() => {
-    const handler = (e: Event) => {
-      const count = (e as CustomEvent<number>).detail;
-      if (location !== '/chat') setChatUnread(count > 0);
+    if (!chatClient || !streamData) return;
+
+    // On connect/reconnect — check for any pending chat requests right away
+    chatClient.queryChannels(
+      { invites: 'pending', type: 'messaging' } as any,
+      [],
+      { limit: 5 },
+    ).then((chs: any) => {
+      const list: any[] = Array.isArray(chs) ? chs : chs?.channels ?? [];
+      if (list.length > 0 && locationRef.current !== '/chat') setChatUnread(true);
+    }).catch(() => {});
+
+    const onInvited = () => {
+      if (locationRef.current !== '/chat') setChatUnread(true);
     };
-    window.addEventListener('nivio:unread', handler as EventListener);
-    return () => window.removeEventListener('nivio:unread', handler as EventListener);
-  }, [location]);
+    const onMessage = (event: any) => {
+      const fromOther = event.message?.user?.id !== streamData.userId;
+      if (fromOther && locationRef.current !== '/chat') setChatUnread(true);
+    };
+
+    chatClient.on('notification.invited', onInvited);
+    chatClient.on('message.new', onMessage);
+    return () => {
+      chatClient.off('notification.invited', onInvited);
+      chatClient.off('message.new', onMessage);
+    };
+  }, [chatClient, streamData]);
+
   // Clear badge when user navigates to the chat tab
   useEffect(() => {
     if (location === '/chat') setChatUnread(false);

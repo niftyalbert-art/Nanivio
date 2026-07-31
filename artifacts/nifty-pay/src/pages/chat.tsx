@@ -3,8 +3,9 @@ import '@/styles/stream-theme.css';
 import { useState, useEffect, useRef, useCallback } from 'react';
 import {
   Chat, Channel, ChannelList, MessageList, MessageComposer,
-  useCreateChatClient, useChatContext, useMessageComposerController,
+  useChatContext,
 } from 'stream-chat-react';
+import { useStreamChat } from '@/contexts/stream-chat';
 import Picker from '@emoji-mart/react';
 import data from '@emoji-mart/data';
 import { init, SearchIndex } from 'emoji-mart';
@@ -100,13 +101,12 @@ function ChannelItem({
   );
 }
 
-/* ─── emoji picker (injected into Stream's Channel component context) ─── */
+/* ─── emoji picker — standalone button that inserts into Stream's textarea via DOM ─── */
 function StreamEmojiPicker() {
   const [open, setOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
-  const messageComposer = useMessageComposerController();
 
-  // Close picker when clicking outside
+  // Close on outside click
   useEffect(() => {
     if (!open) return;
     const handler = (e: MouseEvent) => {
@@ -118,24 +118,43 @@ function StreamEmojiPicker() {
     return () => document.removeEventListener('mousedown', handler);
   }, [open]);
 
+  const insertEmoji = (native: string) => {
+    // Locate Stream's composer textarea and insert the emoji at the cursor position
+    const textarea = document.querySelector('.str-chat__message-textarea') as HTMLTextAreaElement | null;
+    if (textarea) {
+      const start = textarea.selectionStart ?? textarea.value.length;
+      const end = textarea.selectionEnd ?? textarea.value.length;
+      const newVal = textarea.value.slice(0, start) + native + textarea.value.slice(end);
+      // Trigger React's synthetic onChange via the native HTMLTextAreaElement setter
+      const setter = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value')?.set;
+      setter?.call(textarea, newVal);
+      textarea.dispatchEvent(new Event('input', { bubbles: true }));
+      // Restore cursor right after the inserted emoji
+      requestAnimationFrame(() => {
+        textarea.setSelectionRange(start + native.length, start + native.length);
+        textarea.focus();
+      });
+    }
+    setOpen(false);
+  };
+
   return (
-    <div ref={containerRef} className="relative">
+    <div ref={containerRef} className="relative shrink-0">
       <button
         type="button"
-        aria-label="Open emoji picker"
+        aria-label="Emoji"
         onClick={() => setOpen(o => !o)}
         className={cn(
-          'w-8 h-8 flex items-center justify-center rounded-full text-lg transition-colors',
+          'w-9 h-9 flex items-center justify-center rounded-full text-lg transition-colors',
           open ? 'bg-primary/15 text-primary' : 'text-muted-foreground hover:text-foreground hover:bg-muted/40',
         )}
       >
         😊
       </button>
-
       {open && (
         <div
           className="absolute z-[200] shadow-2xl rounded-2xl overflow-hidden"
-          style={{ bottom: '44px', left: '-8px' }}
+          style={{ bottom: '48px', left: '-4px' }}
         >
           <Picker
             data={data}
@@ -144,10 +163,7 @@ function StreamEmojiPicker() {
             previewPosition="none"
             skinTonePosition="none"
             maxFrequentRows={2}
-            onEmojiSelect={(emoji: any) => {
-              messageComposer.textComposer.insertText({ text: emoji.native });
-              setOpen(false);
-            }}
+            onEmojiSelect={(emoji: any) => insertEmoji(emoji.native)}
           />
         </div>
       )}
@@ -263,10 +279,13 @@ function ChatInner({
   // Load pending invites on mount (catches invites received while offline)
   useEffect(() => {
     client.queryChannels(
-      { invite: 'pending', type: 'messaging' },
+      { invites: 'pending', type: 'messaging' } as any,
       [{ created_at: -1 }],
       { limit: 20, watch: true, state: true },
-    ).then(chs => setPendingInvites(chs)).catch(() => {});
+    ).then((chs: any) => {
+      const list = Array.isArray(chs) ? chs : chs?.channels ?? [];
+      setPendingInvites(list);
+    }).catch(() => {});
   }, [client]);
 
   // Listen for incoming invites and invite status changes
@@ -498,7 +517,8 @@ function ChatInner({
                   const m = (ch.state.members ?? {})[streamData.userId] as any;
                   return m?.invited && !m?.invite_accepted_at && !m?.invite_rejected_at;
                 });
-                const normalInList = visible.filter(ch => !pendingInList.includes(ch));
+                const pendingCids = new Set(pendingInList.map((c: any) => c.cid));
+                const normalInList = (visible as any[]).filter((ch: any) => !pendingCids.has(ch.cid));
 
                 return (
                   <>
@@ -548,7 +568,7 @@ function ChatInner({
                       <ChannelItem
                         key={ch.cid}
                         channel={ch}
-                        active={ch.cid === activeChannel?.cid}
+                        active={ch.cid === (activeChannel as any)?.cid}
                         myUserId={streamData.userId}
                         tick={tick}
                         onSelect={() => {
@@ -566,7 +586,7 @@ function ChatInner({
         </div>
       ) : (
         /* ── active channel ── */
-        <Channel channel={activeChannel} EmojiPicker={StreamEmojiPicker}>
+        <Channel channel={activeChannel}>
           {/*
            * Layout is controlled by customClasses.channel on <Chat> above,
            * which replaces str-chat__channel's default flex-row with flex-col.
@@ -688,7 +708,12 @@ function ChatInner({
                 <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain">
                   <MessageList />
                 </div>
-                <div className="shrink-0 w-full">
+                {/* Composer + visible emoji button */}
+                <div className="shrink-0 w-full border-t border-border/20">
+                  <div className="flex items-center px-3 pt-2 pb-0.5">
+                    <StreamEmojiPicker />
+                    <span className="ml-2 text-[11px] text-muted-foreground/50">emoji</span>
+                  </div>
                   <MessageComposer
                     additionalTextareaProps={{ placeholder: 'Message…' }}
                     audioRecordingEnabled
@@ -720,8 +745,10 @@ function ChatInner({
   );
 }
 
-/* ─── connected page (only mounts when streamData is ready, so token is never empty) ─── */
-function ChatConnected({ streamData }: { streamData: StreamData }) {
+/* ─── connected page — uses persistent client from StreamChatProvider ─── */
+function ChatConnected() {
+  const { streamData: _sd, chatClient } = useStreamChat();
+  const streamData = _sd!; // guaranteed by ChatPage guard
   const { toast } = useToast();
   const setActiveChannelRef = useRef<((ch: any) => void) | null>(null);
   const [videoClient, setVideoClient] = useState<StreamVideoClient | null>(null);
@@ -744,14 +771,8 @@ function ChatConnected({ streamData }: { streamData: StreamData }) {
       const tid = setTimeout(() => Notification.requestPermission(), 2500);
       return () => clearTimeout(tid);
     }
+    return undefined;
   }, []);
-
-  /* init chat client — streamData is guaranteed non-null so token is never empty */
-  const chatClient = useCreateChatClient({
-    apiKey: streamData.apiKey,
-    tokenOrProvider: streamData.token,
-    userData: { id: streamData.userId, name: streamData.userName },
-  });
 
   /* init video client — uses a dedicated video token from @stream-io/node-sdk */
   useEffect(() => {
@@ -940,17 +961,6 @@ function ChatConnected({ streamData }: { streamData: StreamData }) {
     setSelectedUsers([]); setSearchQuery(''); setGroupName(''); setIsGroup(false);
   };
 
-  if (!chatClient) {
-    return (
-      <div className="flex flex-col items-center justify-center h-full min-h-[60vh] gap-4">
-        <div className="w-16 h-16 bg-primary/10 rounded-full flex items-center justify-center">
-          <MessageSquare className="w-8 h-8 text-primary animate-pulse" />
-        </div>
-        <p className="text-sm text-muted-foreground">Connecting to chat…</p>
-      </div>
-    );
-  }
-
   return (
     /*
      * Mobile layout:  100dvh minus sticky header (56px) minus fixed bottom nav (56px).
@@ -980,7 +990,7 @@ function ChatConnected({ streamData }: { streamData: StreamData }) {
       )}
 
       <Chat
-        client={chatClient}
+        client={chatClient!}
         theme="str-chat__theme-dark"
         customClasses={{
           // Channel's outer container — keep the class so theme CSS vars apply,
@@ -1172,7 +1182,7 @@ function ChatConnected({ streamData }: { streamData: StreamData }) {
               ) : isGroup ? (
                 `Create Group${selectedUsers.length > 0 ? ` · ${selectedUsers.length} member${selectedUsers.length !== 1 ? 's' : ''}` : ''}`
               ) : (
-                'Start Conversation →'
+                'Send Chat Request'
               )}
             </Button>
           </div>
@@ -1183,23 +1193,11 @@ function ChatConnected({ streamData }: { streamData: StreamData }) {
   );
 }
 
-/* ─── thin loader — fetches Stream token then hands off to ChatConnected ─── */
+/* ─── page entry — reads persistent client from StreamChatProvider ─── */
 export default function ChatPage() {
-  const { toast } = useToast();
-  const [streamData, setStreamData] = useState<StreamData | null>(null);
+  const { streamData, chatClient } = useStreamChat();
 
-  useEffect(() => {
-    const token = localStorage.getItem('nivio_token');
-    fetch(`${API}/stream/token`, { headers: { Authorization: `Bearer ${token}` } })
-      .then(r => r.json())
-      .then(d => {
-        if (d?.token && d?.apiKey) setStreamData(d);
-        else toast({ title: 'Chat unavailable', variant: 'destructive' });
-      })
-      .catch(() => toast({ title: 'Chat unavailable', variant: 'destructive' }));
-  }, []);
-
-  if (!streamData) {
+  if (!streamData || !chatClient) {
     return (
       <div className="flex flex-col items-center justify-center h-full min-h-[60vh] gap-4">
         <div className="w-16 h-16 bg-primary/10 rounded-full flex items-center justify-center">
@@ -1210,5 +1208,5 @@ export default function ChatPage() {
     );
   }
 
-  return <ChatConnected streamData={streamData} />;
+  return <ChatConnected />;
 }

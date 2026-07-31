@@ -3,6 +3,7 @@ import { Toaster } from '@/components/ui/toaster';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { Route, Switch, Router as WouterRouter } from 'wouter';
 import { AuthProvider, useAuth } from '@/contexts/auth';
+import { StreamChatProvider } from '@/contexts/stream-chat';
 import { AppLayout } from '@/components/layout/app-layout';
 import Dashboard from '@/pages/dashboard';
 import Send from '@/pages/send';
@@ -44,8 +45,9 @@ function Router() {
     );
   }
 
-  // Authenticated: full app
+  // Authenticated: full app — StreamChatProvider keeps one persistent client alive
   return (
+    <StreamChatProvider>
     <Switch>
       {/* Standalone pages — no app chrome */}
       <Route path="/admin" component={Admin} />
@@ -71,6 +73,7 @@ function Router() {
         </AppLayout>
       </Route>
     </Switch>
+    </StreamChatProvider>
   );
 }
 
