@@ -104,10 +104,24 @@ export default defineConfig({
     emptyOutDir: true,
     rollupOptions: {
       output: {
-        manualChunks: {
-          'vendor-react': ['react', 'react-dom'],
-          'vendor-stream-chat': ['stream-chat', 'stream-chat-react'],
-          'vendor-stream-video': ['@stream-io/video-react-sdk'],
+        // Function-based chunking: React lands in its own chunk (never empty),
+        // and all Stream SDK code goes into one chunk (no circular dep between
+        // stream-chat ↔ stream-video that caused the duplicate-React crash).
+        manualChunks(id) {
+          if (
+            id.includes('/node_modules/react/') ||
+            id.includes('/node_modules/react-dom/') ||
+            id.includes('/node_modules/scheduler/')
+          ) {
+            return 'vendor-react';
+          }
+          if (
+            id.includes('/node_modules/stream-chat') ||
+            id.includes('/node_modules/@stream-io') ||
+            id.includes('/node_modules/@getstream')
+          ) {
+            return 'vendor-stream';
+          }
         },
       },
     },
