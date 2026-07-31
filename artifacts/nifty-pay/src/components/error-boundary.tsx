@@ -28,13 +28,12 @@ export class AppErrorBoundary extends Component<Props, State> {
   }
 
   handleReload = () => {
+    const reload = () => location.reload();
     // Clear service-worker cache before reloading so stale bundles don't loop
     if ('caches' in window) {
-      caches.keys().then(keys => Promise.all(keys.map(k => caches.delete(k)))).finally(() => {
-        window.location.reload();
-      });
+      caches.keys().then(keys => Promise.all(keys.map(k => caches.delete(k)))).then(reload, reload);
     } else {
-      window.location.reload();
+      reload();
     }
   };
 
