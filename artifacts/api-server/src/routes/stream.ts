@@ -38,14 +38,14 @@ router.get('/stream/token', requireAuth, async (req, res): Promise<void> => {
   }
 });
 
-// GET /stream/video-token — generate a video-capable token via @stream-io/node-sdk
+// GET /stream/video-token — generate a video-capable JWT token
+// Note: generateUserToken() is a local JWT operation — no HTTP call to Stream needed.
+// User upsertion into Stream Video is handled lazily by the SDK on first call.join().
 router.get('/stream/video-token', requireAuth, async (req, res): Promise<void> => {
   try {
     const videoClient = getVideoServerClient();
     const userId = String(req.userId!);
     const userName = (req as any).userName ?? 'User';
-    // Upsert user into Stream Video as well
-    await videoClient.upsertUsers({ users: { [userId]: { id: userId, name: userName } } });
     const token = videoClient.generateUserToken({ user_id: userId });
     res.json({ token, userId, userName, apiKey: process.env.STREAM_API_KEY });
   } catch (e: any) {

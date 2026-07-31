@@ -829,44 +829,58 @@ function ChatConnected() {
     if (!chatClient || selectedUsers.length === 0) return;
     setCreating(true);
     try {
-      // Check for an existing channel between these exact users first
       const inviteeIds = selectedUsers.map(u => u.id);
-      const existing = await chatClient.queryChannels(
-        {
-          type: 'messaging',
-          members: { $in: inviteeIds },
-          ...(isGroup ? {} : {}),
-        },
+
+      // Query channels *the current user* is a member of, then search for an
+      // existing match client-side.  Using the current user's own ID in the
+      // filter avoids Stream Chat's server-side security rejection that occurs
+      // when you filter by a third party's ID only.
+      const rawExisting = await chatClient.queryChannels(
+        { type: 'messaging', members: { $in: [streamData.userId] } },
         [{ last_message_at: -1 }],
-        { limit: 5, state: true }
+        { limit: 50, state: true },
       );
-      // If a channel already exists with these exact member sets, reuse it
-      const match = existing.find(ch => {
-        const memberIds = Object.keys(ch.state.members ?? {});
-        return inviteeIds.every(id => memberIds.includes(id)) && memberIds.includes(streamData!.userId);
-      });
+      const existingList: StreamChannel[] = Array.isArray(rawExisting)
+        ? rawExisting
+        : (rawExisting as any)?.channels ?? [];
+
+      // For 1-to-1 chats find a channel that has exactly these two members
+      const match = !isGroup
+        ? existingList.find(ch => {
+            const memberIds = Object.keys(ch.state.members ?? {});
+            return (
+              memberIds.length === 2 &&
+              inviteeIds.every(id => memberIds.includes(id)) &&
+              memberIds.includes(streamData.userId)
+            );
+          })
+        : undefined;
+
       if (match) {
         closeNewChat();
         setActiveChannelRef.current?.(match);
         return;
       }
 
-      // Use an explicit channel ID (avoids Stream's "≥2 member" rule for distinct channels)
-      // so we can create with just the creator and then invite others
+      // Explicit channel ID avoids Stream's "≥2 members" rule for distinct channels
       const channelId = `ch-${streamData.userId}-${Date.now()}`;
       const ch = chatClient.channel('messaging', channelId, {
         ...(isGroup && groupName.trim() ? { name: groupName.trim() } : {}),
         members: [streamData.userId],
       });
       await ch.create();
-      // Invite the selected users — they must accept before messaging starts
+      // Invite selected users — they must accept before messaging starts
       await ch.inviteMembers(inviteeIds);
       await ch.watch();
       closeNewChat();
       setActiveChannelRef.current?.(ch);
-    } catch (err) {
+    } catch (err: any) {
       console.error('startChat error:', err);
-      toast({ title: 'Could not create chat', variant: 'destructive' });
+      toast({
+        title: 'Could not create chat',
+        description: err?.message ?? 'Please try again',
+        variant: 'destructive',
+      });
     } finally {
       setCreating(false);
     }

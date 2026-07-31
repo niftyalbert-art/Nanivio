@@ -1,2 +1,4 @@
 - [stream-chat-react v14 API](stream-chat-react-v14.md) — breaking changes: MessageComposer (not MessageInput), renderChannels (no Preview prop), correct CSS path, phone search pattern
 - [Stream Chat mobile layout](stream-chat-mobile-layout.md) — never use Window/Thread; render MessageList+MessageComposer in plain Tailwind div; build cmd requires PORT=18638 BASE_PATH=/
+- [Stream Chat queryChannels security](stream-chat-query-security.md) — always use current user's own ID in $in filter; querying by third-party IDs triggers server-side security rejection
+- [Stream Video upsertUsers 500](stream-video-upsert.md) — generateUserToken is local JWT; never call upsertUsers() in video-token route; it hits Stream Video HTTP API which returns 500 if Video not enabled
