@@ -31,6 +31,11 @@ import { cn } from '@/lib/utils';
 
 const API = `${import.meta.env.BASE_URL}api`;
 
+// Module-level: survives React remounts so the active channel is restored
+// when the user navigates away and back.
+let _lastChannelId:   string | null = null;
+let _lastChannelType: string        = 'messaging';
+
 interface StreamData { token: string; userId: string; userName: string; apiKey: string; }
 interface SUser { id: string; name?: string; }
 interface ContactEntry { id: number; streamUserId: string; name: string; }
@@ -239,6 +244,24 @@ function ChatInner({
     setActiveChannelRef.current = setActiveChannel as any;
   }, [setActiveChannel, setActiveChannelRef]);
 
+  // Auto-save whichever channel is active (covers onSelect, startChat, acceptInvite, etc.)
+  useEffect(() => {
+    if (activeChannel) {
+      _lastChannelId   = (activeChannel as any).id   ?? null;
+      _lastChannelType = (activeChannel as any).type  ?? 'messaging';
+    } else {
+      // user explicitly closed a channel — clear so we don't restore it
+      // BUT only clear if we are not in the middle of mounting (mounting sets null first)
+    }
+  }, [activeChannel]);
+
+  // Restore last active channel when chat page remounts after navigation
+  useEffect(() => {
+    if (!_lastChannelId || !client) return;
+    const ch = client.channel(_lastChannelType, _lastChannelId);
+    ch.watch().then(() => setActiveChannel(ch as any)).catch(() => {});
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
   // Load pending invites on mount (catches invites received while offline)
   useEffect(() => {
     client.queryChannels(
@@ -424,7 +447,7 @@ function ChatInner({
               <UserPlus className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground pointer-events-none" />
               <Input
                 className="pl-8 h-9 text-sm rounded-xl bg-muted/40 border-border/30 focus-visible:border-primary/40 focus-visible:ring-primary/10"
-                placeholder="Add a user…"
+                placeholder="Add user"
                 value={addUserQuery}
                 onChange={e => setAddUserQuery(e.target.value)}
               />
@@ -483,6 +506,107 @@ function ChatInner({
             {/* empty search state */}
             {addUserQuery.trim() && addUserResults.length === 0 && (
               <p className="mt-1 text-center text-xs text-muted-foreground py-2">No users found</p>
+            )}
+
+            {/* ── Contacts panel — premium card below search bar ── */}
+            {contacts.length > 0 && (
+              <div
+                className="mt-1 rounded-2xl overflow-hidden"
+                style={{
+                  background: 'linear-gradient(135deg, rgba(45,212,191,0.06) 0%, rgba(20,184,166,0.03) 100%)',
+                  border: '1px solid rgba(45,212,191,0.15)',
+                  boxShadow: '0 2px 16px rgba(0,0,0,0.25), inset 0 1px 0 rgba(255,255,255,0.04)',
+                }}
+              >
+                {/* header row */}
+                <button
+                  onClick={() => setContactsExpanded(e => !e)}
+                  className="w-full flex items-center justify-between px-3.5 py-2.5 hover:bg-white/[0.03] transition-colors"
+                >
+                  <span className="flex items-center gap-2">
+                    <span
+                      className="w-5 h-5 rounded-full flex items-center justify-center shrink-0"
+                      style={{ background: 'rgba(45,212,191,0.15)' }}
+                    >
+                      <Users className="w-2.5 h-2.5 text-primary" />
+                    </span>
+                    <span className="text-[11px] font-semibold text-foreground/80 tracking-wide">Contacts</span>
+                    <span className="text-[10px] text-muted-foreground/60">
+                      {contacts.filter(c => contactPresence[c.streamUserId]).length} online
+                    </span>
+                  </span>
+                  {contactsExpanded
+                    ? <ChevronUp className="w-3 h-3 text-muted-foreground/50" />
+                    : <ChevronDown className="w-3 h-3 text-muted-foreground/50" />}
+                </button>
+
+                {contactsExpanded && (
+                  <div className="max-h-48 overflow-y-auto overscroll-contain divide-y divide-white/[0.04]">
+                    {contacts.map(c => {
+                      const online = contactPresence[c.streamUserId] ?? false;
+                      const busy   = contactPresence[`busy_${c.streamUserId}`] ?? false;
+                      const dotCls = busy ? 'bg-amber-400' : online ? 'bg-emerald-400' : 'bg-zinc-500';
+                      const statusLabel = busy ? 'Busy' : online ? 'Online' : 'Offline';
+                      const isExpanded = expandedContactId === c.streamUserId;
+
+                      return (
+                        <div key={c.streamUserId}>
+                          <button
+                            onClick={() => setExpandedContactId(isExpanded ? null : c.streamUserId)}
+                            className="w-full flex items-center gap-3 px-3.5 py-2.5 hover:bg-white/[0.04] active:bg-white/[0.06] transition-colors text-left"
+                          >
+                            <div className="relative shrink-0">
+                              <Avatar className="w-8 h-8">
+                                <AvatarFallback
+                                  className="text-[10px] font-bold"
+                                  style={{ background: 'linear-gradient(135deg,rgba(45,212,191,0.25),rgba(20,184,166,0.12))', color: '#2dd4bf' }}
+                                >
+                                  {c.name.slice(0, 2).toUpperCase()}
+                                </AvatarFallback>
+                              </Avatar>
+                              <span className={`absolute bottom-0 right-0 w-2.5 h-2.5 rounded-full border-2 border-background ${dotCls}`} />
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <p className="text-sm font-medium leading-tight truncate text-foreground/90">{c.name}</p>
+                              <p className="text-[10px] text-muted-foreground/70">{statusLabel}</p>
+                            </div>
+                            <button
+                              onClick={e => { e.stopPropagation(); onRemoveContact(c.streamUserId); }}
+                              className="p-1 rounded-full text-muted-foreground/30 hover:text-destructive/70 hover:bg-destructive/10 transition-colors shrink-0"
+                              title="Remove"
+                            >
+                              <X className="w-3 h-3" />
+                            </button>
+                          </button>
+
+                          {/* expanded: "Request for Chat" */}
+                          {isExpanded && (
+                            <div className="px-3.5 pb-3 pt-1 flex items-center gap-2">
+                              <Button
+                                size="sm"
+                                className="h-8 text-xs gap-1.5 rounded-xl font-semibold flex-1 transition-all active:scale-[0.97]"
+                                style={{
+                                  background: 'linear-gradient(135deg,rgba(45,212,191,0.18),rgba(20,184,166,0.10))',
+                                  border: '1px solid rgba(45,212,191,0.25)',
+                                  color: '#2dd4bf',
+                                  boxShadow: '0 2px 8px rgba(45,212,191,0.12)',
+                                }}
+                                onClick={() => {
+                                  setExpandedContactId(null);
+                                  onRequestChat({ id: c.streamUserId, name: c.name });
+                                }}
+                              >
+                                <MessageSquare className="w-3.5 h-3.5" />
+                                Request for Chat
+                              </Button>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
             )}
           </div>
 
@@ -566,6 +690,9 @@ function ChatInner({
                         tick={tick}
                         onSelect={() => {
                           setActiveChannel(ch);
+                          // Persist so the channel is restored after navigation
+                          _lastChannelId   = ch.id   ?? null;
+                          _lastChannelType = ch.type  ?? 'messaging';
                           ch.markRead?.().catch(() => {});
                         }}
                       />
@@ -575,86 +702,6 @@ function ChatInner({
               }}
             />
 
-            {/* ─── Contacts panel — persistent bottom-left list with presence ─── */}
-            {contacts.length > 0 && (
-              <div className="border-t border-border/40 shrink-0 mt-auto">
-                <button
-                  onClick={() => setContactsExpanded(e => !e)}
-                  className="w-full flex items-center justify-between px-4 py-2.5 text-[11px] font-semibold tracking-widest text-muted-foreground uppercase hover:text-foreground transition-colors"
-                >
-                  <span className="flex items-center gap-1.5">
-                    <span>Contacts</span>
-                    <span className="text-[10px] font-normal normal-case text-muted-foreground/60">
-                      ({contacts.filter(c => contactPresence[c.streamUserId]).length} online)
-                    </span>
-                  </span>
-                  {contactsExpanded ? <ChevronDown className="w-3.5 h-3.5" /> : <ChevronUp className="w-3.5 h-3.5" />}
-                </button>
-
-                {contactsExpanded && (
-                  <div className="max-h-52 overflow-y-auto overscroll-contain">
-                    {contacts.map(c => {
-                      const online = contactPresence[c.streamUserId] ?? false;
-                      const busy = contactPresence[`busy_${c.streamUserId}`] ?? false;
-                      const statusDot = busy
-                        ? 'bg-amber-400'
-                        : online
-                        ? 'bg-emerald-400'
-                        : 'bg-zinc-500';
-                      const statusLabel = busy ? 'Busy' : online ? 'Online' : 'Offline';
-                      const isExpanded = expandedContactId === c.streamUserId;
-
-                      return (
-                        <div key={c.streamUserId} className="border-b border-border/20 last:border-0">
-                          {/* contact row */}
-                          <button
-                            onClick={() => setExpandedContactId(isExpanded ? null : c.streamUserId)}
-                            className="w-full flex items-center gap-3 px-4 py-2.5 hover:bg-muted/20 active:bg-muted/30 transition-colors text-left"
-                          >
-                            <div className="relative shrink-0">
-                              <Avatar className="w-8 h-8">
-                                <AvatarFallback className="text-[10px] bg-primary/20 text-primary font-bold">
-                                  {c.name.slice(0, 2).toUpperCase()}
-                                </AvatarFallback>
-                              </Avatar>
-                              <span className={`absolute bottom-0 right-0 w-2.5 h-2.5 rounded-full border-2 border-background ${statusDot}`} />
-                            </div>
-                            <div className="flex-1 min-w-0">
-                              <p className="text-sm font-medium leading-tight truncate">{c.name}</p>
-                              <p className="text-[10px] text-muted-foreground">{statusLabel}</p>
-                            </div>
-                            <button
-                              onClick={e => { e.stopPropagation(); onRemoveContact(c.streamUserId); }}
-                              className="p-1 rounded-full text-muted-foreground/50 hover:text-destructive hover:bg-destructive/10 transition-colors shrink-0"
-                              title="Remove contact"
-                            >
-                              <X className="w-3 h-3" />
-                            </button>
-                          </button>
-
-                          {/* expanded: "Request for Chat" button */}
-                          {isExpanded && (
-                            <div className="px-4 pb-3 pt-0.5 flex items-center gap-2">
-                              <Button
-                                size="sm"
-                                className="h-8 text-xs gap-1.5 bg-primary/15 text-primary hover:bg-primary/25 border border-primary/20 rounded-lg"
-                                onClick={() => {
-                                  setExpandedContactId(null);
-                                  onRequestChat({ id: c.streamUserId, name: c.name });
-                                }}
-                              >
-                                <MessageSquare className="w-3.5 h-3.5" />
-                                Request for Chat
-                              </Button>
-                            </div>
-                          )}
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
-              </div>
-            )}
           </div>
         </div>
       ) : (

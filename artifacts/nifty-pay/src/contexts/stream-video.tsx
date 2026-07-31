@@ -60,7 +60,10 @@ export function StreamVideoProvider({ children }: { children: ReactNode }) {
         vc.on('call.ring', (event: any) => {
           stopRingtoneRef.current?.();
           stopRingtoneRef.current = createRingtone('incoming');
-          setIncomingCall(event.call);
+          // Create a proper Call SDK instance (not just raw event data) so
+          // .join() / .leave() are available when the user accepts / declines.
+          const callInstance = vc.call(event.call.type, event.call.id);
+          setIncomingCall(callInstance);
         });
         setVideoClient(vc);
       })
@@ -116,7 +119,9 @@ export function StreamVideoProvider({ children }: { children: ReactNode }) {
     if (!videoClient) throw new Error('Video not ready — please try again');
     stopRingtoneRef.current?.();
     stopRingtoneRef.current = createRingtone('outgoing');
-    const callType = type === 'audio' ? 'audio_room' : 'default';
+    // Always use 'default' — 'audio_room' is broadcast-style and fails for 1-1 calls.
+    // Audio-only vs video is controlled at the media track level, not the call type.
+    const callType = 'default';
     const call = videoClient.call(callType, callId);
     try {
       await call.getOrCreate({
