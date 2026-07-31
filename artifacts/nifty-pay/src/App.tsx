@@ -5,6 +5,7 @@ import { Route, Switch, Router as WouterRouter } from 'wouter';
 import { AuthProvider, useAuth } from '@/contexts/auth';
 import { StreamChatProvider } from '@/contexts/stream-chat';
 import { StreamVideoProvider } from '@/contexts/stream-video';
+import { AppErrorBoundary } from '@/components/error-boundary';
 import { AppLayout } from '@/components/layout/app-layout';
 import Dashboard from '@/pages/dashboard';
 import Send from '@/pages/send';
@@ -49,7 +50,9 @@ function Router() {
   // Authenticated: full app — both providers keep persistent clients alive for
   // the entire session so real-time events work from any page, not just /chat.
   return (
+    <AppErrorBoundary label="Chat">
     <StreamChatProvider>
+    <AppErrorBoundary label="Video">
     <StreamVideoProvider>
     <Switch>
       {/* Standalone pages — no app chrome */}
@@ -77,23 +80,27 @@ function Router() {
       </Route>
     </Switch>
     </StreamVideoProvider>
+    </AppErrorBoundary>
     </StreamChatProvider>
+    </AppErrorBoundary>
   );
 }
 
 function App() {
   return (
-    <AuthProvider>
-      <QueryClientProvider client={queryClient}>
-        <TooltipProvider>
-          <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, '')}>
-            <Router />
-            <InstallBanner />
-          </WouterRouter>
-          <Toaster />
-        </TooltipProvider>
-      </QueryClientProvider>
-    </AuthProvider>
+    <AppErrorBoundary>
+      <AuthProvider>
+        <QueryClientProvider client={queryClient}>
+          <TooltipProvider>
+            <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, '')}>
+              <Router />
+              <InstallBanner />
+            </WouterRouter>
+            <Toaster />
+          </TooltipProvider>
+        </QueryClientProvider>
+      </AuthProvider>
+    </AppErrorBoundary>
   );
 }
 
