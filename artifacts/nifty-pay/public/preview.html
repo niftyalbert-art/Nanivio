@@ -1,0 +1,379 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Nivio — New Feature Previews</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script>
+  tailwind.config = {
+    darkMode: 'class',
+    theme: {
+      extend: {
+        colors: {
+          primary: { DEFAULT: '#2dd4bf', foreground: '#000' },
+          background: '#0a0f1a',
+          card: '#111827',
+          border: '#1f2937',
+          muted: { DEFAULT: '#1f2937', foreground: '#6b7280' },
+          foreground: '#f9fafb',
+        },
+        animation: {
+          'ping-slow': 'ping 2s cubic-bezier(0,0,0.2,1) infinite',
+        }
+      }
+    }
+  }
+</script>
+<style>
+  * { box-sizing: border-box; }
+  body { background: #060d1a; font-family: -apple-system, BlinkMacSystemFont, 'Inter', sans-serif; }
+  .phone { width: 375px; height: 720px; background: #0a0f1a; border-radius: 40px; border: 1.5px solid #1f2937; overflow: hidden; position: relative; box-shadow: 0 32px 80px rgba(0,0,0,0.7), inset 0 1px 0 rgba(255,255,255,0.05); }
+  .phone-label { color: #6b7280; font-size: 11px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; margin-bottom: 12px; text-align: center; }
+  .section-title { color: #f9fafb; font-size: 22px; font-weight: 700; margin-bottom: 6px; }
+  .section-sub { color: #6b7280; font-size: 13px; margin-bottom: 28px; }
+  .badge { background: #ef4444; color: #fff; border-radius: 50%; width: 14px; height: 14px; font-size: 8px; display: flex; align-items: center; justify-content: center; font-weight: 700; border: 2px solid #0a0f1a; box-shadow: 0 0 8px rgba(239,68,68,0.6); }
+  .teal-fab { width: 56px; height: 56px; border-radius: 50%; background: linear-gradient(135deg, #2dd4bf, #0d9488); display: flex; align-items: center; justify-content: center; box-shadow: 0 4px 16px rgba(45,212,191,0.45), inset 0 1px 0 rgba(255,255,255,0.15); }
+  .msg-bubble-out { background: linear-gradient(135deg,#2dd4bf,#0d9488); color: #000; padding: 8px 12px; border-radius: 16px 16px 4px 16px; font-size: 13px; max-width: 220px; margin-left: auto; }
+  .msg-bubble-in { background: #1f2937; color: #f9fafb; padding: 8px 12px; border-radius: 16px 16px 16px 4px; font-size: 13px; max-width: 220px; }
+  .channel-row { display: flex; align-items: center; gap: 12px; padding: 12px 16px; border-bottom: 1px solid #1f2937; cursor: pointer; }
+  .channel-row:hover { background: #111827; }
+  .avatar { width: 44px; height: 44px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 15px; flex-shrink: 0; }
+  .nav-bar { position: absolute; bottom: 0; left: 0; right: 0; height: 72px; background: #0d1117; border-top: 1px solid #1f2937; display: flex; align-items: center; justify-content: space-around; padding: 0 8px; }
+  .nav-item { display: flex; flex-direction: column; align-items: center; gap: 3px; color: #4b5563; font-size: 9px; padding: 6px 12px; }
+  .nav-item.active { color: #2dd4bf; }
+  .input-bar { background: #111827; border: 1px solid #1f2937; border-radius: 24px; display: flex; align-items: center; padding: 8px 12px; gap: 8px; }
+  @keyframes ping { 75%,100% { transform: scale(2); opacity: 0; } }
+  @keyframes pulse { 50% { opacity: .5; } }
+  @keyframes slide-in { from { transform: translateY(-20px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+  .animate-ping { animation: ping 1.5s cubic-bezier(0,0,0.2,1) infinite; }
+  .animate-pulse { animation: pulse 2s ease-in-out infinite; }
+  .slide-in { animation: slide-in 0.4s ease both; }
+</style>
+</head>
+<body class="dark p-8">
+
+<div style="max-width:1400px;margin:0 auto;">
+
+  <!-- Header -->
+  <div style="margin-bottom:48px; padding-bottom:24px; border-bottom:1px solid #1f2937;">
+    <div style="display:flex;align-items:center;gap:12px;margin-bottom:8px;">
+      <div style="width:36px;height:36px;background:linear-gradient(135deg,#2dd4bf,#0d9488);border-radius:10px;display:flex;align-items:center;justify-content:center;font-weight:900;color:#000;font-size:14px;">N</div>
+      <span style="color:#f9fafb;font-size:20px;font-weight:700;">Nivio</span>
+      <span style="color:#6b7280;font-size:13px;margin-left:4px;">— New Feature Preview</span>
+    </div>
+    <p style="color:#6b7280;font-size:13px;">All new changes shipped in the latest build</p>
+  </div>
+
+  <!-- ══════════════════════════════════════════════════
+       ROW 1 — Unread badge + Emoji picker
+  ══════════════════════════════════════════════════ -->
+  <div style="display:flex;gap:48px;margin-bottom:64px;flex-wrap:wrap;">
+
+    <!-- 1A: Unread badge on FAB -->
+    <div>
+      <div class="phone-label">1 · Unread Dot on Chat Button</div>
+      <div class="phone">
+        <!-- Screen content (channel list) -->
+        <div style="background:#0a0f1a;padding:20px 16px 12px;border-bottom:1px solid #1f2937;">
+          <div style="color:#f9fafb;font-size:17px;font-weight:700;">Messages</div>
+          <div style="color:#6b7280;font-size:11px;">Chats &amp; Groups</div>
+        </div>
+        <!-- channels -->
+        <div class="channel-row">
+          <div class="avatar" style="background:#1f3a2a;color:#2dd4bf;">KO</div>
+          <div style="flex:1;min-width:0;">
+            <div style="color:#f9fafb;font-size:13px;font-weight:600;">Kevin Osei</div>
+            <div style="color:#6b7280;font-size:11px;truncate;">Hey, when does the payment arrive?</div>
+          </div>
+          <div style="text-align:right;">
+            <div style="color:#6b7280;font-size:10px;margin-bottom:4px;">2m</div>
+            <div style="background:#2dd4bf;color:#000;border-radius:50%;width:18px;height:18px;font-size:9px;font-weight:700;display:flex;align-items:center;justify-content:center;margin-left:auto;">3</div>
+          </div>
+        </div>
+        <div class="channel-row">
+          <div class="avatar" style="background:#1e1b4b;color:#818cf8;">AM</div>
+          <div style="flex:1;min-width:0;">
+            <div style="color:#f9fafb;font-size:13px;font-weight:600;">Ama Mensah</div>
+            <div style="color:#6b7280;font-size:11px;">Ok, sent!</div>
+          </div>
+          <div style="color:#6b7280;font-size:10px;">1h</div>
+        </div>
+        <!-- bottom nav with red dot -->
+        <div class="nav-bar">
+          <div class="nav-item">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/></svg>
+            <span>Home</span>
+          </div>
+          <div class="nav-item">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+            <span>Send</span>
+          </div>
+          <!-- Chat FAB with unread dot -->
+          <div style="position:relative;margin-top:-28px;">
+            <div class="teal-fab">
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#000" stroke-width="2.2"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg>
+            </div>
+            <!-- Red unread dot -->
+            <div style="position:absolute;top:-2px;right:-2px;width:16px;height:16px;background:#ef4444;border-radius:50%;border:2px solid #0a0f1a;display:flex;align-items:center;justify-content:center;box-shadow:0 0 10px rgba(239,68,68,0.7);">
+              <div style="width:8px;height:8px;background:#f87171;border-radius:50%;animation:ping 1.5s infinite;" class="animate-ping"></div>
+            </div>
+          </div>
+          <div class="nav-item">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 7V5a2 2 0 00-2-2h-4a2 2 0 00-2 2v2"/></svg>
+            <span>Pay</span>
+          </div>
+          <div class="nav-item">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+            <span>Profile</span>
+          </div>
+        </div>
+      </div>
+      <p style="color:#6b7280;font-size:11px;text-align:center;margin-top:10px;">Pulsing red dot appears when messages arrive<br>while on another tab. Clears when you open chat.</p>
+    </div>
+
+    <!-- 1B: Emoji picker open in composer -->
+    <div>
+      <div class="phone-label">2 · Messenger Emoji Picker</div>
+      <div class="phone">
+        <!-- Header -->
+        <div style="display:flex;align-items:center;gap:10px;padding:12px 14px;border-bottom:1px solid #1f2937;background:#0a0f1a;">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#6b7280" stroke-width="2"><polyline points="15 18 9 12 15 6"/></svg>
+          <div style="width:34px;height:34px;border-radius:50%;background:#1f3a2a;display:flex;align-items:center;justify-content:center;color:#2dd4bf;font-weight:700;font-size:12px;">KO</div>
+          <div>
+            <div style="color:#f9fafb;font-size:13px;font-weight:600;">Kevin Osei</div>
+            <div style="color:#6b7280;font-size:10px;">online</div>
+          </div>
+        </div>
+        <!-- Messages -->
+        <div style="padding:12px 14px;display:flex;flex-direction:column;gap:8px;flex:1;">
+          <div class="msg-bubble-in">Hey! How are you? 😊</div>
+          <div class="msg-bubble-out">All good! Working on the app 🔥</div>
+        </div>
+        <!-- Emoji picker popup -->
+        <div style="position:absolute;bottom:100px;left:8px;right:8px;background:#111827;border:1px solid #1f2937;border-radius:16px;padding:12px;box-shadow:0 -8px 32px rgba(0,0,0,0.5);">
+          <div style="margin-bottom:8px;">
+            <div style="background:#1f2937;border-radius:8px;padding:6px 10px;display:flex;align-items:center;gap:6px;">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#6b7280" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>
+              <span style="color:#6b7280;font-size:11px;">Search emoji</span>
+            </div>
+          </div>
+          <!-- Category icons -->
+          <div style="display:flex;gap:8px;margin-bottom:8px;">
+            <span style="font-size:16px;opacity:0.8;">😀</span><span style="font-size:16px;opacity:0.5;">🐶</span><span style="font-size:16px;opacity:0.5;">🍕</span><span style="font-size:16px;opacity:0.5;">⚽</span><span style="font-size:16px;opacity:0.5;">✈️</span><span style="font-size:16px;opacity:0.5;">💡</span>
+          </div>
+          <div style="color:#6b7280;font-size:10px;font-weight:600;letter-spacing:0.05em;text-transform:uppercase;margin-bottom:6px;">Frequently Used</div>
+          <div style="display:flex;flex-wrap:wrap;gap:2px;">
+            <span style="font-size:22px;padding:2px;">😊</span><span style="font-size:22px;padding:2px;">🔥</span><span style="font-size:22px;padding:2px;">👍</span><span style="font-size:22px;padding:2px;">❤️</span><span style="font-size:22px;padding:2px;">😂</span><span style="font-size:22px;padding:2px;">🙏</span><span style="font-size:22px;padding:2px;">💯</span><span style="font-size:22px;padding:2px;">🎉</span><span style="font-size:22px;padding:2px;">😭</span><span style="font-size:22px;padding:2px;">✨</span><span style="font-size:22px;padding:2px;">🫶</span><span style="font-size:22px;padding:2px;">😎</span>
+          </div>
+        </div>
+        <!-- Composer -->
+        <div style="position:absolute;bottom:0;left:0;right:0;background:#0a0f1a;border-top:1px solid #1f2937;padding:10px 12px;">
+          <div style="display:flex;align-items:center;gap:8px;">
+            <div style="flex:1;background:#111827;border:1px solid #1f2937;border-radius:22px;padding:8px 12px;color:#6b7280;font-size:13px;">Message…</div>
+            <!-- Emoji button (active/highlighted) -->
+            <div style="width:32px;height:32px;border-radius:50%;background:rgba(45,212,191,0.15);display:flex;align-items:center;justify-content:center;font-size:17px;border:1px solid rgba(45,212,191,0.3);">😊</div>
+            <div style="width:32px;height:32px;border-radius:50%;background:#1f2937;display:flex;align-items:center;justify-content:center;">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="#6b7280"><path d="M19 11H7.83l4.88-4.88c.39-.39.39-1.03 0-1.42-.39-.39-1.02-.39-1.41 0l-6.59 6.59c-.39.39-.39 1.02 0 1.41l6.59 6.59c.39.39 1.02.39 1.41 0 .39-.39.39-1.02 0-1.41L7.83 13H19c.55 0 1-.45 1-1s-.45-1-1-1z"/></svg>
+            </div>
+          </div>
+        </div>
+      </div>
+      <p style="color:#6b7280;font-size:11px;text-align:center;margin-top:10px;">Full emoji picker with categories, search,<br>and recently used. Tap 😊 to open/close.</p>
+    </div>
+
+  </div>
+
+  <!-- ══════════════════════════════════════════════════
+       ROW 2 — Chat invite flow
+  ══════════════════════════════════════════════════ -->
+  <div style="margin-bottom:32px;">
+    <div class="section-title">Chat Invite System</div>
+    <div class="section-sub">User A invites User B → B must accept before either can message</div>
+  </div>
+
+  <div style="display:flex;gap:48px;flex-wrap:wrap;margin-bottom:64px;">
+
+    <!-- 2A: Floating invite banner (User B receives) -->
+    <div>
+      <div class="phone-label">3 · Incoming Invite Banner (User B)</div>
+      <div class="phone">
+        <!-- Blurred background (dashboard) -->
+        <div style="padding:16px;opacity:0.4;">
+          <div style="color:#f9fafb;font-size:17px;font-weight:700;margin-bottom:4px;">Dashboard</div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:12px;">
+            <div style="background:#111827;border-radius:12px;padding:12px;border:1px solid #1f2937;">
+              <div style="color:#6b7280;font-size:10px;">Balance</div>
+              <div style="color:#f9fafb;font-size:18px;font-weight:700;margin-top:2px;">$2,410.00</div>
+            </div>
+            <div style="background:#111827;border-radius:12px;padding:12px;border:1px solid #1f2937;">
+              <div style="color:#6b7280;font-size:10px;">Sent</div>
+              <div style="color:#f9fafb;font-size:18px;font-weight:700;margin-top:2px;">$340.00</div>
+            </div>
+          </div>
+        </div>
+        <!-- Amber invite banner -->
+        <div class="slide-in" style="position:absolute;top:72px;left:12px;right:12px;background:#111827;border:1px solid rgba(251,191,36,0.3);border-radius:20px;padding:14px;display:flex;align-items:center;gap:12px;box-shadow:0 0 0 1px rgba(251,191,36,0.1),0 12px 40px rgba(0,0,0,0.6);">
+          <div style="width:46px;height:46px;border-radius:50%;background:rgba(251,191,36,0.12);display:flex;align-items:center;justify-content:center;font-size:18px;font-weight:700;color:#fbbf24;flex-shrink:0;">K</div>
+          <div style="flex:1;min-width:0;">
+            <div style="color:#f9fafb;font-size:13px;font-weight:700;">Kevin Osei</div>
+            <div style="color:#6b7280;font-size:11px;">wants to chat with you</div>
+          </div>
+          <!-- Decline -->
+          <button style="width:42px;height:42px;border-radius:50%;background:#1f2937;border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#9ca3af" stroke-width="2"><path d="M16 11c0 2.21-1.79 4-4 4S8 13.21 8 11V5a4 4 0 018 0v6z"/><path d="M6 13v1a6 6 0 0012 0v-1"/><line x1="9" y1="9" x2="15" y2="15"/><line x1="15" y1="9" x2="9" y2="15"/></svg>
+          </button>
+          <!-- Accept -->
+          <button style="width:42px;height:42px;border-radius:50%;background:#10b981;border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0;box-shadow:0 4px 12px rgba(16,185,129,0.4);">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.5"><path d="M20 6L9 17l-5-5"/></svg>
+          </button>
+        </div>
+        <!-- Nav -->
+        <div class="nav-bar">
+          <div class="nav-item active"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/></svg><span>Home</span></div>
+          <div class="nav-item"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg><span>Send</span></div>
+          <div style="position:relative;margin-top:-28px;"><div class="teal-fab"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#000" stroke-width="2.2"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg></div></div>
+          <div class="nav-item"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="7" width="20" height="14" rx="2"/></svg><span>Pay</span></div>
+          <div class="nav-item"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"/><circle cx="12" cy="7" r="4"/></svg><span>Profile</span></div>
+        </div>
+      </div>
+      <p style="color:#6b7280;font-size:11px;text-align:center;margin-top:10px;">Slides down on any page when an invite arrives.<br>Plays a sound + browser push notification too.</p>
+    </div>
+
+    <!-- 2B: Chat Requests section in channel list -->
+    <div>
+      <div class="phone-label">4 · "Chat Requests" in Messages List (User B)</div>
+      <div class="phone">
+        <div style="background:#0a0f1a;padding:16px 16px 10px;border-bottom:1px solid #1f2937;">
+          <div style="color:#f9fafb;font-size:17px;font-weight:700;">Messages</div>
+          <div style="color:#6b7280;font-size:11px;">Chats &amp; Groups</div>
+        </div>
+        <!-- Chat Requests section -->
+        <div style="padding:10px 8px 4px;">
+          <div style="color:#fbbf24;font-size:9px;font-weight:700;letter-spacing:0.12em;text-transform:uppercase;padding:0 8px 6px;">Chat Requests</div>
+          <!-- Invite card -->
+          <div style="background:rgba(251,191,36,0.05);border:1px solid rgba(251,191,36,0.2);border-radius:16px;padding:12px;display:flex;align-items:center;gap:10px;margin-bottom:6px;">
+            <div style="width:40px;height:40px;border-radius:50%;background:rgba(251,191,36,0.12);display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;color:#fbbf24;flex-shrink:0;">KO</div>
+            <div style="flex:1;min-width:0;">
+              <div style="color:#f9fafb;font-size:13px;font-weight:600;">Kevin Osei</div>
+              <div style="color:#6b7280;font-size:11px;">wants to chat with you</div>
+            </div>
+            <button style="width:32px;height:32px;border-radius:50%;background:#1f2937;border:none;display:flex;align-items:center;justify-content:center;cursor:pointer;">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#9ca3af" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+            </button>
+            <button style="width:32px;height:32px;border-radius:50%;background:#10b981;border:none;display:flex;align-items:center;justify-content:center;cursor:pointer;box-shadow:0 2px 8px rgba(16,185,129,0.4);">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.5"><path d="M20 6L9 17l-5-5"/></svg>
+            </button>
+          </div>
+        </div>
+        <!-- Messages divider -->
+        <div style="color:#6b7280;font-size:9px;font-weight:700;letter-spacing:0.12em;text-transform:uppercase;padding:4px 24px 6px;">Messages</div>
+        <!-- Normal channel -->
+        <div class="channel-row">
+          <div class="avatar" style="background:#1e1b4b;color:#818cf8;">AM</div>
+          <div style="flex:1;">
+            <div style="color:#f9fafb;font-size:13px;font-weight:600;">Ama Mensah</div>
+            <div style="color:#6b7280;font-size:11px;">Ok, sent!</div>
+          </div>
+          <div style="color:#6b7280;font-size:10px;">1h</div>
+        </div>
+        <div class="channel-row">
+          <div class="avatar" style="background:#1a1a2e;color:#a78bfa;">TD</div>
+          <div style="flex:1;">
+            <div style="color:#f9fafb;font-size:13px;font-weight:600;">Temi D.</div>
+            <div style="color:#6b7280;font-size:11px;">Thanks! 🙏</div>
+          </div>
+          <div style="color:#6b7280;font-size:10px;">3h</div>
+        </div>
+        <!-- Nav -->
+        <div class="nav-bar">
+          <div class="nav-item"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/></svg><span>Home</span></div>
+          <div class="nav-item"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg><span>Send</span></div>
+          <div style="position:relative;margin-top:-28px;"><div class="teal-fab" style="background:linear-gradient(135deg,#34d399,#059669);box-shadow:0 6px 20px rgba(45,212,191,0.55);"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#000" stroke-width="2.2"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg></div></div>
+          <div class="nav-item"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="7" width="20" height="14" rx="2"/></svg><span>Pay</span></div>
+          <div class="nav-item"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"/><circle cx="12" cy="7" r="4"/></svg><span>Profile</span></div>
+        </div>
+      </div>
+      <p style="color:#6b7280;font-size:11px;text-align:center;margin-top:10px;">Pending requests pinned at top.<br>Accept ✓ or decline ✗ inline without opening the chat.</p>
+    </div>
+
+    <!-- 2C: In-channel accept/decline view (User B opens the channel) -->
+    <div>
+      <div class="phone-label">5 · In-Channel Accept / Decline (User B)</div>
+      <div class="phone">
+        <!-- Header -->
+        <div style="display:flex;align-items:center;gap:10px;padding:12px 14px;border-bottom:1px solid #1f2937;background:#0a0f1a;">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#6b7280" stroke-width="2"><polyline points="15 18 9 12 15 6"/></svg>
+          <div style="width:34px;height:34px;border-radius:50%;background:rgba(251,191,36,0.12);display:flex;align-items:center;justify-content:center;color:#fbbf24;font-weight:700;font-size:13px;">K</div>
+          <div style="flex:1;">
+            <div style="color:#f9fafb;font-size:13px;font-weight:600;">Kevin Osei</div>
+            <div style="color:#fbbf24;font-size:10px;">Pending invite</div>
+          </div>
+        </div>
+        <!-- Accept/decline content -->
+        <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;flex:1;padding:32px 24px;text-align:center;position:absolute;top:60px;bottom:0;left:0;right:0;">
+          <div style="width:80px;height:80px;border-radius:50%;background:rgba(251,191,36,0.1);border:1px solid rgba(251,191,36,0.2);display:flex;align-items:center;justify-content:center;margin-bottom:20px;font-size:32px;font-weight:700;color:#fbbf24;">K</div>
+          <div style="color:#f9fafb;font-size:18px;font-weight:700;margin-bottom:6px;">Kevin Osei</div>
+          <div style="color:#6b7280;font-size:13px;margin-bottom:12px;">wants to start a chat with you</div>
+          <div style="color:#6b7280;font-size:11px;max-width:240px;margin-bottom:28px;">Accept to begin messaging. If you decline, this request will be removed.</div>
+          <div style="display:flex;gap:12px;">
+            <button style="padding:10px 20px;border-radius:10px;background:transparent;border:1px solid #374151;color:#f9fafb;font-size:13px;font-weight:600;cursor:pointer;display:flex;align-items:center;gap:6px;">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg> Decline
+            </button>
+            <button style="padding:10px 20px;border-radius:10px;background:#10b981;border:none;color:#fff;font-size:13px;font-weight:600;cursor:pointer;display:flex;align-items:center;gap:6px;box-shadow:0 4px 16px rgba(16,185,129,0.35);">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M20 6L9 17l-5-5"/></svg> Accept
+            </button>
+          </div>
+        </div>
+      </div>
+      <p style="color:#6b7280;font-size:11px;text-align:center;margin-top:10px;">If B taps the channel directly, they see<br>this full-screen invite prompt.</p>
+    </div>
+
+    <!-- 2D: Waiting for acceptance (User A's view) -->
+    <div>
+      <div class="phone-label">6 · Waiting for Acceptance (User A)</div>
+      <div class="phone">
+        <!-- Header -->
+        <div style="display:flex;align-items:center;gap:10px;padding:12px 14px;border-bottom:1px solid #1f2937;background:#0a0f1a;">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#6b7280" stroke-width="2"><polyline points="15 18 9 12 15 6"/></svg>
+          <div style="width:34px;height:34px;border-radius:50%;background:#1f3a2a;display:flex;align-items:center;justify-content:center;color:#2dd4bf;font-weight:700;font-size:13px;">KO</div>
+          <div style="flex:1;">
+            <div style="color:#f9fafb;font-size:13px;font-weight:600;">Kevin Osei</div>
+            <div style="color:#fbbf24;font-size:10px;display:flex;align-items:center;gap:4px;">
+              <span style="width:6px;height:6px;border-radius:50%;background:#fbbf24;display:inline-block;" class="animate-pulse"></span>
+              Invite pending
+            </div>
+          </div>
+        </div>
+        <!-- Waiting content -->
+        <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;position:absolute;top:60px;bottom:0;left:0;right:0;padding:32px 24px;text-align:center;">
+          <div style="width:80px;height:80px;border-radius:50%;background:rgba(45,212,191,0.08);border:1px solid rgba(45,212,191,0.2);display:flex;align-items:center;justify-content:center;margin-bottom:20px;">
+            <!-- Clock icon -->
+            <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#2dd4bf" stroke-width="1.8" class="animate-pulse"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+          </div>
+          <div style="color:#f9fafb;font-size:16px;font-weight:700;margin-bottom:8px;">Waiting for Kevin</div>
+          <div style="color:#6b7280;font-size:13px;margin-bottom:12px;">Your chat request has been sent. You can start messaging once they accept.</div>
+          <div style="color:#4b5563;font-size:11px;">Kevin will see your request in their Messages tab.</div>
+        </div>
+      </div>
+      <p style="color:#6b7280;font-size:11px;text-align:center;margin-top:10px;">A sees this after inviting B. No composer —<br>messaging is locked until B accepts.</p>
+    </div>
+
+  </div>
+
+  <!-- Footer -->
+  <div style="border-top:1px solid #1f2937;padding-top:24px;display:flex;align-items:center;justify-content:space-between;">
+    <div>
+      <div style="color:#f9fafb;font-size:13px;font-weight:600;">All 6 states live in production build</div>
+      <div style="color:#6b7280;font-size:11px;margin-top:2px;">Built with Stream Chat React v14 native invite API</div>
+    </div>
+    <div style="display:flex;gap:8px;">
+      <div style="padding:4px 10px;background:#1f2937;border-radius:6px;color:#2dd4bf;font-size:10px;font-weight:600;">inviteMembers()</div>
+      <div style="padding:4px 10px;background:#1f2937;border-radius:6px;color:#2dd4bf;font-size:10px;font-weight:600;">acceptInvite()</div>
+      <div style="padding:4px 10px;background:#1f2937;border-radius:6px;color:#2dd4bf;font-size:10px;font-weight:600;">rejectInvite()</div>
+    </div>
+  </div>
+
+</div>
+</body>
+</html>
