@@ -7,10 +7,10 @@ import {
 } from 'stream-chat-react';
 import Picker from '@emoji-mart/react';
 import data from '@emoji-mart/data';
-import { SearchIndex } from 'emoji-mart';
+import { init, SearchIndex } from 'emoji-mart';
 
-// Build the emoji search index once at module load (powers the :emoji: autocomplete)
-SearchIndex.build(data as any).catch(() => {});
+// Initialise the emoji data once at module load (powers the :emoji: autocomplete)
+init({ data });
 import {
   StreamVideo, StreamVideoClient, StreamCall,
   SpeakerLayout, CallControls, useCallStateHooks,
@@ -22,6 +22,7 @@ import { playMessageNotification, createRingtone } from '@/lib/sounds';
 import {
   MessageSquare, Phone, Video, ArrowLeft, Plus, Users,
   Search, X, Check, PhoneCall, Sparkles, Bell,
+  UserCheck, UserX, Clock,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -190,6 +191,51 @@ function IncomingCallBanner({ callerName, onAccept, onDecline }: { callerName: s
   );
 }
 
+/* ─── chat invite request banner ─── */
+function InviteRequestBanner({
+  channel,
+  myUserId,
+  onAccept,
+  onDecline,
+}: {
+  channel: StreamChannel;
+  myUserId: string;
+  onAccept: (ch: StreamChannel) => void;
+  onDecline: (ch: StreamChannel) => void;
+}) {
+  const members = Object.values(channel.state.members ?? {});
+  const inviter = members.find((m: any) => m.user_id !== myUserId && !m.invited);
+  const inviterName: string = (inviter as any)?.user?.name ?? 'Someone';
+  const channelName: string = (channel.data as any)?.name ?? `Chat with ${inviterName}`;
+
+  return (
+    <div className="fixed inset-x-4 top-20 z-[99] bg-card border border-amber-500/30 rounded-2xl shadow-2xl p-4 flex items-center gap-3 animate-in slide-in-from-top-4 duration-300"
+      style={{ boxShadow: '0 0 0 1px rgba(251,191,36,0.15), 0 12px 40px rgba(0,0,0,0.5)' }}>
+      <div className="w-12 h-12 rounded-full bg-amber-500/15 flex items-center justify-center shrink-0">
+        <span className="text-xl font-bold text-amber-400">{inviterName.slice(0, 1).toUpperCase()}</span>
+      </div>
+      <div className="flex-1 min-w-0">
+        <p className="font-bold text-sm truncate">{inviterName}</p>
+        <p className="text-xs text-muted-foreground">wants to chat{channelName !== `Chat with ${inviterName}` ? ` · ${channelName}` : ''}</p>
+      </div>
+      <button
+        onClick={() => onDecline(channel)}
+        className="w-11 h-11 bg-muted hover:bg-muted/60 rounded-full flex items-center justify-center shrink-0 transition-colors"
+        title="Decline"
+      >
+        <UserX className="w-4 h-4 text-muted-foreground" />
+      </button>
+      <button
+        onClick={() => onAccept(channel)}
+        className="w-11 h-11 bg-emerald-500 hover:bg-emerald-600 rounded-full flex items-center justify-center shrink-0 transition-colors"
+        title="Accept"
+      >
+        <UserCheck className="w-4 h-4 text-white" />
+      </button>
+    </div>
+  );
+}
+
 /* ─── inner component (needs Chat ctx) ─── */
 function ChatInner({
   streamData,
@@ -207,10 +253,86 @@ function ChatInner({
   // In-app flash: { name, text } shown for 3 s when a message arrives in a background channel
   const [msgFlash, setMsgFlash] = useState<{ name: string; text: string } | null>(null);
   const flashTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Pending chat invites — channels where the current user was invited but hasn't accepted yet
+  const [pendingInvites, setPendingInvites] = useState<StreamChannel[]>([]);
 
   useEffect(() => {
     setActiveChannelRef.current = setActiveChannel as any;
   }, [setActiveChannel, setActiveChannelRef]);
+
+  // Load pending invites on mount (catches invites received while offline)
+  useEffect(() => {
+    client.queryChannels(
+      { invite: 'pending', type: 'messaging' },
+      [{ created_at: -1 }],
+      { limit: 20, watch: true, state: true },
+    ).then(chs => setPendingInvites(chs)).catch(() => {});
+  }, [client]);
+
+  // Listen for incoming invites and invite status changes
+  useEffect(() => {
+    const onInvited = (event: any) => {
+      const cid = event.channel?.cid;
+      if (!cid) return;
+      // Watch the channel to get full state then add to pending list
+      client.queryChannels({ cid }, [], { limit: 1, watch: true, state: true })
+        .then(([ch]) => {
+          if (ch) {
+            setPendingInvites(prev => [ch, ...prev.filter(c => c.cid !== ch.cid)]);
+            // Browser notification for the invite
+            const inviterName = event.member?.user?.name ?? 'Someone';
+            if ('Notification' in window && Notification.permission === 'granted') {
+              try {
+                new Notification(inviterName, {
+                  body: 'wants to start a chat with you',
+                  icon: '/icons/icon-192.png',
+                  badge: '/icons/icon-192.png',
+                  tag: `invite-${cid}`,
+                  silent: false,
+                });
+              } catch { /* ignore */ }
+            }
+            playMessageNotification();
+            window.dispatchEvent(new CustomEvent('nivio:unread', { detail: 1 }));
+          }
+        }).catch(() => {});
+    };
+
+    const onMemberUpdated = (event: any) => {
+      // Remove from pending if current user accepted or rejected
+      if (event.member?.user_id === streamData.userId) {
+        const accepted = !!(event.member as any)?.invite_accepted_at;
+        const rejected = !!(event.member as any)?.invite_rejected_at;
+        if (accepted || rejected) {
+          setPendingInvites(prev => prev.filter(c => c.cid !== event.cid));
+        }
+      }
+      setTick(t => t + 1); // refresh channel items so invite state re-renders
+    };
+
+    client.on('notification.invited', onInvited);
+    client.on('member.updated', onMemberUpdated);
+    return () => {
+      client.off('notification.invited', onInvited);
+      client.off('member.updated', onMemberUpdated);
+    };
+  }, [client, streamData.userId]);
+
+  const acceptInvite = async (ch: StreamChannel) => {
+    try {
+      await ch.acceptInvite();
+      setPendingInvites(prev => prev.filter(c => c.cid !== ch.cid));
+      setActiveChannel(ch as any);
+      setTick(t => t + 1);
+    } catch { /* ignore */ }
+  };
+
+  const declineInvite = async (ch: StreamChannel) => {
+    try {
+      await ch.rejectInvite();
+      setPendingInvites(prev => prev.filter(c => c.cid !== ch.cid));
+    } catch { /* ignore */ }
+  };
 
   // New message: sound + browser notification + in-app flash
   useEffect(() => {
@@ -371,9 +493,58 @@ function ChatInner({
                   );
                 }
 
+                // Separate pending-invite channels from normal channels
+                const pendingInList = visible.filter(ch => {
+                  const m = (ch.state.members ?? {})[streamData.userId] as any;
+                  return m?.invited && !m?.invite_accepted_at && !m?.invite_rejected_at;
+                });
+                const normalInList = visible.filter(ch => !pendingInList.includes(ch));
+
                 return (
                   <>
-                    {visible.map((ch) => (
+                    {/* ── Pending chat requests section ── */}
+                    {pendingInList.length > 0 && (
+                      <div>
+                        <p className="px-4 pt-3 pb-1 text-[10px] font-semibold tracking-widest text-amber-400 uppercase">
+                          Chat Requests
+                        </p>
+                        {pendingInList.map(ch => {
+                          const members = Object.values(ch.state.members ?? {}) as any[];
+                          const inviter = members.find((m: any) => m.user_id !== streamData.userId && !m.invited);
+                          const inviterName: string = inviter?.user?.name ?? 'Someone';
+                          const chName: string = (ch.data as any)?.name ?? inviterName;
+                          return (
+                            <div key={ch.cid} className="mx-2 mb-2 rounded-2xl border border-amber-500/20 bg-amber-500/5 p-3 flex items-center gap-3">
+                              <div className="w-10 h-10 rounded-full bg-amber-500/15 flex items-center justify-center shrink-0">
+                                <span className="text-sm font-bold text-amber-400">{inviterName.slice(0, 2).toUpperCase()}</span>
+                              </div>
+                              <div className="flex-1 min-w-0">
+                                <p className="text-sm font-semibold truncate">{chName}</p>
+                                <p className="text-[11px] text-muted-foreground">wants to chat with you</p>
+                              </div>
+                              <button
+                                onClick={() => declineInvite(ch)}
+                                className="w-8 h-8 rounded-full bg-muted/60 hover:bg-muted flex items-center justify-center shrink-0 transition-colors"
+                              >
+                                <UserX className="w-3.5 h-3.5 text-muted-foreground" />
+                              </button>
+                              <button
+                                onClick={() => acceptInvite(ch)}
+                                className="w-8 h-8 rounded-full bg-emerald-500 hover:bg-emerald-600 flex items-center justify-center shrink-0 transition-colors"
+                              >
+                                <UserCheck className="w-3.5 h-3.5 text-white" />
+                              </button>
+                            </div>
+                          );
+                        })}
+                        {normalInList.length > 0 && (
+                          <p className="px-4 pt-2 pb-1 text-[10px] font-semibold tracking-widest text-muted-foreground uppercase">Messages</p>
+                        )}
+                      </div>
+                    )}
+
+                    {/* ── Normal channels ── */}
+                    {normalInList.map((ch) => (
                       <ChannelItem
                         key={ch.cid}
                         channel={ch}
@@ -381,7 +552,7 @@ function ChatInner({
                         myUserId={streamData.userId}
                         tick={tick}
                         onSelect={() => {
-                          setContactFilter('');   // clear filter so back-navigation shows full list
+                          setContactFilter('');
                           setActiveChannel(ch);
                           ch.markRead?.().catch(() => {});
                         }}
@@ -442,21 +613,109 @@ function ChatInner({
             </div>
           </div>
 
-          {/* ── messages + composer in a plain flex column ── */}
-          <div className="flex flex-col flex-1 min-h-0 overflow-hidden w-full">
-            <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain">
-              <MessageList />
-            </div>
-            <div className="shrink-0 w-full">
-              <MessageComposer
-                additionalTextareaProps={{ placeholder: 'Message…' }}
-                audioRecordingEnabled
-                emojiSearchIndex={SearchIndex}
-              />
-            </div>
-          </div>
+          {/* ── invite state awareness ── */}
+          {(() => {
+            const myMembership = (activeChannel.state.members ?? {})[streamData.userId] as any;
+            const iAmInvited = myMembership?.invited && !myMembership?.invite_accepted_at && !myMembership?.invite_rejected_at;
+
+            const allMembers = Object.values(activeChannel.state.members ?? {}) as any[];
+            const pendingInvitees = allMembers.filter(m =>
+              m.user_id !== streamData.userId && m.invited && !m.invite_accepted_at && !m.invite_rejected_at
+            );
+            const isWaitingForAcceptance = !iAmInvited && pendingInvitees.length > 0;
+
+            if (iAmInvited) {
+              // ── User B: accept or decline the invitation ──
+              const inviterMember = allMembers.find(m => m.user_id !== streamData.userId && !m.invited);
+              const inviterName: string = inviterMember?.user?.name ?? 'Someone';
+              return (
+                <div className="flex flex-col flex-1 items-center justify-center gap-5 px-6 text-center">
+                  <div className="w-20 h-20 rounded-full bg-amber-500/10 border border-amber-500/20 flex items-center justify-center">
+                    <span className="text-3xl font-bold text-amber-400">{inviterName.slice(0, 1).toUpperCase()}</span>
+                  </div>
+                  <div>
+                    <p className="font-bold text-lg">{inviterName}</p>
+                    <p className="text-sm text-muted-foreground mt-1">wants to start a chat with you</p>
+                  </div>
+                  <p className="text-xs text-muted-foreground max-w-[260px]">
+                    Accept to begin messaging. If you decline, this request will be removed.
+                  </p>
+                  <div className="flex items-center gap-3">
+                    <Button
+                      variant="outline"
+                      className="gap-2 border-border/50 hover:border-destructive/40 hover:text-destructive hover:bg-destructive/5"
+                      onClick={() => declineInvite(activeChannel)}
+                    >
+                      <UserX className="w-4 h-4" />
+                      Decline
+                    </Button>
+                    <Button
+                      className="gap-2 bg-emerald-500 hover:bg-emerald-600 text-white"
+                      onClick={() => acceptInvite(activeChannel)}
+                    >
+                      <UserCheck className="w-4 h-4" />
+                      Accept
+                    </Button>
+                  </div>
+                </div>
+              );
+            }
+
+            if (isWaitingForAcceptance) {
+              // ── User A: waiting for B to accept ──
+              const inviteeName: string = pendingInvitees[0]?.user?.name ?? 'them';
+              return (
+                <div className="flex flex-col flex-1 items-center justify-center gap-5 px-6 text-center">
+                  <div className="w-20 h-20 rounded-full bg-primary/10 border border-primary/20 flex items-center justify-center">
+                    <Clock className="w-8 h-8 text-primary animate-pulse" />
+                  </div>
+                  <div>
+                    <p className="font-bold text-base">Waiting for {inviteeName}</p>
+                    <p className="text-sm text-muted-foreground mt-1">
+                      Your chat request has been sent. You can start messaging once they accept.
+                    </p>
+                  </div>
+                  <p className="text-xs text-muted-foreground/70">
+                    {inviteeName} will see your request in their Messages tab.
+                  </p>
+                </div>
+              );
+            }
+
+            // ── Normal: both users are full members ──
+            return (
+              <div className="flex flex-col flex-1 min-h-0 overflow-hidden w-full">
+                <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain">
+                  <MessageList />
+                </div>
+                <div className="shrink-0 w-full">
+                  <MessageComposer
+                    additionalTextareaProps={{ placeholder: 'Message…' }}
+                    audioRecordingEnabled
+                    emojiSearchIndex={SearchIndex}
+                  />
+                </div>
+              </div>
+            );
+          })()}
         </Channel>
       )}
+
+      {/* ── Floating invite banners (one per pending invite, stacked) ── */}
+      {pendingInvites
+        .filter(ch => !(activeChannel && ch.cid === activeChannel.cid)) // don't double-show if channel is open
+        .slice(0, 2) // show at most 2 banners at a time
+        .map((ch, i) => (
+          <div key={ch.cid} style={{ transform: `translateY(${i * 88}px)` }}>
+            <InviteRequestBanner
+              channel={ch}
+              myUserId={streamData.userId}
+              onAccept={acceptInvite}
+              onDecline={declineInvite}
+            />
+          </div>
+        ))
+      }
     </div>
   );
 }
@@ -561,15 +820,40 @@ export default function ChatPage() {
     if (!chatClient || selectedUsers.length === 0) return;
     setCreating(true);
     try {
-      const members = [streamData!.userId, ...selectedUsers.map(u => u.id)];
+      // Check for an existing channel between these exact users first
+      const inviteeIds = selectedUsers.map(u => u.id);
+      const existing = await chatClient.queryChannels(
+        {
+          type: 'messaging',
+          members: { $in: inviteeIds },
+          ...(isGroup ? {} : {}),
+        },
+        [{ last_message_at: -1 }],
+        { limit: 5, state: true }
+      );
+      // If a channel already exists with these exact member sets, reuse it
+      const match = existing.find(ch => {
+        const memberIds = Object.keys(ch.state.members ?? {});
+        return inviteeIds.every(id => memberIds.includes(id)) && memberIds.includes(streamData!.userId);
+      });
+      if (match) {
+        closeNewChat();
+        setActiveChannelRef.current?.(match);
+        return;
+      }
+
+      // Create a fresh channel with only the creator as a full member
       const ch = chatClient.channel('messaging', {
-        members,
         ...(isGroup && groupName.trim() ? { name: groupName.trim() } : {}),
       });
+      await ch.create();
+      // Invite the selected users — they must accept before messaging starts
+      await ch.inviteMembers(inviteeIds);
       await ch.watch();
       closeNewChat();
       setActiveChannelRef.current?.(ch);
-    } catch {
+    } catch (err) {
+      console.error('startChat error:', err);
       toast({ title: 'Could not create chat', variant: 'destructive' });
     } finally {
       setCreating(false);
