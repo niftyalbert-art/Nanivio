@@ -424,7 +424,7 @@ function ChatInner({
               <UserPlus className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground pointer-events-none" />
               <Input
                 className="pl-8 h-9 text-sm rounded-xl bg-muted/40 border-border/30 focus-visible:border-primary/40 focus-visible:ring-primary/10"
-                placeholder="Add user…"
+                placeholder="Add a user…"
                 value={addUserQuery}
                 onChange={e => setAddUserQuery(e.target.value)}
               />
