@@ -186,7 +186,16 @@ function InviteRequestBanner({
   onDecline: (ch: StreamChannel) => void;
 }) {
   const members = Object.values(channel.state.members ?? {});
-  const inviter = members.find((m: any) => m.user_id !== myUserId && !m.invited);
+  // The inviter is the member who is NOT the current user and was never in an
+  // invited state (they created / own the channel).  Stream Chat marks invited
+  // members with invite_accepted_at / invite_rejected_at timestamps; the
+  // creator's membership has neither, so filtering by their absence finds them.
+  const inviter = members.find((m: any) =>
+    m.user_id !== myUserId &&
+    !m.invite_accepted_at &&
+    !m.invite_rejected_at &&
+    !m.invited
+  ) ?? members.find((m: any) => m.user_id !== myUserId); // fallback: any non-self member
   const inviterName: string = (inviter as any)?.user?.name ?? 'Someone';
   return (
     <div
@@ -249,30 +258,34 @@ function ChatInner({
     if (activeChannel) {
       _lastChannelId   = (activeChannel as any).id   ?? null;
       _lastChannelType = (activeChannel as any).type  ?? 'messaging';
-    } else {
-      // user explicitly closed a channel — clear so we don't restore it
-      // BUT only clear if we are not in the middle of mounting (mounting sets null first)
     }
   }, [activeChannel]);
 
-  // Restore last active channel when chat page remounts after navigation
+  // On mount: fetch pending invites first.
+  // Invites take priority — only restore the previous channel if there are none.
+  // This prevents the channel restore from hiding the "Chat Requests" section
+  // when the user has an unread invite waiting for them.
   useEffect(() => {
-    if (!_lastChannelId || !client) return;
-    const ch = client.channel(_lastChannelType, _lastChannelId);
-    ch.watch().then(() => setActiveChannel(ch as any)).catch(() => {});
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+    const restoreLastChannel = () => {
+      if (!_lastChannelId) return;
+      const ch = client.channel(_lastChannelType, _lastChannelId);
+      ch.watch().then(() => setActiveChannel(ch as any)).catch(() => {});
+    };
 
-  // Load pending invites on mount (catches invites received while offline)
-  useEffect(() => {
     client.queryChannels(
       { invites: 'pending', type: 'messaging' } as any,
       [{ created_at: -1 }],
       { limit: 20, watch: true, state: true },
     ).then((chs: any) => {
-      const list = Array.isArray(chs) ? chs : chs?.channels ?? [];
+      const list: StreamChannel[] = Array.isArray(chs) ? chs : chs?.channels ?? [];
       setPendingInvites(list);
-    }).catch(() => {});
-  }, [client]);
+      // Only restore last channel when there are no pending invites to review
+      if (list.length === 0) restoreLastChannel();
+    }).catch(() => {
+      // If the invite query fails, still try to restore the last channel
+      restoreLastChannel();
+    });
+  }, [client]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Listen for incoming invites and invite status changes
   useEffect(() => {
