@@ -720,11 +720,10 @@ function ChatInner({
   );
 }
 
-/* ─── main page ─── */
-export default function ChatPage() {
+/* ─── connected page (only mounts when streamData is ready, so token is never empty) ─── */
+function ChatConnected({ streamData }: { streamData: StreamData }) {
   const { toast } = useToast();
   const setActiveChannelRef = useRef<((ch: any) => void) | null>(null);
-  const [streamData, setStreamData] = useState<StreamData | null>(null);
   const [videoClient, setVideoClient] = useState<StreamVideoClient | null>(null);
   const [activeCall, setActiveCall] = useState<any>(null);
   const [incomingCall, setIncomingCall] = useState<any>(null);
@@ -747,22 +746,11 @@ export default function ChatPage() {
     }
   }, []);
 
-  /* fetch token */
-  useEffect(() => {
-    const token = localStorage.getItem('nivio_token');
-    fetch(`${API}/stream/token`, { headers: { Authorization: `Bearer ${token}` } })
-      .then(r => r.json())
-      .then(setStreamData)
-      .catch(() => toast({ title: 'Chat unavailable', variant: 'destructive' }));
-  }, []);
-
-  /* init chat client */
+  /* init chat client — streamData is guaranteed non-null so token is never empty */
   const chatClient = useCreateChatClient({
-    apiKey: streamData?.apiKey ?? '',
-    tokenOrProvider: streamData?.token ?? '',
-    userData: streamData
-      ? { id: streamData.userId, name: streamData.userName }
-      : { id: '__init__', name: '' },
+    apiKey: streamData.apiKey,
+    tokenOrProvider: streamData.token,
+    userData: { id: streamData.userId, name: streamData.userName },
   });
 
   /* init video client — uses a dedicated video token from @stream-io/node-sdk */
@@ -842,9 +830,12 @@ export default function ChatPage() {
         return;
       }
 
-      // Create a fresh channel with only the creator as a full member
-      const ch = chatClient.channel('messaging', {
+      // Use an explicit channel ID (avoids Stream's "≥2 member" rule for distinct channels)
+      // so we can create with just the creator and then invite others
+      const channelId = `ch-${streamData.userId}-${Date.now()}`;
+      const ch = chatClient.channel('messaging', channelId, {
         ...(isGroup && groupName.trim() ? { name: groupName.trim() } : {}),
+        members: [streamData.userId],
       });
       await ch.create();
       // Invite the selected users — they must accept before messaging starts
@@ -949,7 +940,7 @@ export default function ChatPage() {
     setSelectedUsers([]); setSearchQuery(''); setGroupName(''); setIsGroup(false);
   };
 
-  if (!streamData || !chatClient) {
+  if (!chatClient) {
     return (
       <div className="flex flex-col items-center justify-center h-full min-h-[60vh] gap-4">
         <div className="w-16 h-16 bg-primary/10 rounded-full flex items-center justify-center">
@@ -1190,4 +1181,34 @@ export default function ChatPage() {
       </Dialog>
     </div>
   );
+}
+
+/* ─── thin loader — fetches Stream token then hands off to ChatConnected ─── */
+export default function ChatPage() {
+  const { toast } = useToast();
+  const [streamData, setStreamData] = useState<StreamData | null>(null);
+
+  useEffect(() => {
+    const token = localStorage.getItem('nivio_token');
+    fetch(`${API}/stream/token`, { headers: { Authorization: `Bearer ${token}` } })
+      .then(r => r.json())
+      .then(d => {
+        if (d?.token && d?.apiKey) setStreamData(d);
+        else toast({ title: 'Chat unavailable', variant: 'destructive' });
+      })
+      .catch(() => toast({ title: 'Chat unavailable', variant: 'destructive' }));
+  }, []);
+
+  if (!streamData) {
+    return (
+      <div className="flex flex-col items-center justify-center h-full min-h-[60vh] gap-4">
+        <div className="w-16 h-16 bg-primary/10 rounded-full flex items-center justify-center">
+          <MessageSquare className="w-8 h-8 text-primary animate-pulse" />
+        </div>
+        <p className="text-sm text-muted-foreground">Connecting to chat…</p>
+      </div>
+    );
+  }
+
+  return <ChatConnected streamData={streamData} />;
 }

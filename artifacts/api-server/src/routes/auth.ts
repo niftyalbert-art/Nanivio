@@ -3,6 +3,18 @@ import bcrypt from "bcryptjs";
 import { eq } from "drizzle-orm";
 import { db, usersTable, walletsTable } from "@workspace/db";
 import { signToken, requireAuth } from "../middleware/auth";
+import { StreamChat } from "stream-chat";
+
+/** Upsert a user into Stream Chat so they're immediately searchable (non-fatal). */
+async function upsertToStream(userId: number, name: string, phone?: string | null) {
+  try {
+    const key = process.env.STREAM_API_KEY;
+    const secret = process.env.STREAM_API_SECRET;
+    if (!key || !secret) return;
+    const client = StreamChat.getInstance(key, secret);
+    await client.upsertUser({ id: String(userId), name, ...(phone ? { phone } : {}) });
+  } catch { /* non-fatal — chat will upsert again when user opens the chat page */ }
+}
 
 const router: IRouter = Router();
 
@@ -73,6 +85,9 @@ router.post("/auth/signup", async (req, res): Promise<void> => {
     flag: "🇦🇪",
   });
 
+  // Upsert into Stream so the new user is immediately searchable by others
+  upsertToStream(user.id, user.name, user.phone);
+
   const token = signToken({ userId: user.id, email: user.email, name: user.name });
 
   res.status(201).json({
@@ -107,6 +122,9 @@ router.post("/auth/login", async (req, res): Promise<void> => {
     res.status(401).json({ error: "Invalid email or PIN" });
     return;
   }
+
+  // Upsert into Stream on every login so the user stays searchable (phone may have changed too)
+  upsertToStream(user.id, user.name, user.phone);
 
   const token = signToken({ userId: user.id, email: user.email, name: user.name });
 
