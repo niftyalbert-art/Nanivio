@@ -462,6 +462,53 @@ function ChatInner({
           </div>
 
           <div className="flex-1 overflow-y-auto overscroll-contain pb-2">
+
+            {/* ── Pending chat requests — rendered from state, not from ChannelList.
+                 ChannelList uses members:$in which only returns full members; pending
+                 invitees are not full members, so they never appear in that array.
+                 pendingInvites is populated by queryChannels({invites:'pending'}) +
+                 notification.invited events, so it always has the right data. ── */}
+            {pendingInvites.length > 0 && (
+              <div>
+                <p className="px-4 pt-3 pb-1 text-[10px] font-semibold tracking-widest text-amber-400 uppercase">
+                  Chat Requests
+                </p>
+                {pendingInvites.map(ch => {
+                  const members = Object.values(ch.state.members ?? {}) as any[];
+                  // The inviter is any member who is not the current user
+                  const inviter = members.find((m: any) => m.user_id !== streamData.userId);
+                  const inviterName: string = inviter?.user?.name ?? 'Someone';
+                  const chName: string = (ch.data as any)?.name ?? inviterName;
+                  return (
+                    <div key={ch.cid} className="mx-2 mb-2 rounded-2xl border border-amber-500/20 bg-amber-500/5 p-3 flex items-center gap-3">
+                      <div className="w-10 h-10 rounded-full bg-amber-500/15 flex items-center justify-center shrink-0">
+                        <span className="text-sm font-bold text-amber-400">{inviterName.slice(0, 2).toUpperCase()}</span>
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-semibold truncate">{chName}</p>
+                        <p className="text-[11px] text-muted-foreground">wants to chat with you</p>
+                      </div>
+                      <button
+                        onClick={() => declineInvite(ch)}
+                        className="w-8 h-8 rounded-full bg-muted/60 hover:bg-muted flex items-center justify-center shrink-0 transition-colors"
+                        title="Decline"
+                      >
+                        <UserX className="w-3.5 h-3.5 text-muted-foreground" />
+                      </button>
+                      <button
+                        onClick={() => acceptInvite(ch)}
+                        className="w-8 h-8 rounded-full bg-emerald-500 hover:bg-emerald-600 flex items-center justify-center shrink-0 transition-colors"
+                        title="Accept"
+                      >
+                        <UserCheck className="w-3.5 h-3.5 text-white" />
+                      </button>
+                    </div>
+                  );
+                })}
+                <p className="px-4 pt-2 pb-1 text-[10px] font-semibold tracking-widest text-muted-foreground uppercase">Messages</p>
+              </div>
+            )}
+
             <ChannelList
               filters={channelFilters}
               sort={channelSort}
@@ -481,7 +528,8 @@ function ChatInner({
                     })
                   : channels;
 
-                if (channels.length === 0) {
+                // Show empty state only when there are no pending invites either
+                if (channels.length === 0 && pendingInvites.length === 0) {
                   return (
                     <div className="flex flex-col items-center justify-center py-24 gap-4 px-6 text-center">
                       <div className="w-16 h-16 bg-primary/10 rounded-full flex items-center justify-center">
@@ -512,59 +560,10 @@ function ChatInner({
                   );
                 }
 
-                // Separate pending-invite channels from normal channels
-                const pendingInList = visible.filter(ch => {
-                  const m = (ch.state.members ?? {})[streamData.userId] as any;
-                  return m?.invited && !m?.invite_accepted_at && !m?.invite_rejected_at;
-                });
-                const pendingCids = new Set(pendingInList.map((c: any) => c.cid));
-                const normalInList = (visible as any[]).filter((ch: any) => !pendingCids.has(ch.cid));
-
+                // Normal accepted channels only — pending invites are rendered above from state
                 return (
                   <>
-                    {/* ── Pending chat requests section ── */}
-                    {pendingInList.length > 0 && (
-                      <div>
-                        <p className="px-4 pt-3 pb-1 text-[10px] font-semibold tracking-widest text-amber-400 uppercase">
-                          Chat Requests
-                        </p>
-                        {pendingInList.map(ch => {
-                          const members = Object.values(ch.state.members ?? {}) as any[];
-                          const inviter = members.find((m: any) => m.user_id !== streamData.userId && !m.invited);
-                          const inviterName: string = inviter?.user?.name ?? 'Someone';
-                          const chName: string = (ch.data as any)?.name ?? inviterName;
-                          return (
-                            <div key={ch.cid} className="mx-2 mb-2 rounded-2xl border border-amber-500/20 bg-amber-500/5 p-3 flex items-center gap-3">
-                              <div className="w-10 h-10 rounded-full bg-amber-500/15 flex items-center justify-center shrink-0">
-                                <span className="text-sm font-bold text-amber-400">{inviterName.slice(0, 2).toUpperCase()}</span>
-                              </div>
-                              <div className="flex-1 min-w-0">
-                                <p className="text-sm font-semibold truncate">{chName}</p>
-                                <p className="text-[11px] text-muted-foreground">wants to chat with you</p>
-                              </div>
-                              <button
-                                onClick={() => declineInvite(ch)}
-                                className="w-8 h-8 rounded-full bg-muted/60 hover:bg-muted flex items-center justify-center shrink-0 transition-colors"
-                              >
-                                <UserX className="w-3.5 h-3.5 text-muted-foreground" />
-                              </button>
-                              <button
-                                onClick={() => acceptInvite(ch)}
-                                className="w-8 h-8 rounded-full bg-emerald-500 hover:bg-emerald-600 flex items-center justify-center shrink-0 transition-colors"
-                              >
-                                <UserCheck className="w-3.5 h-3.5 text-white" />
-                              </button>
-                            </div>
-                          );
-                        })}
-                        {normalInList.length > 0 && (
-                          <p className="px-4 pt-2 pb-1 text-[10px] font-semibold tracking-widest text-muted-foreground uppercase">Messages</p>
-                        )}
-                      </div>
-                    )}
-
-                    {/* ── Normal channels ── */}
-                    {normalInList.map((ch) => (
+                    {visible.map((ch) => (
                       <ChannelItem
                         key={ch.cid}
                         channel={ch}
@@ -923,15 +922,13 @@ function ChatConnected() {
       const call = videoClient.call(callType, callId);
       const memberIds = Object.keys(ch.state?.members ?? {});
       // Members must be passed at the top level for ringing to work in SDK v1
+      // Do not pass settings_override — Stream requires target_resolution ≥ 240
+      // whenever a video settings block is present, even for audio-only calls.
+      // The default settings for 'default' (video) and 'audio_room' call types work correctly.
       await call.getOrCreate({
         ring: true,
-        members_limit: memberIds.length + 1,
         data: {
           members: memberIds.map(id => ({ user_id: id })),
-          settings_override: {
-            audio: { default_device: type === 'audio' ? 'speaker' : 'earpiece', noise_cancellation: { mode: 'disabled' } },
-            video: { enabled: type === 'video' },
-          },
         },
       });
       await call.join({ create: false });
