@@ -273,7 +273,7 @@ function ChatInner({
     };
 
     client.queryChannels(
-      { invites: 'pending', type: 'messaging' } as any,
+      { invite: 'pending', type: 'messaging' } as any,
       [{ created_at: -1 }],
       { limit: 20, watch: true, state: true },
     ).then((chs: any) => {
@@ -293,7 +293,7 @@ function ChatInner({
       const cid = event.channel?.cid;
       if (!cid) return;
       // Watch the channel to get full state then add to pending list
-      client.queryChannels({ cid }, [], { limit: 1, watch: true, state: true })
+      client.queryChannels({ invite: 'pending', type: 'messaging' } as any, [], { limit: 1, watch: true, state: true })
         .then(([ch]) => {
           if (ch) {
             setPendingInvites(prev => [ch, ...prev.filter(c => c.cid !== ch.cid)]);
@@ -628,7 +628,7 @@ function ChatInner({
             {/* ── Pending chat requests — rendered from state, not from ChannelList.
                  ChannelList uses members:$in which only returns full members; pending
                  invitees are not full members, so they never appear in that array.
-                 pendingInvites is populated by queryChannels({invites:'pending'}) +
+                 pendingInvites is populated by queryChannels({invite:'pending'}) +
                  notification.invited events, so it always has the right data. ── */}
             {pendingInvites.length > 0 && (
               <div>
