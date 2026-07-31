@@ -6,20 +6,18 @@ import {
   useChatContext,
 } from 'stream-chat-react';
 import { useStreamChat } from '@/contexts/stream-chat';
+import { useStreamVideo } from '@/contexts/stream-video';
 import Picker from '@emoji-mart/react';
 import data from '@emoji-mart/data';
 import { init, SearchIndex } from 'emoji-mart';
 
 // Initialise the emoji data once at module load (powers the :emoji: autocomplete)
 init({ data });
-import {
-  StreamVideo, StreamVideoClient, StreamCall,
-  SpeakerLayout, CallControls, useCallStateHooks,
-  CallingState, StreamTheme,
-} from '@stream-io/video-react-sdk';
+// StreamVideo components are no longer imported here — they live in call-overlay.tsx
+// which renders inside AppLayout so the call UI persists across navigation.
 import type { Channel as StreamChannel } from 'stream-chat';
 import { useToast } from '@/hooks/use-toast';
-import { playMessageNotification, createRingtone } from '@/lib/sounds';
+import { playMessageNotification } from '@/lib/sounds';
 import {
   MessageSquare, Phone, Video, ArrowLeft, Plus, Users,
   Search, X, Check, PhoneCall, Sparkles, Bell,
@@ -171,48 +169,10 @@ function StreamEmojiPicker() {
   );
 }
 
-/* ─── call UI (inside StreamCall ctx) ─── */
-function CallUI({ onEnd }: { onEnd: () => void }) {
-  const { useCallCallingState } = useCallStateHooks();
-  const state = useCallCallingState();
-  useEffect(() => {
-    if (state === CallingState.LEFT || state === CallingState.IDLE) onEnd();
-  }, [state, onEnd]);
-  return (
-    <StreamTheme className="h-full">
-      <SpeakerLayout />
-      <CallControls onLeave={onEnd} />
-    </StreamTheme>
-  );
-}
-
-/* ─── incoming call banner ─── */
-function IncomingCallBanner({ callerName, onAccept, onDecline }: { callerName: string; onAccept: () => void; onDecline: () => void }) {
-  return (
-    <div className="fixed inset-x-4 top-4 z-[100] bg-card border border-primary/30 rounded-2xl shadow-2xl p-4 flex items-center gap-3 animate-in slide-in-from-top-4 duration-300">
-      <Avatar className="w-12 h-12 shrink-0">
-        <AvatarFallback className="bg-primary/20 text-primary font-bold">{callerName.slice(0, 2).toUpperCase()}</AvatarFallback>
-      </Avatar>
-      <div className="flex-1 min-w-0">
-        <p className="font-bold text-sm truncate">{callerName}</p>
-        <p className="text-xs text-muted-foreground animate-pulse">Incoming call…</p>
-      </div>
-      <button onClick={onDecline} className="w-11 h-11 bg-destructive hover:bg-destructive/90 rounded-full flex items-center justify-center shrink-0 transition-colors">
-        <PhoneCall className="w-4 h-4 text-white rotate-[135deg]" />
-      </button>
-      <button onClick={onAccept} className="w-11 h-11 bg-emerald-500 hover:bg-emerald-600 rounded-full flex items-center justify-center shrink-0 transition-colors">
-        <PhoneCall className="w-4 h-4 text-white" />
-      </button>
-    </div>
-  );
-}
-
-/* ─── chat invite request banner ─── */
+/* ─── invite request banner — shown as a floating card when an invite arrives
+       while the user is already viewing a conversation ─── */
 function InviteRequestBanner({
-  channel,
-  myUserId,
-  onAccept,
-  onDecline,
+  channel, myUserId, onAccept, onDecline,
 }: {
   channel: StreamChannel;
   myUserId: string;
@@ -222,30 +182,22 @@ function InviteRequestBanner({
   const members = Object.values(channel.state.members ?? {});
   const inviter = members.find((m: any) => m.user_id !== myUserId && !m.invited);
   const inviterName: string = (inviter as any)?.user?.name ?? 'Someone';
-  const channelName: string = (channel.data as any)?.name ?? `Chat with ${inviterName}`;
-
   return (
-    <div className="fixed inset-x-4 top-20 z-[99] bg-card border border-amber-500/30 rounded-2xl shadow-2xl p-4 flex items-center gap-3 animate-in slide-in-from-top-4 duration-300"
-      style={{ boxShadow: '0 0 0 1px rgba(251,191,36,0.15), 0 12px 40px rgba(0,0,0,0.5)' }}>
+    <div
+      className="fixed inset-x-4 top-20 z-[150] bg-card border border-amber-500/30 rounded-2xl shadow-2xl p-4 flex items-center gap-3 animate-in slide-in-from-top-4 duration-300"
+      style={{ boxShadow: '0 0 0 1px rgba(251,191,36,0.15), 0 12px 40px rgba(0,0,0,0.5)' }}
+    >
       <div className="w-12 h-12 rounded-full bg-amber-500/15 flex items-center justify-center shrink-0">
         <span className="text-xl font-bold text-amber-400">{inviterName.slice(0, 1).toUpperCase()}</span>
       </div>
       <div className="flex-1 min-w-0">
         <p className="font-bold text-sm truncate">{inviterName}</p>
-        <p className="text-xs text-muted-foreground">wants to chat{channelName !== `Chat with ${inviterName}` ? ` · ${channelName}` : ''}</p>
+        <p className="text-xs text-muted-foreground">wants to chat with you</p>
       </div>
-      <button
-        onClick={() => onDecline(channel)}
-        className="w-11 h-11 bg-muted hover:bg-muted/60 rounded-full flex items-center justify-center shrink-0 transition-colors"
-        title="Decline"
-      >
+      <button onClick={() => onDecline(channel)} className="w-11 h-11 bg-muted hover:bg-muted/60 rounded-full flex items-center justify-center shrink-0 transition-colors" title="Decline">
         <UserX className="w-4 h-4 text-muted-foreground" />
       </button>
-      <button
-        onClick={() => onAccept(channel)}
-        className="w-11 h-11 bg-emerald-500 hover:bg-emerald-600 rounded-full flex items-center justify-center shrink-0 transition-colors"
-        title="Accept"
-      >
+      <button onClick={() => onAccept(channel)} className="w-11 h-11 bg-emerald-500 hover:bg-emerald-600 rounded-full flex items-center justify-center shrink-0 transition-colors" title="Accept">
         <UserCheck className="w-4 h-4 text-white" />
       </button>
     </div>
@@ -744,16 +696,13 @@ function ChatInner({
   );
 }
 
-/* ─── connected page — uses persistent client from StreamChatProvider ─── */
+/* ─── connected page — uses persistent clients from context providers ─── */
 function ChatConnected() {
   const { streamData: _sd, chatClient } = useStreamChat();
   const streamData = _sd!; // guaranteed by ChatPage guard
+  const streamVideo = useStreamVideo();
   const { toast } = useToast();
   const setActiveChannelRef = useRef<((ch: any) => void) | null>(null);
-  const [videoClient, setVideoClient] = useState<StreamVideoClient | null>(null);
-  const [activeCall, setActiveCall] = useState<any>(null);
-  const [incomingCall, setIncomingCall] = useState<any>(null);
-  const stopRingtoneRef = useRef<(() => void) | null>(null);
 
   // new-chat dialog
   const [showNewChat, setShowNewChat] = useState(false);
@@ -772,40 +721,6 @@ function ChatConnected() {
     }
     return undefined;
   }, []);
-
-  /* init video client — uses a dedicated video token from @stream-io/node-sdk */
-  useEffect(() => {
-    if (!streamData) return;
-    let cancelled = false;
-    const authToken = localStorage.getItem('nivio_token');
-    fetch(`${API}/stream/video-token`, { headers: { Authorization: `Bearer ${authToken}` } })
-      .then(r => r.json())
-      .then(({ token }: { token: string }) => {
-        if (cancelled) return;
-        const vc = new StreamVideoClient({
-          apiKey: streamData.apiKey,
-          user: { id: streamData.userId, name: streamData.userName },
-          token,
-        });
-        setVideoClient(vc);
-        vc.on('call.ring', (event: any) => {
-          stopRingtoneRef.current?.();
-          stopRingtoneRef.current = createRingtone('incoming');
-          setIncomingCall(event.call);
-        });
-      })
-      .catch((e) => {
-        console.error('Video client init failed:', e);
-      });
-    return () => {
-      cancelled = true;
-      setVideoClient(prev => {
-        prev?.disconnectUser().catch(() => {});
-        return null;
-      });
-      stopRingtoneRef.current?.();
-    };
-  }, [streamData?.userId]);
 
   /* search users */
   useEffect(() => {
@@ -886,12 +801,11 @@ function ChatConnected() {
   };
 
   const handleStartCall = useCallback(async (type: 'audio' | 'video', ch: StreamChannel) => {
-    if (!videoClient) {
+    if (!streamVideo.videoClient) {
       toast({ title: 'Video not ready', description: 'Please wait a moment and try again.', variant: 'destructive' });
       return;
     }
-
-    // Resolve the other member's Stream user ID (= their DB id as string)
+    // Check the other user's calling preferences before dialling
     const members = Object.values(ch.state?.members ?? {}) as any[];
     const other = members.find((m: any) => m.user_id !== streamData?.userId);
     if (other?.user_id) {
@@ -908,64 +822,22 @@ function ChatConnected() {
           toast({ title: 'Video calls not allowed', description: `${other.user?.name ?? 'This user'} has disabled video calls.`, variant: 'destructive' });
           return;
         }
-      } catch {
-        // If the check fails, allow the call to proceed rather than blocking
-      }
+      } catch { /* allow the call if the preference check fails */ }
     }
-
-    stopRingtoneRef.current?.();
-    stopRingtoneRef.current = createRingtone('outgoing');
+    const callId = `nivio-${(ch.id ?? Date.now()).toString().replace(/[^a-zA-Z0-9_-]/g, '-')}`;
+    const memberIds = Object.keys(ch.state?.members ?? {});
     try {
-      // Use a stable call ID per channel so retries rejoin the same call
-      const callId = `nivio-${(ch.id ?? Date.now()).toString().replace(/[^a-zA-Z0-9_-]/g, '-')}`;
-      const callType = type === 'audio' ? 'audio_room' : 'default';
-      const call = videoClient.call(callType, callId);
-      const memberIds = Object.keys(ch.state?.members ?? {});
-      // Members must be passed at the top level for ringing to work in SDK v1
-      // Do not pass settings_override — Stream requires target_resolution ≥ 240
-      // whenever a video settings block is present, even for audio-only calls.
-      // The default settings for 'default' (video) and 'audio_room' call types work correctly.
-      await call.getOrCreate({
-        ring: true,
-        data: {
-          members: memberIds.map(id => ({ user_id: id })),
-        },
-      });
-      await call.join({ create: false });
-      stopRingtoneRef.current?.();
-      stopRingtoneRef.current = null;
-      setActiveCall(call);
+      await streamVideo.startCall(type, callId, memberIds);
     } catch (e: any) {
-      stopRingtoneRef.current?.();
-      const msg = e?.message ?? String(e);
-      console.error('Call failed:', msg);
-      toast({ title: 'Call failed', description: msg, variant: 'destructive' });
+      const msg: string = e?.message ?? String(e);
+      const isRegion = msg.toLowerCase().includes('country') || msg.toLowerCase().includes('region') || msg.toLowerCase().includes('geo');
+      toast({
+        title: isRegion ? 'Not available in your region' : 'Call failed',
+        description: isRegion ? 'Video and audio calls are not supported in your country.' : msg,
+        variant: 'destructive',
+      });
     }
-  }, [videoClient]);
-
-  const acceptCall = useCallback(async () => {
-    if (!incomingCall) return;
-    stopRingtoneRef.current?.();
-    try {
-      await incomingCall.join();
-      setActiveCall(incomingCall);
-      setIncomingCall(null);
-    } catch {
-      toast({ title: 'Could not join call', variant: 'destructive' });
-    }
-  }, [incomingCall]);
-
-  const declineCall = useCallback(() => {
-    stopRingtoneRef.current?.();
-    incomingCall?.leave?.().catch(() => {});
-    setIncomingCall(null);
-  }, [incomingCall]);
-
-  const endCall = useCallback(() => {
-    stopRingtoneRef.current?.();
-    activeCall?.leave?.().catch(() => {});
-    setActiveCall(null);
-  }, [activeCall]);
+  }, [streamVideo, streamData?.userId, toast]);
 
   const closeNewChat = () => {
     setShowNewChat(false);
@@ -980,25 +852,8 @@ function ChatConnected() {
      * Desktop: h-full works fine — no fixed nav, no sticky header offset.
      */
     <div className="flex flex-col overflow-hidden md:h-full h-[calc(100dvh-56px-56px)]">
-      {incomingCall && (
-        <IncomingCallBanner
-          callerName={
-            (Object.values(incomingCall.state?.members ?? {})[0] as any)?.user?.name ?? 'Someone'
-          }
-          onAccept={acceptCall}
-          onDecline={declineCall}
-        />
-      )}
-
-      {activeCall && videoClient && (
-        <div className="fixed inset-0 z-[90] bg-black flex flex-col">
-          <StreamVideo client={videoClient}>
-            <StreamCall call={activeCall}>
-              <CallUI onEnd={endCall} />
-            </StreamCall>
-          </StreamVideo>
-        </div>
-      )}
+      {/* IncomingCallBanner and activeCall overlay are rendered inside AppLayout
+          (via CallOverlay) so they work from any page — not just /chat. */}
 
       <Chat
         client={chatClient!}

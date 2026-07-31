@@ -6,6 +6,7 @@ import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useState, useEffect, useRef } from 'react';
 import { useStreamChat } from '@/contexts/stream-chat';
+import { CallOverlay } from '@/components/call-overlay';
 
 interface AppLayoutProps {
   children: React.ReactNode;
@@ -76,6 +77,8 @@ export function AppLayout({ children }: AppLayoutProps) {
 
   return (
     <div className="flex min-h-[100dvh] bg-background">
+      {/* Call UI lives here so it's visible from every page */}
+      <CallOverlay />
       {/* Sidebar — desktop only */}
       <aside className="hidden md:flex w-64 border-r border-sidebar-border bg-sidebar flex-col shrink-0">
         {/* Logo */}

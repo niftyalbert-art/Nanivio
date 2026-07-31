@@ -4,6 +4,7 @@ import { TooltipProvider } from '@/components/ui/tooltip';
 import { Route, Switch, Router as WouterRouter } from 'wouter';
 import { AuthProvider, useAuth } from '@/contexts/auth';
 import { StreamChatProvider } from '@/contexts/stream-chat';
+import { StreamVideoProvider } from '@/contexts/stream-video';
 import { AppLayout } from '@/components/layout/app-layout';
 import Dashboard from '@/pages/dashboard';
 import Send from '@/pages/send';
@@ -45,9 +46,11 @@ function Router() {
     );
   }
 
-  // Authenticated: full app — StreamChatProvider keeps one persistent client alive
+  // Authenticated: full app — both providers keep persistent clients alive for
+  // the entire session so real-time events work from any page, not just /chat.
   return (
     <StreamChatProvider>
+    <StreamVideoProvider>
     <Switch>
       {/* Standalone pages — no app chrome */}
       <Route path="/admin" component={Admin} />
@@ -73,6 +76,7 @@ function Router() {
         </AppLayout>
       </Route>
     </Switch>
+    </StreamVideoProvider>
     </StreamChatProvider>
   );
 }
