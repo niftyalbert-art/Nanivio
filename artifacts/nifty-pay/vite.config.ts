@@ -58,6 +58,8 @@ export default defineConfig({
         type: 'module',
       },
       workbox: {
+        skipWaiting: true,    // new SW activates immediately, no waiting
+        clientsClaim: true,   // new SW takes control of all open tabs at once
         globPatterns: ['**/*.{js,css,html,ico,png,svg,woff2}'],
         // Stream Chat + Video SDK chunks each exceed the 2 MiB default — raise to 5 MiB
         maximumFileSizeToCacheInBytes: 5 * 1024 * 1024,
