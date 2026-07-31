@@ -13,6 +13,7 @@ import adminRouter from "./admin";
 import ticketsRouter from "./tickets";
 import settingsRouter from "./settings";
 import streamRouter from "./stream";
+import contactsRouter from "./contacts";
 
 const router: IRouter = Router();
 
@@ -30,5 +31,6 @@ router.use(adminRouter);
 router.use(ticketsRouter);
 router.use(settingsRouter);
 router.use(streamRouter);
+router.use(contactsRouter);
 
 export default router;

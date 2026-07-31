@@ -21,7 +21,7 @@ import { playMessageNotification } from '@/lib/sounds';
 import {
   MessageSquare, Phone, Video, ArrowLeft, Plus, Users,
   Search, X, Check, PhoneCall, Sparkles, Bell,
-  UserCheck, UserX, Clock,
+  UserCheck, UserX, Clock, UserPlus, ChevronDown, ChevronUp,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -33,6 +33,7 @@ const API = `${import.meta.env.BASE_URL}api`;
 
 interface StreamData { token: string; userId: string; userName: string; apiKey: string; }
 interface SUser { id: string; name?: string; }
+interface ContactEntry { id: number; streamUserId: string; name: string; }
 
 /* ─── custom channel list item ─── */
 function ChannelItem({
@@ -210,11 +211,21 @@ function ChatInner({
   onStartCall,
   onNewChat,
   setActiveChannelRef,
+  contacts,
+  contactPresence,
+  onAddContact,
+  onRemoveContact,
+  onRequestChat,
 }: {
   streamData: StreamData;
   onStartCall: (type: 'audio' | 'video', ch: StreamChannel) => void;
   onNewChat: () => void;
   setActiveChannelRef: React.MutableRefObject<((ch: StreamChannel | undefined) => void) | null>;
+  contacts: ContactEntry[];
+  contactPresence: Record<string, boolean>;
+  onAddContact: (user: SUser) => Promise<void>;
+  onRemoveContact: (streamUserId: string) => Promise<void>;
+  onRequestChat: (user: SUser) => void;
 }) {
   const { client, channel: activeChannel, setActiveChannel } = useChatContext();
   const [tick, setTick] = useState(0);
@@ -349,8 +360,23 @@ function ChatInner({
     };
   }, [client, streamData.userId, activeChannel]);
 
-  // Inline contact search — filters the existing channel list without opening the New Chat dialog
-  const [contactFilter, setContactFilter] = useState('');
+  // "Add user" search — queries Stream API, shows results with Add Contact / Chat buttons
+  const [addUserQuery, setAddUserQuery] = useState('');
+  const [addUserResults, setAddUserResults] = useState<SUser[]>([]);
+  const [addingId, setAddingId] = useState<string | null>(null); // contact being added (loading state)
+  const [expandedContactId, setExpandedContactId] = useState<string | null>(null);
+  const [contactsExpanded, setContactsExpanded] = useState(true);
+
+  useEffect(() => {
+    if (!addUserQuery.trim()) { setAddUserResults([]); return; }
+    const tid = setTimeout(() => {
+      const token = localStorage.getItem('nivio_token');
+      fetch(`${API}/stream/users/search?q=${encodeURIComponent(addUserQuery)}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      }).then(r => r.json()).then(d => setAddUserResults(d.users ?? [])).catch(() => {});
+    }, 300);
+    return () => clearTimeout(tid);
+  }, [addUserQuery]);
 
   const channelFilters = { type: 'messaging', members: { $in: [streamData.userId] } };
   // Secondary sort by created_at so brand-new channels (no messages yet) still appear at top
@@ -393,24 +419,71 @@ function ChatInner({
                 <Plus className="w-3.5 h-3.5" /> New Chat
               </Button>
             </div>
-            {/* inline contact filter — finds existing conversations without opening New Chat */}
+            {/* "Add user" search — finds people to add as contacts */}
             <div className="relative">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground pointer-events-none" />
+              <UserPlus className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground pointer-events-none" />
               <Input
                 className="pl-8 h-9 text-sm rounded-xl bg-muted/40 border-border/30 focus-visible:border-primary/40 focus-visible:ring-primary/10"
-                placeholder="Search conversations…"
-                value={contactFilter}
-                onChange={e => setContactFilter(e.target.value)}
+                placeholder="Add user…"
+                value={addUserQuery}
+                onChange={e => setAddUserQuery(e.target.value)}
               />
-              {contactFilter && (
+              {addUserQuery && (
                 <button
                   className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
-                  onClick={() => setContactFilter('')}
+                  onClick={() => { setAddUserQuery(''); setAddUserResults([]); }}
                 >
                   <X className="w-3.5 h-3.5" />
                 </button>
               )}
             </div>
+
+            {/* Search results dropdown */}
+            {addUserResults.length > 0 && (
+              <div className="mt-1 rounded-xl border border-border/40 bg-card shadow-lg overflow-hidden">
+                {addUserResults.map(u => {
+                  const isContact = contacts.some(c => c.streamUserId === u.id);
+                  return (
+                    <div key={u.id} className="flex items-center gap-3 px-3 py-2.5 border-b border-border/20 last:border-0 hover:bg-muted/20 transition-colors">
+                      <Avatar className="w-8 h-8 shrink-0">
+                        <AvatarFallback className="text-[10px] bg-primary/20 text-primary font-bold">
+                          {(u.name ?? u.id).slice(0, 2).toUpperCase()}
+                        </AvatarFallback>
+                      </Avatar>
+                      <p className="flex-1 text-sm font-medium truncate">{u.name ?? u.id}</p>
+                      <button
+                        disabled={isContact || addingId === u.id}
+                        onClick={async () => {
+                          setAddingId(u.id);
+                          await onAddContact(u);
+                          setAddingId(null);
+                          setAddUserQuery('');
+                          setAddUserResults([]);
+                        }}
+                        className={cn(
+                          'shrink-0 flex items-center gap-1 text-[11px] font-semibold px-2.5 py-1 rounded-lg transition-colors',
+                          isContact
+                            ? 'bg-muted text-muted-foreground cursor-default'
+                            : 'bg-primary/15 text-primary hover:bg-primary/25 border border-primary/20',
+                        )}
+                      >
+                        {addingId === u.id ? (
+                          <span className="w-3 h-3 border border-primary/40 border-t-primary rounded-full animate-spin" />
+                        ) : (
+                          <UserPlus className="w-3 h-3" />
+                        )}
+                        {isContact ? 'Added' : 'Add'}
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+
+            {/* empty search state */}
+            {addUserQuery.trim() && addUserResults.length === 0 && (
+              <p className="mt-1 text-center text-xs text-muted-foreground py-2">No users found</p>
+            )}
           </div>
 
           <div className="flex-1 overflow-y-auto overscroll-contain pb-2">
@@ -467,55 +540,24 @@ function ChatInner({
               options={channelOptions}
               setActiveChannelOnMount={false}
               renderChannels={(channels: StreamChannel[]) => {
-                // Filter locally by contact name / group name when the user types
-                const visible = contactFilter.trim()
-                  ? channels.filter(ch => {
-                      const chMembers = Object.values(ch.state.members ?? {});
-                      const other = chMembers.find((m: any) => m.user_id !== streamData.userId);
-                      const name: string =
-                        (ch.data as any)?.name ??
-                        (other as any)?.user?.name ??
-                        '';
-                      return name.toLowerCase().includes(contactFilter.toLowerCase());
-                    })
-                  : channels;
-
                 // Show empty state only when there are no pending invites either
                 if (channels.length === 0 && pendingInvites.length === 0) {
                   return (
-                    <div className="flex flex-col items-center justify-center py-24 gap-4 px-6 text-center">
+                    <div className="flex flex-col items-center justify-center py-16 gap-4 px-6 text-center">
                       <div className="w-16 h-16 bg-primary/10 rounded-full flex items-center justify-center">
                         <MessageSquare className="w-8 h-8 text-primary" />
                       </div>
                       <div>
                         <p className="font-semibold">No chats yet</p>
-                        <p className="text-sm text-muted-foreground mt-1">Tap &ldquo;New Chat&rdquo; to start a conversation</p>
+                        <p className="text-sm text-muted-foreground mt-1">Search above to add contacts, then request a chat</p>
                       </div>
                     </div>
                   );
                 }
 
-                if (visible.length === 0) {
-                  return (
-                    <div className="flex flex-col items-center justify-center py-16 gap-3 px-6 text-center">
-                      <div className="w-10 h-10 bg-muted/50 rounded-full flex items-center justify-center">
-                        <Search className="w-4 h-4 text-muted-foreground" />
-                      </div>
-                      <p className="text-sm text-muted-foreground">No conversations match &ldquo;{contactFilter}&rdquo;</p>
-                      <button
-                        className="text-xs text-primary underline underline-offset-2"
-                        onClick={onNewChat}
-                      >
-                        Start a new chat with this person
-                      </button>
-                    </div>
-                  );
-                }
-
-                // Normal accepted channels only — pending invites are rendered above from state
                 return (
                   <>
-                    {visible.map((ch) => (
+                    {channels.map((ch) => (
                       <ChannelItem
                         key={ch.cid}
                         channel={ch}
@@ -523,7 +565,6 @@ function ChatInner({
                         myUserId={streamData.userId}
                         tick={tick}
                         onSelect={() => {
-                          setContactFilter('');
                           setActiveChannel(ch);
                           ch.markRead?.().catch(() => {});
                         }}
@@ -533,6 +574,87 @@ function ChatInner({
                 );
               }}
             />
+
+            {/* ─── Contacts panel — persistent bottom-left list with presence ─── */}
+            {contacts.length > 0 && (
+              <div className="border-t border-border/40 shrink-0 mt-auto">
+                <button
+                  onClick={() => setContactsExpanded(e => !e)}
+                  className="w-full flex items-center justify-between px-4 py-2.5 text-[11px] font-semibold tracking-widest text-muted-foreground uppercase hover:text-foreground transition-colors"
+                >
+                  <span className="flex items-center gap-1.5">
+                    <span>Contacts</span>
+                    <span className="text-[10px] font-normal normal-case text-muted-foreground/60">
+                      ({contacts.filter(c => contactPresence[c.streamUserId]).length} online)
+                    </span>
+                  </span>
+                  {contactsExpanded ? <ChevronDown className="w-3.5 h-3.5" /> : <ChevronUp className="w-3.5 h-3.5" />}
+                </button>
+
+                {contactsExpanded && (
+                  <div className="max-h-52 overflow-y-auto overscroll-contain">
+                    {contacts.map(c => {
+                      const online = contactPresence[c.streamUserId] ?? false;
+                      const busy = contactPresence[`busy_${c.streamUserId}`] ?? false;
+                      const statusDot = busy
+                        ? 'bg-amber-400'
+                        : online
+                        ? 'bg-emerald-400'
+                        : 'bg-zinc-500';
+                      const statusLabel = busy ? 'Busy' : online ? 'Online' : 'Offline';
+                      const isExpanded = expandedContactId === c.streamUserId;
+
+                      return (
+                        <div key={c.streamUserId} className="border-b border-border/20 last:border-0">
+                          {/* contact row */}
+                          <button
+                            onClick={() => setExpandedContactId(isExpanded ? null : c.streamUserId)}
+                            className="w-full flex items-center gap-3 px-4 py-2.5 hover:bg-muted/20 active:bg-muted/30 transition-colors text-left"
+                          >
+                            <div className="relative shrink-0">
+                              <Avatar className="w-8 h-8">
+                                <AvatarFallback className="text-[10px] bg-primary/20 text-primary font-bold">
+                                  {c.name.slice(0, 2).toUpperCase()}
+                                </AvatarFallback>
+                              </Avatar>
+                              <span className={`absolute bottom-0 right-0 w-2.5 h-2.5 rounded-full border-2 border-background ${statusDot}`} />
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <p className="text-sm font-medium leading-tight truncate">{c.name}</p>
+                              <p className="text-[10px] text-muted-foreground">{statusLabel}</p>
+                            </div>
+                            <button
+                              onClick={e => { e.stopPropagation(); onRemoveContact(c.streamUserId); }}
+                              className="p-1 rounded-full text-muted-foreground/50 hover:text-destructive hover:bg-destructive/10 transition-colors shrink-0"
+                              title="Remove contact"
+                            >
+                              <X className="w-3 h-3" />
+                            </button>
+                          </button>
+
+                          {/* expanded: "Request for Chat" button */}
+                          {isExpanded && (
+                            <div className="px-4 pb-3 pt-0.5 flex items-center gap-2">
+                              <Button
+                                size="sm"
+                                className="h-8 text-xs gap-1.5 bg-primary/15 text-primary hover:bg-primary/25 border border-primary/20 rounded-lg"
+                                onClick={() => {
+                                  setExpandedContactId(null);
+                                  onRequestChat({ id: c.streamUserId, name: c.name });
+                                }}
+                              >
+                                <MessageSquare className="w-3.5 h-3.5" />
+                                Request for Chat
+                              </Button>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         </div>
       ) : (
@@ -704,6 +826,11 @@ function ChatConnected() {
   const { toast } = useToast();
   const setActiveChannelRef = useRef<((ch: any) => void) | null>(null);
 
+  // ── contacts list (persistent, stored in DB) ──
+  const [contacts, setContacts] = useState<ContactEntry[]>([]);
+  // contactPresence: streamUserId → online boolean (from Stream presence API)
+  const [contactPresence, setContactPresence] = useState<Record<string, boolean>>({});
+
   // new-chat dialog
   const [showNewChat, setShowNewChat] = useState(false);
   const [isGroup, setIsGroup] = useState(false);
@@ -720,6 +847,90 @@ function ChatConnected() {
       return () => clearTimeout(tid);
     }
     return undefined;
+  }, []);
+
+  /* load contacts from DB + fetch presence from Stream */
+  useEffect(() => {
+    if (!chatClient) return;
+    const token = localStorage.getItem('nivio_token');
+    fetch(`${API}/contacts`, { headers: { Authorization: `Bearer ${token}` } })
+      .then(r => r.json())
+      .then(async (d) => {
+        const list: ContactEntry[] = d.contacts ?? [];
+        setContacts(list);
+        if (list.length === 0) return;
+        // Query Stream for real-time presence data for all contacts
+        try {
+          const result = await chatClient.queryUsers(
+            { id: { $in: list.map(c => c.streamUserId) } },
+            {},
+            { presence: true },
+          );
+          const pm: Record<string, boolean> = {};
+          for (const u of result.users) pm[u.id] = (u as any).online ?? false;
+          setContactPresence(pm);
+        } catch { /* non-fatal */ }
+      })
+      .catch(() => {});
+  }, [chatClient]);
+
+  /* real-time presence updates for contacts */
+  useEffect(() => {
+    if (!chatClient) return;
+    const handler = (event: any) => {
+      const uid: string | undefined = event.user?.id;
+      if (uid) setContactPresence(prev => ({ ...prev, [uid]: event.user?.online ?? false }));
+    };
+    chatClient.on('user.presence.changed', handler);
+    return () => chatClient.off('user.presence.changed', handler);
+  }, [chatClient]);
+
+  /* add a user to the contacts list */
+  const addContact = useCallback(async (user: SUser) => {
+    const token = localStorage.getItem('nivio_token');
+    try {
+      const r = await fetch(`${API}/contacts`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ contactUserId: user.id }),
+      });
+      const d = await r.json();
+      if (r.ok) {
+        const newEntry: ContactEntry = { id: d.contact?.id ?? Date.now(), streamUserId: user.id, name: user.name ?? user.id };
+        setContacts(prev => prev.some(c => c.streamUserId === user.id) ? prev : [...prev, newEntry]);
+        toast({ title: `${user.name ?? 'User'} added to contacts` });
+        // Fetch their presence
+        if (chatClient) {
+          chatClient.queryUsers({ id: { $in: [user.id] } }, {}, { presence: true })
+            .then(res => { const u = res.users[0]; if (u) setContactPresence(p => ({ ...p, [u.id]: (u as any).online ?? false })); })
+            .catch(() => {});
+        }
+      } else {
+        toast({ title: d.error ?? 'Could not add contact', variant: 'destructive' });
+      }
+    } catch {
+      toast({ title: 'Could not add contact', variant: 'destructive' });
+    }
+  }, [chatClient, toast]);
+
+  /* remove a contact from the list */
+  const removeContact = useCallback(async (streamUserId: string) => {
+    const token = localStorage.getItem('nivio_token');
+    try {
+      await fetch(`${API}/contacts/${streamUserId}`, {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      setContacts(prev => prev.filter(c => c.streamUserId !== streamUserId));
+    } catch { /* ignore */ }
+  }, []);
+
+  /* start a 1-to-1 chat directly with a contact (from "Request for Chat" button) */
+  const requestChatWith = useCallback((user: SUser) => {
+    setSelectedUsers([user]);
+    setIsGroup(false);
+    setGroupName('');
+    setShowNewChat(true);
   }, []);
 
   /* search users */
@@ -873,6 +1084,11 @@ function ChatConnected() {
           onStartCall={handleStartCall}
           onNewChat={() => setShowNewChat(true)}
           setActiveChannelRef={setActiveChannelRef}
+          contacts={contacts}
+          contactPresence={contactPresence}
+          onAddContact={addContact}
+          onRemoveContact={removeContact}
+          onRequestChat={requestChatWith}
         />
       </Chat>
 
