@@ -32,8 +32,8 @@ export default function Install() {
   const handleShare = async () => {
     if (navigator.share) {
       await navigator.share({
-        title: 'Nivio — Money Without Borders',
-        text: 'Send money globally with Nivio',
+        title: 'Nanivio — Money Without Borders',
+        text: 'Send money globally with Nanivio',
         url: appUrl,
       });
     }
@@ -48,11 +48,11 @@ export default function Install() {
       <div className="flex flex-col items-center gap-4 text-center">
         <img
           src={`${import.meta.env.BASE_URL}logo.png`}
-          alt="Nivio"
+          alt="Nanivio"
           className="w-20 h-20 rounded-2xl shadow-2xl"
         />
         <div>
-          <h1 className="text-3xl font-extrabold tracking-tight">Nivio</h1>
+          <h1 className="text-3xl font-extrabold tracking-tight">Nanivio</h1>
           <p className="text-sm text-muted-foreground mt-1">Money Without Borders</p>
         </div>
       </div>
@@ -103,11 +103,11 @@ export default function Install() {
       <div className="flex flex-col items-center gap-3 w-full max-w-xs">
         {state === 'installed' ? (
           <div className="flex items-center gap-2 text-sm text-emerald-400 font-semibold">
-            <Check className="w-4 h-4" /> Nivio is installed!
+            <Check className="w-4 h-4" /> Nanivio is installed!
           </div>
         ) : state === 'promptable' ? (
           <Button size="lg" className="w-full font-bold gap-2" onClick={handleInstall}>
-            <Download className="w-4 h-4" /> Install Nivio
+            <Download className="w-4 h-4" /> Install Nanivio
           </Button>
         ) : null}
 
@@ -145,7 +145,7 @@ export default function Install() {
         href="/"
         className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
       >
-        <ArrowLeft className="w-3.5 h-3.5" /> Back to Nivio
+        <ArrowLeft className="w-3.5 h-3.5" /> Back to Nanivio
       </Link>
     </div>
   );

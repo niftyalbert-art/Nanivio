@@ -51,12 +51,12 @@ export default function SignUp() {
         <div className="flex flex-col items-center gap-3">
           <img
             src={`${import.meta.env.BASE_URL}logo.png`}
-            alt="Nivio"
+            alt="Nanivio"
             className="w-16 h-16 rounded-2xl object-cover shadow-lg"
           />
           <div className="text-center">
             <h1 className="text-2xl font-bold tracking-tight">Create your account</h1>
-            <p className="text-sm text-muted-foreground mt-0.5">Send money globally with Nivio</p>
+            <p className="text-sm text-muted-foreground mt-0.5">Send money globally with Nanivio</p>
           </div>
         </div>
 

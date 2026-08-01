@@ -311,7 +311,7 @@ function ChatInner({
               } catch { /* ignore */ }
             }
             playMessageNotification();
-            window.dispatchEvent(new CustomEvent('nivio:unread', { detail: 1 }));
+            window.dispatchEvent(new CustomEvent('nanivio:unread', { detail: 1 }));
           }
         }).catch(() => {});
     };
@@ -385,7 +385,7 @@ function ChatInner({
 
         // Update the chat FAB unread badge (listened to in app-layout.tsx)
         const totalUnread = (client.user as any)?.total_unread_count ?? 1;
-        window.dispatchEvent(new CustomEvent('nivio:unread', { detail: totalUnread }));
+        window.dispatchEvent(new CustomEvent('nanivio:unread', { detail: totalUnread }));
       }
       setTick(t => t + 1);
     };
@@ -406,7 +406,7 @@ function ChatInner({
   useEffect(() => {
     if (!addUserQuery.trim()) { setAddUserResults([]); return; }
     const tid = setTimeout(() => {
-      const token = localStorage.getItem('nivio_token');
+      const token = localStorage.getItem('nanivio_token');
       fetch(`${API}/stream/users/search?q=${encodeURIComponent(addUserQuery)}`, {
         headers: { Authorization: `Bearer ${token}` },
       }).then(r => r.json()).then(d => setAddUserResults(d.users ?? [])).catch(() => {});
@@ -912,7 +912,7 @@ function ChatConnected() {
   /* load contacts from DB + fetch presence from Stream */
   useEffect(() => {
     if (!chatClient) return;
-    const token = localStorage.getItem('nivio_token');
+    const token = localStorage.getItem('nanivio_token');
     fetch(`${API}/contacts`, { headers: { Authorization: `Bearer ${token}` } })
       .then(r => r.json())
       .then(async (d) => {
@@ -947,7 +947,7 @@ function ChatConnected() {
 
   /* add a user to the contacts list */
   const addContact = useCallback(async (user: SUser) => {
-    const token = localStorage.getItem('nivio_token');
+    const token = localStorage.getItem('nanivio_token');
     try {
       const r = await fetch(`${API}/contacts`, {
         method: 'POST',
@@ -975,7 +975,7 @@ function ChatConnected() {
 
   /* remove a contact from the list */
   const removeContact = useCallback(async (streamUserId: string) => {
-    const token = localStorage.getItem('nivio_token');
+    const token = localStorage.getItem('nanivio_token');
     try {
       await fetch(`${API}/contacts/${streamUserId}`, {
         method: 'DELETE',
@@ -997,7 +997,7 @@ function ChatConnected() {
   useEffect(() => {
     if (!showNewChat || !searchQuery.trim()) { setSearchResults([]); return; }
     const tid = setTimeout(() => {
-      const token = localStorage.getItem('nivio_token');
+      const token = localStorage.getItem('nanivio_token');
       fetch(`${API}/stream/users/search?q=${encodeURIComponent(searchQuery)}`, {
         headers: { Authorization: `Bearer ${token}` },
       })
@@ -1081,7 +1081,7 @@ function ChatConnected() {
     const other = members.find((m: any) => m.user_id !== streamData?.userId);
     if (other?.user_id) {
       try {
-        const authToken = localStorage.getItem('nivio_token');
+        const authToken = localStorage.getItem('nanivio_token');
         const prefs = await fetch(`${API}/user/calling-settings/${other.user_id}`, {
           headers: { Authorization: `Bearer ${authToken}` },
         }).then(r => r.json());
@@ -1095,7 +1095,7 @@ function ChatConnected() {
         }
       } catch { /* allow the call if the preference check fails */ }
     }
-    const callId = `nivio-${(ch.id ?? Date.now()).toString().replace(/[^a-zA-Z0-9_-]/g, '-')}`;
+    const callId = `nanivio-${(ch.id ?? Date.now()).toString().replace(/[^a-zA-Z0-9_-]/g, '-')}`;
     const memberIds = Object.keys(ch.state?.members ?? {});
     try {
       await streamVideo.startCall(type, callId, memberIds);

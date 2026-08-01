@@ -48,11 +48,11 @@ export default function Login() {
         <div className="flex flex-col items-center gap-3">
           <img
             src={`${import.meta.env.BASE_URL}logo.png`}
-            alt="Nivio"
+            alt="Nanivio"
             className="w-16 h-16 rounded-2xl object-cover shadow-lg"
           />
           <div className="text-center">
-            <h1 className="text-2xl font-bold tracking-tight">Nivio</h1>
+            <h1 className="text-2xl font-bold tracking-tight">Nanivio</h1>
             <p className="text-sm text-muted-foreground mt-0.5">Sign in to your account</p>
           </div>
         </div>

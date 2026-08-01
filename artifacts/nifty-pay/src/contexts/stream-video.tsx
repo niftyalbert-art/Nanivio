@@ -46,7 +46,7 @@ export function StreamVideoProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (!streamData) return;
     let cancelled = false;
-    const authToken = localStorage.getItem('nivio_token');
+    const authToken = localStorage.getItem('nanivio_token');
 
     fetch(`${API}/stream/video-token`, { headers: { Authorization: `Bearer ${authToken}` } })
       .then(r => r.json())

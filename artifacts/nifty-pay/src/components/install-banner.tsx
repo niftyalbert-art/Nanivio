@@ -39,11 +39,11 @@ export function InstallBanner() {
       ].join(' ')}>
         <img
           src={`${import.meta.env.BASE_URL}logo.png`}
-          alt="Nivio"
+          alt="Nanivio"
           className="w-12 h-12 rounded-xl shrink-0"
         />
         <div className="flex-1 min-w-0">
-          <p className="text-sm font-semibold leading-tight">Install Nivio</p>
+          <p className="text-sm font-semibold leading-tight">Install Nanivio</p>
           <p className="text-xs text-muted-foreground mt-0.5">Add to your home screen</p>
         </div>
         <Button size="sm" className="shrink-0 gap-1.5 text-xs px-3 font-semibold" onClick={handleInstall}>

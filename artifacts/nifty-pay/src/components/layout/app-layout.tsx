@@ -84,8 +84,8 @@ export function AppLayout({ children }: AppLayoutProps) {
         {/* Logo */}
         <div className="p-6 border-b border-sidebar-border">
           <Link href="/" className="flex items-center gap-2">
-            <img src={`${import.meta.env.BASE_URL}logo.png`} alt="Nivio" className="w-8 h-8 rounded-lg object-cover" />
-            <span className="text-xl font-bold tracking-tight">Nivio</span>
+            <img src={`${import.meta.env.BASE_URL}logo.png`} alt="Nanivio" className="w-8 h-8 rounded-lg object-cover" />
+            <span className="text-xl font-bold tracking-tight">Nanivio</span>
           </Link>
         </div>
 
@@ -139,8 +139,8 @@ export function AppLayout({ children }: AppLayoutProps) {
       <main className="flex-1 overflow-auto min-w-0 pb-16 md:pb-0">
         {/* Mobile top bar */}
         <header className="md:hidden sticky top-0 z-40 flex items-center gap-3 px-4 py-3 bg-sidebar/95 backdrop-blur border-b border-sidebar-border">
-          <img src={`${import.meta.env.BASE_URL}logo.png`} alt="Nivio" className="w-7 h-7 rounded-md object-cover shrink-0" />
-          <span className="text-base font-bold tracking-tight">Nivio</span>
+          <img src={`${import.meta.env.BASE_URL}logo.png`} alt="Nanivio" className="w-7 h-7 rounded-md object-cover shrink-0" />
+          <span className="text-base font-bold tracking-tight">Nanivio</span>
           {profile && (
             <Link href="/account" className="ml-auto">
               <Avatar className="w-8 h-8">

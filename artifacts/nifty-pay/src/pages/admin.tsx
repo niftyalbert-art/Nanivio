@@ -13,7 +13,7 @@ import { formatDistanceToNow } from 'date-fns';
 import { useToast } from '@/hooks/use-toast';
 
 const API = import.meta.env.BASE_URL.replace(/\/$/, '') + '/api';
-const ADMIN_JWT_KEY = 'nivio_admin_jwt';
+const ADMIN_JWT_KEY = 'nanivio_admin_jwt';
 
 function apiFetch(path: string, opts?: RequestInit) {
   const token = sessionStorage.getItem(ADMIN_JWT_KEY);
@@ -1192,9 +1192,9 @@ export default function Admin() {
   if (!authed) {
     const Branding = () => (
       <div className="flex flex-col items-center gap-3">
-        <img src={`${import.meta.env.BASE_URL}logo.png`} alt="Nivio" className="w-16 h-16 rounded-2xl shadow-xl" />
+        <img src={`${import.meta.env.BASE_URL}logo.png`} alt="Nanivio" className="w-16 h-16 rounded-2xl shadow-xl" />
         <div className="text-center">
-          <h1 className="text-2xl font-extrabold tracking-tight">Nivio</h1>
+          <h1 className="text-2xl font-extrabold tracking-tight">Nanivio</h1>
           <p className="text-xs text-muted-foreground mt-0.5 uppercase tracking-widest">Admin Portal</p>
         </div>
       </div>
@@ -1310,7 +1310,7 @@ export default function Admin() {
               </p>
             </CardContent>
           </Card>
-          <p className="text-xs text-muted-foreground">Nivio · Admin Portal · Restricted Access</p>
+          <p className="text-xs text-muted-foreground">Nanivio · Admin Portal · Restricted Access</p>
         </div>
       );
     }
@@ -1345,7 +1345,7 @@ export default function Admin() {
             </button>
           </CardContent>
         </Card>
-        <p className="text-xs text-muted-foreground">Nivio · Admin Portal · Restricted Access</p>
+        <p className="text-xs text-muted-foreground">Nanivio · Admin Portal · Restricted Access</p>
       </div>
     );
   }
@@ -1372,7 +1372,7 @@ export default function Admin() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-xl font-bold">Admin Panel</h1>
-          <p className="text-xs text-muted-foreground">Nivio Operations</p>
+          <p className="text-xs text-muted-foreground">Nanivio Operations</p>
         </div>
         <Button variant="outline" size="sm" onClick={() => { sessionStorage.removeItem(ADMIN_JWT_KEY); setAuthed(false); qc.clear(); }}>Sign Out</Button>
       </div>

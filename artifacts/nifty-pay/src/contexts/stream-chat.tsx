@@ -27,7 +27,7 @@ export function StreamChatProvider({ children }: { children: ReactNode }) {
   const [state, setState] = useState<StreamChatCtx>({ streamData: null, chatClient: null });
 
   useEffect(() => {
-    const authToken = localStorage.getItem('nivio_token');
+    const authToken = localStorage.getItem('nanivio_token');
     if (!authToken) return;
 
     let cancelled = false;

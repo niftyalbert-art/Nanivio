@@ -238,7 +238,7 @@ export default function Account() {
             </div>
             <div>
               <p className="font-semibold text-sm">Calls &amp; Messaging</p>
-              <p className="text-xs text-muted-foreground">Control who can call you in Nivio chat</p>
+              <p className="text-xs text-muted-foreground">Control who can call you in Nanivio chat</p>
             </div>
           </div>
 
@@ -458,7 +458,7 @@ export default function Account() {
 
               {/* Telegram */}
               <a
-                href={siteSettings?.telegramLink ?? 'https://t.me/niviopay_support'}
+                href={siteSettings?.telegramLink ?? 'https://t.me/nanivio_support'}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="flex items-center gap-3 rounded-xl border border-blue-500/30 bg-blue-500/10 p-3.5 hover:bg-blue-500/20 transition-colors"

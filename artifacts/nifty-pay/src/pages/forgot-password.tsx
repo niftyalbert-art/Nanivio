@@ -40,7 +40,7 @@ export default function ForgotPassword() {
         <div className="flex flex-col items-center gap-3">
           <img
             src={`${import.meta.env.BASE_URL}logo.png`}
-            alt="Nivio"
+            alt="Nanivio"
             className="w-16 h-16 rounded-2xl object-cover shadow-lg"
           />
           <div className="text-center">
@@ -59,7 +59,7 @@ export default function ForgotPassword() {
                 <p className="font-semibold">Check your inbox</p>
                 <p className="text-sm text-muted-foreground mt-1">
                   A 6-digit reset code has been generated for <strong>{email}</strong>.
-                  Contact Nivio support if you don't receive it — our team can provide the code directly.
+                  Contact Nanivio support if you don't receive it — our team can provide the code directly.
                 </p>
               </div>
               <Link href="/reset-password">

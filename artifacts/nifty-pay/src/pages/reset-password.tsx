@@ -48,7 +48,7 @@ export default function ResetPassword() {
         <div className="flex flex-col items-center gap-3">
           <img
             src={`${import.meta.env.BASE_URL}logo.png`}
-            alt="Nivio"
+            alt="Nanivio"
             className="w-16 h-16 rounded-2xl object-cover shadow-lg"
           />
           <div className="text-center">

@@ -6,7 +6,7 @@ export type InstallState =
   | 'dismissed'   // user closed the banner this session
   | 'installed';  // already installed / standalone
 
-const DISMISS_KEY = 'nivio_install_dismissed_until';
+const DISMISS_KEY = 'nanivio_install_dismissed_until';
 const DISMISS_DAYS = 3;
 
 function isStandalone() {

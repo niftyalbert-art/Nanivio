@@ -38,8 +38,8 @@ export default defineConfig({
       registerType: 'autoUpdate',
       includeAssets: ['favicon.svg', 'logo.png', 'icons/icon-192.png', 'icons/icon-512.png', 'icons/apple-touch-icon.png'],
       manifest: {
-        name: 'Nivio',
-        short_name: 'Nivio',
+        name: 'Nanivio',
+        short_name: 'Nanivio',
         description: 'Send money globally — fast, simple, trusted',
         theme_color: '#0d1117',
         background_color: '#0d1117',

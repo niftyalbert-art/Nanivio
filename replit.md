@@ -1,6 +1,6 @@
-# Nivio — Global Money Transfer PWA
+# Nanivio — Global Money Transfer PWA
 
-Nivio is a UAE-based global money transfer web app (Wise/Revolut-style), built as a mobile-first PWA.
+Nanivio is a UAE-based global money transfer web app (Wise/Revolut-style), built as a mobile-first PWA.
 
 ## Project overview
 
@@ -12,7 +12,7 @@ Nivio is a UAE-based global money transfer web app (Wise/Revolut-style), built a
 ## Architecture
 
 ### Authentication
-- JWT (30-day) stored in `localStorage` under `nivio_token`.
+- JWT (30-day) stored in `localStorage` under `nanivio_token`.
 - Signed with `SESSION_SECRET` env var using `jsonwebtoken`.
 - Passwords hashed with `bcryptjs`.
 - `setAuthTokenGetter` (from `lib/api-client-react`) is called in `contexts/auth.tsx` so every generated API client call auto-attaches the `Authorization: Bearer` header.
@@ -41,6 +41,6 @@ Nivio is a UAE-based global money transfer web app (Wise/Revolut-style), built a
 - `POST /api/auth/reset-password` validates OTP + sets new password.
 
 ## User preferences
-- Keep the existing mobile-first, dark-theme Nivio design.
+- Keep the existing mobile-first, dark-theme Nanivio design.
 - No Zod in `api-server` — esbuild can't resolve `zod/v4`; validation is manual.
 - Admin password is set via the `ADMIN_PASSWORD` environment variable (configure via Replit Secrets).

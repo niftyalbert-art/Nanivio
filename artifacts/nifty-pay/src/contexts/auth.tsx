@@ -2,9 +2,9 @@ import { createContext, useContext, useState, useCallback, type ReactNode } from
 import { setAuthTokenGetter } from '@workspace/api-client-react';
 
 // Initialize the API client's auth token getter once at module load
-setAuthTokenGetter(() => localStorage.getItem('nivio_token'));
+setAuthTokenGetter(() => localStorage.getItem('nanivio_token'));
 
-const TOKEN_KEY = 'nivio_token';
+const TOKEN_KEY = 'nanivio_token';
 
 export interface AuthUser {
   id: number;
