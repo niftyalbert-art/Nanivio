@@ -13,7 +13,7 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Badge } from '@/components/ui/badge';
-import { Clock, ArrowLeft, Smartphone, Building2 } from 'lucide-react';
+import { Clock, ArrowLeft, Smartphone, Building2, ShieldCheck } from 'lucide-react';
 import { useQueryClient } from '@tanstack/react-query';
 import { useToast } from '@/hooks/use-toast';
 import { Link } from 'wouter';
@@ -51,7 +51,7 @@ export default function Withdraw() {
   const { data: wallets, isLoading } = useGetWallets();
   const createWithdrawal = useCreateWithdrawal();
 
-  const [step, setStep] = useState<'form' | 'confirm' | 'success'>('form');
+  const [step, setStep] = useState<'form' | 'confirm' | 'pin' | 'success'>('form');
   const [walletId, setWalletId] = useState('');
   const [amount, setAmount] = useState('');
   const [withdrawalType, setWithdrawalType] = useState<'mobile_money' | 'bank'>('mobile_money');
@@ -63,6 +63,9 @@ export default function Withdraw() {
   const [bankName, setBankName] = useState('');
   const [accountNumber, setAccountNumber] = useState('');
   const [accountName, setAccountName] = useState('');
+  // PIN
+  const [pin, setPin] = useState('');
+  const [pinError, setPinError] = useState('');
 
   const selectedWallet = wallets?.find(w => w.id === Number(walletId));
   const availableNetworks = MOBILE_MONEY_NETWORKS[recipientCountry] ?? [];
@@ -74,7 +77,11 @@ export default function Withdraw() {
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (step === 'form') { setStep('confirm'); return; }
+    if (step === 'confirm') { setPin(''); setPinError(''); setStep('pin'); return; }
+  };
 
+  const handlePinConfirm = () => {
+    setPinError('');
     createWithdrawal.mutate(
       {
         data: {
@@ -87,6 +94,7 @@ export default function Withdraw() {
           bankName: withdrawalType === 'bank' ? bankName : undefined,
           accountNumber: withdrawalType === 'bank' ? accountNumber : undefined,
           accountName: withdrawalType === 'bank' ? accountName : undefined,
+          pin,
         },
       },
       {
@@ -97,7 +105,13 @@ export default function Withdraw() {
           setStep('success');
         },
         onError: (err: any) => {
-          toast({ title: 'Withdrawal failed', description: err?.message ?? 'Please try again.', variant: 'destructive' });
+          const msg: string = err?.message ?? '';
+          const isPinError = msg.toLowerCase().includes('pin') || msg.toLowerCase().includes('incorrect');
+          if (isPinError) {
+            setPinError('Incorrect PIN. Please try again.');
+          } else {
+            toast({ title: 'Withdrawal failed', description: msg || 'Please try again.', variant: 'destructive' });
+          }
         },
       }
     );
@@ -343,12 +357,66 @@ export default function Withdraw() {
           <Button
             type="submit"
             className="flex-1"
-            disabled={!canSubmit || createWithdrawal.isPending}
+            disabled={!canSubmit}
           >
-            {step === 'form' ? 'Review Withdrawal' : createWithdrawal.isPending ? 'Processing...' : 'Confirm Withdrawal'}
+            {step === 'form' ? 'Review Withdrawal' : 'Continue to PIN'}
           </Button>
         </div>
       </form>
+
+      {/* ── PIN STEP ── */}
+      {step === 'pin' && (
+        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/60 p-4">
+          <div className="w-full max-w-sm bg-card rounded-2xl shadow-2xl p-6 space-y-5">
+            <div className="flex items-center gap-3">
+              <Button variant="ghost" size="sm" className="px-2" onClick={() => { setPin(''); setPinError(''); setStep('confirm'); }}>
+                <ArrowLeft className="w-4 h-4" />
+              </Button>
+              <div>
+                <h2 className="font-bold text-base">Confirm with PIN</h2>
+                <p className="text-xs text-muted-foreground">Enter your 4-digit PIN to authorise this withdrawal</p>
+              </div>
+            </div>
+
+            <div className="flex flex-col items-center gap-4">
+              <div className="w-14 h-14 rounded-full bg-primary/10 flex items-center justify-center">
+                <ShieldCheck className="w-7 h-7 text-primary" />
+              </div>
+              <div className="text-center space-y-0.5">
+                <p className="font-semibold">
+                  Withdrawing <span className="font-mono">{amount} {selectedWallet?.currencyCode}</span>
+                </p>
+                <p className="text-sm text-muted-foreground">via {withdrawalType === 'mobile_money' ? 'Mobile Money' : 'Bank Transfer'} · {recipientCountry}</p>
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <Label className="text-sm text-center block">4-Digit PIN</Label>
+              <Input
+                type="password"
+                inputMode="numeric"
+                pattern="\d{4}"
+                maxLength={4}
+                placeholder="••••"
+                value={pin}
+                onChange={e => { setPin(e.target.value.replace(/\D/g, '').slice(0, 4)); setPinError(''); }}
+                className={`text-center text-2xl tracking-[0.5em] font-mono max-w-[160px] mx-auto block ${pinError ? 'border-destructive' : ''}`}
+                autoFocus
+                onKeyDown={e => { if (e.key === 'Enter' && pin.length === 4) handlePinConfirm(); }}
+              />
+              {pinError && <p className="text-sm text-destructive text-center">{pinError}</p>}
+            </div>
+
+            <Button
+              className="w-full font-bold"
+              onClick={handlePinConfirm}
+              disabled={pin.length !== 4 || createWithdrawal.isPending}
+            >
+              {createWithdrawal.isPending ? 'Processing...' : 'Authorise Withdrawal'}
+            </Button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

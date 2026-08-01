@@ -73,6 +73,7 @@ export interface TransactionInput {
   recipientName: string;
   recipientCountry: string;
   note?: string;
+  pin: string;
 }
 
 export interface ExchangeRateResult {
@@ -170,6 +171,7 @@ export interface WithdrawalInput {
   accountNumber?: string;
   accountName?: string;
   note?: string;
+  pin: string;
 }
 
 export type WithdrawalStatus = typeof WithdrawalStatus[keyof typeof WithdrawalStatus];

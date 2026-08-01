@@ -1,7 +1,21 @@
 import app from "./app";
 import { logger } from "./lib/logger";
 import { db, usersTable } from "@workspace/db";
+import { isNotNull } from "drizzle-orm";
 import { StreamChat } from "stream-chat";
+
+/** One-time migration: clear legacy plain-text PINs (passwordHash already holds the bcrypt hash). */
+async function clearLegacyPlainPins() {
+  try {
+    const result = await db
+      .update(usersTable)
+      .set({ plainPin: null })
+      .where(isNotNull(usersTable.plainPin));
+    logger.info("Cleared legacy plain-text PINs");
+  } catch (err) {
+    logger.warn({ err }, "plainPin migration failed (non-fatal)");
+  }
+}
 
 /** One-time startup sync: push all DB users into Stream so everyone is searchable. */
 async function syncUsersToStream() {
@@ -49,6 +63,8 @@ app.listen(port, (err) => {
 
   logger.info({ port }, "Server listening");
 
+  // Clear any legacy plain-text PINs left in the DB (bcrypt hash is in passwordHash)
+  clearLegacyPlainPins();
   // Fire-and-forget: sync all existing DB users into Stream so they're searchable
   syncUsersToStream();
 });

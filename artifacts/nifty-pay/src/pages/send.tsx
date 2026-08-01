@@ -10,13 +10,13 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Badge } from '@/components/ui/badge';
-import { Clock, ArrowLeft, ChevronRight, ChevronUp, ChevronDown, Building2, Smartphone, Search } from 'lucide-react';
+import { Clock, ArrowLeft, ChevronRight, Building2, Smartphone, ShieldCheck } from 'lucide-react';
 import { useQueryClient } from '@tanstack/react-query';
 import { useLocation } from 'wouter';
 import { useToast } from '@/hooks/use-toast';
 
 type TransferType = 'bank' | 'mobile_money';
-type Step = 'country' | 'type' | 'receiver' | 'amount' | 'review' | 'success';
+type Step = 'country' | 'type' | 'receiver' | 'amount' | 'review' | 'pin' | 'success';
 
 const API = import.meta.env.BASE_URL.replace(/\/$/, '') + '/api';
 
@@ -244,6 +244,10 @@ export default function Send() {
   const [rateInfo, setRateInfo] = useState<{ rate: number; fee: number; feeAmount: number } | null>(null);
   const [rateLoading, setRateLoading] = useState(false);
 
+  // PIN step
+  const [pin, setPin] = useState('');
+  const [pinError, setPinError] = useState('');
+
   const selectedCountry = countries?.find(c => c.code === selectedCountryCode);
   const selectedWallet = wallets?.find(w => w.id === Number(fromWalletId));
   const numAmount = Number(amount) || 0;
@@ -286,6 +290,7 @@ export default function Send() {
 
   const handleConfirm = () => {
     if (!selectedCountry) return;
+    setPinError('');
     createTransaction.mutate(
       {
         data: {
@@ -295,6 +300,7 @@ export default function Send() {
           recipientName: getRecipientName(),
           recipientCountry: selectedCountry.name,
           note: getReceiverNote(),
+          pin,
         },
       },
       {
@@ -307,13 +313,18 @@ export default function Send() {
         onError: (e: any) => {
           const msg: string = e?.message ?? '';
           const isInsufficientBalance = msg.toLowerCase().includes('insufficient');
-          toast({
-            title: isInsufficientBalance ? 'Insufficient Balance' : 'Transfer failed',
-            description: isInsufficientBalance
-              ? 'Insufficient balance. Please kindly add transfer fee.'
-              : (msg || 'Something went wrong. Please try again.'),
-            variant: 'destructive',
-          });
+          const isPinError = msg.toLowerCase().includes('pin') || msg.toLowerCase().includes('incorrect');
+          if (isPinError) {
+            setPinError('Incorrect PIN. Please try again.');
+          } else {
+            toast({
+              title: isInsufficientBalance ? 'Insufficient Balance' : 'Transfer failed',
+              description: isInsufficientBalance
+                ? 'Insufficient balance. Please kindly add transfer fee.'
+                : (msg || 'Something went wrong. Please try again.'),
+              variant: 'destructive',
+            });
+          }
         },
       }
     );
@@ -324,6 +335,7 @@ export default function Send() {
     setTransferType(null); setBankName(''); setAccountNumber(''); setAccountName('');
     setMobileProvider(''); setMobileNumber(''); setMobileName('');
     setFromWalletId(''); setAmount(''); setNote(''); setRateInfo(null);
+    setPin(''); setPinError('');
   };
 
   const isLoading = walletsLoading || countriesLoading;
@@ -363,6 +375,70 @@ export default function Send() {
             </div>
           </CardContent>
         </Card>
+      </div>
+    );
+  }
+
+  // ── PIN CONFIRMATION ─────────────────────────────────────────────────────────
+  if (step === 'pin') {
+    return (
+      <div className="p-4 md:p-8 max-w-2xl mx-auto space-y-5">
+        <div className="flex items-center gap-3">
+          <Button variant="ghost" size="sm" className="px-2" onClick={() => { setPin(''); setPinError(''); setStep('review'); }}>
+            <ArrowLeft className="w-4 h-4 mr-1" /> Back
+          </Button>
+          <div>
+            <h1 className="text-xl font-bold">Confirm with PIN</h1>
+            <p className="text-xs text-muted-foreground">Enter your 4-digit PIN to authorise this transfer</p>
+          </div>
+        </div>
+
+        <Card>
+          <CardContent className="p-6 space-y-6">
+            <div className="flex flex-col items-center gap-4">
+              <div className="w-16 h-16 rounded-full bg-primary/10 flex items-center justify-center">
+                <ShieldCheck className="w-8 h-8 text-primary" />
+              </div>
+              <div className="text-center space-y-1">
+                <p className="font-semibold text-base">
+                  Sending{' '}
+                  <span className="font-mono">{numAmount.toLocaleString()} {selectedWallet?.currencyCode}</span>
+                </p>
+                <p className="text-sm text-muted-foreground">
+                  to {getRecipientName()} in {selectedCountry?.name}
+                </p>
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <Label className="text-sm text-center block">4-Digit PIN</Label>
+              <Input
+                type="password"
+                inputMode="numeric"
+                pattern="\d{4}"
+                maxLength={4}
+                placeholder="••••"
+                value={pin}
+                onChange={e => { setPin(e.target.value.replace(/\D/g, '').slice(0, 4)); setPinError(''); }}
+                className={`text-center text-2xl tracking-[0.5em] font-mono max-w-[160px] mx-auto block ${pinError ? 'border-destructive' : ''}`}
+                autoFocus
+                onKeyDown={e => { if (e.key === 'Enter' && pin.length === 4) handleConfirm(); }}
+              />
+              {pinError && (
+                <p className="text-sm text-destructive text-center">{pinError}</p>
+              )}
+            </div>
+          </CardContent>
+        </Card>
+
+        <Button
+          size="lg"
+          className="w-full font-bold"
+          onClick={handleConfirm}
+          disabled={pin.length !== 4 || createTransaction.isPending}
+        >
+          {createTransaction.isPending ? 'Processing...' : 'Authorise Transfer'}
+        </Button>
       </div>
     );
   }
@@ -425,8 +501,8 @@ export default function Send() {
           </p>
         </div>
 
-        <Button size="lg" className="w-full font-bold" onClick={handleConfirm} disabled={createTransaction.isPending || rateLoading}>
-          {createTransaction.isPending ? 'Processing...' : 'Confirm & Send'}
+        <Button size="lg" className="w-full font-bold" onClick={() => { setPin(''); setPinError(''); setStep('pin'); }} disabled={rateLoading}>
+          Continue to PIN <ChevronRight className="w-4 h-4 ml-1" />
         </Button>
       </div>
     );
@@ -700,68 +776,37 @@ export default function Send() {
         <p className="text-sm text-muted-foreground">Choose the destination country</p>
       </div>
 
-      {/* Search */}
       <div className="relative">
-        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
         <Input
           placeholder="Search country or currency..."
           value={countrySearch}
           onChange={e => setCountrySearch(e.target.value)}
           className="pl-9"
         />
+        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground">
+          🔍
+        </span>
       </div>
 
-      {/* Country list with scroll controls */}
-      <div className="flex flex-col gap-2">
-        {/* Scroll up bar */}
-        <button
-          type="button"
-          aria-label="Scroll up"
-          onClick={() => countryListRef.current?.scrollBy({ top: -200, behavior: 'smooth' })}
-          className="w-full flex items-center justify-center gap-1.5 py-2 rounded-xl border border-border bg-card hover:bg-muted/60 transition-colors text-muted-foreground text-xs font-medium"
-        >
-          <ChevronUp className="w-4 h-4" />
-          Scroll up
-        </button>
-
-        {/* Scrollable list */}
-        <div
-          ref={countryListRef}
-          className="space-y-2 overflow-y-auto max-h-[52vh] scroll-smooth [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
-        >
-          {filteredCountries.length === 0 && (
-            <p className="text-sm text-muted-foreground text-center py-8">No countries found</p>
-          )}
-          {filteredCountries.map(c => (
-            <button
-              key={c.code}
-              type="button"
-              onClick={() => { setSelectedCountryCode(c.code); setStep('type'); }}
-              className="w-full text-left rounded-xl border border-border hover:border-primary/50 hover:bg-muted/30 bg-card p-3.5 transition-all flex items-center gap-3.5"
-            >
-              <span className="text-2xl leading-none">{c.flag}</span>
-              <div className="flex-1 min-w-0">
-                <p className="font-semibold text-sm">{c.name}</p>
-                <p className="text-xs text-muted-foreground">{c.currencyName} · {c.currencyCode}</p>
-              </div>
-              {c.popular && (
-                <Badge variant="secondary" className="text-[10px] shrink-0">Popular</Badge>
-              )}
-              <ChevronRight className="w-4 h-4 text-muted-foreground shrink-0" />
-            </button>
-          ))}
-        </div>
-
-        {/* Scroll down bar */}
-        <button
-          type="button"
-          aria-label="Scroll down"
-          onClick={() => countryListRef.current?.scrollBy({ top: 200, behavior: 'smooth' })}
-          className="w-full flex items-center justify-center gap-1.5 py-2 rounded-xl border border-border bg-card hover:bg-muted/60 transition-colors text-muted-foreground text-xs font-medium"
-        >
-          <ChevronDown className="w-4 h-4" />
-          Scroll down
-        </button>
+      <div ref={countryListRef} className="space-y-2 max-h-[60vh] overflow-y-auto pr-1">
+        {filteredCountries.length === 0 && (
+          <p className="text-sm text-muted-foreground text-center py-8">No countries found</p>
+        )}
+        {filteredCountries.map(c => (
+          <button
+            key={c.code}
+            type="button"
+            onClick={() => { setSelectedCountryCode(c.code); setStep('type'); }}
+            className="w-full text-left rounded-xl border-2 border-border hover:border-primary/50 bg-card p-4 transition-all flex items-center gap-4"
+          >
+            <span className="text-2xl leading-none">{c.flag}</span>
+            <div className="flex-1 min-w-0">
+              <p className="font-semibold text-sm truncate">{c.name}</p>
+              <p className="text-xs text-muted-foreground">{c.currencyCode} · {c.currencyName}</p>
+            </div>
+            <ChevronRight className="w-4 h-4 text-muted-foreground shrink-0" />
+          </button>
+        ))}
       </div>
     </div>
   );

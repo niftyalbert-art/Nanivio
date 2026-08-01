@@ -144,7 +144,8 @@ export const CreateTransactionBody = zod.object({
   "fromAmount": zod.number(),
   "recipientName": zod.string(),
   "recipientCountry": zod.string(),
-  "note": zod.string().optional()
+  "note": zod.string().optional(),
+  "pin": zod.string().regex(/^\d{4}$/)
 })
 
 export const CreateTransactionResponse = zod.object({
@@ -353,7 +354,8 @@ export const CreateWithdrawalBody = zod.object({
   "bankName": zod.string().optional(),
   "accountNumber": zod.string().optional(),
   "accountName": zod.string().optional(),
-  "note": zod.string().optional()
+  "note": zod.string().optional(),
+  "pin": zod.string().regex(/^\d{4}$/)
 })
 
 export const CreateWithdrawalResponse = zod.object({

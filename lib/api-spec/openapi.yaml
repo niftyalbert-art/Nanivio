@@ -472,7 +472,7 @@ components:
 
     TransactionInput:
       type: object
-      required: [fromWalletId, toCurrencyCode, fromAmount, recipientName, recipientCountry]
+      required: [fromWalletId, toCurrencyCode, fromAmount, recipientName, recipientCountry, pin]
       properties:
         fromWalletId:
           type: integer
@@ -486,6 +486,11 @@ components:
           type: string
         note:
           type: string
+        pin:
+          type: string
+          minLength: 4
+          maxLength: 4
+          pattern: '^\d{4}$'
 
     ExchangeRateResult:
       type: object
@@ -617,7 +622,7 @@ components:
 
     WithdrawalInput:
       type: object
-      required: [walletId, amount, withdrawalType, recipientCountry]
+      required: [walletId, amount, withdrawalType, recipientCountry, pin]
       properties:
         walletId:
           type: integer
@@ -640,6 +645,11 @@ components:
           type: string
         note:
           type: string
+        pin:
+          type: string
+          minLength: 4
+          maxLength: 4
+          pattern: '^\d{4}$'
 
     Withdrawal:
       type: object

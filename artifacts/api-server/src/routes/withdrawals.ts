@@ -1,6 +1,7 @@
 import { Router, type IRouter } from "express";
 import { eq, and, desc, sql } from "drizzle-orm";
-import { db, withdrawalsTable, walletsTable } from "@workspace/db";
+import bcrypt from "bcryptjs";
+import { db, withdrawalsTable, walletsTable, usersTable } from "@workspace/db";
 import { requireAuth } from "../middleware/auth";
 
 const router: IRouter = Router();
@@ -26,11 +27,24 @@ router.post("/withdrawals", requireAuth, async (req, res): Promise<void> => {
     walletId, amount, withdrawalType, recipientCountry,
     mobileNumber, mobileNetwork,
     bankName, accountNumber, accountName,
-    note,
+    note, pin,
   } = req.body ?? {};
 
   if (!walletId || !amount || !withdrawalType || !recipientCountry) {
     res.status(400).json({ error: "Missing required fields: walletId, amount, withdrawalType, recipientCountry" });
+    return;
+  }
+
+  // Verify PIN
+  if (!pin || !/^\d{4}$/.test(String(pin))) {
+    res.status(400).json({ error: "A 4-digit PIN is required to withdraw funds" });
+    return;
+  }
+  const [user] = await db.select().from(usersTable).where(eq(usersTable.id, req.userId!));
+  if (!user) { res.status(401).json({ error: "User not found" }); return; }
+  const pinValid = await bcrypt.compare(String(pin), user.passwordHash);
+  if (!pinValid) {
+    res.status(403).json({ error: "Incorrect PIN. Please try again." });
     return;
   }
   if (!["mobile_money", "bank"].includes(withdrawalType)) {

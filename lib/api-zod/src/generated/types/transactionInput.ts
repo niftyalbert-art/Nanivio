@@ -13,4 +13,5 @@ export interface TransactionInput {
   recipientName: string;
   recipientCountry: string;
   note?: string;
+  pin: string;
 }

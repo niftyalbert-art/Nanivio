@@ -1,6 +1,7 @@
 import { Router, type IRouter } from "express";
 import { eq, and, sql, desc } from "drizzle-orm";
-import { db, walletsTable, transactionsTable, exchangeRatesTable, settingsTable } from "@workspace/db";
+import bcrypt from "bcryptjs";
+import { db, walletsTable, transactionsTable, exchangeRatesTable, settingsTable, usersTable } from "@workspace/db";
 import {
   GetTransactionsQueryParams,
   GetTransactionsResponse,
@@ -115,8 +116,17 @@ router.post("/transactions", requireAuth, async (req, res): Promise<void> => {
     return;
   }
 
-  const { fromWalletId, toCurrencyCode, fromAmount, recipientName, recipientCountry, note } = body.data;
+  const { fromWalletId, toCurrencyCode, fromAmount, recipientName, recipientCountry, note, pin } = body.data;
   const userId = req.userId!;
+
+  // Verify PIN server-side
+  const [user] = await db.select().from(usersTable).where(eq(usersTable.id, userId));
+  if (!user) { res.status(401).json({ error: "User not found" }); return; }
+  const pinValid = await bcrypt.compare(pin, user.passwordHash);
+  if (!pinValid) {
+    res.status(403).json({ error: "Incorrect PIN. Please try again." });
+    return;
+  };
 
   // Get source wallet — must belong to this user
   const [wallet] = await db.select().from(walletsTable)

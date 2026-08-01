@@ -18,4 +18,5 @@ export interface WithdrawalInput {
   accountNumber?: string;
   accountName?: string;
   note?: string;
+  pin: string;
 }
