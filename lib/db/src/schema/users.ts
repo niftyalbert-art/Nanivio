@@ -19,6 +19,10 @@ export const usersTable = pgTable("users", {
   kycRejectionReason: text("kyc_rejection_reason"),
   kycSubmittedAt: timestamp("kyc_submitted_at", { withTimezone: true }),
   kycReviewedAt: timestamp("kyc_reviewed_at", { withTimezone: true }),
+  // Fraud / velocity limits
+  sendLockedUntil: timestamp("send_locked_until", { withTimezone: true }),          // null = not locked
+  failedTransferAttempts: text("failed_transfer_attempts").notNull().default("0"),  // stored as text for compat
+  lastFailedTransferAt: timestamp("last_failed_transfer_at", { withTimezone: true }),
 });
 
 export type User = typeof usersTable.$inferSelect;

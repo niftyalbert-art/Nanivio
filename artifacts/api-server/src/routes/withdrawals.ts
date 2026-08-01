@@ -3,8 +3,20 @@ import { eq, and, desc, sql } from "drizzle-orm";
 import bcrypt from "bcryptjs";
 import { db, withdrawalsTable, walletsTable, usersTable } from "@workspace/db";
 import { requireAuth } from "../middleware/auth";
+import { encryptNullable, decryptNullable } from "../lib/encryption";
 
 const router: IRouter = Router();
+
+/** Decrypt sensitive withdrawal fields before sending to the client. */
+function decryptWithdrawal(w: any) {
+  return {
+    ...w,
+    accountNumber: decryptNullable(w.accountNumber),
+    mobileNumber: decryptNullable(w.mobileNumber),
+    amount: typeof w.amount === "string" ? parseFloat(w.amount) : w.amount,
+    createdAt: w.createdAt instanceof Date ? w.createdAt.toISOString() : String(w.createdAt),
+  };
+}
 
 router.get("/withdrawals", requireAuth, async (req, res): Promise<void> => {
   const rows = await db
@@ -13,13 +25,7 @@ router.get("/withdrawals", requireAuth, async (req, res): Promise<void> => {
     .where(eq(withdrawalsTable.userId, req.userId!))
     .orderBy(desc(withdrawalsTable.createdAt));
 
-  const result = rows.map((w) => ({
-    ...w,
-    amount: parseFloat(w.amount),
-    createdAt: w.createdAt instanceof Date ? w.createdAt.toISOString() : String(w.createdAt),
-  }));
-
-  res.json(result);
+  res.json(rows.map(decryptWithdrawal));
 });
 
 router.post("/withdrawals", requireAuth, async (req, res): Promise<void> => {
@@ -79,6 +85,10 @@ router.post("/withdrawals", requireAuth, async (req, res): Promise<void> => {
     .set({ balance: sql`${walletsTable.balance} - ${amount}`, updatedAt: new Date() })
     .where(eq(walletsTable.id, Number(walletId)));
 
+  // Encrypt sensitive financial identifiers at rest
+  const encryptedAccountNumber = encryptNullable(accountNumber ? String(accountNumber) : null);
+  const encryptedMobileNumber = encryptNullable(mobileNumber ? String(mobileNumber) : null);
+
   const [withdrawal] = await db
     .insert(withdrawalsTable)
     .values({
@@ -88,21 +98,18 @@ router.post("/withdrawals", requireAuth, async (req, res): Promise<void> => {
       currencyCode: wallet.currencyCode,
       withdrawalType: String(withdrawalType),
       recipientCountry: String(recipientCountry),
-      mobileNumber: mobileNumber ? String(mobileNumber) : null,
+      mobileNumber: encryptedMobileNumber,
       mobileNetwork: mobileNetwork ? String(mobileNetwork) : null,
       bankName: bankName ? String(bankName) : null,
-      accountNumber: accountNumber ? String(accountNumber) : null,
+      accountNumber: encryptedAccountNumber,
       accountName: accountName ? String(accountName) : null,
       status: "pending",
       note: note ? String(note) : null,
     })
     .returning();
 
-  res.status(201).json({
-    ...withdrawal,
-    amount: parseFloat(withdrawal.amount),
-    createdAt: withdrawal.createdAt instanceof Date ? withdrawal.createdAt.toISOString() : String(withdrawal.createdAt),
-  });
+  // Return decrypted values to the submitting user
+  res.status(201).json(decryptWithdrawal(withdrawal));
 });
 
 router.get("/withdrawals/:id", requireAuth, async (req, res): Promise<void> => {
@@ -113,11 +120,7 @@ router.get("/withdrawals/:id", requireAuth, async (req, res): Promise<void> => {
     .where(and(eq(withdrawalsTable.id, id), eq(withdrawalsTable.userId, req.userId!)));
   if (!withdrawal) { res.status(404).json({ error: "Withdrawal not found" }); return; }
 
-  res.json({
-    ...withdrawal,
-    amount: parseFloat(withdrawal.amount),
-    createdAt: withdrawal.createdAt instanceof Date ? withdrawal.createdAt.toISOString() : String(withdrawal.createdAt),
-  });
+  res.json(decryptWithdrawal(withdrawal));
 });
 
 export default router;

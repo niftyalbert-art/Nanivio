@@ -14,6 +14,7 @@ export const transactionsTable = pgTable("transactions", {
   recipientCountry: text("recipient_country").notNull(),
   recipientFlag: text("recipient_flag").notNull(),
   note: text("note"),
+  fromAmountUsd: numeric("from_amount_usd", { precision: 18, scale: 4 }), // USD equivalent at time of tx — used for velocity checks
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 

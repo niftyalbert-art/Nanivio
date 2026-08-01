@@ -1,7 +1,7 @@
 import { Router, type IRouter } from "express";
 import { eq, sql, isNotNull, desc, and, or } from "drizzle-orm";
 import fs from "fs";
-import { db, depositsTable, withdrawalsTable, walletsTable, paymentMethodsTable, exchangeRatesTable, usersTable, transactionsTable, settingsTable } from "@workspace/db";
+import { db, depositsTable, withdrawalsTable, walletsTable, paymentMethodsTable, exchangeRatesTable, usersTable, transactionsTable, settingsTable, fraudEventsTable } from "@workspace/db";
 import { adminOnly, signAdminToken } from "../middleware/auth";
 import bcrypt from "bcryptjs";
 
@@ -497,6 +497,68 @@ router.post("/admin/kyc/:userId/review", adminOnly, async (req, res): Promise<vo
     .returning({ id: usersTable.id, kycStatus: usersTable.kycStatus });
 
   res.json({ userId: updated.id, kycStatus: updated.kycStatus });
+});
+
+// ── Fraud / Security admin routes ─────────────────────────────────────────────
+
+// GET /admin/fraud-events — recent fraud events log
+router.get("/admin/fraud-events", adminOnly, async (req, res): Promise<void> => {
+  const { fraudEventsTable } = await import("@workspace/db");
+  const limit = Math.min(parseInt((req.query.limit as string) ?? "100", 10) || 100, 500);
+  const rows = await db
+    .select({
+      id: fraudEventsTable.id,
+      userId: fraudEventsTable.userId,
+      eventType: fraudEventsTable.eventType,
+      metadata: fraudEventsTable.metadata,
+      createdAt: fraudEventsTable.createdAt,
+      userName: usersTable.name,
+      userEmail: usersTable.email,
+    })
+    .from(fraudEventsTable)
+    .leftJoin(usersTable, eq(fraudEventsTable.userId, usersTable.id))
+    .orderBy(desc(fraudEventsTable.createdAt))
+    .limit(limit);
+
+  res.json(rows.map(r => ({
+    ...r,
+    metadata: r.metadata ? JSON.parse(r.metadata) : null,
+    createdAt: r.createdAt instanceof Date ? r.createdAt.toISOString() : String(r.createdAt),
+  })));
+});
+
+// GET /admin/locked-users — users currently locked from sending
+router.get("/admin/locked-users", adminOnly, async (_req, res): Promise<void> => {
+  const now = new Date();
+  const users = await db
+    .select({
+      id: usersTable.id,
+      name: usersTable.name,
+      email: usersTable.email,
+      sendLockedUntil: usersTable.sendLockedUntil,
+      failedTransferAttempts: usersTable.failedTransferAttempts,
+    })
+    .from(usersTable)
+    .where(sql`${usersTable.sendLockedUntil} IS NOT NULL AND ${usersTable.sendLockedUntil} > ${now}`);
+
+  res.json(users.map(u => ({
+    ...u,
+    sendLockedUntil: u.sendLockedUntil instanceof Date ? u.sendLockedUntil.toISOString() : String(u.sendLockedUntil),
+  })));
+});
+
+// POST /admin/users/:userId/clear-lock — clear a user's send lock
+router.post("/admin/users/:userId/clear-lock", adminOnly, async (req, res): Promise<void> => {
+  const userId = parseInt(req.params.userId as string, 10);
+  if (isNaN(userId)) { res.status(400).json({ error: "Invalid userId" }); return; }
+
+  const [user] = await db.select({ id: usersTable.id }).from(usersTable).where(eq(usersTable.id, userId));
+  if (!user) { res.status(404).json({ error: "User not found" }); return; }
+
+  const { clearSendLock } = await import("../lib/fraud");
+  await clearSendLock(userId);
+
+  res.json({ ok: true, userId, message: "Send lock cleared" });
 });
 
 export default router;

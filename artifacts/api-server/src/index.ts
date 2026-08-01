@@ -21,6 +21,32 @@ async function runKycSchemaMigration() {
   }
 }
 
+/** Idempotent migration: fraud_events table, user lockout columns, tx USD amount column. */
+async function runFraudSchemaMigration() {
+  try {
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS fraud_events (
+        id SERIAL PRIMARY KEY,
+        user_id INTEGER,
+        event_type TEXT NOT NULL,
+        metadata TEXT,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+
+      ALTER TABLE users
+        ADD COLUMN IF NOT EXISTS send_locked_until TIMESTAMPTZ,
+        ADD COLUMN IF NOT EXISTS failed_transfer_attempts TEXT NOT NULL DEFAULT '0',
+        ADD COLUMN IF NOT EXISTS last_failed_transfer_at TIMESTAMPTZ;
+
+      ALTER TABLE transactions
+        ADD COLUMN IF NOT EXISTS from_amount_usd NUMERIC(18,4);
+    `);
+    logger.info("Fraud schema migration complete (IF NOT EXISTS — safe to run repeatedly)");
+  } catch (err) {
+    logger.error({ err }, "Fraud schema migration FAILED — velocity limits will not work correctly");
+  }
+}
+
 /** One-time migration: clear legacy plain-text PINs (passwordHash already holds the bcrypt hash). */
 async function clearLegacyPlainPins() {
   try {
@@ -79,6 +105,7 @@ app.listen(port, () => {
   (async () => {
     // Run idempotent schema migrations first — safe on every boot (IF NOT EXISTS)
     await runKycSchemaMigration();
+    await runFraudSchemaMigration();
     // Clear any legacy plain-text PINs (bcrypt hash is in passwordHash)
     clearLegacyPlainPins();
     // Sync all existing DB users into Stream so they're searchable

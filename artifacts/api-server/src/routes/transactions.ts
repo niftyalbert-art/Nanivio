@@ -12,6 +12,8 @@ import {
   GetTransactionStatsResponse,
 } from "@workspace/api-zod";
 import { requireAuth } from "../middleware/auth";
+import { encryptNullable, decryptNullable } from "../lib/encryption";
+import { logFraudEvent, loadFraudSettings, getDailyVolumeUsd, recordFailedAttempt } from "../lib/fraud";
 
 const router: IRouter = Router();
 
@@ -103,6 +105,8 @@ router.get("/transactions", requireAuth, async (req, res): Promise<void> => {
     toAmount: parseFloat(t.toAmount),
     exchangeRate: parseFloat(t.exchangeRate),
     fee: parseFloat(t.fee),
+    // Decrypt note for display
+    note: t.note ? decryptNullable(t.note) : null,
     createdAt: t.createdAt instanceof Date ? t.createdAt.toISOString() : String(t.createdAt),
   }));
 
@@ -119,16 +123,40 @@ router.post("/transactions", requireAuth, async (req, res): Promise<void> => {
   const { fromWalletId, toCurrencyCode, fromAmount, recipientName, recipientCountry, note, pin } = body.data;
   const userId = req.userId!;
 
-  // Verify PIN server-side
+  // Fetch user (needed for PIN check, KYC, and lockout)
   const [user] = await db.select().from(usersTable).where(eq(usersTable.id, userId));
   if (!user) { res.status(401).json({ error: "User not found" }); return; }
+
+  // ── 1. Lockout check — before anything else ──────────────────────────────
+  if (user.sendLockedUntil && new Date(user.sendLockedUntil) > new Date()) {
+    const retryAfter = new Date(user.sendLockedUntil).toISOString();
+    res.status(429).json({
+      error: "SEND_LOCKED",
+      message: "Your account has been temporarily locked due to multiple failed attempts. Please try again later.",
+      retryAfter,
+    });
+    return;
+  }
+
+  // ── 2. PIN verification ───────────────────────────────────────────────────
   const pinValid = await bcrypt.compare(pin, user.passwordHash);
   if (!pinValid) {
-    res.status(403).json({ error: "Incorrect PIN. Please try again." });
+    const { txCapUsd, dailyCapUsd, lockoutThreshold } = await loadFraudSettings();
+    await logFraudEvent(userId, "pin_failure");
+    const { locked, lockedUntil } = await recordFailedAttempt(userId, lockoutThreshold, { reason: "wrong_pin" });
+    if (locked) {
+      res.status(429).json({
+        error: "SEND_LOCKED",
+        message: "Account locked for 1 hour after repeated failed attempts.",
+        retryAfter: lockedUntil?.toISOString(),
+      });
+    } else {
+      res.status(403).json({ error: "Incorrect PIN. Please try again." });
+    }
     return;
-  };
+  }
 
-  // Get source wallet — must belong to this user
+  // ── 3. Source wallet ──────────────────────────────────────────────────────
   const [wallet] = await db.select().from(walletsTable)
     .where(and(eq(walletsTable.id, fromWalletId), eq(walletsTable.userId, userId)));
   if (!wallet) {
@@ -136,6 +164,7 @@ router.post("/transactions", requireAuth, async (req, res): Promise<void> => {
     return;
   }
 
+  // ── 4. Exchange rates ─────────────────────────────────────────────────────
   const fromRateRow = await getRateRow(wallet.currencyCode);
   const toRateRow = await getRateRow(toCurrencyCode);
 
@@ -150,9 +179,9 @@ router.post("/transactions", requireAuth, async (req, res): Promise<void> => {
 
   const fromRateToUsd = parseFloat(fromRateRow.rateToUsd);
   const toRateToUsd = parseFloat(toRateRow.rateToUsd);
-
-  // KYC gating: unverified / rejected users are capped at $200 USD equivalent per transaction
   const fromAmountUsd = fromRateToUsd > 0 ? fromAmount / fromRateToUsd : 0;
+
+  // ── 5. KYC gating: unverified/rejected capped at $200 USD ────────────────
   if ((user.kycStatus === "unverified" || user.kycStatus === "rejected") && fromAmountUsd > 200) {
     res.status(403).json({
       error: "KYC_REQUIRED",
@@ -161,7 +190,43 @@ router.post("/transactions", requireAuth, async (req, res): Promise<void> => {
     return;
   }
 
-  // Load fee settings
+  // ── 6. Fraud / velocity checks ────────────────────────────────────────────
+  const { txCapUsd, dailyCapUsd, lockoutThreshold } = await loadFraudSettings();
+
+  // Per-transaction hard cap
+  if (fromAmountUsd > txCapUsd) {
+    await logFraudEvent(userId, "tx_cap_exceeded", {
+      fromAmountUsd: Math.round(fromAmountUsd * 100) / 100,
+      txCapUsd,
+      currency: wallet.currencyCode,
+    });
+    await recordFailedAttempt(userId, lockoutThreshold, { reason: "tx_cap_exceeded" });
+    res.status(400).json({
+      error: "TX_CAP_EXCEEDED",
+      message: `Single transfers cannot exceed $${txCapUsd.toLocaleString()} USD equivalent. This transfer is $${Math.round(fromAmountUsd).toLocaleString()} USD.`,
+    });
+    return;
+  }
+
+  // Rolling 24-hour daily cap
+  const dailySoFar = await getDailyVolumeUsd(userId);
+  if (dailySoFar + fromAmountUsd > dailyCapUsd) {
+    const resetAt = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
+    await logFraudEvent(userId, "daily_cap_exceeded", {
+      dailySoFarUsd: Math.round(dailySoFar * 100) / 100,
+      newTxUsd: Math.round(fromAmountUsd * 100) / 100,
+      dailyCapUsd,
+    });
+    await recordFailedAttempt(userId, lockoutThreshold, { reason: "daily_cap_exceeded" });
+    res.status(429).json({
+      error: "DAILY_CAP_EXCEEDED",
+      message: `You have reached your daily transfer limit of $${dailyCapUsd.toLocaleString()} USD. Your limit resets in 24 hours.`,
+      retryAfter: resetAt,
+    });
+    return;
+  }
+
+  // ── 7. Load fee settings ──────────────────────────────────────────────────
   const allFeeRows = await db.select().from(settingsTable);
   const feeMap: Record<string, string> = {};
   for (const r of allFeeRows) feeMap[r.key] = r.value;
@@ -173,12 +238,12 @@ router.post("/transactions", requireAuth, async (req, res): Promise<void> => {
     const fixedVal = feeMap["send_fee_fixed"] ? parseFloat(feeMap["send_fee_fixed"]) : 0;
     fee = isNaN(fixedVal) ? 0 : Math.round(fixedVal * 100) / 100;
   } else {
-    // percent mode
     const globalFee = feeMap["send_fee_percent"] ? parseFloat(feeMap["send_fee_percent"]) : NaN;
     const feePercent = !isNaN(globalFee) && globalFee >= 0 ? globalFee : parseFloat(toRateRow.feePercent);
     fee = Math.round(((feePercent / 100) * fromAmount) * 100) / 100;
   }
 
+  // ── 8. Balance check ──────────────────────────────────────────────────────
   const currentBalance = parseFloat(wallet.balance);
   const totalCost = fromAmount + fee;
 
@@ -187,6 +252,7 @@ router.post("/transactions", requireAuth, async (req, res): Promise<void> => {
     return;
   }
 
+  // ── 9. Execute transaction ────────────────────────────────────────────────
   const exchangeRate = toRateToUsd / fromRateToUsd;
   const toAmount = fromAmount * exchangeRate;
   const recipientFlag = FLAGS[toCurrencyCode] ?? "🌐";
@@ -198,6 +264,9 @@ router.post("/transactions", requireAuth, async (req, res): Promise<void> => {
       updatedAt: new Date(),
     })
     .where(eq(walletsTable.id, fromWalletId));
+
+  // Encrypt the note field (contains account/mobile number)
+  const encryptedNote = encryptNullable(note ?? null);
 
   const [transaction] = await db
     .insert(transactionsTable)
@@ -213,7 +282,8 @@ router.post("/transactions", requireAuth, async (req, res): Promise<void> => {
       recipientName,
       recipientCountry,
       recipientFlag,
-      note: note ?? null,
+      note: encryptedNote,
+      fromAmountUsd: String(Math.round(fromAmountUsd * 10000) / 10000),
     })
     .returning();
 
@@ -224,6 +294,8 @@ router.post("/transactions", requireAuth, async (req, res): Promise<void> => {
       toAmount: parseFloat(transaction.toAmount),
       exchangeRate: parseFloat(transaction.exchangeRate),
       fee: parseFloat(transaction.fee),
+      // Return decrypted note to the user who just submitted it
+      note: note ?? null,
       createdAt: transaction.createdAt instanceof Date ? transaction.createdAt.toISOString() : String(transaction.createdAt),
     })
   );
@@ -254,6 +326,7 @@ router.get("/transactions/:id", requireAuth, async (req, res): Promise<void> => 
       toAmount: parseFloat(t.toAmount),
       exchangeRate: parseFloat(t.exchangeRate),
       fee: parseFloat(t.fee),
+      note: t.note ? decryptNullable(t.note) : null,
       createdAt: t.createdAt instanceof Date ? t.createdAt.toISOString() : String(t.createdAt),
     })
   );

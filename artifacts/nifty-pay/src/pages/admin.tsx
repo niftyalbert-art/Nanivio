@@ -8,7 +8,7 @@ import { Badge } from '@/components/ui/badge';
 import { Textarea } from '@/components/ui/textarea';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { Skeleton } from '@/components/ui/skeleton';
-import { CheckCircle2, XCircle, Clock, ArrowDownLeft, ArrowUpRight, MessageSquare, Lock, Plus, Edit2, TrendingUp, Settings2, Link, Eye, EyeOff, Users, ArrowLeftRight, KeyRound, ShieldCheck, ArrowLeft, BadgeCheck } from 'lucide-react';
+import { CheckCircle2, XCircle, Clock, ArrowDownLeft, ArrowUpRight, MessageSquare, Lock, Plus, Edit2, TrendingUp, Settings2, Link, Eye, EyeOff, Users, ArrowLeftRight, KeyRound, ShieldCheck, ArrowLeft, BadgeCheck, Shield, AlertTriangle, Unlock } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import { useToast } from '@/hooks/use-toast';
 
@@ -1271,6 +1271,206 @@ function KycPanel() {
   );
 }
 
+// ── Security / Fraud Panel ───────────────────────────────────────────────────
+function SecurityPanel() {
+  const { toast } = useToast();
+  const qc = useQueryClient();
+
+  const { data: fraudEvents, isLoading: eventsLoading } = useQuery({
+    queryKey: ['admin-fraud-events'],
+    queryFn: () => apiFetch('/admin/fraud-events?limit=100'),
+    refetchInterval: 15000,
+  });
+  const { data: lockedUsers, isLoading: lockedLoading } = useQuery({
+    queryKey: ['admin-locked-users'],
+    queryFn: () => apiFetch('/admin/locked-users'),
+    refetchInterval: 15000,
+  });
+  const { data: settings, isLoading: settingsLoading, refetch: refetchSettings } = useQuery({
+    queryKey: ['admin-settings'],
+    queryFn: () => apiFetch('/admin/settings'),
+  });
+  const [limits, setLimits] = useState<Record<string, string>>({});
+  const [savingLimit, setSavingLimit] = useState<string | null>(null);
+
+  const s = settings as Record<string, string> | undefined;
+  const limitVal = (key: string) => limits[key] !== undefined ? limits[key] : (s?.[key] ?? '');
+  const setLimit = (key: string, v: string) => setLimits(f => ({ ...f, [key]: v }));
+
+  const saveLimit = async (key: string) => {
+    setSavingLimit(key);
+    try {
+      await apiFetch(`/admin/settings/${key}`, { method: 'PUT', body: JSON.stringify({ value: limits[key] ?? s?.[key] ?? '' }) });
+      await refetchSettings();
+      toast({ title: 'Limit saved ✓' });
+    } catch (e: any) {
+      toast({ title: 'Error', description: e.message, variant: 'destructive' });
+    }
+    setSavingLimit(null);
+  };
+
+  const clearLock = useMutation({
+    mutationFn: (userId: number) => apiFetch(`/admin/users/${userId}/clear-lock`, { method: 'POST' }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['admin-locked-users'] });
+      qc.invalidateQueries({ queryKey: ['admin-fraud-events'] });
+      toast({ title: '🔓 Lock cleared — user can send again' });
+    },
+    onError: (e: any) => toast({ title: 'Error', description: e.message, variant: 'destructive' }),
+  });
+
+  const eventTypeLabel: Record<string, { label: string; color: string }> = {
+    tx_cap_exceeded:    { label: 'Tx cap exceeded',   color: 'text-amber-500' },
+    daily_cap_exceeded: { label: 'Daily cap exceeded', color: 'text-orange-500' },
+    account_locked:     { label: 'Account locked',     color: 'text-red-500' },
+    lock_cleared:       { label: 'Lock cleared',       color: 'text-emerald-500' },
+    pin_failure:        { label: 'PIN failure',         color: 'text-red-400' },
+  };
+
+  return (
+    <div className="space-y-5">
+
+      {/* Velocity Limits */}
+      <Card>
+        <CardHeader className="p-4 pb-2">
+          <CardTitle className="text-sm font-bold flex items-center gap-2">
+            <Shield className="w-4 h-4 text-red-500" /> Transfer Velocity Limits
+          </CardTitle>
+          <CardDescription className="text-xs">
+            Configurable fraud controls. Changes take effect immediately on the next transfer attempt.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="p-4 pt-0 space-y-3">
+          {settingsLoading ? <div className="space-y-2">{[...Array(3)].map((_, i) => <div key={i} className="h-8 bg-muted rounded animate-pulse" />)}</div> : (
+            <>
+              {[
+                { key: 'fraud_tx_cap_usd',       label: 'Per-transaction cap (USD)',        hint: 'Max single transfer. Default: 10,000' },
+                { key: 'fraud_daily_cap_usd',     label: 'Daily rolling cap (USD)',          hint: 'Max sent in a rolling 24 h window. Default: 50,000' },
+                { key: 'fraud_lockout_threshold', label: 'Failed-attempt lockout threshold', hint: 'Attempts in 10 min before 1-hour lockout. Default: 3' },
+              ].map(({ key, label, hint }) => (
+                <div key={key} className="space-y-1">
+                  <Label className="text-xs">{label}</Label>
+                  <div className="flex gap-2">
+                    <Input
+                      type="number"
+                      step="1"
+                      min="0"
+                      placeholder={hint}
+                      value={limitVal(key)}
+                      onChange={e => setLimit(key, e.target.value)}
+                      className="font-mono text-sm flex-1"
+                    />
+                    <Button size="sm" className="shrink-0" onClick={() => saveLimit(key)} disabled={savingLimit === key}>
+                      {savingLimit === key ? '…' : 'Save'}
+                    </Button>
+                  </div>
+                  <p className="text-[11px] text-muted-foreground">{hint}</p>
+                </div>
+              ))}
+            </>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Locked Users */}
+      <Card>
+        <CardHeader className="p-4 pb-2">
+          <CardTitle className="text-sm font-bold flex items-center gap-2">
+            <Lock className="w-4 h-4 text-red-500" /> Currently Locked Accounts
+            {(lockedUsers as any[] | undefined)?.length ? (
+              <span className="ml-auto bg-red-500 text-white text-[9px] rounded-full px-1.5 py-0.5">
+                {(lockedUsers as any[]).length}
+              </span>
+            ) : null}
+          </CardTitle>
+          <CardDescription className="text-xs">Users temporarily blocked from sending due to failed attempts.</CardDescription>
+        </CardHeader>
+        <CardContent className="p-4 pt-0">
+          {lockedLoading ? <div className="h-12 bg-muted rounded animate-pulse" /> :
+            !(lockedUsers as any[])?.length ? (
+              <p className="text-xs text-muted-foreground py-2 flex items-center gap-1.5">
+                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" /> No accounts currently locked
+              </p>
+            ) : (
+              <div className="space-y-2">
+                {(lockedUsers as any[]).map((u: any) => (
+                  <div key={u.id} className="flex items-center gap-3 p-3 bg-red-500/5 border border-red-500/20 rounded-lg">
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-semibold truncate">{u.name}</p>
+                      <p className="text-xs text-muted-foreground truncate">{u.email}</p>
+                      <p className="text-xs text-red-400 mt-0.5">
+                        Locked until {new Date(u.sendLockedUntil).toLocaleTimeString()}
+                      </p>
+                    </div>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="shrink-0 border-emerald-500/40 text-emerald-600 hover:bg-emerald-500/10"
+                      onClick={() => clearLock.mutate(u.id)}
+                      disabled={clearLock.isPending}
+                    >
+                      <Unlock className="w-3.5 h-3.5 mr-1" /> Clear
+                    </Button>
+                  </div>
+                ))}
+              </div>
+            )}
+        </CardContent>
+      </Card>
+
+      {/* Fraud Event Log */}
+      <Card>
+        <CardHeader className="p-4 pb-2">
+          <CardTitle className="text-sm font-bold flex items-center gap-2">
+            <AlertTriangle className="w-4 h-4 text-amber-500" /> Fraud Event Log
+          </CardTitle>
+          <CardDescription className="text-xs">Last 100 events — velocity violations, lockouts, and admin actions.</CardDescription>
+        </CardHeader>
+        <CardContent className="p-4 pt-0">
+          {eventsLoading ? (
+            <div className="space-y-2">{[...Array(4)].map((_, i) => <div key={i} className="h-10 bg-muted rounded animate-pulse" />)}</div>
+          ) : !(fraudEvents as any[])?.length ? (
+            <p className="text-xs text-muted-foreground py-2">No fraud events logged yet 🎉</p>
+          ) : (
+            <div className="space-y-1.5 max-h-96 overflow-y-auto">
+              {(fraudEvents as any[]).map((e: any) => {
+                const info = eventTypeLabel[e.eventType] ?? { label: e.eventType, color: 'text-muted-foreground' };
+                return (
+                  <div key={e.id} className="flex items-start gap-2.5 py-2 border-b border-border/50 last:border-0">
+                    <div className="shrink-0 mt-0.5">
+                      {e.eventType === 'lock_cleared' ? (
+                        <Unlock className="w-3.5 h-3.5 text-emerald-500" />
+                      ) : e.eventType === 'account_locked' ? (
+                        <Lock className="w-3.5 h-3.5 text-red-500" />
+                      ) : (
+                        <AlertTriangle className={`w-3.5 h-3.5 ${info.color}`} />
+                      )}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2">
+                        <span className={`text-xs font-semibold ${info.color}`}>{info.label}</span>
+                        {e.userName && <span className="text-xs text-muted-foreground truncate">— {e.userName}</span>}
+                      </div>
+                      {e.metadata && (
+                        <p className="text-[11px] text-muted-foreground font-mono mt-0.5 truncate">
+                          {Object.entries(e.metadata).map(([k, v]) => `${k}: ${v}`).join(' · ')}
+                        </p>
+                      )}
+                    </div>
+                    <span className="text-[10px] text-muted-foreground shrink-0 mt-0.5">
+                      {formatDistanceToNow(new Date(e.createdAt))} ago
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
 // ── Notification sound (Web Audio API — no external file) ────────────────────
 function playNotificationSound(type: 'deposit' | 'send' | 'ticket' | 'withdrawal') {
   try {
@@ -1625,6 +1825,7 @@ export default function Admin() {
           </TabsTrigger>
           <TabsTrigger value="methods" className="text-[11px] shrink-0 flex-1 min-w-[40px]">Pay</TabsTrigger>
           <TabsTrigger value="rates" className="text-[11px] shrink-0 flex-1 min-w-[40px]">Rates</TabsTrigger>
+          <TabsTrigger value="security" className="text-[11px] shrink-0 flex-1 min-w-[40px]"><Shield className="w-3 h-3" /></TabsTrigger>
           <TabsTrigger value="settings" className="text-[11px] shrink-0 flex-1 min-w-[36px]"><Settings2 className="w-3 h-3" /></TabsTrigger>
         </TabsList>
         <TabsContent value="deposits"    className="mt-4"><DepositsPanel /></TabsContent>
@@ -1635,6 +1836,7 @@ export default function Admin() {
         <TabsContent value="tickets"     className="mt-4"><TicketsPanel /></TabsContent>
         <TabsContent value="methods"     className="mt-4"><PaymentMethodsPanel /></TabsContent>
         <TabsContent value="rates"       className="mt-4"><RatesPanel /></TabsContent>
+        <TabsContent value="security"    className="mt-4"><SecurityPanel /></TabsContent>
         <TabsContent value="settings"    className="mt-4"><SettingsPanel /></TabsContent>
       </Tabs>
     </div>

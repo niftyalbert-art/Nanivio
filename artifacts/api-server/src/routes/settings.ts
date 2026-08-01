@@ -12,6 +12,10 @@ const DEFAULT_SETTINGS: Record<string, string> = {
   send_fee_fixed: "",          // used when fee_mode = "fixed"; flat amount in source currency
   fee_mode: "percent",         // "percent" | "fixed"
   support_hours: "Available 8am–10pm UAE time · Usually replies within 30 minutes",
+  // Fraud velocity limits
+  fraud_tx_cap_usd: "10000",      // max single transfer (USD equivalent)
+  fraud_daily_cap_usd: "50000",   // max rolling 24h send volume (USD equivalent)
+  fraud_lockout_threshold: "3",   // failed attempts before 1-hour lockout
 };
 
 async function getSetting(key: string): Promise<string> {

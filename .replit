@@ -27,3 +27,4 @@ channel = "stable-25_05"
 [userenv.shared]
 ADMIN_PASSWORD = "niviopay2024"
 STREAM_API_KEY = "ex433j6xbbbc"
+ENCRYPTION_KEY = "1a437e37188fba820a8507be2e2890a1ceb5d1ff58af8f62d8ab733414eb43b8"
