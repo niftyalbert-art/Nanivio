@@ -31,7 +31,16 @@ export default function Login() {
         body: JSON.stringify({ email, pin }),
       });
       const data = await r.json();
-      if (!r.ok) { setError(data.error ?? 'Sign in failed'); return; }
+      if (!r.ok) {
+        // Unverified email — redirect to verification page
+        if (data.error === 'EMAIL_NOT_VERIFIED' && data.email) {
+          sessionStorage.setItem('pendingVerifyEmail', data.email);
+          setLocation('/verify-email');
+          return;
+        }
+        setError(data.error ?? 'Sign in failed');
+        return;
+      }
       setAuth(data.token, data.user);
       setLocation('/');
     } catch {

@@ -21,6 +21,22 @@ async function runKycSchemaMigration() {
   }
 }
 
+/** Idempotent migration: email verification columns (existing users defaulted to verified). */
+async function runEmailVerificationMigration() {
+  try {
+    await pool.query(`
+      -- Add with DEFAULT TRUE so all existing users stay verified (not locked out)
+      ALTER TABLE users
+        ADD COLUMN IF NOT EXISTS email_verified BOOLEAN NOT NULL DEFAULT TRUE,
+        ADD COLUMN IF NOT EXISTS email_verification_code TEXT,
+        ADD COLUMN IF NOT EXISTS email_verification_expires_at TIMESTAMPTZ;
+    `);
+    logger.info("Email verification schema migration complete");
+  } catch (err) {
+    logger.error({ err }, "Email verification schema migration FAILED");
+  }
+}
+
 /** Idempotent migration: fraud_events table, user lockout columns, tx USD amount column. */
 async function runFraudSchemaMigration() {
   try {
@@ -105,6 +121,7 @@ app.listen(port, () => {
   (async () => {
     // Run idempotent schema migrations first — safe on every boot (IF NOT EXISTS)
     await runKycSchemaMigration();
+    await runEmailVerificationMigration();
     await runFraudSchemaMigration();
     // Clear any legacy plain-text PINs (bcrypt hash is in passwordHash)
     clearLegacyPlainPins();

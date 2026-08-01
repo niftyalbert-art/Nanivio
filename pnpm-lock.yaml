@@ -170,6 +170,9 @@ importers:
 
   artifacts/api-server:
     dependencies:
+      '@replit/connectors-sdk':
+        specifier: ^0.4.1
+        version: 0.4.1
       '@stream-io/node-sdk':
         specifier: ^0.7.63
         version: 0.7.63

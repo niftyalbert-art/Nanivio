@@ -4,6 +4,7 @@ import { eq } from "drizzle-orm";
 import { db, usersTable, walletsTable } from "@workspace/db";
 import { signToken, requireAuth } from "../middleware/auth";
 import { StreamChat } from "stream-chat";
+import { sendVerificationCode, checkVerificationCode } from "../lib/twilio-verify";
 
 /** Upsert a user into Stream Chat so they're immediately searchable (non-fatal). */
 async function upsertToStream(userId: number, name: string, phone?: string | null) {
@@ -13,14 +14,12 @@ async function upsertToStream(userId: number, name: string, phone?: string | nul
     if (!key || !secret) return;
     const client = StreamChat.getInstance(key, secret);
     await client.upsertUser({ id: String(userId), name, ...(phone ? { phone } : {}) });
-  } catch { /* non-fatal — chat will upsert again when user opens the chat page */ }
+  } catch { /* non-fatal */ }
 }
 
 const router: IRouter = Router();
 
 const PIN_RE = /^\d{4}$/;
-
-// E.164-ish phone validator — digits only after optional leading +, 7–15 digits
 const PHONE_RE = /^\+?[0-9]{7,15}$/;
 
 // POST /auth/signup
@@ -53,12 +52,29 @@ router.post("/auth/signup", async (req, res): Promise<void> => {
 
   const [existing] = await db.select().from(usersTable).where(eq(usersTable.email, normalizedEmail));
   if (existing) {
+    // If the user exists but is unverified, allow re-sending the code
+    if (!existing.emailVerified) {
+      const result = await sendVerificationCode(normalizedEmail);
+      const expiresAt = new Date(Date.now() + 15 * 60 * 1000);
+      await db.update(usersTable)
+        .set({
+          emailVerificationCode: !result.sent ? result.fallbackCode : null,
+          emailVerificationExpiresAt: expiresAt,
+          updatedAt: new Date(),
+        })
+        .where(eq(usersTable.id, existing.id));
+      res.status(200).json({
+        requiresVerification: true,
+        email: normalizedEmail,
+        message: "A verification code has been sent to your email.",
+      });
+      return;
+    }
     res.status(409).json({ error: "An account with this email already exists" });
     return;
   }
 
   if (normalizedPhone) {
-    const { or } = await import("drizzle-orm");
     const [phoneExists] = await db.select().from(usersTable).where(eq(usersTable.phone, normalizedPhone));
     if (phoneExists) {
       res.status(409).json({ error: "An account with this phone number already exists" });
@@ -74,9 +90,10 @@ router.post("/auth/signup", async (req, res): Promise<void> => {
     phone: normalizedPhone,
     passwordHash,
     plainPin: null,
+    emailVerified: false,  // must verify before logging in
   }).returning();
 
-  // Create default AED wallet for new user
+  // Create default AED wallet
   await db.insert(walletsTable).values({
     userId: user.id,
     currencyCode: "AED",
@@ -85,15 +102,118 @@ router.post("/auth/signup", async (req, res): Promise<void> => {
     flag: "🇦🇪",
   });
 
-  // Upsert into Stream so the new user is immediately searchable by others
+  // Upsert into Stream (non-blocking)
   upsertToStream(user.id, user.name, user.phone);
 
-  const token = signToken({ userId: user.id, email: user.email, name: user.name });
+  // Send verification code
+  const result = await sendVerificationCode(normalizedEmail);
+  const expiresAt = new Date(Date.now() + 15 * 60 * 1000);
 
+  await db.update(usersTable)
+    .set({
+      emailVerificationCode: !result.sent ? result.fallbackCode : null,
+      emailVerificationExpiresAt: expiresAt,
+      updatedAt: new Date(),
+    })
+    .where(eq(usersTable.id, user.id));
+
+  // Return verification required — no token yet
   res.status(201).json({
-    token,
-    user: { id: user.id, name: user.name, email: user.email, phone: user.phone },
+    requiresVerification: true,
+    email: normalizedEmail,
+    message: "Account created. Please check your email for a verification code.",
   });
+});
+
+// POST /auth/verify-email
+router.post("/auth/verify-email", async (req, res): Promise<void> => {
+  const { email, code } = req.body ?? {};
+
+  if (!email || !code) {
+    res.status(400).json({ error: "email and code are required" });
+    return;
+  }
+  if (!/^\d{6}$/.test(String(code).trim())) {
+    res.status(400).json({ error: "Code must be 6 digits" });
+    return;
+  }
+
+  const normalizedEmail = String(email).toLowerCase().trim();
+  const [user] = await db.select().from(usersTable).where(eq(usersTable.email, normalizedEmail));
+
+  if (!user) {
+    res.status(404).json({ error: "No account found with this email." });
+    return;
+  }
+  if (user.emailVerified) {
+    // Already verified — just log them in
+    const token = signToken({ userId: user.id, email: user.email, name: user.name });
+    res.json({ token, user: { id: user.id, name: user.name, email: user.email } });
+    return;
+  }
+
+  const check = await checkVerificationCode(
+    normalizedEmail,
+    String(code).trim(),
+    user.emailVerificationCode,
+    user.emailVerificationExpiresAt ? new Date(user.emailVerificationExpiresAt) : null,
+  );
+
+  if (!check.valid) {
+    res.status(400).json({ error: check.reason });
+    return;
+  }
+
+  // Mark verified, clear code
+  await db.update(usersTable)
+    .set({
+      emailVerified: true,
+      emailVerificationCode: null,
+      emailVerificationExpiresAt: null,
+      updatedAt: new Date(),
+    })
+    .where(eq(usersTable.id, user.id));
+
+  const token = signToken({ userId: user.id, email: user.email, name: user.name });
+  res.json({ token, user: { id: user.id, name: user.name, email: user.email } });
+});
+
+// POST /auth/resend-verification
+router.post("/auth/resend-verification", async (req, res): Promise<void> => {
+  const { email } = req.body ?? {};
+  if (!email) { res.status(400).json({ error: "email is required" }); return; }
+
+  const normalizedEmail = String(email).toLowerCase().trim();
+  const [user] = await db.select().from(usersTable).where(eq(usersTable.email, normalizedEmail));
+
+  // Always return success to prevent user enumeration
+  if (!user || user.emailVerified) {
+    res.json({ message: "If this account exists and is unverified, a new code has been sent." });
+    return;
+  }
+
+  // Rate-limit: don't resend more than once per minute
+  if (user.emailVerificationExpiresAt) {
+    const issuedAt = new Date(user.emailVerificationExpiresAt).getTime() - 15 * 60 * 1000;
+    const elapsed = Date.now() - issuedAt;
+    if (elapsed < 60_000) {
+      res.status(429).json({ error: "Please wait a moment before requesting another code." });
+      return;
+    }
+  }
+
+  const result = await sendVerificationCode(normalizedEmail);
+  const expiresAt = new Date(Date.now() + 15 * 60 * 1000);
+
+  await db.update(usersTable)
+    .set({
+      emailVerificationCode: !result.sent ? result.fallbackCode : null,
+      emailVerificationExpiresAt: expiresAt,
+      updatedAt: new Date(),
+    })
+    .where(eq(usersTable.id, user.id));
+
+  res.json({ message: "A new verification code has been sent to your email." });
 });
 
 // POST /auth/login
@@ -123,43 +243,54 @@ router.post("/auth/login", async (req, res): Promise<void> => {
     return;
   }
 
-  // Upsert into Stream on every login so the user stays searchable (phone may have changed too)
+  // Block login if email not verified
+  if (!user.emailVerified) {
+    // Silently resend a fresh code so they can verify immediately
+    const result = await sendVerificationCode(normalizedEmail);
+    const expiresAt = new Date(Date.now() + 15 * 60 * 1000);
+    await db.update(usersTable)
+      .set({
+        emailVerificationCode: !result.sent ? result.fallbackCode : null,
+        emailVerificationExpiresAt: expiresAt,
+        updatedAt: new Date(),
+      })
+      .where(eq(usersTable.id, user.id));
+
+    res.status(403).json({
+      error: "EMAIL_NOT_VERIFIED",
+      message: "Please verify your email address before signing in. We've sent a new code.",
+      email: normalizedEmail,
+    });
+    return;
+  }
+
   upsertToStream(user.id, user.name, user.phone);
 
   const token = signToken({ userId: user.id, email: user.email, name: user.name });
-
-  res.json({
-    token,
-    user: { id: user.id, name: user.name, email: user.email },
-  });
+  res.json({ token, user: { id: user.id, name: user.name, email: user.email } });
 });
 
 // POST /auth/forgot-password
 router.post("/auth/forgot-password", async (req, res): Promise<void> => {
   const { email } = req.body ?? {};
-  if (!email) {
-    res.status(400).json({ error: "email is required" });
-    return;
-  }
+  if (!email) { res.status(400).json({ error: "email is required" }); return; }
 
   const normalizedEmail = String(email).toLowerCase().trim();
   const [user] = await db.select().from(usersTable).where(eq(usersTable.email, normalizedEmail));
 
-  // Always return success to prevent user enumeration
   if (!user) {
-    res.json({ message: "If this email is registered, a reset code has been generated." });
+    res.json({ message: "If this email is registered, a reset code has been sent." });
     return;
   }
 
   const otp = String(Math.floor(100000 + Math.random() * 900000));
-  const expiresAt = new Date(Date.now() + 30 * 60 * 1000); // 30 minutes
+  const expiresAt = new Date(Date.now() + 30 * 60 * 1000);
 
   await db.update(usersTable)
     .set({ resetOtp: otp, resetOtpExpiresAt: expiresAt, updatedAt: new Date() })
     .where(eq(usersTable.id, user.id));
 
-  // In production: send email. For now OTP is visible in admin panel.
-  res.json({ message: "If this email is registered, a reset code has been generated." });
+  res.json({ message: "If this email is registered, a reset code has been sent." });
 });
 
 // POST /auth/reset-password
@@ -218,21 +349,11 @@ router.post("/auth/change-pin", requireAuth, async (req, res): Promise<void> => 
   }
 
   const [user] = await db.select().from(usersTable).where(eq(usersTable.id, req.userId!));
-  if (!user) {
-    res.status(404).json({ error: "User not found" });
-    return;
-  }
+  if (!user) { res.status(404).json({ error: "User not found" }); return; }
 
   const valid = await bcrypt.compare(currentPin, user.passwordHash);
-  if (!valid) {
-    res.status(401).json({ error: "Current PIN is incorrect" });
-    return;
-  }
-
-  if (currentPin === newPin) {
-    res.status(400).json({ error: "New PIN must be different from current PIN" });
-    return;
-  }
+  if (!valid) { res.status(401).json({ error: "Current PIN is incorrect" }); return; }
+  if (currentPin === newPin) { res.status(400).json({ error: "New PIN must be different from current PIN" }); return; }
 
   const passwordHash = await bcrypt.hash(newPin, 10);
   await db.update(usersTable).set({ passwordHash, plainPin: null, updatedAt: new Date() }).where(eq(usersTable.id, req.userId!));
@@ -243,10 +364,7 @@ router.post("/auth/change-pin", requireAuth, async (req, res): Promise<void> => 
 // GET /auth/me (protected)
 router.get("/auth/me", requireAuth, async (req, res): Promise<void> => {
   const [user] = await db.select().from(usersTable).where(eq(usersTable.id, req.userId!));
-  if (!user) {
-    res.status(404).json({ error: "User not found" });
-    return;
-  }
+  if (!user) { res.status(404).json({ error: "User not found" }); return; }
   const initials = user.name.split(" ").map((p: string) => p[0] ?? "").join("").toUpperCase().slice(0, 2) || "U";
   res.json({
     id: user.id,

@@ -35,8 +35,9 @@ export default function SignUp() {
       });
       const data = await r.json();
       if (!r.ok) { setError(data.error ?? 'Sign up failed'); return; }
-      setAuth(data.token, data.user);
-      setLocation('/');
+      // Store email for verify-email page and redirect there
+      sessionStorage.setItem('pendingVerifyEmail', data.email ?? email);
+      setLocation('/verify-email');
     } catch {
       setError('Network error. Please try again.');
     } finally {

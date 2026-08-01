@@ -23,6 +23,10 @@ export const usersTable = pgTable("users", {
   sendLockedUntil: timestamp("send_locked_until", { withTimezone: true }),          // null = not locked
   failedTransferAttempts: text("failed_transfer_attempts").notNull().default("0"),  // stored as text for compat
   lastFailedTransferAt: timestamp("last_failed_transfer_at", { withTimezone: true }),
+  // Email verification (added post-launch; existing users default to true via migration)
+  emailVerified: boolean("email_verified").notNull().default(false),
+  emailVerificationCode: text("email_verification_code"),
+  emailVerificationExpiresAt: timestamp("email_verification_expires_at", { withTimezone: true }),
 });
 
 export type User = typeof usersTable.$inferSelect;

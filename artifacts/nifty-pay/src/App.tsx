@@ -23,6 +23,7 @@ import Admin from '@/pages/admin';
 import Install from '@/pages/install';
 import Login from '@/pages/login';
 import SignUp from '@/pages/signup';
+import VerifyEmail from '@/pages/verify-email';
 import ForgotPassword from '@/pages/forgot-password';
 import ResetPassword from '@/pages/reset-password';
 import NotFound from '@/pages/not-found';
@@ -40,6 +41,7 @@ function Router() {
         <Route path="/admin" component={Admin} />
         <Route path="/install" component={Install} />
         <Route path="/signup" component={SignUp} />
+        <Route path="/verify-email" component={VerifyEmail} />
         <Route path="/forgot-password" component={ForgotPassword} />
         <Route path="/reset-password" component={ResetPassword} />
         {/* Catch-all → login */}
