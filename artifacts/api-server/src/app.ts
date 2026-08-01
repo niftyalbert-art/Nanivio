@@ -71,6 +71,10 @@ app.use(
   }),
 );
 app.use(cors());
+// KYC submit carries a base64-encoded document — 8 MB binary → ~10.7 MB base64 — so
+// this route needs a larger body limit. Apply it BEFORE the global parser so Express
+// honours the per-route limit (once a body parser runs, subsequent ones are skipped).
+app.use("/api/kyc/submit", express.json({ limit: "12mb" }));
 app.use(express.json({ limit: "10mb" }));
 app.use(express.urlencoded({ extended: true, limit: "10mb" }));
 
@@ -83,6 +87,7 @@ app.use("/api/auth/reset-password", authLimiter);
 app.use("/api/transactions", transactionLimiter);
 app.use("/api/withdrawals", transactionLimiter);
 app.use("/api/admin", adminLimiter);
+app.use("/api/kyc", transactionLimiter);
 
 app.use("/api", router);
 

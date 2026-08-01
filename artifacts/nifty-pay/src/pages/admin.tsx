@@ -8,7 +8,7 @@ import { Badge } from '@/components/ui/badge';
 import { Textarea } from '@/components/ui/textarea';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { Skeleton } from '@/components/ui/skeleton';
-import { CheckCircle2, XCircle, Clock, ArrowDownLeft, ArrowUpRight, MessageSquare, Lock, Plus, Edit2, TrendingUp, Settings2, Link, Eye, EyeOff, Users, ArrowLeftRight, KeyRound, ShieldCheck, ArrowLeft } from 'lucide-react';
+import { CheckCircle2, XCircle, Clock, ArrowDownLeft, ArrowUpRight, MessageSquare, Lock, Plus, Edit2, TrendingUp, Settings2, Link, Eye, EyeOff, Users, ArrowLeftRight, KeyRound, ShieldCheck, ArrowLeft, BadgeCheck } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import { useToast } from '@/hooks/use-toast';
 
@@ -1054,6 +1054,223 @@ function PaymentMethodsPanel() {
   );
 }
 
+// ── KYC Document Viewer — fetches image with admin auth header ───────────────
+function KycDocumentViewer({ userId, onExpand }: { userId: number; onExpand: (src: string) => void }) {
+  const [blobSrc, setBlobSrc] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [failed, setFailed] = useState(false);
+
+  const load = async () => {
+    if (blobSrc || loading) { if (blobSrc) onExpand(blobSrc); return; }
+    setLoading(true);
+    try {
+      const token = sessionStorage.getItem(ADMIN_JWT_KEY);
+      const r = await fetch(`${API}/admin/kyc/${userId}/document`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!r.ok) throw new Error('fetch failed');
+      const blob = await r.blob();
+      const url = URL.createObjectURL(blob);
+      setBlobSrc(url);
+      onExpand(url);
+    } catch {
+      setFailed(true);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Auto-load on mount
+  useEffect(() => {
+    const token = sessionStorage.getItem(ADMIN_JWT_KEY);
+    if (!token) return;
+    (async () => {
+      setLoading(true);
+      try {
+        const r = await fetch(`${API}/admin/kyc/${userId}/document`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (!r.ok) throw new Error('fetch failed');
+        const blob = await r.blob();
+        setBlobSrc(URL.createObjectURL(blob));
+      } catch {
+        setFailed(true);
+      } finally {
+        setLoading(false);
+      }
+    })();
+  }, [userId]);
+
+  return (
+    <div className="space-y-1">
+      <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Government ID</p>
+      <button
+        type="button"
+        onClick={() => blobSrc && onExpand(blobSrc)}
+        className="w-full relative group rounded-xl overflow-hidden border-2 border-primary/20 hover:border-primary/60 transition-colors bg-muted/40 min-h-[80px] flex items-center justify-center"
+        disabled={!blobSrc}
+      >
+        {loading && <p className="text-xs text-muted-foreground py-6">Loading document…</p>}
+        {failed && <p className="text-xs text-destructive py-6">⚠️ Could not load document</p>}
+        {blobSrc && (
+          <>
+            <img src={blobSrc} alt="Government ID" className="w-full max-h-52 object-contain" />
+            <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors flex items-center justify-center">
+              <span className="opacity-0 group-hover:opacity-100 transition-opacity bg-black/60 text-white text-xs px-3 py-1.5 rounded-full font-medium">
+                Tap to enlarge
+              </span>
+            </div>
+          </>
+        )}
+      </button>
+    </div>
+  );
+}
+
+// ── KYC Panel ───────────────────────────────────────────────────────────────
+function KycPanel() {
+  const { toast } = useToast();
+  const qc = useQueryClient();
+  const [rejectionReason, setRejectionReason] = useState<Record<number, string>>({});
+  const [lightbox, setLightbox] = useState<string | null>(null);
+
+  const { data: submissions, isLoading } = useQuery({
+    queryKey: ['admin-kyc'],
+    queryFn: () => apiFetch('/admin/kyc'),
+    refetchInterval: 20000,
+  });
+
+  const docUrl = (userId: number) => `${API}/admin/kyc/${userId}/document`;
+
+  const review = useMutation({
+    mutationFn: ({ userId, action, reason }: { userId: number; action: 'approve' | 'reject'; reason?: string }) =>
+      apiFetch(`/admin/kyc/${userId}/review`, { method: 'POST', body: JSON.stringify({ action, rejectionReason: reason }) }),
+    onSuccess: (_d, { action }) => {
+      qc.invalidateQueries({ queryKey: ['admin-kyc'] });
+      toast({ title: action === 'approve' ? '✅ KYC approved — user is now verified' : '❌ KYC rejected' });
+    },
+    onError: (e: any) => toast({ title: 'Error', description: e.message, variant: 'destructive' }),
+  });
+
+  if (isLoading) return <div className="space-y-3">{[...Array(2)].map((_, i) => <Skeleton key={i} className="h-48" />)}</div>;
+
+  const list = (submissions as any[] | undefined) ?? [];
+  const pending = list.filter(s => s.kycStatus === 'pending');
+  const done = list.filter(s => s.kycStatus !== 'pending');
+
+  const kycBadge = (status: string) => {
+    switch (status) {
+      case 'verified': return <Badge className="bg-emerald-500/10 text-emerald-500 border-emerald-500/20 text-[10px]">Verified</Badge>;
+      case 'pending':  return <Badge className="bg-amber-500/10 text-amber-500 border-amber-500/20 text-[10px]">Pending</Badge>;
+      case 'rejected': return <Badge className="bg-red-500/10 text-red-500 border-red-500/20 text-[10px]">Rejected</Badge>;
+      default:         return <Badge className="bg-muted text-muted-foreground text-[10px]">Unverified</Badge>;
+    }
+  };
+
+  return (
+    <>
+      {lightbox && <ReceiptLightbox src={lightbox} onClose={() => setLightbox(null)} />}
+
+      <div className="space-y-4">
+        {pending.length === 0 && (
+          <Card><CardContent className="py-10 text-center">
+            <BadgeCheck className="w-8 h-8 mx-auto mb-2 text-emerald-500 opacity-50" />
+            <p className="text-sm text-muted-foreground">No pending KYC submissions 🎉</p>
+          </CardContent></Card>
+        )}
+
+        {pending.map((s: any) => (
+          <Card key={s.id} className="border-amber-500/40 shadow-sm">
+            <CardContent className="p-4 space-y-3">
+              <div className="flex items-start justify-between gap-2">
+                <div className="flex items-center gap-2.5 min-w-0">
+                  <div className="w-9 h-9 rounded-full bg-amber-500/15 text-amber-600 font-bold flex items-center justify-center text-sm shrink-0">
+                    {(s.name ?? '?')[0]?.toUpperCase()}
+                  </div>
+                  <div className="min-w-0">
+                    <p className="font-bold text-sm leading-tight truncate">{s.name}</p>
+                    <p className="text-[11px] text-muted-foreground truncate">{s.email}</p>
+                  </div>
+                </div>
+                <div className="flex flex-col items-end gap-1 shrink-0">
+                  {kycBadge(s.kycStatus)}
+                  {s.kycSubmittedAt && (
+                    <span className="text-[10px] text-muted-foreground">{formatDistanceToNow(new Date(s.kycSubmittedAt))} ago</span>
+                  )}
+                </div>
+              </div>
+
+              {/* Document preview */}
+              {s.hasDocument ? (
+                <KycDocumentViewer userId={s.id} onExpand={src => setLightbox(src)} />
+              ) : (
+                <div className="border-2 border-dashed border-border rounded-xl p-4 text-center">
+                  <p className="text-xs text-muted-foreground">⚠️ No document uploaded</p>
+                </div>
+              )}
+
+              {/* Rejection reason input */}
+              <Input
+                placeholder="Rejection reason (required to reject)"
+                value={rejectionReason[s.id] ?? ''}
+                onChange={e => setRejectionReason(r => ({ ...r, [s.id]: e.target.value }))}
+                className="text-xs"
+              />
+
+              <div className="flex gap-2">
+                <Button
+                  size="sm"
+                  className="flex-1 bg-emerald-600 hover:bg-emerald-700 font-semibold"
+                  onClick={() => review.mutate({ userId: s.id, action: 'approve' })}
+                  disabled={review.isPending}
+                >
+                  <CheckCircle2 className="w-3.5 h-3.5 mr-1.5" /> Approve
+                </Button>
+                <Button
+                  size="sm"
+                  variant="destructive"
+                  className="flex-1 font-semibold"
+                  onClick={() => review.mutate({ userId: s.id, action: 'reject', reason: rejectionReason[s.id] })}
+                  disabled={review.isPending || !rejectionReason[s.id]}
+                >
+                  <XCircle className="w-3.5 h-3.5 mr-1.5" /> Reject
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        ))}
+
+        {done.length > 0 && (
+          <div className="space-y-2">
+            <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground pt-2">Reviewed ({done.length})</p>
+            {done.map((s: any) => (
+              <Card key={s.id} className="opacity-75">
+                <CardContent className="p-3">
+                  <div className="flex items-center gap-3">
+                    <div className="w-8 h-8 rounded-full bg-muted flex items-center justify-center text-sm font-bold shrink-0">
+                      {(s.name ?? '?')[0]?.toUpperCase()}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-1.5">
+                        <p className="text-sm font-semibold truncate">{s.name}</p>
+                        {kycBadge(s.kycStatus)}
+                      </div>
+                      <p className="text-xs text-muted-foreground truncate">{s.email}</p>
+                      {s.kycRejectionReason && (
+                        <p className="text-xs text-red-400 italic mt-0.5">Reason: {s.kycRejectionReason}</p>
+                      )}
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        )}
+      </div>
+    </>
+  );
+}
+
 // ── Notification sound (Web Audio API — no external file) ────────────────────
 function playNotificationSound(type: 'deposit' | 'send' | 'ticket' | 'withdrawal') {
   try {
@@ -1107,10 +1324,12 @@ export default function Admin() {
   const { data: tickets }      = useQuery({ queryKey: ['admin-tickets'],      queryFn: () => apiFetch('/tickets'),            enabled: authed, refetchInterval: 12000 });
   const { data: transactions } = useQuery({ queryKey: ['admin-transactions'], queryFn: () => apiFetch('/admin/transactions'), enabled: authed, refetchInterval: 12000 });
 
-  const pendingDeposits    = (deposits     as any[] | undefined)?.filter(d => d.status === 'pending').length ?? 0;
-  const pendingWithdrawals = (withdrawals  as any[] | undefined)?.filter(w => w.status === 'pending').length ?? 0;
-  const openTickets        = (tickets      as any[] | undefined)?.filter(t => t.status === 'open').length    ?? 0;
-  const pendingSends       = (transactions as any[] | undefined)?.filter(t => t.status === 'pending').length ?? 0;
+  const { data: kycSubmissions } = useQuery({ queryKey: ['admin-kyc'], queryFn: () => apiFetch('/admin/kyc'), enabled: authed, refetchInterval: 15000 });
+  const pendingDeposits    = (deposits       as any[] | undefined)?.filter(d => d.status === 'pending').length ?? 0;
+  const pendingWithdrawals = (withdrawals    as any[] | undefined)?.filter(w => w.status === 'pending').length ?? 0;
+  const openTickets        = (tickets        as any[] | undefined)?.filter(t => t.status === 'open').length    ?? 0;
+  const pendingSends       = (transactions   as any[] | undefined)?.filter(t => t.status === 'pending').length ?? 0;
+  const pendingKyc         = (kycSubmissions as any[] | undefined)?.filter(k => k.kycStatus === 'pending').length ?? 0;
 
   // ── Notification engine — fire sound+toast when counts rise ─────────────
   const prevCounts = useRef({ deposits: -1, withdrawals: -1, tickets: -1, sends: -1 });
@@ -1377,36 +1596,41 @@ export default function Admin() {
         <Button variant="outline" size="sm" onClick={() => { sessionStorage.removeItem(ADMIN_JWT_KEY); setAuthed(false); qc.clear(); }}>Sign Out</Button>
       </div>
 
-      {/* 4 clickable stat cards */}
-      <div className="grid grid-cols-4 gap-2">
+      {/* 5 clickable stat cards */}
+      <div className="grid grid-cols-5 gap-2">
         <StatCard label="Deposit"    count={pendingDeposits}    tab="deposits"      icon={ArrowDownLeft}  accentClass="text-primary" />
         <StatCard label="Send"       count={pendingSends}       tab="sends"         icon={ArrowLeftRight} accentClass="text-blue-500" />
         <StatCard label="Withdrawal" count={pendingWithdrawals} tab="withdrawals"   icon={ArrowUpRight}   accentClass="text-amber-500" />
+        <StatCard label="KYC"        count={pendingKyc}         tab="kyc"           icon={BadgeCheck}     accentClass="text-emerald-500" />
         <StatCard label="Ticket"     count={openTickets}        tab="tickets"       icon={MessageSquare}  accentClass="text-purple-500" />
       </div>
 
       <Tabs value={activeTab} onValueChange={setActiveTab}>
         <TabsList className="flex w-full overflow-x-auto gap-0.5 h-auto p-1 flex-nowrap">
-          <TabsTrigger value="deposits" className="text-[11px] shrink-0 flex-1 min-w-[48px]">
+          <TabsTrigger value="deposits" className="text-[11px] shrink-0 flex-1 min-w-[44px]">
             Dep{pendingDeposits > 0 && <span className="ml-1 bg-red-500 text-white text-[9px] rounded-full w-3.5 h-3.5 inline-flex items-center justify-center font-bold">{pendingDeposits}</span>}
           </TabsTrigger>
-          <TabsTrigger value="sends" className="text-[11px] shrink-0 flex-1 min-w-[48px]">
+          <TabsTrigger value="sends" className="text-[11px] shrink-0 flex-1 min-w-[44px]">
             Send{pendingSends > 0 && <span className="ml-1 bg-red-500 text-white text-[9px] rounded-full w-3.5 h-3.5 inline-flex items-center justify-center font-bold">{pendingSends}</span>}
           </TabsTrigger>
-          <TabsTrigger value="withdrawals" className="text-[11px] shrink-0 flex-1 min-w-[48px]">
-            W/draw{pendingWithdrawals > 0 && <span className="ml-1 bg-red-500 text-white text-[9px] rounded-full w-3.5 h-3.5 inline-flex items-center justify-center font-bold">{pendingWithdrawals}</span>}
+          <TabsTrigger value="withdrawals" className="text-[11px] shrink-0 flex-1 min-w-[44px]">
+            W/D{pendingWithdrawals > 0 && <span className="ml-1 bg-red-500 text-white text-[9px] rounded-full w-3.5 h-3.5 inline-flex items-center justify-center font-bold">{pendingWithdrawals}</span>}
           </TabsTrigger>
-          <TabsTrigger value="users" className="text-[11px] shrink-0 flex-1 min-w-[44px]">Users</TabsTrigger>
-          <TabsTrigger value="tickets" className="text-[11px] shrink-0 flex-1 min-w-[48px]">
-            Tickets{openTickets > 0 && <span className="ml-1 bg-red-500 text-white text-[9px] rounded-full w-3.5 h-3.5 inline-flex items-center justify-center font-bold">{openTickets}</span>}
+          <TabsTrigger value="kyc" className="text-[11px] shrink-0 flex-1 min-w-[40px]">
+            KYC{pendingKyc > 0 && <span className="ml-1 bg-red-500 text-white text-[9px] rounded-full w-3.5 h-3.5 inline-flex items-center justify-center font-bold">{pendingKyc}</span>}
           </TabsTrigger>
-          <TabsTrigger value="methods" className="text-[11px] shrink-0 flex-1 min-w-[44px]">Methods</TabsTrigger>
-          <TabsTrigger value="rates" className="text-[11px] shrink-0 flex-1 min-w-[44px]">Rates</TabsTrigger>
-          <TabsTrigger value="settings" className="text-[11px] shrink-0 flex-1 min-w-[40px]"><Settings2 className="w-3 h-3" /></TabsTrigger>
+          <TabsTrigger value="users" className="text-[11px] shrink-0 flex-1 min-w-[40px]">Users</TabsTrigger>
+          <TabsTrigger value="tickets" className="text-[11px] shrink-0 flex-1 min-w-[44px]">
+            Tix{openTickets > 0 && <span className="ml-1 bg-red-500 text-white text-[9px] rounded-full w-3.5 h-3.5 inline-flex items-center justify-center font-bold">{openTickets}</span>}
+          </TabsTrigger>
+          <TabsTrigger value="methods" className="text-[11px] shrink-0 flex-1 min-w-[40px]">Pay</TabsTrigger>
+          <TabsTrigger value="rates" className="text-[11px] shrink-0 flex-1 min-w-[40px]">Rates</TabsTrigger>
+          <TabsTrigger value="settings" className="text-[11px] shrink-0 flex-1 min-w-[36px]"><Settings2 className="w-3 h-3" /></TabsTrigger>
         </TabsList>
         <TabsContent value="deposits"    className="mt-4"><DepositsPanel /></TabsContent>
         <TabsContent value="sends"       className="mt-4"><SendsPanel /></TabsContent>
         <TabsContent value="withdrawals" className="mt-4"><WithdrawalsPanel /></TabsContent>
+        <TabsContent value="kyc"         className="mt-4"><KycPanel /></TabsContent>
         <TabsContent value="users"       className="mt-4"><UsersPanel /></TabsContent>
         <TabsContent value="tickets"     className="mt-4"><TicketsPanel /></TabsContent>
         <TabsContent value="methods"     className="mt-4"><PaymentMethodsPanel /></TabsContent>

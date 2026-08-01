@@ -15,7 +15,8 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
-import { Copy, Check, ArrowDownLeft, ArrowUpLeft, MessageSquare, CheckCircle2, ExternalLink, Send, LogOut, ShieldCheck, ChevronDown, ChevronUp, Phone, Video } from 'lucide-react';
+import { Copy, Check, ArrowDownLeft, ArrowUpLeft, MessageSquare, CheckCircle2, ExternalLink, Send, LogOut, ShieldCheck, ChevronDown, ChevronUp, Phone, Video, BadgeCheck, ChevronRight } from 'lucide-react';
+import { useLocation } from 'wouter';
 import { Switch } from '@/components/ui/switch';
 import { formatDistanceToNow } from 'date-fns';
 import { useToast } from '@/hooks/use-toast';
@@ -70,6 +71,17 @@ export default function Account() {
   });
 
   // Change PIN
+  const [, navigate] = useLocation();
+
+  // KYC status
+  const { data: kycState } = useQuery<{ kycStatus: string; kycRejectionReason: string | null }>({
+    queryKey: ['kyc-status'],
+    queryFn: () => fetch(`${API_BASE}/kyc/status`, {
+      headers: { Authorization: `Bearer ${token}` },
+    }).then(r => r.json()),
+    enabled: !!token,
+  });
+
   const [showChangePinForm, setShowChangePinForm] = useState(false);
   const [currentPin, setCurrentPin] = useState('');
   const [newPin, setNewPin] = useState('');
@@ -157,6 +169,58 @@ export default function Account() {
               <p className="font-bold text-lg">{profile.name}</p>
               <p className="text-sm text-muted-foreground">{profile.email}</p>
               <p className="text-xs text-muted-foreground mt-0.5">Member since {profile.memberSince}</p>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* ── KYC Verification Status ──────────────────────────────── */}
+      {kycState && (
+        <Card
+          className={
+            kycState.kycStatus === 'verified' ? 'border-emerald-500/30 bg-emerald-500/5 cursor-pointer' :
+            kycState.kycStatus === 'pending'  ? 'border-amber-500/30 bg-amber-500/5 cursor-pointer' :
+            kycState.kycStatus === 'rejected' ? 'border-red-500/30 bg-red-500/5 cursor-pointer' :
+            'cursor-pointer'
+          }
+          onClick={() => navigate('/kyc')}
+        >
+          <CardContent className="p-4 flex items-center gap-3">
+            <div className={`w-9 h-9 rounded-full flex items-center justify-center shrink-0 ${
+              kycState.kycStatus === 'verified' ? 'bg-emerald-500/15' :
+              kycState.kycStatus === 'pending'  ? 'bg-amber-500/15' :
+              kycState.kycStatus === 'rejected' ? 'bg-red-500/15' :
+              'bg-muted'
+            }`}>
+              <BadgeCheck className={`w-4 h-4 ${
+                kycState.kycStatus === 'verified' ? 'text-emerald-500' :
+                kycState.kycStatus === 'pending'  ? 'text-amber-500' :
+                kycState.kycStatus === 'rejected' ? 'text-red-500' :
+                'text-muted-foreground'
+              }`} />
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="font-semibold text-sm">Identity Verification</p>
+              <p className="text-xs text-muted-foreground">
+                {kycState.kycStatus === 'verified'   ? 'Verified — full transfer limits active'        :
+                 kycState.kycStatus === 'pending'    ? 'Under review — we\'ll notify you soon'          :
+                 kycState.kycStatus === 'rejected'   ? `Rejected — tap to resubmit`                    :
+                 'Unverified — $200 limit per transfer'}
+              </p>
+            </div>
+            <div className="flex items-center gap-2 shrink-0">
+              <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${
+                kycState.kycStatus === 'verified' ? 'bg-emerald-500/10 text-emerald-500 border-emerald-500/20' :
+                kycState.kycStatus === 'pending'  ? 'bg-amber-500/10 text-amber-500 border-amber-500/20' :
+                kycState.kycStatus === 'rejected' ? 'bg-red-500/10 text-red-500 border-red-500/20' :
+                'bg-muted text-muted-foreground border-border'
+              }`}>
+                {kycState.kycStatus === 'verified' ? 'VERIFIED' :
+                 kycState.kycStatus === 'pending'  ? 'PENDING'  :
+                 kycState.kycStatus === 'rejected' ? 'REJECTED' :
+                 'UNVERIFIED'}
+              </span>
+              <ChevronRight className="w-4 h-4 text-muted-foreground" />
             </div>
           </CardContent>
         </Card>

@@ -13,6 +13,12 @@ export const usersTable = pgTable("users", {
   resetOtpExpiresAt: timestamp("reset_otp_expires_at", { withTimezone: true }),
   callsEnabled: boolean("calls_enabled").notNull().default(true),
   videoCallsEnabled: boolean("video_calls_enabled").notNull().default(true),
+  // KYC identity verification
+  kycStatus: text("kyc_status").notNull().default("unverified"),  // unverified | pending | verified | rejected
+  kycDocumentPath: text("kyc_document_path"),
+  kycRejectionReason: text("kyc_rejection_reason"),
+  kycSubmittedAt: timestamp("kyc_submitted_at", { withTimezone: true }),
+  kycReviewedAt: timestamp("kyc_reviewed_at", { withTimezone: true }),
 });
 
 export type User = typeof usersTable.$inferSelect;

@@ -1,8 +1,25 @@
 import app from "./app";
 import { logger } from "./lib/logger";
-import { db, usersTable } from "@workspace/db";
+import { db, usersTable, pool } from "@workspace/db";
 import { isNotNull } from "drizzle-orm";
 import { StreamChat } from "stream-chat";
+
+/** Idempotent migration: add KYC columns that were introduced in this release. */
+async function runKycSchemaMigration() {
+  try {
+    await pool.query(`
+      ALTER TABLE users
+        ADD COLUMN IF NOT EXISTS kyc_status TEXT NOT NULL DEFAULT 'unverified',
+        ADD COLUMN IF NOT EXISTS kyc_document_path TEXT,
+        ADD COLUMN IF NOT EXISTS kyc_rejection_reason TEXT,
+        ADD COLUMN IF NOT EXISTS kyc_submitted_at TIMESTAMPTZ,
+        ADD COLUMN IF NOT EXISTS kyc_reviewed_at TIMESTAMPTZ;
+    `);
+    logger.info("KYC schema migration complete (IF NOT EXISTS — safe to run repeatedly)");
+  } catch (err) {
+    logger.error({ err }, "KYC schema migration FAILED — KYC routes will not work correctly");
+  }
+}
 
 /** One-time migration: clear legacy plain-text PINs (passwordHash already holds the bcrypt hash). */
 async function clearLegacyPlainPins() {
@@ -55,16 +72,16 @@ if (Number.isNaN(port) || port <= 0) {
   throw new Error(`Invalid PORT value: "${rawPort}"`);
 }
 
-app.listen(port, (err) => {
-  if (err) {
-    logger.error({ err }, "Error listening on port");
-    process.exit(1);
-  }
-
+app.listen(port, () => {
   logger.info({ port }, "Server listening");
 
-  // Clear any legacy plain-text PINs left in the DB (bcrypt hash is in passwordHash)
-  clearLegacyPlainPins();
-  // Fire-and-forget: sync all existing DB users into Stream so they're searchable
-  syncUsersToStream();
+  // Fire-and-forget async startup tasks
+  (async () => {
+    // Run idempotent schema migrations first — safe on every boot (IF NOT EXISTS)
+    await runKycSchemaMigration();
+    // Clear any legacy plain-text PINs (bcrypt hash is in passwordHash)
+    clearLegacyPlainPins();
+    // Sync all existing DB users into Stream so they're searchable
+    syncUsersToStream();
+  })();
 });

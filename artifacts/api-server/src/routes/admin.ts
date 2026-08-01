@@ -1,5 +1,6 @@
 import { Router, type IRouter } from "express";
-import { eq, sql, isNotNull, desc, and } from "drizzle-orm";
+import { eq, sql, isNotNull, desc, and, or } from "drizzle-orm";
+import fs from "fs";
 import { db, depositsTable, withdrawalsTable, walletsTable, paymentMethodsTable, exchangeRatesTable, usersTable, transactionsTable, settingsTable } from "@workspace/db";
 import { adminOnly, signAdminToken } from "../middleware/auth";
 import bcrypt from "bcryptjs";
@@ -412,6 +413,90 @@ router.get("/admin/transactions", adminOnly, async (_req, res): Promise<void> =>
     fee: parseFloat(r.fee),
     createdAt: r.createdAt instanceof Date ? r.createdAt.toISOString() : String(r.createdAt),
   })));
+});
+
+// ── KYC admin routes ─────────────────────────────────────────────────────────
+
+// List all KYC submissions (pending first, then by submission date)
+router.get("/admin/kyc", adminOnly, async (_req, res): Promise<void> => {
+  const users = await db
+    .select({
+      id: usersTable.id,
+      name: usersTable.name,
+      email: usersTable.email,
+      kycStatus: usersTable.kycStatus,
+      kycDocumentPath: usersTable.kycDocumentPath,
+      kycRejectionReason: usersTable.kycRejectionReason,
+      kycSubmittedAt: usersTable.kycSubmittedAt,
+      kycReviewedAt: usersTable.kycReviewedAt,
+    })
+    .from(usersTable)
+    .where(or(
+      eq(usersTable.kycStatus, "pending"),
+      eq(usersTable.kycStatus, "verified"),
+      eq(usersTable.kycStatus, "rejected"),
+    ))
+    .orderBy(desc(usersTable.kycSubmittedAt));
+
+  res.json(users.map(u => ({
+    ...u,
+    hasDocument: !!u.kycDocumentPath,
+    kycDocumentPath: undefined, // never expose filesystem path to client
+    kycSubmittedAt: u.kycSubmittedAt ? u.kycSubmittedAt.toISOString() : null,
+    kycReviewedAt: u.kycReviewedAt ? u.kycReviewedAt.toISOString() : null,
+  })));
+});
+
+// Serve the ID document image for a user (admin only)
+router.get("/admin/kyc/:userId/document", adminOnly, async (req, res): Promise<void> => {
+  const userId = parseInt(req.params.userId as string, 10);
+  if (isNaN(userId)) { res.status(400).json({ error: "Invalid userId" }); return; }
+
+  const [user] = await db.select({ kycDocumentPath: usersTable.kycDocumentPath }).from(usersTable).where(eq(usersTable.id, userId));
+  if (!user?.kycDocumentPath) { res.status(404).json({ error: "No document on file" }); return; }
+
+  if (!fs.existsSync(user.kycDocumentPath)) {
+    res.status(404).json({ error: "Document file not found" }); return;
+  }
+
+  const ext = user.kycDocumentPath.split(".").pop()?.toLowerCase() ?? "jpg";
+  const mimeMap: Record<string, string> = { jpg: "image/jpeg", jpeg: "image/jpeg", png: "image/png", webp: "image/webp", pdf: "application/pdf" };
+  const contentType = mimeMap[ext] ?? "application/octet-stream";
+
+  res.setHeader("Content-Type", contentType);
+  res.setHeader("Cache-Control", "private, no-store");
+  fs.createReadStream(user.kycDocumentPath).pipe(res);
+});
+
+// Approve or reject a KYC submission
+router.post("/admin/kyc/:userId/review", adminOnly, async (req, res): Promise<void> => {
+  const userId = parseInt(req.params.userId as string, 10);
+  if (isNaN(userId)) { res.status(400).json({ error: "Invalid userId" }); return; }
+
+  const { action, rejectionReason } = req.body ?? {};
+  if (!["approve", "reject"].includes(action)) {
+    res.status(400).json({ error: "action must be 'approve' or 'reject'" }); return;
+  }
+  if (action === "reject" && !rejectionReason) {
+    res.status(400).json({ error: "rejectionReason is required when rejecting" }); return;
+  }
+
+  const [user] = await db.select({ kycStatus: usersTable.kycStatus }).from(usersTable).where(eq(usersTable.id, userId));
+  if (!user) { res.status(404).json({ error: "User not found" }); return; }
+  if (user.kycStatus !== "pending") { res.status(400).json({ error: "User does not have a pending submission" }); return; }
+
+  const newStatus = action === "approve" ? "verified" : "rejected";
+  const [updated] = await db
+    .update(usersTable)
+    .set({
+      kycStatus: newStatus,
+      kycRejectionReason: action === "reject" ? rejectionReason : null,
+      kycReviewedAt: new Date(),
+    })
+    .where(eq(usersTable.id, userId))
+    .returning({ id: usersTable.id, kycStatus: usersTable.kycStatus });
+
+  res.json({ userId: updated.id, kycStatus: updated.kycStatus });
 });
 
 export default router;
