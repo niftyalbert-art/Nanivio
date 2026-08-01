@@ -729,23 +729,12 @@ function ChatInner({
           <div className="flex items-center gap-3 px-3 py-2.5 border-b border-border/40 shrink-0 bg-background">
             <button
               onClick={() => (setActiveChannel as any)(undefined)}
-              className="text-muted-foreground hover:text-foreground transition-colors p-1 shrink-0"
+              className="flex items-center gap-1.5 text-muted-foreground hover:text-foreground transition-colors group shrink-0"
             >
               <ArrowLeft className="w-5 h-5" />
+              <span className="text-sm font-medium">Back to contacts</span>
             </button>
-            <Avatar className="w-9 h-9 shrink-0">
-              <AvatarFallback className="bg-primary/20 text-primary font-bold text-sm">
-                {((activeChannel.data as any)?.name ?? 'C').slice(0, 2).toUpperCase()}
-              </AvatarFallback>
-            </Avatar>
-            <div className="flex-1 min-w-0">
-              <p className="font-semibold text-sm truncate">
-                {(activeChannel.data as any)?.name ?? 'Chat'}
-              </p>
-              <p className="text-[11px] text-muted-foreground">
-                {Object.keys(activeChannel.state?.members ?? {}).length} members
-              </p>
-            </div>
+            <div className="flex-1" />
             <div className="flex items-center gap-0.5 shrink-0">
               <Button
                 size="icon" variant="ghost"
