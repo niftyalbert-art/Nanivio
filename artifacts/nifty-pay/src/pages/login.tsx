@@ -35,6 +35,7 @@ export default function Login() {
         // Unverified email — redirect to verification page
         if (data.error === 'EMAIL_NOT_VERIFIED' && data.email) {
           sessionStorage.setItem('pendingVerifyEmail', data.email);
+          if (data.devCode) sessionStorage.setItem('pendingDevCode', data.devCode);
           setLocation('/verify-email');
           return;
         }

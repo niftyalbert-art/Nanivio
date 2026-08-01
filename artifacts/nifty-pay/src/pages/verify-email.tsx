@@ -12,8 +12,9 @@ export default function VerifyEmail() {
   const [, setLocation] = useLocation();
   const { setAuth } = useAuth();
 
-  // Email is passed via sessionStorage so it survives a hard reload
+  // Email + optional dev-mode code are passed via sessionStorage
   const [email, setEmailState] = useState<string>(() => sessionStorage.getItem('pendingVerifyEmail') ?? '');
+  const [devCode, setDevCode] = useState<string>(() => sessionStorage.getItem('pendingDevCode') ?? '');
   const [code, setCode] = useState('');
   const [loading, setLoading] = useState(false);
   const [resending, setResending] = useState(false);
@@ -48,6 +49,7 @@ export default function VerifyEmail() {
       if (!r.ok) { setError(data.error ?? 'Verification failed. Please try again.'); return; }
       // Verified — we get back a token, log the user in
       sessionStorage.removeItem('pendingVerifyEmail');
+      sessionStorage.removeItem('pendingDevCode');
       setAuth(data.token, data.user);
       setLocation('/');
     } catch {
@@ -70,6 +72,10 @@ export default function VerifyEmail() {
       const data = await r.json();
       if (!r.ok) { setError(data.error ?? 'Could not resend code. Please try again.'); return; }
       setSuccess('A new code has been sent to your email.');
+      if (data.devCode) {
+        setDevCode(data.devCode);
+        sessionStorage.setItem('pendingDevCode', data.devCode);
+      }
       setCode('');
       setCooldown(60);
     } catch {
@@ -95,6 +101,15 @@ export default function VerifyEmail() {
             </p>
           </div>
         </div>
+
+        {/* Dev-mode banner */}
+        {devCode && (
+          <div className="bg-amber-500/10 border border-amber-500/30 rounded-xl p-4 text-center space-y-1">
+            <p className="text-xs font-semibold text-amber-500 uppercase tracking-wide">Dev mode — email not sent</p>
+            <p className="text-xs text-muted-foreground">Twilio isn't configured. Use this code:</p>
+            <p className="text-3xl font-mono font-bold tracking-[0.3em] text-amber-400">{devCode}</p>
+          </div>
+        )}
 
         {/* Form */}
         <form onSubmit={handleSubmit} className="space-y-5 bg-card border border-border rounded-2xl p-6 shadow-sm">

@@ -63,10 +63,20 @@ router.post("/auth/signup", async (req, res): Promise<void> => {
           updatedAt: new Date(),
         })
         .where(eq(usersTable.id, existing.id));
+      const r2 = await sendVerificationCode(normalizedEmail);
+      const expiresAt2 = new Date(Date.now() + 15 * 60 * 1000);
+      await db.update(usersTable)
+        .set({
+          emailVerificationCode: !r2.sent ? r2.fallbackCode : null,
+          emailVerificationExpiresAt: expiresAt2,
+          updatedAt: new Date(),
+        })
+        .where(eq(usersTable.id, existing.id));
       res.status(200).json({
         requiresVerification: true,
         email: normalizedEmail,
         message: "A verification code has been sent to your email.",
+        ...(!r2.sent && { devCode: r2.fallbackCode }),
       });
       return;
     }
@@ -117,11 +127,13 @@ router.post("/auth/signup", async (req, res): Promise<void> => {
     })
     .where(eq(usersTable.id, user.id));
 
-  // Return verification required — no token yet
+  // Return verification required — no token yet.
+  // In dev mode (Twilio not configured) surface the code so the user can complete sign-up.
   res.status(201).json({
     requiresVerification: true,
     email: normalizedEmail,
     message: "Account created. Please check your email for a verification code.",
+    ...(!result.sent && { devCode: result.fallbackCode }),
   });
 });
 
@@ -213,7 +225,10 @@ router.post("/auth/resend-verification", async (req, res): Promise<void> => {
     })
     .where(eq(usersTable.id, user.id));
 
-  res.json({ message: "A new verification code has been sent to your email." });
+  res.json({
+    message: "A new verification code has been sent to your email.",
+    ...(!result.sent && { devCode: result.fallbackCode }),
+  });
 });
 
 // POST /auth/login
@@ -256,10 +271,21 @@ router.post("/auth/login", async (req, res): Promise<void> => {
       })
       .where(eq(usersTable.id, user.id));
 
+    const loginResult = await sendVerificationCode(normalizedEmail);
+    const loginExpiry = new Date(Date.now() + 15 * 60 * 1000);
+    await db.update(usersTable)
+      .set({
+        emailVerificationCode: !loginResult.sent ? loginResult.fallbackCode : null,
+        emailVerificationExpiresAt: loginExpiry,
+        updatedAt: new Date(),
+      })
+      .where(eq(usersTable.id, user.id));
+
     res.status(403).json({
       error: "EMAIL_NOT_VERIFIED",
       message: "Please verify your email address before signing in. We've sent a new code.",
       email: normalizedEmail,
+      ...(!loginResult.sent && { devCode: loginResult.fallbackCode }),
     });
     return;
   }
