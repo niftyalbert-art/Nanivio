@@ -88,6 +88,7 @@ app.use("/api/transactions", transactionLimiter);
 app.use("/api/withdrawals", transactionLimiter);
 app.use("/api/admin", adminLimiter);
 app.use("/api/kyc", transactionLimiter);
+app.use("/api/crypto", transactionLimiter);
 
 app.use("/api", router);
 

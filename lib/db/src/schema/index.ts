@@ -9,3 +9,4 @@ export * from "./settings";
 export * from "./users";
 export * from "./contacts";
 export * from "./fraud_events";
+export * from "./crypto_payments";

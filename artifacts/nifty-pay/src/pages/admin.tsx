@@ -8,7 +8,7 @@ import { Badge } from '@/components/ui/badge';
 import { Textarea } from '@/components/ui/textarea';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { Skeleton } from '@/components/ui/skeleton';
-import { CheckCircle2, XCircle, Clock, ArrowDownLeft, ArrowUpRight, MessageSquare, Lock, Plus, Edit2, TrendingUp, Settings2, Link, Eye, EyeOff, Users, ArrowLeftRight, KeyRound, ShieldCheck, ArrowLeft, BadgeCheck, Shield, AlertTriangle, Unlock, Search, ChevronDown, ChevronUp, LogIn, Wallet, Phone, Mail, CalendarDays, RefreshCw } from 'lucide-react';
+import { CheckCircle2, XCircle, Clock, ArrowDownLeft, ArrowUpRight, MessageSquare, Lock, Plus, Edit2, TrendingUp, Settings2, Link, Eye, EyeOff, Users, ArrowLeftRight, KeyRound, ShieldCheck, ArrowLeft, BadgeCheck, Shield, AlertTriangle, Unlock, Search, ChevronDown, ChevronUp, LogIn, Wallet, Phone, Mail, CalendarDays, RefreshCw, Bitcoin, Copy } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import { useToast } from '@/hooks/use-toast';
 
@@ -1736,6 +1736,187 @@ function KycPanel() {
   );
 }
 
+// ── Crypto Panel ─────────────────────────────────────────────────────────────
+function CryptoPanel() {
+  const { toast } = useToast();
+  const qc = useQueryClient();
+  const [note, setNote] = useState<Record<number, string>>({});
+  const [statusFilter, setStatusFilter] = useState('all');
+
+  const { data: payments, isLoading } = useQuery({
+    queryKey: ['admin-crypto', statusFilter],
+    queryFn: () => apiFetch(`/admin/crypto${statusFilter !== 'all' ? `?status=${statusFilter}` : ''}`),
+    refetchInterval: 20000,
+  });
+
+  const complete = useMutation({
+    mutationFn: ({ id, txHash, adminNote }: { id: number; txHash?: string; adminNote?: string }) =>
+      apiFetch(`/admin/crypto/${id}/complete`, { method: 'POST', body: JSON.stringify({ transactionHash: txHash || undefined, adminNote }) }),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['admin-crypto'] }); toast({ title: '✅ Payment marked completed' }); },
+    onError: (e: any) => toast({ title: 'Error', description: e.message, variant: 'destructive' }),
+  });
+
+  const fail = useMutation({
+    mutationFn: ({ id, adminNote }: { id: number; adminNote?: string }) =>
+      apiFetch(`/admin/crypto/${id}/fail`, { method: 'POST', body: JSON.stringify({ adminNote }) }),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['admin-crypto'] }); toast({ title: 'Payment marked failed' }); },
+    onError: (e: any) => toast({ title: 'Error', description: e.message, variant: 'destructive' }),
+  });
+
+  const statusColors: Record<string, string> = {
+    waiting_for_payment: 'bg-amber-500/10 text-amber-600 border-amber-500/30',
+    confirming: 'bg-blue-500/10 text-blue-600 border-blue-500/30',
+    completed: 'bg-emerald-500/10 text-emerald-600 border-emerald-500/30',
+    failed: 'bg-red-500/10 text-red-600 border-red-500/30',
+    expired: 'bg-muted text-muted-foreground border-border',
+  };
+
+  if (isLoading) return <div className="space-y-3">{[...Array(3)].map((_, i) => <Skeleton key={i} className="h-32" />)}</div>;
+
+  const list = (payments as any[] ?? []);
+  const pending = list.filter((p: any) => ['waiting_for_payment', 'confirming'].includes(p.status));
+  const done    = list.filter((p: any) => !['waiting_for_payment', 'confirming'].includes(p.status));
+
+  return (
+    <div className="space-y-4">
+      {/* Filters */}
+      <div className="flex flex-wrap gap-2">
+        {['all', 'waiting_for_payment', 'confirming', 'completed', 'failed', 'expired'].map(s => (
+          <button
+            key={s}
+            type="button"
+            onClick={() => setStatusFilter(s)}
+            className={`px-3 py-1 rounded-full text-xs font-semibold border transition-colors ${
+              statusFilter === s ? 'bg-primary text-primary-foreground border-primary' : 'bg-background border-border text-muted-foreground hover:border-primary/40'
+            }`}
+          >
+            {s === 'all' ? 'All' : s === 'waiting_for_payment' ? 'Waiting' : s.charAt(0).toUpperCase() + s.slice(1)}
+          </button>
+        ))}
+      </div>
+
+      {list.length === 0 && (
+        <Card><CardContent className="py-10 text-center text-sm text-muted-foreground">No crypto payments yet</CardContent></Card>
+      )}
+
+      {/* Pending / Confirming */}
+      {pending.length > 0 && (
+        <div className="space-y-3">
+          <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Needs Action ({pending.length})</p>
+          {pending.map((p: any) => (
+            <Card key={p.id} className="border-amber-500/20">
+              <CardContent className="p-4 space-y-3">
+                <div className="flex items-start justify-between gap-2 flex-wrap">
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <Bitcoin className="w-4 h-4 text-orange-500 shrink-0" />
+                      <span className="font-bold font-mono text-sm">{Number(p.amount).toLocaleString('en-US', { minimumFractionDigits: 2 })} {p.currency}</span>
+                      <span className="text-xs text-muted-foreground">{p.network}</span>
+                      <span className={`text-[10px] px-2 py-0.5 rounded-full border font-semibold ${statusColors[p.status] ?? ''}`}>
+                        {p.status === 'waiting_for_payment' ? 'Waiting' : p.status}
+                      </span>
+                    </div>
+                    <p className="text-xs text-muted-foreground mt-0.5">#{p.id} · {p.senderName} · {new Date(p.createdAt).toLocaleString()}</p>
+                    <p className="text-xs text-muted-foreground">{p.senderEmail}</p>
+                  </div>
+                  <div className="text-xs text-muted-foreground">
+                    {p.paymentMethod === 'connect_wallet' ? '🔗 Connect' : '📋 Address'}
+                  </div>
+                </div>
+
+                {/* Receiver address */}
+                <div className="bg-muted/40 rounded-lg p-2.5 space-y-1">
+                  <p className="text-[10px] text-muted-foreground font-semibold">RECEIVING ADDRESS</p>
+                  <div className="flex items-center gap-2">
+                    <code className="text-[11px] font-mono break-all flex-1">{p.receiverAddress}</code>
+                    <button type="button" onClick={() => navigator.clipboard?.writeText(p.receiverAddress)} className="shrink-0 text-muted-foreground hover:text-foreground">
+                      <Copy className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                </div>
+
+                {/* Tx hash (if provided) */}
+                {p.transactionHash && (
+                  <div className="bg-muted/40 rounded-lg p-2.5 space-y-1">
+                    <p className="text-[10px] text-muted-foreground font-semibold">TRANSACTION HASH</p>
+                    <div className="flex items-center gap-2">
+                      <code className="text-[11px] font-mono break-all flex-1">{p.transactionHash}</code>
+                      <button type="button" onClick={() => navigator.clipboard?.writeText(p.transactionHash)} className="shrink-0 text-muted-foreground hover:text-foreground">
+                        <Copy className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {p.senderWalletAddress && (
+                  <div className="text-xs text-muted-foreground">
+                    <span className="font-semibold">Sender wallet: </span>
+                    <code className="font-mono">{p.senderWalletAddress}</code>
+                  </div>
+                )}
+
+                {/* Admin note */}
+                <div className="space-y-2">
+                  <input
+                    type="text"
+                    placeholder="Admin note (optional)"
+                    value={note[p.id] ?? ''}
+                    onChange={e => setNote(prev => ({ ...prev, [p.id]: e.target.value }))}
+                    className="w-full h-8 rounded-lg border border-border bg-background px-3 text-xs"
+                  />
+                  <div className="flex gap-2">
+                    <Button
+                      size="sm"
+                      className="flex-1 h-8 text-xs bg-emerald-600 hover:bg-emerald-700 text-white gap-1"
+                      disabled={complete.isPending}
+                      onClick={() => complete.mutate({ id: p.id, txHash: p.transactionHash || undefined, adminNote: note[p.id] })}
+                    >
+                      <CheckCircle2 className="w-3.5 h-3.5" /> Mark Completed
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="destructive"
+                      className="flex-1 h-8 text-xs gap-1"
+                      disabled={fail.isPending}
+                      onClick={() => fail.mutate({ id: p.id, adminNote: note[p.id] })}
+                    >
+                      <XCircle className="w-3.5 h-3.5" /> Mark Failed
+                    </Button>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      )}
+
+      {/* Completed / Failed / Expired */}
+      {done.length > 0 && (
+        <div className="space-y-2">
+          <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">History ({done.length})</p>
+          {done.map((p: any) => (
+            <div key={p.id} className="rounded-xl border border-border bg-card p-3 flex items-center gap-3">
+              <div className="w-9 h-9 rounded-full bg-orange-500/10 flex items-center justify-center shrink-0">
+                <Bitcoin className="w-4 h-4 text-orange-500" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="font-semibold text-sm font-mono">{Number(p.amount).toLocaleString('en-US', { minimumFractionDigits: 2 })} {p.currency}</span>
+                  <span className="text-xs text-muted-foreground">{p.network}</span>
+                  <span className={`text-[10px] px-2 py-0.5 rounded-full border font-semibold ${statusColors[p.status] ?? ''}`}>
+                    {p.status}
+                  </span>
+                </div>
+                <p className="text-xs text-muted-foreground truncate">#{p.id} · {p.senderName} · {new Date(p.createdAt).toLocaleDateString()}</p>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── Security / Fraud Panel ───────────────────────────────────────────────────
 function SecurityPanel() {
   const { toast } = useToast();
@@ -2291,6 +2472,7 @@ export default function Admin() {
           <TabsTrigger value="chat"    className="text-[11px] shrink-0 flex-1 min-w-[40px]">Chat</TabsTrigger>
           <TabsTrigger value="methods" className="text-[11px] shrink-0 flex-1 min-w-[40px]">Pay</TabsTrigger>
           <TabsTrigger value="rates" className="text-[11px] shrink-0 flex-1 min-w-[40px]">Rates</TabsTrigger>
+          <TabsTrigger value="crypto" className="text-[11px] shrink-0 flex-1 min-w-[40px]"><Bitcoin className="w-3 h-3" /></TabsTrigger>
           <TabsTrigger value="security" className="text-[11px] shrink-0 flex-1 min-w-[40px]"><Shield className="w-3 h-3" /></TabsTrigger>
           <TabsTrigger value="settings" className="text-[11px] shrink-0 flex-1 min-w-[36px]"><Settings2 className="w-3 h-3" /></TabsTrigger>
         </TabsList>
@@ -2303,6 +2485,7 @@ export default function Admin() {
         <TabsContent value="chat"        className="mt-4"><ChatPanel /></TabsContent>
         <TabsContent value="methods"     className="mt-4"><PaymentMethodsPanel /></TabsContent>
         <TabsContent value="rates"       className="mt-4"><RatesPanel /></TabsContent>
+        <TabsContent value="crypto"       className="mt-4"><CryptoPanel /></TabsContent>
         <TabsContent value="security"    className="mt-4"><SecurityPanel /></TabsContent>
         <TabsContent value="settings"    className="mt-4"><SettingsPanel /></TabsContent>
       </Tabs>

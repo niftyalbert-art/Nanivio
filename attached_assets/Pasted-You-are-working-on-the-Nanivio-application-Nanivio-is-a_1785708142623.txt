@@ -1,0 +1,479 @@
+You are working on the Nanivio application.
+
+Nanivio is a communication and payment platform that already has:
+- User accounts
+- Messaging
+- Audio calls
+- Video calls
+- Existing payment methods
+
+I want to add Crypto as a new payment option without breaking existing payment systems.
+
+IMPORTANT:
+Do not modify or remove existing Bank, Mobile Money, or Card payment functionality.
+
+Crypto must be added as an additional payment method.
+
+The Crypto system must support two payment options:
+
+OPTION 1:
+Connect Wallet
+
+OPTION 2:
+Pay to Wallet Address (QR code/manual payment)
+
+Build this as a professional, scalable payment module.
+
+--------------------------------------
+
+1. PAYMENT FLOW
+
+Update the Send Money experience:
+
+Payment Methods:
+
+- Bank
+- Mobile Money
+- Card
+- Crypto
+
+
+When Crypto is selected:
+
+Show:
+
+Crypto Payment Options:
+
+1. Connect Wallet
+
+2. Send to Wallet Address
+
+
+The user chooses their preferred method.
+
+--------------------------------------
+
+2. CRYPTO MODULE ARCHITECTURE
+
+Create a separate Crypto Payment module.
+
+The module should include:
+
+- Crypto payment creation
+- Wallet connection
+- Wallet address payments
+- Blockchain transaction verification
+- Payment status tracking
+- Crypto transaction history
+- Notifications
+- Admin monitoring
+
+
+The module must be independent from existing payment modules.
+
+--------------------------------------
+
+3. DATABASE DESIGN
+
+Create crypto payment database tables.
+
+Table:
+
+crypto_payments
+
+
+Fields:
+
+id
+
+sender_id
+
+receiver_id
+
+amount
+
+currency
+
+network
+
+wallet_address
+
+wallet_type
+
+payment_method
+
+transaction_hash
+
+status
+
+confirmations
+
+created_at
+
+updated_at
+
+completed_at
+
+
+Statuses:
+
+Pending
+
+Waiting For Payment
+
+Confirming
+
+Completed
+
+Failed
+
+Expired
+
+
+Connect crypto payments with the existing Users table.
+
+Do not duplicate user accounts.
+
+--------------------------------------
+
+4. CONNECT WALLET FEATURE
+
+Implement wallet connection using WalletConnect.
+
+Support:
+
+- Trust Wallet
+- MetaMask
+- Coinbase Wallet
+- Rabby
+- Bybit Wallet where supported
+
+
+Requirements:
+
+- Only request public wallet address.
+- Never request private keys.
+- Never request recovery phrases.
+- Never store seed phrases.
+- Users must approve every blockchain transaction.
+
+
+Store:
+
+Wallet address
+
+Wallet name
+
+Network
+
+Connection date
+
+
+--------------------------------------
+
+5. PAY TO WALLET ADDRESS FEATURE
+
+Create manual crypto payment flow.
+
+When selected:
+
+Generate payment request.
+
+Display:
+
+- Amount
+- Currency
+- Network
+- Wallet Address
+- QR Code
+- Copy Address button
+- Payment status
+
+
+User can pay using:
+
+- Trust Wallet
+- Bybit Wallet
+- Binance Wallet
+- Any compatible wallet
+
+
+After payment:
+
+User clicks:
+
+"I Have Paid"
+
+
+System checks blockchain confirmation.
+
+--------------------------------------
+
+6. BLOCKCHAIN VERIFICATION SYSTEM
+
+Create a blockchain monitoring service.
+
+Responsibilities:
+
+- Check incoming transactions.
+- Verify transaction hash.
+- Verify wallet address.
+- Verify amount.
+- Verify network.
+- Confirm required confirmations.
+- Update payment status.
+
+
+Automatic status changes:
+
+Created
+
+↓
+
+Waiting For Payment
+
+↓
+
+Confirming
+
+↓
+
+Completed
+
+
+If incorrect:
+
+Failed
+
+
+--------------------------------------
+
+7. CRYPTO SUPPORT
+
+Design the system to support multiple cryptocurrencies.
+
+Initial support:
+
+USDT TRC20
+
+
+Architecture must allow future support:
+
+- Bitcoin
+- Ethereum
+- USDC
+- Polygon
+- BNB
+- Solana
+
+
+Do not hard-code currency logic.
+
+Use configuration.
+
+--------------------------------------
+
+8. PAYMENT INTEGRATION
+
+Crypto must work like existing payments.
+
+All transactions should appear together:
+
+Payment History:
+
+- Bank
+- Mobile Money
+- Card
+- Crypto
+
+
+Every transaction displays:
+
+Amount
+
+Payment Method
+
+Status
+
+Date
+
+Transaction ID
+
+Receipt
+
+
+--------------------------------------
+
+9. CHAT INTEGRATION
+
+Integrate crypto payments into messaging.
+
+Inside conversations:
+
+Add:
+
+Send Money
+
+
+Flow:
+
+Chat
+
+↓
+
+Send Money
+
+↓
+
+Choose Payment Method
+
+↓
+
+Crypto
+
+↓
+
+Connect Wallet OR Wallet Address
+
+↓
+
+Payment Created
+
+↓
+
+Payment Completed
+
+↓
+
+Show Receipt Inside Chat
+
+
+Notify sender and receiver.
+
+--------------------------------------
+
+10. NOTIFICATIONS
+
+Create notifications:
+
+Sender:
+
+- Payment Created
+- Waiting For Payment
+- Payment Confirmed
+- Payment Failed
+
+
+Receiver:
+
+- Incoming Crypto Payment
+- Payment Received
+
+
+Use existing notification infrastructure.
+
+--------------------------------------
+
+11. ADMIN DASHBOARD
+
+Add Crypto Payment Management.
+
+Admin can view:
+
+- All crypto transactions
+- Users
+- Wallet addresses
+- Transaction hashes
+- Status
+- Network
+- Date
+
+
+Filters:
+
+- Currency
+- Network
+- Status
+- Date
+
+
+Allow export reports.
+
+--------------------------------------
+
+12. SECURITY REQUIREMENTS
+
+Implement:
+
+- Authentication checks
+- Authorization checks
+- Rate limiting
+- Duplicate transaction prevention
+- Webhook verification
+- Activity logging
+- Fraud monitoring
+
+
+NEVER STORE:
+
+- Private keys
+- Recovery phrases
+- Seed phrases
+
+
+--------------------------------------
+
+13. USER EXPERIENCE
+
+The crypto experience should feel simple.
+
+Users should not need blockchain knowledge.
+
+Instead of technical language:
+
+Use:
+
+"Send Money"
+
+"Crypto Payment"
+
+"Connect Wallet"
+
+"Pay with Wallet"
+
+
+Avoid confusing users with blockchain terms.
+
+--------------------------------------
+
+14. CODE QUALITY
+
+Requirements:
+
+- Clean architecture
+- Modular code
+- Comments explaining important logic
+- Error handling
+- API documentation
+- Environment variables for secrets
+- Production-ready structure
+
+
+Before writing code:
+
+First analyze the existing Nanivio codebase.
+
+Identify:
+
+- Current framework
+- Backend language
+- Database
+- Existing payment system
+- Authentication system
+
+
+Then propose the integration plan.
+
+Do not overwrite existing features.
+
+Build Crypto as an additional payment capability.

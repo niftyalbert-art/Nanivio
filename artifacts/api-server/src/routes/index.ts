@@ -15,6 +15,7 @@ import settingsRouter from "./settings";
 import streamRouter from "./stream";
 import contactsRouter from "./contacts";
 import kycRouter from "./kyc";
+import cryptoRouter from "./crypto";
 
 const router: IRouter = Router();
 
@@ -34,5 +35,6 @@ router.use(settingsRouter);
 router.use(streamRouter);
 router.use(contactsRouter);
 router.use(kycRouter);
+router.use(cryptoRouter);
 
 export default router;

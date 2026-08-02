@@ -4,6 +4,39 @@ import { db, usersTable, pool } from "@workspace/db";
 import { isNotNull } from "drizzle-orm";
 import { StreamChat } from "stream-chat";
 
+/** Idempotent migration: crypto_payments table. */
+async function runCryptoSchemaMigration() {
+  try {
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS crypto_payments (
+        id                     SERIAL PRIMARY KEY,
+        sender_id              INTEGER NOT NULL,
+        receiver_address       TEXT NOT NULL,
+        sender_wallet_address  TEXT,
+        wallet_type            TEXT,
+        amount                 NUMERIC(18,8) NOT NULL,
+        currency               TEXT NOT NULL DEFAULT 'USDT',
+        network                TEXT NOT NULL DEFAULT 'TRC20',
+        payment_method         TEXT NOT NULL,
+        transaction_hash       TEXT,
+        status                 TEXT NOT NULL DEFAULT 'waiting_for_payment',
+        confirmations          INTEGER NOT NULL DEFAULT 0,
+        required_confirmations INTEGER NOT NULL DEFAULT 20,
+        note                   TEXT,
+        admin_note             TEXT,
+        payment_method_id      INTEGER,
+        created_at             TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at             TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        completed_at           TIMESTAMPTZ,
+        expires_at             TIMESTAMPTZ
+      );
+    `);
+    logger.info("Crypto payments schema migration complete");
+  } catch (err) {
+    logger.error({ err }, "Crypto schema migration FAILED");
+  }
+}
+
 /** Idempotent migration: add KYC columns that were introduced in this release. */
 async function runKycSchemaMigration() {
   try {
@@ -121,6 +154,7 @@ app.listen(port, () => {
   // Fire-and-forget async startup tasks
   (async () => {
     // Run idempotent schema migrations first — safe on every boot (IF NOT EXISTS)
+    await runCryptoSchemaMigration();
     await runKycSchemaMigration();
     await runEmailVerificationMigration();
     await runFraudSchemaMigration();
