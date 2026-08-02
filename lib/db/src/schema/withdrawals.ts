@@ -12,6 +12,7 @@ export const withdrawalsTable = pgTable("withdrawals", {
   mobileNetwork: text("mobile_network"),
   // Bank fields
   bankName: text("bank_name"),
+  iban: text("iban"),
   accountNumber: text("account_number"),
   accountName: text("account_name"),
   // Common

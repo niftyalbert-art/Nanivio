@@ -4,27 +4,54 @@ import { useGetSupportedCountries } from '@workspace/api-client-react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Search, Clock, TrendingUp } from 'lucide-react';
+import { Search, Clock, TrendingUp, ArrowLeftRight, ChevronDown, ChevronUp, Calculator } from 'lucide-react';
 import { groupByRegion } from '@/lib/regions';
 
 const API_BASE = import.meta.env.BASE_URL.replace(/\/$/, '') + '/api';
 
+// ── Rate calculator state (shared across cards, resets when a different card opens) ──
+interface CalcState {
+  amount: string;
+  fromCurrency: string;
+  toCurrency: string;
+}
+
 export default function Countries() {
   const [searchQuery, setSearchQuery] = useState('');
+  const [activeCode, setActiveCode] = useState<string | null>(null);
+  const [calc, setCalc] = useState<CalcState>({ amount: '100', fromCurrency: 'USD', toCurrency: '' });
+
   const { data: countries, isLoading } = useGetSupportedCountries();
 
-  // Live exchange rates to show vs USD
   const { data: allRates } = useQuery<{ code: string; rateToUsd: number }[]>({
     queryKey: ['rates-all'],
     queryFn: () => fetch(`${API_BASE}/rates/all`).then(r => r.json()),
     staleTime: 5 * 60 * 1000,
   });
+
   const rateMap = useMemo(() => {
     const m: Record<string, number> = {};
     allRates?.forEach(r => { m[r.code] = r.rateToUsd; });
     return m;
   }, [allRates]);
+
+  // All available currencies for the selects (sorted alphabetically)
+  const currencyList = useMemo(() => Object.keys(rateMap).sort(), [rateMap]);
+
+  // Compute the conversion result
+  const calcResult = useMemo(() => {
+    const amt = parseFloat(calc.amount);
+    if (!amt || !calc.fromCurrency || !calc.toCurrency) return null;
+    if (calc.fromCurrency === calc.toCurrency) return amt;
+    const fromRate = rateMap[calc.fromCurrency]; // units per 1 USD
+    const toRate   = rateMap[calc.toCurrency];
+    if (!fromRate || !toRate) return null;
+    // Convert: amt fromCurrency → USD → toCurrency
+    const inUsd = amt / fromRate;
+    return inUsd * toRate;
+  }, [calc, rateMap]);
 
   const filtered = countries?.filter((c) =>
     c.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -32,11 +59,29 @@ export default function Countries() {
     c.currencyName.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
-  // When searching, show flat list; otherwise group by region
   const grouped = useMemo(() => {
     if (!filtered) return [];
     return groupByRegion(filtered, c => c.code);
   }, [filtered]);
+
+  const openCalc = (code: string, currencyCode: string) => {
+    if (activeCode === code) {
+      setActiveCode(null);
+      return;
+    }
+    setActiveCode(code);
+    setCalc(prev => ({ amount: prev.amount || '100', fromCurrency: 'USD', toCurrency: currencyCode }));
+  };
+
+  const swapCurrencies = () => {
+    setCalc(prev => ({ ...prev, fromCurrency: prev.toCurrency, toCurrency: prev.fromCurrency }));
+  };
+
+  const formatResult = (val: number) => {
+    if (val >= 10000) return val.toLocaleString('en-US', { maximumFractionDigits: 0 });
+    if (val >= 100)   return val.toLocaleString('en-US', { maximumFractionDigits: 2 });
+    return val.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 4 });
+  };
 
   if (isLoading) {
     return (
@@ -51,57 +96,182 @@ export default function Countries() {
   }
 
   const CountryCard = ({ country }: { country: NonNullable<typeof countries>[0] }) => {
-    const rate = rateMap[country.currencyCode];
-    const usdRate = rate && rate > 0 ? (1 / rate) : null;
+    const rate     = rateMap[country.currencyCode];
+    const usdRate  = rate && rate > 0 ? rate : null;          // X per 1 USD
+    const isOpen   = activeCode === country.code;
+
     return (
-      <Card className="hover:border-primary/50 transition-colors" data-testid={`country-${country.code}`}>
-        <CardContent className="p-4 md:p-5 space-y-3">
-          <div className="flex items-start justify-between gap-2">
-            <div className="flex items-center gap-2 md:gap-3 min-w-0">
-              <span className="text-3xl md:text-4xl shrink-0">{country.flag}</span>
-              <div className="min-w-0">
-                <h3 className="font-bold text-sm md:text-base truncate">{country.name}</h3>
-                <p className="text-xs text-muted-foreground truncate">{country.currencyName}</p>
+      <div className="rounded-xl border border-border overflow-hidden transition-all">
+        {/* ── Card header — click to open/close calculator ── */}
+        <button
+          type="button"
+          className="w-full text-left"
+          onClick={() => openCalc(country.code, country.currencyCode)}
+          data-testid={`country-${country.code}`}
+        >
+          <div className={`p-4 md:p-5 space-y-3 transition-colors ${isOpen ? 'bg-primary/5 border-b border-primary/20' : 'bg-card hover:bg-muted/30'}`}>
+            {/* Flag + name row */}
+            <div className="flex items-start justify-between gap-2">
+              <div className="flex items-center gap-2 md:gap-3 min-w-0">
+                <span className="text-3xl md:text-4xl shrink-0">{country.flag}</span>
+                <div className="min-w-0">
+                  <h3 className="font-bold text-sm md:text-base truncate">{country.name}</h3>
+                  <p className="text-xs text-muted-foreground truncate">{country.currencyName}</p>
+                </div>
+              </div>
+              <div className="flex items-center gap-1.5 shrink-0">
+                {country.popular && (
+                  <Badge variant="outline" className="bg-primary/10 text-primary border-primary/20 text-[10px]">
+                    Popular
+                  </Badge>
+                )}
+                {isOpen
+                  ? <ChevronUp className="w-4 h-4 text-primary" />
+                  : <ChevronDown className="w-4 h-4 text-muted-foreground" />}
               </div>
             </div>
-            {country.popular && (
-              <Badge variant="outline" className="bg-primary/10 text-primary border-primary/20 text-[10px] shrink-0">
-                Popular
-              </Badge>
-            )}
-          </div>
 
-          <div className="pt-2 border-t border-border space-y-1.5">
-            {usdRate !== null && (
+            {/* Quick stats row */}
+            <div className="pt-2 border-t border-border space-y-1.5">
+              {usdRate !== null && (
+                <div className="flex items-center justify-between text-xs md:text-sm">
+                  <span className="text-muted-foreground flex items-center gap-1.5">
+                    <TrendingUp className="w-3 h-3" /> Rate
+                  </span>
+                  <span className="font-semibold font-mono">
+                    1 USD = {usdRate >= 1000
+                      ? usdRate.toLocaleString('en-US', { maximumFractionDigits: 0 })
+                      : usdRate.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 4 })
+                    } {country.currencyCode}
+                  </span>
+                </div>
+              )}
               <div className="flex items-center justify-between text-xs md:text-sm">
                 <span className="text-muted-foreground flex items-center gap-1.5">
-                  <TrendingUp className="w-3 h-3" /> Rate
+                  <Clock className="w-3 h-3" /> Transfer Fee
                 </span>
-                <span className="font-semibold font-mono">
-                  1 USD = {usdRate >= 1000
-                    ? usdRate.toLocaleString('en-US', { maximumFractionDigits: 0 })
-                    : usdRate.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 4 })
-                  } {country.currencyCode}
-                </span>
+                <span className="font-semibold">{country.transferFee}%</span>
               </div>
-            )}
-            <div className="flex items-center justify-between text-xs md:text-sm">
-              <span className="text-muted-foreground flex items-center gap-1.5">
-                <Clock className="w-3 h-3" /> Transfer Fee
-              </span>
-              <span className="font-semibold">{country.transferFee}%</span>
-            </div>
-            <div className="flex items-center justify-between text-xs md:text-sm">
-              <span className="text-muted-foreground">Est. Time</span>
-              <span className="font-semibold">{country.estimatedTime}</span>
-            </div>
-            <div className="flex items-center justify-between text-xs md:text-sm pt-0.5">
-              <span className="text-muted-foreground">Currency</span>
-              <span className="font-mono font-semibold">{country.currencyCode}</span>
+              <div className="flex items-center justify-between text-xs md:text-sm">
+                <span className="text-muted-foreground">Est. Time</span>
+                <span className="font-semibold">{country.estimatedTime}</span>
+              </div>
+              <div className="flex items-center justify-between text-xs md:text-sm pt-0.5">
+                <span className="text-muted-foreground flex items-center gap-1.5">
+                  <Calculator className="w-3 h-3" /> Calculator
+                </span>
+                <span className="text-xs text-primary font-medium">{isOpen ? 'Hide ↑' : 'Open ↓'}</span>
+              </div>
             </div>
           </div>
-        </CardContent>
-      </Card>
+        </button>
+
+        {/* ── Rate calculator panel ── */}
+        {isOpen && (
+          <div className="p-4 space-y-4 bg-card">
+            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Currency Calculator</p>
+
+            {/* Amount + swap row */}
+            <div className="space-y-2">
+              {/* You send */}
+              <div className="flex gap-2 items-center">
+                <div className="flex-1 space-y-1">
+                  <p className="text-xs text-muted-foreground">You send</p>
+                  <div className="flex gap-2">
+                    <Input
+                      type="number"
+                      min="0"
+                      step="any"
+                      placeholder="Amount"
+                      value={calc.amount}
+                      onChange={e => setCalc(c => ({ ...c, amount: e.target.value }))}
+                      className="font-mono w-28 shrink-0"
+                    />
+                    <select
+                      className="flex-1 text-sm border border-border rounded-lg px-2.5 py-2 bg-background font-mono"
+                      value={calc.fromCurrency}
+                      onChange={e => setCalc(c => ({ ...c, fromCurrency: e.target.value }))}
+                    >
+                      {currencyList.map(code => (
+                        <option key={code} value={code}>{code}</option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+
+                {/* Swap button */}
+                <div className="pt-5">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="h-9 w-9 p-0 rounded-full"
+                    onClick={swapCurrencies}
+                  >
+                    <ArrowLeftRight className="w-3.5 h-3.5" />
+                  </Button>
+                </div>
+
+                {/* Recipient gets */}
+                <div className="flex-1 space-y-1">
+                  <p className="text-xs text-muted-foreground">Recipient gets</p>
+                  <div className="flex gap-2">
+                    <div className="font-mono w-28 shrink-0 h-10 flex items-center px-3 rounded-lg bg-primary/10 border border-primary/20 text-primary font-bold text-sm">
+                      {calcResult !== null ? formatResult(calcResult) : '—'}
+                    </div>
+                    <select
+                      className="flex-1 text-sm border border-border rounded-lg px-2.5 py-2 bg-background font-mono"
+                      value={calc.toCurrency}
+                      onChange={e => setCalc(c => ({ ...c, toCurrency: e.target.value }))}
+                    >
+                      {currencyList.map(code => (
+                        <option key={code} value={code}>{code}</option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Summary line */}
+            {calcResult !== null && calc.amount && (
+              <div className="bg-muted/50 rounded-lg p-3 space-y-1.5 text-xs">
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Exchange rate</span>
+                  <span className="font-mono font-semibold">
+                    1 {calc.fromCurrency} = {(() => {
+                      const fR = rateMap[calc.fromCurrency], tR = rateMap[calc.toCurrency];
+                      if (!fR || !tR) return '—';
+                      const r = tR / fR;
+                      return (r >= 1000
+                        ? r.toLocaleString('en-US', { maximumFractionDigits: 0 })
+                        : r.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 4 })) + ' ' + calc.toCurrency;
+                    })()}
+                  </span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Transfer fee ({country.transferFee}%)</span>
+                  <span className="font-mono font-semibold text-amber-500">
+                    {(() => {
+                      const fR = rateMap[calc.fromCurrency];
+                      if (!fR) return '—';
+                      const amtUsd = parseFloat(calc.amount) / fR;
+                      const feeUsd = amtUsd * (parseFloat(country.transferFee as string) / 100);
+                      return feeUsd.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' USD';
+                    })()}
+                  </span>
+                </div>
+                <div className="border-t border-border pt-1.5 flex justify-between font-semibold">
+                  <span>Total you pay</span>
+                  <span className="font-mono text-primary">
+                    {parseFloat(calc.amount).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} {calc.fromCurrency}
+                  </span>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
     );
   };
 
@@ -109,7 +279,9 @@ export default function Countries() {
     <div className="p-4 md:p-8 space-y-5 md:space-y-8">
       <div>
         <h1 className="text-2xl md:text-4xl font-bold tracking-tight mb-1">Supported Countries</h1>
-        <p className="text-sm text-muted-foreground">Send money to {countries?.length} countries worldwide</p>
+        <p className="text-sm text-muted-foreground">
+          Send money to {countries?.length} countries worldwide — click any country to open the rate calculator
+        </p>
       </div>
 
       <div className="relative w-full md:max-w-md">

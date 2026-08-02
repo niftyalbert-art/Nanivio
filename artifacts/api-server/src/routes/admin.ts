@@ -207,12 +207,15 @@ router.get("/payment-methods/all", adminOnly, async (req, res): Promise<void> =>
 
 // Create
 router.post("/admin/payment-methods", adminOnly, async (req, res): Promise<void> => {
-  const { type, name, accountNumber, accountName, instructions, logoEmoji, isActive } = req.body ?? {};
-  if (!type || !name || !accountNumber || !accountName || !instructions) {
+  const { type, name, iban, accountNumber, accountName, instructions, logoEmoji, isActive } = req.body ?? {};
+  if (!type || !name || !accountName || !instructions) {
     res.status(400).json({ error: "Missing required fields" }); return;
   }
   const [method] = await db.insert(paymentMethodsTable).values({
-    type, name, accountNumber, accountName, instructions,
+    type, name,
+    iban: iban || null,
+    accountNumber: accountNumber || "",
+    accountName, instructions,
     logoEmoji: logoEmoji || "💳",
     isActive: isActive !== undefined ? Boolean(isActive) : true,
   }).returning();
@@ -224,10 +227,11 @@ router.put("/admin/payment-methods/:id", adminOnly, async (req, res): Promise<vo
   const id = parseInt(req.params.id as string, 10);
   if (isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
 
-  const { type, name, accountNumber, accountName, instructions, logoEmoji, isActive } = req.body ?? {};
+  const { type, name, iban, accountNumber, accountName, instructions, logoEmoji, isActive } = req.body ?? {};
   const updates: Record<string, any> = {};
   if (type !== undefined) updates.type = type;
   if (name !== undefined) updates.name = name;
+  if (iban !== undefined) updates.iban = iban || null;
   if (accountNumber !== undefined) updates.accountNumber = accountNumber;
   if (accountName !== undefined) updates.accountName = accountName;
   if (instructions !== undefined) updates.instructions = instructions;

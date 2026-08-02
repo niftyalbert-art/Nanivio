@@ -167,6 +167,7 @@ export default function Withdraw() {
   const [mobileNetwork, setMobileNetwork] = useState('');
   // Bank
   const [bankName, setBankName] = useState('');
+  const [iban, setIban] = useState('');
   const [accountNumber, setAccountNumber] = useState('');
   const [accountName, setAccountName] = useState('');
   // PIN
@@ -178,7 +179,7 @@ export default function Withdraw() {
   const hasMobileMoney = COUNTRIES_WITH_MOBILE_MONEY.includes(recipientCountry);
 
   const canSubmit = walletId && amount && recipientCountry &&
-    (withdrawalType === 'mobile_money' ? (mobileNumber && mobileNetwork) : (bankName && accountNumber && accountName));
+    (withdrawalType === 'mobile_money' ? (mobileNumber && mobileNetwork) : (bankName && (iban || accountNumber) && accountName));
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -198,7 +199,8 @@ export default function Withdraw() {
           mobileNumber: withdrawalType === 'mobile_money' ? mobileNumber : undefined,
           mobileNetwork: withdrawalType === 'mobile_money' ? mobileNetwork : undefined,
           bankName: withdrawalType === 'bank' ? bankName : undefined,
-          accountNumber: withdrawalType === 'bank' ? accountNumber : undefined,
+          iban: withdrawalType === 'bank' && iban ? iban : undefined,
+          accountNumber: withdrawalType === 'bank' && accountNumber ? accountNumber : undefined,
           accountName: withdrawalType === 'bank' ? accountName : undefined,
           pin,
         },
@@ -255,7 +257,7 @@ export default function Withdraw() {
                 setStep('form');
                 setWalletId(''); setAmount(''); setRecipientCountry('');
                 setMobileNumber(''); setMobileNetwork('');
-                setBankName(''); setAccountNumber(''); setAccountName('');
+                setBankName(''); setIban(''); setAccountNumber(''); setAccountName('');
               }}>
                 New Withdrawal
               </Button>
@@ -415,9 +417,14 @@ export default function Withdraw() {
                     <Input placeholder="e.g. Access Bank" value={bankName} onChange={(e) => setBankName(e.target.value)} required />
                   </div>
                   <div className="space-y-1.5">
-                    <Label className="text-sm">Account Number / IBAN</Label>
-                    <Input placeholder="Account number" value={accountNumber} onChange={(e) => setAccountNumber(e.target.value)} required className="font-mono" />
+                    <Label className="text-sm">IBAN <span className="text-muted-foreground font-normal text-xs">(international)</span></Label>
+                    <Input placeholder="e.g. GB29 NWBK 6016 1331 9268 19" value={iban} onChange={(e) => setIban(e.target.value)} className="font-mono" />
                   </div>
+                  <div className="space-y-1.5">
+                    <Label className="text-sm">Account Number <span className="text-muted-foreground font-normal text-xs">(local)</span></Label>
+                    <Input placeholder="e.g. 1234567890" value={accountNumber} onChange={(e) => setAccountNumber(e.target.value)} className="font-mono" />
+                  </div>
+                  <p className="text-[11px] text-muted-foreground -mt-1">Fill in IBAN, Account Number, or both.</p>
                   <div className="space-y-1.5">
                     <Label className="text-sm">Account Name</Label>
                     <Input placeholder="Name on account" value={accountName} onChange={(e) => setAccountName(e.target.value)} required />
@@ -442,7 +449,12 @@ export default function Withdraw() {
                 { label: 'Method', value: withdrawalType === 'mobile_money' ? 'Mobile Money' : 'Bank Transfer' },
                 ...(withdrawalType === 'mobile_money'
                   ? [{ label: 'Network', value: mobileNetwork }, { label: 'Mobile', value: mobileNumber, mono: true }]
-                  : [{ label: 'Bank', value: bankName }, { label: 'Account', value: accountNumber, mono: true }, { label: 'Name', value: accountName }]
+                  : [
+                      { label: 'Bank', value: bankName },
+                      ...(iban ? [{ label: 'IBAN', value: iban, mono: true }] : []),
+                      ...(accountNumber ? [{ label: 'Acct No.', value: accountNumber, mono: true }] : []),
+                      { label: 'Acct Name', value: accountName },
+                    ]
                 ),
               ].map(({ label, value, mono }) => (
                 <div key={label} className="flex justify-between items-start gap-4 py-2 border-b border-border last:border-0">

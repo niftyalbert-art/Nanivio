@@ -289,10 +289,18 @@ function WithdrawalsPanel() {
                       <span className="text-muted-foreground">Account Holder</span>
                       <span className="font-semibold">{w.accountName || '—'}</span>
                     </div>
-                    <div className="flex justify-between gap-2 text-xs">
-                      <span className="text-muted-foreground">IBAN / Acct No.</span>
-                      <span className="font-mono font-bold">{w.accountNumber || '—'}</span>
-                    </div>
+                    {w.iban && (
+                      <div className="flex justify-between gap-2 text-xs">
+                        <span className="text-muted-foreground">IBAN</span>
+                        <span className="font-mono font-bold">{w.iban}</span>
+                      </div>
+                    )}
+                    {w.accountNumber && (
+                      <div className="flex justify-between gap-2 text-xs">
+                        <span className="text-muted-foreground">Account Number</span>
+                        <span className="font-mono font-bold">{w.accountNumber}</span>
+                      </div>
+                    )}
                   </div>
                 )}
               </div>
@@ -997,7 +1005,7 @@ function PaymentMethodsPanel() {
   const { toast } = useToast();
   const qc = useQueryClient();
   const { data: methods, isLoading } = useQuery({ queryKey: ['admin-payment-methods'], queryFn: () => apiFetch('/payment-methods/all') });
-  const [form, setForm] = useState({ type: '', name: '', accountNumber: '', accountName: '', instructions: '', logoEmoji: '💳', isActive: true });
+  const [form, setForm] = useState({ type: '', name: '', iban: '', accountNumber: '', accountName: '', instructions: '', logoEmoji: '💳', isActive: true });
   const [editId, setEditId] = useState<number | null>(null);
   const [showForm, setShowForm] = useState(false);
 
@@ -1005,7 +1013,7 @@ function PaymentMethodsPanel() {
     mutationFn: () => editId
       ? apiFetch(`/admin/payment-methods/${editId}`, { method: 'PUT', body: JSON.stringify(form) })
       : apiFetch('/admin/payment-methods', { method: 'POST', body: JSON.stringify(form) }),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['admin-payment-methods'] }); toast({ title: editId ? 'Updated ✓' : 'Created ✓' }); setShowForm(false); setEditId(null); setForm({ type: '', name: '', accountNumber: '', accountName: '', instructions: '', logoEmoji: '💳', isActive: true }); },
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['admin-payment-methods'] }); toast({ title: editId ? 'Updated ✓' : 'Created ✓' }); setShowForm(false); setEditId(null); setForm({ type: '', name: '', iban: '', accountNumber: '', accountName: '', instructions: '', logoEmoji: '💳', isActive: true }); },
     onError: (e: any) => toast({ title: 'Error', description: e.message, variant: 'destructive' }),
   });
   const toggle = useMutation({
@@ -1042,7 +1050,14 @@ function PaymentMethodsPanel() {
 
             {[
               { label: form.type === 'crypto' ? 'Network / Coin Name (e.g. Bitcoin, USDT-TRC20)' : 'Display Name (e.g. bank name)', key: 'name' },
-              { label: form.type === 'crypto' ? 'Wallet Address' : form.type === 'bank_transfer' ? 'IBAN / Account Number' : 'Account / Number', key: 'accountNumber' },
+              ...(form.type === 'bank_transfer' ? [
+                { label: 'IBAN (international — optional)', key: 'iban' },
+                { label: 'Account Number (local — optional)', key: 'accountNumber' },
+              ] : form.type === 'crypto' ? [
+                { label: 'Wallet Address', key: 'accountNumber' },
+              ] : [
+                { label: 'Account / Number', key: 'accountNumber' },
+              ]),
               ...(form.type !== 'crypto' ? [{ label: form.type === 'bank_transfer' ? 'Account Holder Name' : 'Account Name', key: 'accountName' }] : []),
               { label: 'Emoji', key: 'logoEmoji' },
             ].map(({ label, key }) => (
@@ -1056,7 +1071,7 @@ function PaymentMethodsPanel() {
               <Textarea value={form.instructions} onChange={e => setForm(f => ({ ...f, instructions: e.target.value }))} rows={2} className="text-sm" />
             </div>
             <div className="flex gap-2">
-              <Button size="sm" className="flex-1" onClick={() => save.mutate()} disabled={save.isPending || !form.type || !form.name || !form.accountNumber}>Save</Button>
+              <Button size="sm" className="flex-1" onClick={() => save.mutate()} disabled={save.isPending || !form.type || !form.name}>Save</Button>
               <Button size="sm" variant="outline" className="flex-1" onClick={() => { setShowForm(false); setEditId(null); }}>Cancel</Button>
             </div>
           </CardContent>
@@ -1081,7 +1096,7 @@ function PaymentMethodsPanel() {
               </p>
             </div>
             <div className="flex items-center gap-1 shrink-0">
-              <Button size="sm" variant="ghost" className="h-7 w-7 p-0" onClick={() => { setForm({ type: m.type, name: m.name, accountNumber: m.accountNumber, accountName: m.accountName, instructions: m.instructions, logoEmoji: m.logoEmoji, isActive: m.isActive }); setEditId(m.id); setShowForm(true); }}>
+              <Button size="sm" variant="ghost" className="h-7 w-7 p-0" onClick={() => { setForm({ type: m.type, name: m.name, iban: m.iban || '', accountNumber: m.accountNumber, accountName: m.accountName, instructions: m.instructions, logoEmoji: m.logoEmoji, isActive: m.isActive }); setEditId(m.id); setShowForm(true); }}>
                 <Edit2 className="w-3.5 h-3.5" />
               </Button>
               <Button size="sm" variant="ghost" className="h-7 w-7 p-0" onClick={() => toggle.mutate({ id: m.id, isActive: !m.isActive })}>

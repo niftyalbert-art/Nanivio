@@ -4,6 +4,7 @@ export const paymentMethodsTable = pgTable("payment_methods", {
   id: serial("id").primaryKey(),
   type: text("type").notNull(), // 'botim' | 'emoney' | 'bank_transfer'
   name: text("name").notNull(),
+  iban: text("iban"),
   accountNumber: text("account_number").notNull(),
   accountName: text("account_name").notNull(),
   instructions: text("instructions").notNull(),

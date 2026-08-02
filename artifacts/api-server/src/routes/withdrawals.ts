@@ -11,6 +11,7 @@ const router: IRouter = Router();
 function decryptWithdrawal(w: any) {
   return {
     ...w,
+    iban: decryptNullable(w.iban),
     accountNumber: decryptNullable(w.accountNumber),
     mobileNumber: decryptNullable(w.mobileNumber),
     amount: typeof w.amount === "string" ? parseFloat(w.amount) : w.amount,
@@ -32,7 +33,7 @@ router.post("/withdrawals", requireAuth, async (req, res): Promise<void> => {
   const {
     walletId, amount, withdrawalType, recipientCountry,
     mobileNumber, mobileNetwork,
-    bankName, accountNumber, accountName,
+    bankName, iban, accountNumber, accountName,
     note, pin,
   } = req.body ?? {};
 
@@ -65,8 +66,8 @@ router.post("/withdrawals", requireAuth, async (req, res): Promise<void> => {
     res.status(400).json({ error: "mobileNumber is required for mobile_money withdrawals" });
     return;
   }
-  if (withdrawalType === "bank" && (!bankName || !accountNumber || !accountName)) {
-    res.status(400).json({ error: "bankName, accountNumber, accountName are required for bank withdrawals" });
+  if (withdrawalType === "bank" && (!bankName || (!iban && !accountNumber) || !accountName)) {
+    res.status(400).json({ error: "bankName, accountName, and at least one of iban or accountNumber are required for bank withdrawals" });
     return;
   }
 
@@ -86,8 +87,9 @@ router.post("/withdrawals", requireAuth, async (req, res): Promise<void> => {
     .where(eq(walletsTable.id, Number(walletId)));
 
   // Encrypt sensitive financial identifiers at rest
+  const encryptedIban          = encryptNullable(iban          ? String(iban)          : null);
   const encryptedAccountNumber = encryptNullable(accountNumber ? String(accountNumber) : null);
-  const encryptedMobileNumber = encryptNullable(mobileNumber ? String(mobileNumber) : null);
+  const encryptedMobileNumber  = encryptNullable(mobileNumber  ? String(mobileNumber)  : null);
 
   const [withdrawal] = await db
     .insert(withdrawalsTable)
@@ -101,6 +103,7 @@ router.post("/withdrawals", requireAuth, async (req, res): Promise<void> => {
       mobileNumber: encryptedMobileNumber,
       mobileNetwork: mobileNetwork ? String(mobileNetwork) : null,
       bankName: bankName ? String(bankName) : null,
+      iban: encryptedIban,
       accountNumber: encryptedAccountNumber,
       accountName: accountName ? String(accountName) : null,
       status: "pending",
