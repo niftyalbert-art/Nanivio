@@ -234,26 +234,29 @@ async function creditUserWallet(
   txHash: string
 ): Promise<boolean> {
   try {
-    // Find the wallet to credit:
-    // 1. Use the wallet the user selected when creating the deposit (if still valid)
-    // 2. Fall back to the user's USD wallet
-    let walletId = preferredWalletId ?? null;
-
-    if (walletId) {
-      const [wallet] = await db.select().from(walletsTable)
-        .where(and(eq(walletsTable.id, walletId), eq(walletsTable.userId, userId)));
-      if (!wallet) walletId = null; // wallet doesn't exist or doesn't belong to user
-    }
+    // Enforce USD-only: resolve the wallet and hard-fail if it is not USD.
+    // USDT is credited 1:1 as USD — crediting any other currency wallet is a
+    // data integrity error, so we never silently fall back to a non-USD wallet.
+    const walletId = preferredWalletId ?? null;
 
     if (!walletId) {
-      // Find USD wallet as fallback
-      const [usdWallet] = await db.select().from(walletsTable)
-        .where(and(eq(walletsTable.userId, userId), eq(walletsTable.currencyCode, "USD")));
-      walletId = usdWallet?.id ?? null;
+      logger.error({ userId, depositId }, "No walletId on deposit record — cannot credit");
+      return false;
     }
 
-    if (!walletId) {
-      logger.error({ userId }, "No suitable wallet to credit for crypto deposit");
+    const [wallet] = await db.select().from(walletsTable)
+      .where(and(eq(walletsTable.id, walletId), eq(walletsTable.userId, userId)));
+
+    if (!wallet) {
+      logger.error({ userId, walletId, depositId }, "Target wallet not found — cannot credit");
+      return false;
+    }
+
+    if (wallet.currencyCode !== "USD") {
+      logger.error(
+        { userId, walletId, currencyCode: wallet.currencyCode, depositId },
+        "Target wallet is not USD — refusing to credit USDT amount into non-USD wallet"
+      );
       return false;
     }
 

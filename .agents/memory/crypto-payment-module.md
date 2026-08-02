@@ -54,6 +54,8 @@ Crypto is added as a third card on the `step === 'type'` screen in `send.tsx`. I
 
 **Admin panel:** `CryptoPanel` in `admin.tsx` has two internal sub-tabs — "⚡ Auto-Deposits" (CryptoDepositsView, read-only) and "📤 Outgoing Payments" (CryptoPaymentsView, with Complete/Fail actions). Deposits tab is the default.
 
-**Amount matching:** FIFO (oldest pending first), 1% tolerance. Credits the wallet the user selected at deposit creation; falls back to USD wallet if not found.
+**Amount matching:** FIFO (oldest pending first), 1% tolerance. Credits the wallet the user selected at deposit creation.
+
+**USD-only enforcement (three-layer):** (1) Frontend filters wallet picker to `currencyCode === 'USD'` only. (2) Backend rejects `POST /crypto/deposits` if selected wallet is not USD. (3) Monitor hard-fails `creditUserWallet` if wallet currency is not USD — no silent fallback to any non-USD wallet. USDT is always credited 1:1 as USD.
 
 **Duplicate prevention:** `transaction_hash` has a UNIQUE partial index on `crypto_deposits` — guaranteed at DB level.

@@ -241,7 +241,7 @@ export default function CryptoDepositPage() {
     );
   }
 
-  const walletList = (wallets as any[]) ?? [];
+  const walletList = ((wallets as any[]) ?? []).filter((w: any) => w.currencyCode === 'USD');
 
   return (
     <div className="p-4 md:p-8 max-w-2xl mx-auto space-y-5">
@@ -276,8 +276,12 @@ export default function CryptoDepositPage() {
       <Card>
         <CardContent className="p-4 space-y-3">
           <Label className="text-sm font-semibold">Step 1 — Which wallet should be credited?</Label>
+          <div className="rounded-lg bg-amber-500/8 border border-amber-500/20 px-3 py-2 flex items-start gap-2">
+            <span className="text-amber-500 text-xs mt-0.5">⚠</span>
+            <p className="text-xs text-muted-foreground">USDT is credited 1:1 as USD. Only your <span className="font-semibold text-foreground">USD wallet</span> is eligible.</p>
+          </div>
           <div className="space-y-2">
-            {walletList.length === 0 && <p className="text-xs text-muted-foreground">Loading wallets…</p>}
+            {walletList.length === 0 && <p className="text-xs text-muted-foreground">No USD wallet found. Please create a USD wallet first.</p>}
             {walletList.map((w: any) => (
               <button
                 key={w.id}

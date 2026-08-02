@@ -51,6 +51,13 @@ router.post("/crypto/deposits", requireAuth, async (req, res): Promise<void> => 
     .where(and(eq(walletsTable.id, parseInt(walletId, 10)), eq(walletsTable.userId, userId)));
   if (!wallet) { res.status(400).json({ error: "Wallet not found" }); return; }
 
+  // Enforce USD-only: USDT is credited 1:1 as USD — non-USD wallets are rejected
+  if (wallet.currencyCode !== "USD") {
+    res.status(400).json({
+      error: "Crypto deposits can only be credited to a USD wallet. Please select your USD wallet.",
+    }); return;
+  }
+
   // Get the business wallet address
   const depositAddress =
     process.env["NANIVIO_CRYPTO_WALLET_ADDRESS"] ??
