@@ -276,10 +276,25 @@ function WithdrawalsPanel() {
               <div className="bg-muted/50 rounded-lg p-2"><p className="text-muted-foreground">Amount</p><p className="font-bold font-mono">{parseFloat(w.amount).toLocaleString()} {w.currencyCode}</p></div>
               <div className="bg-muted/50 rounded-lg p-2"><p className="text-muted-foreground">Country</p><p className="font-semibold">{w.recipientCountry}</p></div>
               <div className="bg-muted/50 rounded-lg p-2 col-span-2">
-                <p className="text-muted-foreground">{w.withdrawalType === 'mobile_money' ? 'Mobile Money' : 'Bank'}</p>
-                {w.withdrawalType === 'mobile_money'
-                  ? <p className="font-semibold">{w.mobileNetwork}: <span className="font-mono">{w.mobileNumber}</span></p>
-                  : <p className="font-semibold">{w.bankName} / <span className="font-mono">{w.accountNumber}</span> / {w.accountName}</p>}
+                <p className="text-muted-foreground mb-1">{w.withdrawalType === 'mobile_money' ? '📱 Mobile Money' : '🏦 Bank Transfer'}</p>
+                {w.withdrawalType === 'mobile_money' ? (
+                  <p className="font-semibold">{w.mobileNetwork}: <span className="font-mono">{w.mobileNumber}</span></p>
+                ) : (
+                  <div className="space-y-1 mt-1">
+                    <div className="flex justify-between gap-2 text-xs">
+                      <span className="text-muted-foreground">Bank Name</span>
+                      <span className="font-semibold">{w.bankName || '—'}</span>
+                    </div>
+                    <div className="flex justify-between gap-2 text-xs">
+                      <span className="text-muted-foreground">Account Holder</span>
+                      <span className="font-semibold">{w.accountName || '—'}</span>
+                    </div>
+                    <div className="flex justify-between gap-2 text-xs">
+                      <span className="text-muted-foreground">IBAN / Acct No.</span>
+                      <span className="font-mono font-bold">{w.accountNumber || '—'}</span>
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
             <div className="space-y-1.5">
@@ -1008,11 +1023,27 @@ function PaymentMethodsPanel() {
         <Card className="border-primary/30">
           <CardContent className="p-4 space-y-3">
             <p className="font-bold text-sm">{editId ? 'Edit Method' : 'New Method'}</p>
+
+            {/* Type dropdown */}
+            <div className="space-y-1">
+              <Label className="text-xs">Type</Label>
+              <select
+                className="w-full text-sm border border-border rounded-lg px-2.5 py-2 bg-background"
+                value={form.type}
+                onChange={e => setForm(f => ({ ...f, type: e.target.value }))}
+              >
+                <option value="">— Select type —</option>
+                <option value="bank_transfer">Bank Transfer (IBAN / Account Number)</option>
+                <option value="botim">Botim (mobile pay)</option>
+                <option value="emoney">eMoney (mobile pay)</option>
+                <option value="crypto">Crypto (wallet address)</option>
+              </select>
+            </div>
+
             {[
-              { label: 'Type (botim/emoney/bank_transfer)', key: 'type' },
-              { label: 'Display Name', key: 'name' },
-              { label: 'Account / Number', key: 'accountNumber' },
-              { label: 'Account Name', key: 'accountName' },
+              { label: form.type === 'crypto' ? 'Network / Coin Name (e.g. Bitcoin, USDT-TRC20)' : 'Display Name (e.g. bank name)', key: 'name' },
+              { label: form.type === 'crypto' ? 'Wallet Address' : form.type === 'bank_transfer' ? 'IBAN / Account Number' : 'Account / Number', key: 'accountNumber' },
+              ...(form.type !== 'crypto' ? [{ label: form.type === 'bank_transfer' ? 'Account Holder Name' : 'Account Name', key: 'accountName' }] : []),
               { label: 'Emoji', key: 'logoEmoji' },
             ].map(({ label, key }) => (
               <div key={key} className="space-y-1">
@@ -1021,23 +1052,33 @@ function PaymentMethodsPanel() {
               </div>
             ))}
             <div className="space-y-1">
-              <Label className="text-xs">Instructions</Label>
+              <Label className="text-xs">Instructions (shown to user)</Label>
               <Textarea value={form.instructions} onChange={e => setForm(f => ({ ...f, instructions: e.target.value }))} rows={2} className="text-sm" />
             </div>
             <div className="flex gap-2">
-              <Button size="sm" className="flex-1" onClick={() => save.mutate()} disabled={save.isPending}>Save</Button>
+              <Button size="sm" className="flex-1" onClick={() => save.mutate()} disabled={save.isPending || !form.type || !form.name || !form.accountNumber}>Save</Button>
               <Button size="sm" variant="outline" className="flex-1" onClick={() => { setShowForm(false); setEditId(null); }}>Cancel</Button>
             </div>
           </CardContent>
         </Card>
       )}
-      {isLoading ? <Skeleton className="h-24" /> : (methods as any[] | undefined)?.map((m: any) => (
+      {isLoading ? <Skeleton className="h-24" /> : (methods as any[] | undefined)?.map((m: any) => {
+        const typeLabel: Record<string, string> = { bank_transfer: 'Bank', botim: 'Botim', emoney: 'eMoney', crypto: '₿ Crypto' };
+        const typeBg: Record<string, string> = { bank_transfer: 'bg-blue-500/10 text-blue-400', botim: 'bg-purple-500/10 text-purple-400', emoney: 'bg-green-500/10 text-green-400', crypto: 'bg-amber-500/10 text-amber-400' };
+        return (
         <Card key={m.id} className={m.isActive ? '' : 'opacity-50'}>
           <CardContent className="p-3 flex items-center gap-3">
             <span className="text-xl">{m.logoEmoji}</span>
             <div className="flex-1 min-w-0">
-              <p className="font-bold text-sm">{m.name}</p>
-              <p className="text-xs font-mono text-muted-foreground truncate">{m.accountNumber}</p>
+              <div className="flex items-center gap-1.5">
+                <p className="font-bold text-sm truncate">{m.name}</p>
+                <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium shrink-0 ${typeBg[m.type] ?? 'bg-muted text-muted-foreground'}`}>
+                  {typeLabel[m.type] ?? m.type}
+                </span>
+              </div>
+              <p className="text-xs font-mono text-muted-foreground truncate">
+                {m.type === 'crypto' ? '📍 ' : ''}{m.accountNumber}
+              </p>
             </div>
             <div className="flex items-center gap-1 shrink-0">
               <Button size="sm" variant="ghost" className="h-7 w-7 p-0" onClick={() => { setForm({ type: m.type, name: m.name, accountNumber: m.accountNumber, accountName: m.accountName, instructions: m.instructions, logoEmoji: m.logoEmoji, isActive: m.isActive }); setEditId(m.id); setShowForm(true); }}>
@@ -1049,7 +1090,137 @@ function PaymentMethodsPanel() {
             </div>
           </CardContent>
         </Card>
-      ))}
+        );
+      })}
+    </div>
+  );
+}
+
+// ── Chat Panel — admin view of all Stream Chat conversations ────────────────
+function ChatPanel() {
+  const [selectedChannel, setSelectedChannel] = useState<string | null>(null);
+  const [selectedMembers, setSelectedMembers] = useState<{ userId: string; name: string }[]>([]);
+  const messagesEndRef = useRef<HTMLDivElement | null>(null);
+
+  const { data: channels, isLoading: channelsLoading } = useQuery<any[]>({
+    queryKey: ['admin-chat-channels'],
+    queryFn: () => apiFetch('/admin/chat/channels'),
+    staleTime: 30_000,
+    refetchInterval: 30_000,
+  });
+
+  const { data: messages, isLoading: msgsLoading } = useQuery<any[]>({
+    queryKey: ['admin-chat-messages', selectedChannel],
+    queryFn: () => apiFetch(`/admin/chat/channels/${selectedChannel}/messages`),
+    enabled: !!selectedChannel,
+    staleTime: 15_000,
+    refetchInterval: 15_000,
+  });
+
+  useEffect(() => {
+    if (messages) messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [messages]);
+
+  if (selectedChannel) {
+    const title = selectedMembers.map(m => m.name || m.userId).join(' & ');
+    return (
+      <div className="space-y-3">
+        <div className="flex items-center gap-2">
+          <Button size="sm" variant="ghost" className="h-8 px-2" onClick={() => { setSelectedChannel(null); setSelectedMembers([]); }}>
+            <ArrowLeft className="w-3.5 h-3.5 mr-1" /> Back
+          </Button>
+          <div>
+            <p className="font-bold text-sm">{title}</p>
+            <p className="text-[10px] text-muted-foreground font-mono">{selectedChannel}</p>
+          </div>
+        </div>
+        <Card>
+          <CardContent className="p-3 space-y-2 max-h-[65vh] overflow-y-auto">
+            {msgsLoading ? (
+              <div className="space-y-2">{[...Array(5)].map((_, i) => <Skeleton key={i} className="h-10" />)}</div>
+            ) : !messages || messages.length === 0 ? (
+              <p className="text-sm text-muted-foreground text-center py-6">No messages yet</p>
+            ) : (
+              messages.map((m: any) => (
+                <div key={m.id} className="space-y-0.5">
+                  <div className="flex items-center gap-1.5">
+                    <p className="text-[10px] font-bold text-primary">{m.userName}</p>
+                    <p className="text-[10px] text-muted-foreground">{formatDistanceToNow(new Date(m.createdAt))} ago</p>
+                  </div>
+                  {m.text && (
+                    <div className="bg-muted/50 rounded-lg px-3 py-2 text-sm max-w-full break-words">
+                      {m.text}
+                    </div>
+                  )}
+                  {m.attachments?.map((a: any, i: number) => (
+                    a.imageUrl ? (
+                      <img key={i} src={a.imageUrl} alt={a.title ?? 'attachment'} className="rounded-lg max-h-40 object-contain bg-muted/30 mt-1" />
+                    ) : (
+                      <div key={i} className="bg-muted/30 rounded-lg px-3 py-2 text-xs text-muted-foreground">
+                        📎 {a.title ?? a.type ?? 'Attachment'}
+                      </div>
+                    )
+                  ))}
+                </div>
+              ))
+            )}
+            <div ref={messagesEndRef} />
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-3">
+      <p className="text-xs text-muted-foreground">All active chat conversations — read-only view, auto-refreshes every 30 s</p>
+      {channelsLoading ? (
+        <div className="space-y-2">{[...Array(4)].map((_, i) => <Skeleton key={i} className="h-16" />)}</div>
+      ) : !channels || channels.length === 0 ? (
+        <Card><CardContent className="py-10 text-center">
+          <MessageSquare className="w-8 h-8 mx-auto mb-2 text-muted-foreground opacity-30" />
+          <p className="text-sm text-muted-foreground">No conversations yet</p>
+        </CardContent></Card>
+      ) : (
+        <div className="space-y-2">
+          {channels.map((ch: any) => {
+            const names = (ch.members ?? []).map((m: any) => m.name || m.userId).join(' & ');
+            return (
+              <button
+                key={ch.id}
+                type="button"
+                className="w-full text-left"
+                onClick={() => { setSelectedChannel(ch.id); setSelectedMembers(ch.members ?? []); }}
+              >
+                <Card className="hover:border-primary/50 transition-colors">
+                  <CardContent className="p-3 flex items-center gap-3">
+                    <div className="w-9 h-9 rounded-full bg-primary/10 flex items-center justify-center text-base shrink-0">
+                      💬
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="font-semibold text-sm truncate">{names || ch.id}</p>
+                      {ch.lastMessage ? (
+                        <p className="text-xs text-muted-foreground truncate">
+                          <span className="font-medium text-foreground/70">{ch.lastMessage.userName}: </span>
+                          {ch.lastMessage.text || '📎 Attachment'}
+                        </p>
+                      ) : (
+                        <p className="text-xs text-muted-foreground">No messages</p>
+                      )}
+                    </div>
+                    <div className="text-right shrink-0">
+                      {ch.lastMessageAt && (
+                        <p className="text-[10px] text-muted-foreground">{formatDistanceToNow(new Date(ch.lastMessageAt))} ago</p>
+                      )}
+                      <p className="text-[10px] text-muted-foreground">{ch.messageCount ?? 0} msg{ch.messageCount !== 1 ? 's' : ''}</p>
+                    </div>
+                  </CardContent>
+                </Card>
+              </button>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }
@@ -1823,6 +1994,7 @@ export default function Admin() {
           <TabsTrigger value="tickets" className="text-[11px] shrink-0 flex-1 min-w-[44px]">
             Tix{openTickets > 0 && <span className="ml-1 bg-red-500 text-white text-[9px] rounded-full w-3.5 h-3.5 inline-flex items-center justify-center font-bold">{openTickets}</span>}
           </TabsTrigger>
+          <TabsTrigger value="chat"    className="text-[11px] shrink-0 flex-1 min-w-[40px]">Chat</TabsTrigger>
           <TabsTrigger value="methods" className="text-[11px] shrink-0 flex-1 min-w-[40px]">Pay</TabsTrigger>
           <TabsTrigger value="rates" className="text-[11px] shrink-0 flex-1 min-w-[40px]">Rates</TabsTrigger>
           <TabsTrigger value="security" className="text-[11px] shrink-0 flex-1 min-w-[40px]"><Shield className="w-3 h-3" /></TabsTrigger>
@@ -1834,6 +2006,7 @@ export default function Admin() {
         <TabsContent value="kyc"         className="mt-4"><KycPanel /></TabsContent>
         <TabsContent value="users"       className="mt-4"><UsersPanel /></TabsContent>
         <TabsContent value="tickets"     className="mt-4"><TicketsPanel /></TabsContent>
+        <TabsContent value="chat"        className="mt-4"><ChatPanel /></TabsContent>
         <TabsContent value="methods"     className="mt-4"><PaymentMethodsPanel /></TabsContent>
         <TabsContent value="rates"       className="mt-4"><RatesPanel /></TabsContent>
         <TabsContent value="security"    className="mt-4"><SecurityPanel /></TabsContent>

@@ -561,4 +561,72 @@ router.post("/admin/users/:userId/clear-lock", adminOnly, async (req, res): Prom
   res.json({ ok: true, userId, message: "Send lock cleared" });
 });
 
+// ── Chat admin — list channels and read messages via Stream Chat server SDK ──
+
+// GET /admin/chat/channels — all channels ordered by most recent message
+router.get("/admin/chat/channels", adminOnly, async (_req, res): Promise<void> => {
+  const key = process.env.STREAM_API_KEY;
+  const secret = process.env.STREAM_API_SECRET;
+  if (!key || !secret) { res.json([]); return; }
+  try {
+    const { StreamChat } = await import("stream-chat");
+    const client = StreamChat.getInstance(key, secret);
+    const channels = await client.queryChannels(
+      {},
+      { last_message_at: -1 },
+      { limit: 100, watch: false }
+    );
+    res.json(channels.map((ch: any) => {
+      const members = Object.values(ch.state?.members ?? {}) as any[];
+      const msgs: any[] = ch.state?.messages ?? [];
+      const last = msgs[msgs.length - 1];
+      return {
+        id: ch.id,
+        cid: ch.cid,
+        memberCount: members.length,
+        members: members.map((m) => ({
+          userId: m.user_id,
+          name: m.user?.name ?? m.user_id,
+        })),
+        lastMessageAt: ch.data?.last_message_at ?? null,
+        lastMessage: last
+          ? { text: last.text ?? '', userName: last.user?.name ?? last.user?.id, createdAt: last.created_at }
+          : null,
+        messageCount: msgs.length,
+      };
+    }));
+  } catch (err: any) {
+    res.status(500).json({ error: err?.message ?? "Stream Chat error" });
+  }
+});
+
+// GET /admin/chat/channels/:channelId/messages — all messages in a channel
+router.get("/admin/chat/channels/:channelId/messages", adminOnly, async (req, res): Promise<void> => {
+  const key = process.env.STREAM_API_KEY;
+  const secret = process.env.STREAM_API_SECRET;
+  if (!key || !secret) { res.json([]); return; }
+  try {
+    const { StreamChat } = await import("stream-chat");
+    const client = StreamChat.getInstance(key, secret);
+    const channel = client.channel("messaging", req.params.channelId as string);
+    await channel.watch();
+    const msgs: any[] = channel.state?.messages ?? [];
+    res.json(msgs.map((m) => ({
+      id: m.id,
+      text: m.text ?? "",
+      userId: m.user?.id,
+      userName: m.user?.name ?? m.user?.id ?? "Unknown",
+      createdAt: m.created_at,
+      attachments: (m.attachments ?? []).map((a: any) => ({
+        type: a.type,
+        title: a.title,
+        imageUrl: a.image_url ?? a.thumb_url,
+        assetUrl: a.asset_url,
+      })),
+    })));
+  } catch (err: any) {
+    res.status(500).json({ error: err?.message ?? "Stream Chat error" });
+  }
+});
+
 export default router;
