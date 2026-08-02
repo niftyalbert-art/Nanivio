@@ -3,6 +3,40 @@ import { logger } from "./lib/logger";
 import { db, usersTable, pool } from "@workspace/db";
 import { isNotNull } from "drizzle-orm";
 import { StreamChat } from "stream-chat";
+import { startTronMonitor } from "./services/tron-monitor";
+
+/** Idempotent migration: crypto_deposits table (auto-detected USDT TRC20). */
+async function runCryptoDepositsMigration() {
+  try {
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS crypto_deposits (
+        id                     SERIAL PRIMARY KEY,
+        user_id                INTEGER NOT NULL,
+        amount                 NUMERIC(18,6) NOT NULL,
+        received_amount        NUMERIC(18,6),
+        currency               TEXT NOT NULL DEFAULT 'USDT',
+        network                TEXT NOT NULL DEFAULT 'TRC20',
+        deposit_address        TEXT NOT NULL,
+        transaction_hash       TEXT,
+        from_address           TEXT,
+        status                 TEXT NOT NULL DEFAULT 'waiting',
+        confirmations          INTEGER NOT NULL DEFAULT 0,
+        required_confirmations INTEGER NOT NULL DEFAULT 20,
+        wallet_id              INTEGER,
+        note                   TEXT,
+        created_at             TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at             TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        confirmed_at           TIMESTAMPTZ,
+        expires_at             TIMESTAMPTZ
+      );
+      CREATE UNIQUE INDEX IF NOT EXISTS crypto_deposits_tx_hash_unique
+        ON crypto_deposits(transaction_hash) WHERE transaction_hash IS NOT NULL;
+    `);
+    logger.info("Crypto deposits schema migration complete");
+  } catch (err) {
+    logger.error({ err }, "Crypto deposits migration FAILED");
+  }
+}
 
 /** Idempotent migration: crypto_payments table. */
 async function runCryptoSchemaMigration() {
@@ -154,6 +188,7 @@ app.listen(port, () => {
   // Fire-and-forget async startup tasks
   (async () => {
     // Run idempotent schema migrations first — safe on every boot (IF NOT EXISTS)
+    await runCryptoDepositsMigration();
     await runCryptoSchemaMigration();
     await runKycSchemaMigration();
     await runEmailVerificationMigration();
@@ -162,5 +197,7 @@ app.listen(port, () => {
     clearLegacyPlainPins();
     // Sync all existing DB users into Stream so they're searchable
     syncUsersToStream();
+    // Start TRON blockchain monitor for automatic USDT TRC20 deposit detection
+    startTronMonitor();
   })();
 });

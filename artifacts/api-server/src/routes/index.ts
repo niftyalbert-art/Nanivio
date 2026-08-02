@@ -16,6 +16,7 @@ import streamRouter from "./stream";
 import contactsRouter from "./contacts";
 import kycRouter from "./kyc";
 import cryptoRouter from "./crypto";
+import cryptoDepositsRouter from "./crypto-deposits";
 
 const router: IRouter = Router();
 
@@ -36,5 +37,6 @@ router.use(streamRouter);
 router.use(contactsRouter);
 router.use(kycRouter);
 router.use(cryptoRouter);
+router.use(cryptoDepositsRouter);
 
 export default router;

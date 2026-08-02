@@ -1,0 +1,170 @@
+Upgrade the Nanivio crypto payment system from manual verification to automatic blockchain verification.
+
+The current crypto module already supports:
+- Crypto payment creation
+- Wallet address display
+- QR codes
+- Transaction records
+- Payment statuses
+
+Now implement automatic USDT TRC20 deposit detection.
+
+IMPORTANT:
+Do not remove existing crypto payment functionality.
+Add automatic deposit verification.
+
+--------------------------------------
+
+GOAL:
+
+When a user sends USDT TRC20 to the Nanivio business wallet address, Nanivio should automatically detect the transaction and credit the user's Nanivio balance.
+
+--------------------------------------
+
+NEW FLOW:
+
+User:
+
+Wallet
+>
+Add Funds
+>
+Crypto
+>
+USDT TRC20
+
+System creates a deposit request:
+
+- user_id
+- expected amount
+- receiving wallet address
+- network
+- deposit status
+
+User sends USDT.
+
+Blockchain monitoring service detects incoming transaction.
+
+System verifies:
+
+1. Transaction is confirmed on TRON blockchain.
+2. Destination address matches Nanivio business wallet address.
+3. Token is USDT TRC20.
+4. Amount matches the deposit request.
+5. Transaction has required confirmations.
+6. Transaction hash has not already been used.
+
+If all checks pass:
+
+Update:
+
+crypto_deposit status:
+completed
+
+Update:
+
+user wallet balance:
++ deposited amount
+
+Create transaction history record.
+
+Send user notification:
+
+"Your crypto deposit has been completed."
+
+--------------------------------------
+
+BLOCKCHAIN INTEGRATION:
+
+Use a reliable TRON blockchain data provider/API.
+
+Do not ask users to submit transaction hashes manually.
+
+The system should monitor blockchain activity automatically.
+
+Use environment variables for API keys.
+
+Example:
+
+TRON_API_KEY
+
+NANIVIO_CRYPTO_WALLET_ADDRESS
+
+--------------------------------------
+
+DATABASE:
+
+Create or update crypto_deposits:
+
+id
+
+user_id
+
+amount
+
+currency
+
+network
+
+deposit_address
+
+transaction_hash
+
+status
+
+confirmations
+
+created_at
+
+confirmed_at
+
+
+Prevent duplicate deposits using transaction_hash uniqueness.
+
+--------------------------------------
+
+SECURITY:
+
+Implement:
+
+- Transaction hash validation
+- Network validation
+- Token contract validation
+- Amount validation
+- Duplicate transaction prevention
+- API rate limiting
+- Logging
+
+Never store:
+
+- Private keys
+- Seed phrases
+- Recovery phrases
+
+--------------------------------------
+
+ADMIN:
+
+Remove the need for admin approval.
+
+Admin can only:
+
+- View deposits
+- View transaction details
+- View blockchain confirmation status
+
+Admin cannot manually create fake confirmations.
+
+--------------------------------------
+
+Before coding:
+
+Analyze the existing crypto module, wallet system, and transaction system.
+
+Explain:
+1. Which files will change
+2. Which APIs will be added
+3. Which blockchain provider will be integrated
+4. Database changes required
+
+Then implement.

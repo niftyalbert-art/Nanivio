@@ -12,12 +12,13 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Badge } from '@/components/ui/badge';
-import { CheckCircle2, Copy, Check, Upload, Clock, ArrowLeft, ChevronRight, ChevronDown } from 'lucide-react';
+import { CheckCircle2, Copy, Check, Upload, Clock, ArrowLeft, ChevronRight, ChevronDown, Bitcoin, Zap } from 'lucide-react';
 import { useQueryClient } from '@tanstack/react-query';
 import { useToast } from '@/hooks/use-toast';
-import { Link } from 'wouter';
+import { Link, useLocation } from 'wouter';
 
 export default function FundWallet() {
+  const [, setLocation] = useLocation();
   const queryClient = useQueryClient();
   const { toast } = useToast();
   const fileRef = useRef<HTMLInputElement>(null);
@@ -124,9 +125,31 @@ export default function FundWallet() {
         </div>
       </div>
 
-      {/* Step 1: Choose deposit type */}
+      {/* Crypto auto-detect — highlighted card above regular methods */}
       <div className="space-y-2">
         <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Step 1 — Choose Deposit Type</p>
+
+        {/* Crypto auto-detection card */}
+        <button
+          type="button"
+          onClick={() => setLocation('/crypto/deposit')}
+          className="w-full text-left rounded-xl border-2 border-orange-500/40 bg-orange-500/5 hover:border-orange-500/70 hover:bg-orange-500/10 transition-all p-4 flex items-center gap-4"
+        >
+          <div className="w-12 h-12 rounded-full bg-orange-500/15 flex items-center justify-center shrink-0">
+            <Bitcoin className="w-6 h-6 text-orange-500" />
+          </div>
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2 flex-wrap">
+              <p className="font-bold text-sm">Crypto Deposit (USDT TRC20)</p>
+              <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-600 border border-emerald-500/20 font-semibold flex items-center gap-1">
+                <Zap className="w-2.5 h-2.5" /> Auto-detected
+              </span>
+            </div>
+            <p className="text-xs text-muted-foreground mt-0.5">No receipt needed — confirmed automatically on the blockchain</p>
+          </div>
+          <ChevronRight className="w-4 h-4 text-muted-foreground shrink-0" />
+        </button>
+
         <div className="space-y-2">
           {methods?.map((method) => {
             const isSelected = selectedMethodId === method.id;

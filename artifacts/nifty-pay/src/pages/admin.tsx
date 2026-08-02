@@ -1738,6 +1738,150 @@ function KycPanel() {
 
 // ── Crypto Panel ─────────────────────────────────────────────────────────────
 function CryptoPanel() {
+  const [subTab, setSubTab] = useState<'deposits' | 'payments'>('deposits');
+
+  return (
+    <div className="space-y-4">
+      {/* Sub-tab switcher */}
+      <div className="flex gap-2">
+        <button
+          type="button"
+          onClick={() => setSubTab('deposits')}
+          className={`flex-1 rounded-xl border-2 py-2 text-xs font-semibold transition-colors ${subTab === 'deposits' ? 'border-primary bg-primary/5 text-primary' : 'border-border text-muted-foreground hover:border-primary/30'}`}
+        >
+          ⚡ Auto-Deposits
+        </button>
+        <button
+          type="button"
+          onClick={() => setSubTab('payments')}
+          className={`flex-1 rounded-xl border-2 py-2 text-xs font-semibold transition-colors ${subTab === 'payments' ? 'border-primary bg-primary/5 text-primary' : 'border-border text-muted-foreground hover:border-primary/30'}`}
+        >
+          📤 Outgoing Payments
+        </button>
+      </div>
+
+      {subTab === 'deposits'  && <CryptoDepositsView />}
+      {subTab === 'payments'  && <CryptoPaymentsView />}
+    </div>
+  );
+}
+
+/** Read-only view of automatic USDT TRC20 deposits — no approve/reject actions. */
+function CryptoDepositsView() {
+  const [statusFilter, setStatusFilter] = useState('all');
+
+  const { data: deposits, isLoading } = useQuery({
+    queryKey: ['admin-crypto-deposits', statusFilter],
+    queryFn: () => apiFetch(`/admin/crypto/deposits${statusFilter !== 'all' ? `?status=${statusFilter}` : ''}`),
+    refetchInterval: 15000,
+  });
+
+  const statusColors: Record<string, string> = {
+    waiting:   'bg-amber-500/10 text-amber-600 border-amber-500/30',
+    detecting: 'bg-blue-500/10 text-blue-600 border-blue-500/30',
+    completed: 'bg-emerald-500/10 text-emerald-600 border-emerald-500/30',
+    expired:   'bg-muted text-muted-foreground border-border',
+  };
+
+  if (isLoading) return <div className="space-y-3">{[...Array(3)].map((_, i) => <Skeleton key={i} className="h-20" />)}</div>;
+
+  const list = (deposits as any[] ?? []);
+
+  return (
+    <div className="space-y-3">
+      {/* Info banner */}
+      <div className="rounded-xl bg-emerald-500/5 border border-emerald-500/20 p-3 flex items-start gap-2.5">
+        <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0 mt-0.5" />
+        <div className="space-y-0.5">
+          <p className="text-xs font-semibold text-emerald-700 dark:text-emerald-400">Fully automatic — no admin action required</p>
+          <p className="text-xs text-muted-foreground">Deposits are detected on the TRON blockchain and credited automatically. This panel is read-only.</p>
+        </div>
+      </div>
+
+      {/* Filters */}
+      <div className="flex flex-wrap gap-1.5">
+        {['all', 'waiting', 'detecting', 'completed', 'expired'].map(s => (
+          <button key={s} type="button" onClick={() => setStatusFilter(s)}
+            className={`px-3 py-1 rounded-full text-xs font-semibold border transition-colors ${statusFilter === s ? 'bg-primary text-primary-foreground border-primary' : 'bg-background border-border text-muted-foreground hover:border-primary/40'}`}>
+            {s === 'all' ? 'All' : s.charAt(0).toUpperCase() + s.slice(1)}
+          </button>
+        ))}
+      </div>
+
+      {list.length === 0 && (
+        <Card><CardContent className="py-10 text-center text-sm text-muted-foreground">No crypto deposits yet</CardContent></Card>
+      )}
+
+      {list.map((d: any) => (
+        <div key={d.id} className={`rounded-xl border p-3.5 space-y-2 ${d.status === 'completed' ? 'border-emerald-500/20 bg-emerald-500/5' : d.status === 'detecting' ? 'border-blue-500/20 bg-blue-500/5' : 'border-border bg-card'}`}>
+          <div className="flex items-start justify-between gap-2 flex-wrap">
+            <div className="min-w-0">
+              <div className="flex items-center gap-2 flex-wrap">
+                <Bitcoin className="w-4 h-4 text-orange-500 shrink-0" />
+                <span className="font-bold font-mono text-sm">{Number(d.amount).toLocaleString('en-US', { minimumFractionDigits: 2 })} USDT</span>
+                <span className="text-xs text-muted-foreground">TRC20</span>
+                <span className={`text-[10px] px-2 py-0.5 rounded-full border font-semibold ${statusColors[d.status] ?? ''}`}>
+                  {d.status === 'waiting' ? '⏳ Waiting' : d.status === 'detecting' ? '🔍 Detecting' : d.status === 'completed' ? '✓ Completed' : d.status}
+                </span>
+              </div>
+              <p className="text-xs text-muted-foreground mt-0.5">#{d.id} · {d.senderName} · {new Date(d.createdAt).toLocaleString()}</p>
+              <p className="text-xs text-muted-foreground">{d.senderEmail}</p>
+            </div>
+            {d.status === 'completed' && d.receivedAmount && (
+              <div className="text-right shrink-0">
+                <p className="text-xs text-emerald-600 font-semibold">Received</p>
+                <p className="text-xs font-mono">{Number(d.receivedAmount).toLocaleString('en-US', { minimumFractionDigits: 2 })} USDT</p>
+              </div>
+            )}
+          </div>
+
+          {/* Deposit address */}
+          <div className="bg-muted/40 rounded-lg p-2 space-y-0.5">
+            <p className="text-[10px] text-muted-foreground font-semibold">DEPOSIT ADDRESS</p>
+            <div className="flex items-center gap-2">
+              <code className="text-[11px] font-mono break-all flex-1 text-muted-foreground">{d.depositAddress}</code>
+              <button type="button" onClick={() => navigator.clipboard?.writeText(d.depositAddress)} className="shrink-0 text-muted-foreground hover:text-foreground">
+                <Copy className="w-3 h-3" />
+              </button>
+            </div>
+          </div>
+
+          {/* TX hash (auto-filled by monitor) */}
+          {d.transactionHash && (
+            <div className="bg-muted/40 rounded-lg p-2 space-y-0.5">
+              <p className="text-[10px] text-muted-foreground font-semibold">BLOCKCHAIN TX HASH (auto-detected)</p>
+              <div className="flex items-center gap-2">
+                <code className="text-[11px] font-mono break-all flex-1">{d.transactionHash}</code>
+                <button type="button" onClick={() => navigator.clipboard?.writeText(d.transactionHash)} className="shrink-0 text-muted-foreground hover:text-foreground">
+                  <Copy className="w-3 h-3" />
+                </button>
+              </div>
+              <a
+                href={`https://tronscan.org/#/transaction/${d.transactionHash}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-[10px] text-primary underline underline-offset-2"
+              >
+                View on Tronscan ↗
+              </a>
+            </div>
+          )}
+
+          {d.fromAddress && (
+            <p className="text-xs text-muted-foreground"><span className="font-semibold">From: </span><code className="font-mono">{d.fromAddress}</code></p>
+          )}
+
+          {d.confirmedAt && (
+            <p className="text-xs text-muted-foreground">Confirmed: {new Date(d.confirmedAt).toLocaleString()}</p>
+          )}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/** Outgoing crypto payments — admin can still manually complete or fail these. */
+function CryptoPaymentsView() {
   const { toast } = useToast();
   const qc = useQueryClient();
   const [note, setNote] = useState<Record<number, string>>({});
@@ -1778,28 +1922,20 @@ function CryptoPanel() {
   const done    = list.filter((p: any) => !['waiting_for_payment', 'confirming'].includes(p.status));
 
   return (
-    <div className="space-y-4">
-      {/* Filters */}
-      <div className="flex flex-wrap gap-2">
+    <div className="space-y-3">
+      <div className="flex flex-wrap gap-1.5">
         {['all', 'waiting_for_payment', 'confirming', 'completed', 'failed', 'expired'].map(s => (
-          <button
-            key={s}
-            type="button"
-            onClick={() => setStatusFilter(s)}
-            className={`px-3 py-1 rounded-full text-xs font-semibold border transition-colors ${
-              statusFilter === s ? 'bg-primary text-primary-foreground border-primary' : 'bg-background border-border text-muted-foreground hover:border-primary/40'
-            }`}
-          >
+          <button key={s} type="button" onClick={() => setStatusFilter(s)}
+            className={`px-3 py-1 rounded-full text-xs font-semibold border transition-colors ${statusFilter === s ? 'bg-primary text-primary-foreground border-primary' : 'bg-background border-border text-muted-foreground hover:border-primary/40'}`}>
             {s === 'all' ? 'All' : s === 'waiting_for_payment' ? 'Waiting' : s.charAt(0).toUpperCase() + s.slice(1)}
           </button>
         ))}
       </div>
 
       {list.length === 0 && (
-        <Card><CardContent className="py-10 text-center text-sm text-muted-foreground">No crypto payments yet</CardContent></Card>
+        <Card><CardContent className="py-10 text-center text-sm text-muted-foreground">No outgoing crypto payments yet</CardContent></Card>
       )}
 
-      {/* Pending / Confirming */}
       {pending.length > 0 && (
         <div className="space-y-3">
           <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Needs Action ({pending.length})</p>
@@ -1817,14 +1953,8 @@ function CryptoPanel() {
                       </span>
                     </div>
                     <p className="text-xs text-muted-foreground mt-0.5">#{p.id} · {p.senderName} · {new Date(p.createdAt).toLocaleString()}</p>
-                    <p className="text-xs text-muted-foreground">{p.senderEmail}</p>
-                  </div>
-                  <div className="text-xs text-muted-foreground">
-                    {p.paymentMethod === 'connect_wallet' ? '🔗 Connect' : '📋 Address'}
                   </div>
                 </div>
-
-                {/* Receiver address */}
                 <div className="bg-muted/40 rounded-lg p-2.5 space-y-1">
                   <p className="text-[10px] text-muted-foreground font-semibold">RECEIVING ADDRESS</p>
                   <div className="flex items-center gap-2">
@@ -1834,8 +1964,6 @@ function CryptoPanel() {
                     </button>
                   </div>
                 </div>
-
-                {/* Tx hash (if provided) */}
                 {p.transactionHash && (
                   <div className="bg-muted/40 rounded-lg p-2.5 space-y-1">
                     <p className="text-[10px] text-muted-foreground font-semibold">TRANSACTION HASH</p>
@@ -1845,41 +1973,19 @@ function CryptoPanel() {
                         <Copy className="w-3.5 h-3.5" />
                       </button>
                     </div>
+                    <a href={`https://tronscan.org/#/transaction/${p.transactionHash}`} target="_blank" rel="noopener noreferrer" className="text-[10px] text-primary underline">View on Tronscan ↗</a>
                   </div>
                 )}
-
-                {p.senderWalletAddress && (
-                  <div className="text-xs text-muted-foreground">
-                    <span className="font-semibold">Sender wallet: </span>
-                    <code className="font-mono">{p.senderWalletAddress}</code>
-                  </div>
-                )}
-
-                {/* Admin note */}
                 <div className="space-y-2">
-                  <input
-                    type="text"
-                    placeholder="Admin note (optional)"
-                    value={note[p.id] ?? ''}
-                    onChange={e => setNote(prev => ({ ...prev, [p.id]: e.target.value }))}
-                    className="w-full h-8 rounded-lg border border-border bg-background px-3 text-xs"
-                  />
+                  <input type="text" placeholder="Admin note (optional)" value={note[p.id] ?? ''} onChange={e => setNote(prev => ({ ...prev, [p.id]: e.target.value }))}
+                    className="w-full h-8 rounded-lg border border-border bg-background px-3 text-xs" />
                   <div className="flex gap-2">
-                    <Button
-                      size="sm"
-                      className="flex-1 h-8 text-xs bg-emerald-600 hover:bg-emerald-700 text-white gap-1"
-                      disabled={complete.isPending}
-                      onClick={() => complete.mutate({ id: p.id, txHash: p.transactionHash || undefined, adminNote: note[p.id] })}
-                    >
+                    <Button size="sm" className="flex-1 h-8 text-xs bg-emerald-600 hover:bg-emerald-700 text-white gap-1" disabled={complete.isPending}
+                      onClick={() => complete.mutate({ id: p.id, txHash: p.transactionHash || undefined, adminNote: note[p.id] })}>
                       <CheckCircle2 className="w-3.5 h-3.5" /> Mark Completed
                     </Button>
-                    <Button
-                      size="sm"
-                      variant="destructive"
-                      className="flex-1 h-8 text-xs gap-1"
-                      disabled={fail.isPending}
-                      onClick={() => fail.mutate({ id: p.id, adminNote: note[p.id] })}
-                    >
+                    <Button size="sm" variant="destructive" className="flex-1 h-8 text-xs gap-1" disabled={fail.isPending}
+                      onClick={() => fail.mutate({ id: p.id, adminNote: note[p.id] })}>
                       <XCircle className="w-3.5 h-3.5" /> Mark Failed
                     </Button>
                   </div>
@@ -1890,7 +1996,6 @@ function CryptoPanel() {
         </div>
       )}
 
-      {/* Completed / Failed / Expired */}
       {done.length > 0 && (
         <div className="space-y-2">
           <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">History ({done.length})</p>
@@ -1903,9 +2008,7 @@ function CryptoPanel() {
                 <div className="flex items-center gap-2 flex-wrap">
                   <span className="font-semibold text-sm font-mono">{Number(p.amount).toLocaleString('en-US', { minimumFractionDigits: 2 })} {p.currency}</span>
                   <span className="text-xs text-muted-foreground">{p.network}</span>
-                  <span className={`text-[10px] px-2 py-0.5 rounded-full border font-semibold ${statusColors[p.status] ?? ''}`}>
-                    {p.status}
-                  </span>
+                  <span className={`text-[10px] px-2 py-0.5 rounded-full border font-semibold ${statusColors[p.status] ?? ''}`}>{p.status}</span>
                 </div>
                 <p className="text-xs text-muted-foreground truncate">#{p.id} · {p.senderName} · {new Date(p.createdAt).toLocaleDateString()}</p>
               </div>
