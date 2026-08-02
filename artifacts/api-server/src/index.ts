@@ -11,6 +11,7 @@ async function runKycSchemaMigration() {
       ALTER TABLE users
         ADD COLUMN IF NOT EXISTS kyc_status TEXT NOT NULL DEFAULT 'unverified',
         ADD COLUMN IF NOT EXISTS kyc_document_path TEXT,
+        ADD COLUMN IF NOT EXISTS kyc_selfie_path TEXT,
         ADD COLUMN IF NOT EXISTS kyc_rejection_reason TEXT,
         ADD COLUMN IF NOT EXISTS kyc_submitted_at TIMESTAMPTZ,
         ADD COLUMN IF NOT EXISTS kyc_reviewed_at TIMESTAMPTZ;

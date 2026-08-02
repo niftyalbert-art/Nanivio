@@ -35,10 +35,10 @@ export default function SignUp() {
       });
       const data = await r.json();
       if (!r.ok) { setError(data.error ?? 'Sign up failed'); return; }
-      // Store email (and dev-mode code if Twilio isn't configured) for verify-email page
-      sessionStorage.setItem('pendingVerifyEmail', data.email ?? email);
-      if (data.devCode) sessionStorage.setItem('pendingDevCode', data.devCode);
-      setLocation('/verify-email');
+      // EMAIL VERIFICATION DISABLED — log in directly.
+      // When re-enabling, restore: sessionStorage.setItem('pendingVerifyEmail', ...) + setLocation('/verify-email')
+      setAuth(data.token, data.user);
+      setLocation('/');
     } catch {
       setError('Network error. Please try again.');
     } finally {

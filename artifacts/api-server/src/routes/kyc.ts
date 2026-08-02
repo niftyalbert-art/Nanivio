@@ -11,7 +11,7 @@ const router: IRouter = Router();
 const UPLOAD_DIR = path.join(process.cwd(), "uploads", "kyc");
 if (!fs.existsSync(UPLOAD_DIR)) fs.mkdirSync(UPLOAD_DIR, { recursive: true });
 
-// Allowed MIME types for government ID documents
+// Allowed MIME types for government ID documents and selfies
 const ALLOWED_MIME_TYPES = new Set([
   "image/jpeg",
   "image/png",
@@ -52,15 +52,14 @@ function parseDocumentBase64(base64Data: string): { buffer: Buffer; ext: string;
 }
 
 /**
- * Write the document buffer to disk. Returns the full file path.
- * Deletes the previous document for this user (if any) to avoid accumulation.
+ * Write a buffer to disk. Returns the full file path.
+ * Deletes the previous file for this user (if any) to avoid accumulation.
  */
-function saveDocument(userId: number, buffer: Buffer, ext: string, previousPath?: string | null): string {
-  // Delete stale file before writing the new one
+function saveFile(userId: number, suffix: string, buffer: Buffer, ext: string, previousPath?: string | null): string {
   if (previousPath) {
     try { fs.unlinkSync(previousPath); } catch { /* file may already be gone */ }
   }
-  const filename = `${userId}_${Date.now()}.${ext}`;
+  const filename = `${userId}_${suffix}_${Date.now()}.${ext}`;
   const filepath = path.join(UPLOAD_DIR, filename);
   fs.writeFileSync(filepath, buffer);
   return filepath;
@@ -76,6 +75,7 @@ router.get("/kyc/status", requireAuth, async (req, res): Promise<void> => {
       kycSubmittedAt: usersTable.kycSubmittedAt,
       kycReviewedAt: usersTable.kycReviewedAt,
       kycDocumentPath: usersTable.kycDocumentPath,
+      kycSelfiePath: usersTable.kycSelfiePath,
     })
     .from(usersTable)
     .where(eq(usersTable.id, userId));
@@ -88,16 +88,21 @@ router.get("/kyc/status", requireAuth, async (req, res): Promise<void> => {
     kycSubmittedAt: user.kycSubmittedAt ? user.kycSubmittedAt.toISOString() : null,
     kycReviewedAt: user.kycReviewedAt ? user.kycReviewedAt.toISOString() : null,
     hasDocument: !!user.kycDocumentPath,
+    hasSelfie: !!user.kycSelfiePath,
   });
 });
 
-// POST /api/kyc/submit — upload government ID document
+// POST /api/kyc/submit — upload government ID document + selfie
 router.post("/kyc/submit", requireAuth, async (req, res): Promise<void> => {
   const userId = req.userId!;
-  const { documentBase64, idType } = req.body ?? {};
+  const { documentBase64, selfieBase64, idType } = req.body ?? {};
 
   if (!documentBase64 || typeof documentBase64 !== "string") {
     res.status(400).json({ error: "documentBase64 is required" });
+    return;
+  }
+  if (!selfieBase64 || typeof selfieBase64 !== "string") {
+    res.status(400).json({ error: "selfieBase64 is required — please complete the facial verification step" });
     return;
   }
   if (!idType || !["passport", "national_id", "drivers_licence"].includes(idType)) {
@@ -105,30 +110,48 @@ router.post("/kyc/submit", requireAuth, async (req, res): Promise<void> => {
     return;
   }
 
-  // Size guard before parsing (base64 overhead ~33%)
+  // Size guards before parsing
   if (documentBase64.length > 12 * 1024 * 1024) {
     res.status(400).json({ error: "Document image is too large. Maximum 8 MB." });
     return;
   }
-
-  // Validate MIME type and magic bytes
-  let parsed: ReturnType<typeof parseDocumentBase64>;
-  try {
-    parsed = parseDocumentBase64(documentBase64);
-  } catch (err: any) {
-    res.status(400).json({ error: err.message });
+  if (selfieBase64.length > 12 * 1024 * 1024) {
+    res.status(400).json({ error: "Selfie image is too large. Maximum 8 MB." });
     return;
   }
 
-  // Enforce 8 MB limit on actual decoded bytes
-  if (parsed.buffer.length > 8 * 1024 * 1024) {
+  // Validate MIME types and magic bytes for both images
+  let parsedDoc: ReturnType<typeof parseDocumentBase64>;
+  let parsedSelfie: ReturnType<typeof parseDocumentBase64>;
+  try {
+    parsedDoc = parseDocumentBase64(documentBase64);
+  } catch (err: any) {
+    res.status(400).json({ error: `Document: ${err.message}` });
+    return;
+  }
+  try {
+    parsedSelfie = parseDocumentBase64(selfieBase64);
+  } catch (err: any) {
+    res.status(400).json({ error: `Selfie: ${err.message}` });
+    return;
+  }
+
+  if (parsedDoc.buffer.length > 8 * 1024 * 1024) {
     res.status(400).json({ error: "Document image is too large. Maximum 8 MB." });
+    return;
+  }
+  if (parsedSelfie.buffer.length > 8 * 1024 * 1024) {
+    res.status(400).json({ error: "Selfie image is too large. Maximum 8 MB." });
     return;
   }
 
   // Check current status — cannot resubmit if already verified or pending
   const [user] = await db
-    .select({ kycStatus: usersTable.kycStatus, kycDocumentPath: usersTable.kycDocumentPath })
+    .select({
+      kycStatus: usersTable.kycStatus,
+      kycDocumentPath: usersTable.kycDocumentPath,
+      kycSelfiePath: usersTable.kycSelfiePath,
+    })
     .from(usersTable)
     .where(eq(usersTable.id, userId));
 
@@ -142,14 +165,16 @@ router.post("/kyc/submit", requireAuth, async (req, res): Promise<void> => {
     return;
   }
 
-  // Save new file; delete the previous one if it exists (file replacement policy)
-  const filePath = saveDocument(userId, parsed.buffer, parsed.ext, user.kycDocumentPath);
+  // Save both files; delete previous ones if they exist
+  const docPath     = saveFile(userId, "doc",     parsedDoc.buffer,    parsedDoc.ext,    user.kycDocumentPath);
+  const selfiePath  = saveFile(userId, "selfie",  parsedSelfie.buffer, parsedSelfie.ext, user.kycSelfiePath);
 
   await db
     .update(usersTable)
     .set({
       kycStatus: "pending",
-      kycDocumentPath: filePath,
+      kycDocumentPath: docPath,
+      kycSelfiePath: selfiePath,
       kycSubmittedAt: new Date(),
       kycRejectionReason: null,
       kycReviewedAt: null,

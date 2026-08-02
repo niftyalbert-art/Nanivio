@@ -16,6 +16,7 @@ export const usersTable = pgTable("users", {
   // KYC identity verification
   kycStatus: text("kyc_status").notNull().default("unverified"),  // unverified | pending | verified | rejected
   kycDocumentPath: text("kyc_document_path"),
+  kycSelfiePath: text("kyc_selfie_path"),
   kycRejectionReason: text("kyc_rejection_reason"),
   kycSubmittedAt: timestamp("kyc_submitted_at", { withTimezone: true }),
   kycReviewedAt: timestamp("kyc_reviewed_at", { withTimezone: true }),

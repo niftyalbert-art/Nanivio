@@ -100,7 +100,7 @@ router.post("/auth/signup", async (req, res): Promise<void> => {
     phone: normalizedPhone,
     passwordHash,
     plainPin: null,
-    emailVerified: false,  // must verify before logging in
+    emailVerified: true,  // EMAIL VERIFICATION DISABLED — set to false and re-enable redirect when ready
   }).returning();
 
   // Create default AED wallet
@@ -115,26 +115,17 @@ router.post("/auth/signup", async (req, res): Promise<void> => {
   // Upsert into Stream (non-blocking)
   upsertToStream(user.id, user.name, user.phone);
 
-  // Send verification code
-  const result = await sendVerificationCode(normalizedEmail);
-  const expiresAt = new Date(Date.now() + 15 * 60 * 1000);
+  // EMAIL VERIFICATION DISABLED — log user in directly after signup.
+  // To re-enable: set emailVerified: false above, uncomment the block below, and restore the
+  // verify-email redirect in signup.tsx.
+  //
+  // const result = await sendVerificationCode(normalizedEmail);
+  // const expiresAt = new Date(Date.now() + 15 * 60 * 1000);
+  // await db.update(usersTable).set({ emailVerificationCode: !result.sent ? result.fallbackCode : null, emailVerificationExpiresAt: expiresAt, updatedAt: new Date() }).where(eq(usersTable.id, user.id));
+  // return res.status(201).json({ requiresVerification: true, email: normalizedEmail, message: "Account created. Please check your email for a verification code.", ...(!result.sent && { devCode: result.fallbackCode }) });
 
-  await db.update(usersTable)
-    .set({
-      emailVerificationCode: !result.sent ? result.fallbackCode : null,
-      emailVerificationExpiresAt: expiresAt,
-      updatedAt: new Date(),
-    })
-    .where(eq(usersTable.id, user.id));
-
-  // Return verification required — no token yet.
-  // In dev mode (Twilio not configured) surface the code so the user can complete sign-up.
-  res.status(201).json({
-    requiresVerification: true,
-    email: normalizedEmail,
-    message: "Account created. Please check your email for a verification code.",
-    ...(!result.sent && { devCode: result.fallbackCode }),
-  });
+  const token = signToken({ userId: user.id, email: user.email, name: user.name });
+  res.status(201).json({ token, user: { id: user.id, name: user.name, email: user.email } });
 });
 
 // POST /auth/verify-email

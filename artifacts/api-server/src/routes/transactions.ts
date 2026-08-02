@@ -181,11 +181,11 @@ router.post("/transactions", requireAuth, async (req, res): Promise<void> => {
   const toRateToUsd = parseFloat(toRateRow.rateToUsd);
   const fromAmountUsd = fromRateToUsd > 0 ? fromAmount / fromRateToUsd : 0;
 
-  // ── 5. KYC gating: unverified/rejected capped at $200 USD ────────────────
-  if ((user.kycStatus === "unverified" || user.kycStatus === "rejected") && fromAmountUsd > 200) {
+  // ── 5. KYC gating: unverified/rejected capped at $2000 USD ───────────────
+  if ((user.kycStatus === "unverified" || user.kycStatus === "rejected") && fromAmountUsd > 2000) {
     res.status(403).json({
       error: "KYC_REQUIRED",
-      message: "Transfers above $200 require identity verification. Please complete KYC in your account settings.",
+      message: "Transfers above $2,000 require identity verification. Please complete KYC in your account settings.",
     });
     return;
   }
