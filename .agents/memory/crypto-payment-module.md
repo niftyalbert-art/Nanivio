@@ -42,3 +42,18 @@ Uses the free public API `https://api.qrserver.com/v1/create-qr-code/` — no np
 Crypto is added as a third card on the `step === 'type'` screen in `send.tsx`. It navigates to `/crypto` rather than continuing the bank/mobile flow — the two systems are completely separate.
 
 **Why:** Crypto payments don't share any of the bank/mobile UX (no exchange rate lookup, no recipient account name, etc.), so keeping them separate avoids entangling unrelated logic.
+
+## Auto-Deposit Module (USDT TRC20)
+
+- Table: `crypto_deposits` (schema in `lib/db/src/schema/crypto_deposits.ts`)
+- Backend routes: `artifacts/api-server/src/routes/crypto-deposits.ts` — user CRUD + `/admin/crypto/deposits` (read-only, no approve/reject)
+- Blockchain monitor: `artifacts/api-server/src/services/tron-monitor.ts` — polls TronGrid every 60s; requires `NANIVIO_CRYPTO_WALLET_ADDRESS` secret to start; `TRON_API_KEY` optional for rate limits
+- Frontend: `artifacts/nifty-pay/src/pages/crypto-deposit.tsx`; entry point is the highlighted orange card at top of deposit.tsx Step 1
+
+**Monitor startup:** If `NANIVIO_CRYPTO_WALLET_ADDRESS` is not set, the monitor logs a warning and skips silently (safe). With it set, startup log shows `"Starting TRON TRC20 deposit monitor"` with the address.
+
+**Admin panel:** `CryptoPanel` in `admin.tsx` has two internal sub-tabs — "⚡ Auto-Deposits" (CryptoDepositsView, read-only) and "📤 Outgoing Payments" (CryptoPaymentsView, with Complete/Fail actions). Deposits tab is the default.
+
+**Amount matching:** FIFO (oldest pending first), 1% tolerance. Credits the wallet the user selected at deposit creation; falls back to USD wallet if not found.
+
+**Duplicate prevention:** `transaction_hash` has a UNIQUE partial index on `crypto_deposits` — guaranteed at DB level.
