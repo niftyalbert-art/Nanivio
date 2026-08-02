@@ -119,16 +119,28 @@ export function getRegion(code: string): RegionInfo {
 
 /** Country name → ISO code (for withdraw.tsx which uses full names) */
 export const NAME_TO_CODE: Record<string, string> = {
-  Ghana: 'GH', Nigeria: 'NG', Senegal: 'SN', 'Ivory Coast': 'CI', 'Côte d\'Ivoire': 'CI',
-  Benin: 'BJ', Liberia: 'LR', Guinea: 'GN', Mali: 'ML', 'Burkina Faso': 'BF', Togo: 'TG',
-  Cameroon: 'CM', Congo: 'CG',
+  // Africa · West
+  Ghana: 'GH', Nigeria: 'NG', Senegal: 'SN',
+  'Ivory Coast': 'CI', 'Côte d\'Ivoire': 'CI',
+  Mali: 'ML', 'Burkina Faso': 'BF', Togo: 'TG', Benin: 'BJ',
+  Guinea: 'GN', 'Sierra Leone': 'SL', Liberia: 'LR', Gambia: 'GM',
+  // Africa · North
+  Egypt: 'EG', Morocco: 'MA', Algeria: 'DZ', Tunisia: 'TN', Sudan: 'SD',
+  // Africa · East
   Kenya: 'KE', Uganda: 'UG', Tanzania: 'TZ', Rwanda: 'RW', Ethiopia: 'ET',
-  Egypt: 'EG', Morocco: 'MA',
-  'South Africa': 'ZA',
+  Burundi: 'BI', Somalia: 'SO',
+  // Africa · South & Central
+  'South Africa': 'ZA', Zambia: 'ZM', Mozambique: 'MZ', Zimbabwe: 'ZW',
+  Botswana: 'BW', Namibia: 'NA', Malawi: 'MW', Angola: 'AO',
+  'DR Congo': 'CD', Congo: 'CG', Cameroon: 'CM', Gabon: 'GA',
+  // Middle East
   UAE: 'AE', 'Saudi Arabia': 'SA',
+  // Asia
   Philippines: 'PH', India: 'IN', Pakistan: 'PK', Bangladesh: 'BD', 'Sri Lanka': 'LK',
   Malaysia: 'MY', Singapore: 'SG', Thailand: 'TH',
+  // Europe
   UK: 'GB', Germany: 'DE', France: 'FR',
+  // Americas
   USA: 'US', Canada: 'CA', Mexico: 'MX', Brazil: 'BR',
 };
 
