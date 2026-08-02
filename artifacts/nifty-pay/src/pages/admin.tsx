@@ -8,7 +8,7 @@ import { Badge } from '@/components/ui/badge';
 import { Textarea } from '@/components/ui/textarea';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { Skeleton } from '@/components/ui/skeleton';
-import { CheckCircle2, XCircle, Clock, ArrowDownLeft, ArrowUpRight, MessageSquare, Lock, Plus, Edit2, TrendingUp, Settings2, Link, Eye, EyeOff, Users, ArrowLeftRight, KeyRound, ShieldCheck, ArrowLeft, BadgeCheck, Shield, AlertTriangle, Unlock } from 'lucide-react';
+import { CheckCircle2, XCircle, Clock, ArrowDownLeft, ArrowUpRight, MessageSquare, Lock, Plus, Edit2, TrendingUp, Settings2, Link, Eye, EyeOff, Users, ArrowLeftRight, KeyRound, ShieldCheck, ArrowLeft, BadgeCheck, Shield, AlertTriangle, Unlock, Search, ChevronDown, ChevronUp, LogIn, Wallet, Phone, Mail, CalendarDays, RefreshCw } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import { useToast } from '@/hooks/use-toast';
 
@@ -518,53 +518,332 @@ function RatesPanel() {
 }
 
 // ── Users Panel ─────────────────────────────────────────────────────────────
+// ── UserDetailPanel: full user detail loaded on demand ───────────────────────
+function UserDetailPanel({ userId, adminToken }: { userId: number; adminToken: string }) {
+  const { toast } = useToast();
+  const qc = useQueryClient();
+  const [detailTab, setDetailTab] = useState('wallets');
+  const [pinInput, setPinInput] = useState('');
+  const [showPinForm, setShowPinForm] = useState(false);
+  const [pinRevealed, setPinRevealed] = useState(false);
+
+  const { data, isLoading } = useQuery({
+    queryKey: ['admin-user-detail', userId],
+    queryFn: () => apiFetch(`/admin/users/${userId}`),
+    staleTime: 30000,
+  });
+
+  const impersonate = useMutation({
+    mutationFn: () => apiFetch(`/admin/users/${userId}/impersonate`, { method: 'POST' }),
+    onSuccess: (res: any) => {
+      // Store the user token and open app in a new tab — admin session stays intact
+      const tab = window.open('about:blank', '_blank');
+      if (tab) {
+        tab.localStorage?.setItem('nanivio_token', res.token);
+        // Write a script that sets localStorage before navigating
+        tab.document.write(`<script>
+          localStorage.setItem('nanivio_token', ${JSON.stringify(res.token)});
+          window.location.href = '/';
+        </script>`);
+        tab.document.close();
+      } else {
+        // Fallback: copy token and instruct admin
+        navigator.clipboard?.writeText(res.token).catch(() => {});
+        toast({ title: `Login token for ${res.user?.name} copied to clipboard — paste it as the auth token in a new tab.` });
+      }
+    },
+    onError: (e: any) => toast({ title: 'Error', description: e.message, variant: 'destructive' }),
+  });
+
+  const resetPin = useMutation({
+    mutationFn: () => apiFetch(`/admin/users/${userId}/reset-pin`, { method: 'PUT', body: JSON.stringify({ pin: pinInput }) }),
+    onSuccess: () => {
+      toast({ title: '✅ PIN reset successfully' });
+      setPinInput('');
+      setShowPinForm(false);
+      qc.invalidateQueries({ queryKey: ['admin-users'] });
+      qc.invalidateQueries({ queryKey: ['admin-user-detail', userId] });
+    },
+    onError: (e: any) => toast({ title: 'Error', description: e.message, variant: 'destructive' }),
+  });
+
+  if (isLoading) return (
+    <div className="p-4 space-y-3">
+      <Skeleton className="h-4 w-32" />
+      <Skeleton className="h-4 w-48" />
+      <Skeleton className="h-20 w-full" />
+    </div>
+  );
+
+  const { profile, wallets, deposits, sends, withdrawals } = (data as any) ?? {};
+  if (!profile) return null;
+
+  const kycColor = profile.kycStatus === 'verified' ? 'text-green-600' : profile.kycStatus === 'pending' ? 'text-amber-500' : profile.kycStatus === 'rejected' ? 'text-red-500' : 'text-muted-foreground';
+  const kycIcon = profile.kycStatus === 'verified' ? <BadgeCheck className="w-3.5 h-3.5" /> : profile.kycStatus === 'pending' ? <Clock className="w-3.5 h-3.5" /> : profile.kycStatus === 'rejected' ? <XCircle className="w-3.5 h-3.5" /> : <Shield className="w-3.5 h-3.5" />;
+
+  const totalUsd = (wallets as any[] ?? []).reduce((sum: number, w: any) => sum + (w.balance ?? 0), 0);
+
+  return (
+    <div className="border-t border-border bg-muted/20">
+      {/* ── Profile info row ── */}
+      <div className="p-4 space-y-3">
+        <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-xs">
+          <div className="flex items-center gap-1.5 text-muted-foreground"><Mail className="w-3 h-3 shrink-0" /><span className="truncate">{profile.email}</span></div>
+          <div className="flex items-center gap-1.5 text-muted-foreground"><Phone className="w-3 h-3 shrink-0" /><span>{profile.phone ?? 'No phone'}</span></div>
+          <div className={`flex items-center gap-1.5 ${kycColor}`}>{kycIcon}<span className="capitalize">KYC: {profile.kycStatus}</span></div>
+          <div className="flex items-center gap-1.5 text-muted-foreground">
+            {profile.emailVerified ? <CheckCircle2 className="w-3 h-3 text-green-600 shrink-0" /> : <XCircle className="w-3 h-3 text-red-500 shrink-0" />}
+            <span>{profile.emailVerified ? 'Email verified' : 'Email not verified'}</span>
+          </div>
+          <div className="flex items-center gap-1.5 text-muted-foreground"><CalendarDays className="w-3 h-3 shrink-0" /><span>Joined {new Date(profile.createdAt).toLocaleDateString()}</span></div>
+          {profile.sendLockedUntil && new Date(profile.sendLockedUntil) > new Date() && (
+            <div className="flex items-center gap-1.5 text-red-500"><Lock className="w-3 h-3 shrink-0" /><span>Locked until {new Date(profile.sendLockedUntil).toLocaleString()}</span></div>
+          )}
+        </div>
+
+        {/* PIN + actions row */}
+        <div className="flex flex-wrap items-center gap-2 pt-1 border-t border-border">
+          {/* PIN reveal */}
+          <div className="flex items-center gap-1.5 bg-background border border-border rounded-lg px-2.5 py-1.5">
+            <KeyRound className="w-3.5 h-3.5 text-muted-foreground" />
+            <span className="text-xs text-muted-foreground mr-1">PIN:</span>
+            <span className="font-mono font-bold text-sm tracking-widest">
+              {pinRevealed ? (profile.plainPin ?? '????') : '••••'}
+            </span>
+            <button onClick={() => setPinRevealed(v => !v)} className="text-muted-foreground hover:text-foreground ml-1">
+              {pinRevealed ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+            </button>
+          </div>
+
+          {/* Reset PIN */}
+          {showPinForm ? (
+            <div className="flex items-center gap-1.5">
+              <input
+                type="text"
+                inputMode="numeric"
+                pattern="\d{4}"
+                maxLength={4}
+                placeholder="New PIN"
+                value={pinInput}
+                onChange={e => setPinInput(e.target.value.replace(/\D/g, '').slice(0, 4))}
+                className="w-20 h-8 text-center font-mono border border-border rounded-lg text-sm bg-background"
+              />
+              <Button size="sm" className="h-8 text-xs" disabled={pinInput.length !== 4 || resetPin.isPending} onClick={() => resetPin.mutate()}>
+                {resetPin.isPending ? <RefreshCw className="w-3 h-3 animate-spin" /> : 'Save'}
+              </Button>
+              <Button size="sm" variant="ghost" className="h-8 text-xs" onClick={() => { setShowPinForm(false); setPinInput(''); }}>Cancel</Button>
+            </div>
+          ) : (
+            <Button size="sm" variant="outline" className="h-8 text-xs gap-1.5" onClick={() => setShowPinForm(true)}>
+              <KeyRound className="w-3 h-3" /> Reset PIN
+            </Button>
+          )}
+
+          {/* Login as user */}
+          <Button
+            size="sm"
+            variant="outline"
+            className="h-8 text-xs gap-1.5 border-amber-400/50 text-amber-600 hover:bg-amber-50"
+            onClick={() => impersonate.mutate()}
+            disabled={impersonate.isPending}
+          >
+            {impersonate.isPending ? <RefreshCw className="w-3 h-3 animate-spin" /> : <LogIn className="w-3 h-3" />}
+            Login as User
+          </Button>
+        </div>
+      </div>
+
+      {/* ── Wallets + Transactions tabs ── */}
+      <div className="px-4 pb-4">
+        <Tabs value={detailTab} onValueChange={setDetailTab}>
+          <TabsList className="h-8 text-xs">
+            <TabsTrigger value="wallets" className="text-xs h-7 gap-1">
+              <Wallet className="w-3 h-3" /> Wallets
+            </TabsTrigger>
+            <TabsTrigger value="deposits" className="text-xs h-7 gap-1">
+              <ArrowDownLeft className="w-3 h-3" /> Deposits ({(deposits as any[])?.length ?? 0})
+            </TabsTrigger>
+            <TabsTrigger value="sends" className="text-xs h-7 gap-1">
+              <ArrowLeftRight className="w-3 h-3" /> Sends ({(sends as any[])?.length ?? 0})
+            </TabsTrigger>
+            <TabsTrigger value="withdrawals" className="text-xs h-7 gap-1">
+              <ArrowUpRight className="w-3 h-3" /> Withdrawals ({(withdrawals as any[])?.length ?? 0})
+            </TabsTrigger>
+          </TabsList>
+
+          {/* Wallets */}
+          <TabsContent value="wallets" className="mt-3">
+            {(wallets as any[] ?? []).length === 0 ? (
+              <p className="text-xs text-muted-foreground text-center py-4">No wallets</p>
+            ) : (
+              <div className="space-y-1.5">
+                {(wallets as any[]).map((w: any) => (
+                  <div key={w.id} className="flex items-center justify-between bg-background border border-border rounded-lg px-3 py-2">
+                    <div className="flex items-center gap-2">
+                      <span className="text-lg">{w.flag}</span>
+                      <div>
+                        <p className="text-xs font-semibold">{w.currencyCode}</p>
+                        <p className="text-[10px] text-muted-foreground">{w.currencyName}</p>
+                      </div>
+                    </div>
+                    <span className="font-mono font-bold text-sm">{w.balance.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                  </div>
+                ))}
+                <div className="flex justify-between items-center px-3 py-2 rounded-lg bg-primary/5 border border-primary/20 mt-2">
+                  <span className="text-xs font-semibold text-primary">Total balance (USD equivalent)</span>
+                  <span className="font-mono font-bold text-sm text-primary">${totalUsd.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                </div>
+              </div>
+            )}
+          </TabsContent>
+
+          {/* Deposits */}
+          <TabsContent value="deposits" className="mt-3">
+            {(deposits as any[] ?? []).length === 0 ? (
+              <p className="text-xs text-muted-foreground text-center py-4">No deposits</p>
+            ) : (
+              <div className="space-y-1.5 max-h-64 overflow-y-auto">
+                {(deposits as any[]).map((d: any) => (
+                  <div key={d.id} className="flex items-center justify-between bg-background border border-border rounded-lg px-3 py-2 gap-2">
+                    <div className="min-w-0">
+                      <p className="text-xs font-semibold truncate">{d.paymentMethodName ?? 'Unknown method'}</p>
+                      <p className="text-[10px] text-muted-foreground">{new Date(d.createdAt).toLocaleString()}</p>
+                      {d.externalTransactionId && <p className="text-[10px] text-muted-foreground font-mono truncate">Ref: {d.externalTransactionId}</p>}
+                    </div>
+                    <div className="text-right shrink-0">
+                      <p className="font-mono font-bold text-sm text-green-600">+{d.amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} {d.currencyCode}</p>
+                      <Badge variant="outline" className={`text-[10px] px-1 py-0 ${d.status === 'completed' ? 'text-green-600 border-green-600/30' : d.status === 'pending' ? 'text-amber-500 border-amber-500/30' : 'text-red-500 border-red-500/30'}`}>{d.status}</Badge>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </TabsContent>
+
+          {/* Sends */}
+          <TabsContent value="sends" className="mt-3">
+            {(sends as any[] ?? []).length === 0 ? (
+              <p className="text-xs text-muted-foreground text-center py-4">No sends</p>
+            ) : (
+              <div className="space-y-1.5 max-h-64 overflow-y-auto">
+                {(sends as any[]).map((s: any) => (
+                  <div key={s.id} className="flex items-center justify-between bg-background border border-border rounded-lg px-3 py-2 gap-2">
+                    <div className="min-w-0">
+                      <p className="text-xs font-semibold truncate">{s.recipientName ?? 'Recipient'}</p>
+                      <p className="text-[10px] text-muted-foreground">{new Date(s.createdAt).toLocaleString()}</p>
+                      <p className="text-[10px] text-muted-foreground">{s.fromCurrency} → {s.toCurrency} · Fee: {s.fee?.toLocaleString('en-US', { minimumFractionDigits: 2 })} {s.fromCurrency}</p>
+                    </div>
+                    <div className="text-right shrink-0">
+                      <p className="font-mono font-bold text-sm text-red-500">-{s.fromAmount?.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} {s.fromCurrency}</p>
+                      <p className="font-mono text-xs text-muted-foreground">→ {s.toAmount?.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} {s.toCurrency}</p>
+                      <Badge variant="outline" className={`text-[10px] px-1 py-0 ${s.status === 'completed' ? 'text-green-600 border-green-600/30' : s.status === 'pending' ? 'text-amber-500 border-amber-500/30' : 'text-red-500 border-red-500/30'}`}>{s.status}</Badge>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </TabsContent>
+
+          {/* Withdrawals */}
+          <TabsContent value="withdrawals" className="mt-3">
+            {(withdrawals as any[] ?? []).length === 0 ? (
+              <p className="text-xs text-muted-foreground text-center py-4">No withdrawals</p>
+            ) : (
+              <div className="space-y-1.5 max-h-64 overflow-y-auto">
+                {(withdrawals as any[]).map((w: any) => (
+                  <div key={w.id} className="flex items-start justify-between bg-background border border-border rounded-lg px-3 py-2 gap-2">
+                    <div className="min-w-0">
+                      <p className="text-xs font-semibold truncate capitalize">{w.method?.replace('_', ' ') ?? 'Withdrawal'} · {w.recipientName ?? ''}</p>
+                      <p className="text-[10px] text-muted-foreground">{new Date(w.createdAt).toLocaleString()}</p>
+                      {w.iban && <p className="text-[10px] text-muted-foreground font-mono">IBAN: {w.iban}</p>}
+                      {w.accountNumber && <p className="text-[10px] text-muted-foreground font-mono">Acct: {w.accountNumber}</p>}
+                      {w.mobileNumber && <p className="text-[10px] text-muted-foreground font-mono">Mobile: {w.mobileNumber}</p>}
+                    </div>
+                    <div className="text-right shrink-0">
+                      <p className="font-mono font-bold text-sm text-red-500">-{(typeof w.amount === 'number' ? w.amount : parseFloat(w.amount)).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} {w.currencyCode}</p>
+                      <Badge variant="outline" className={`text-[10px] px-1 py-0 ${w.status === 'completed' ? 'text-green-600 border-green-600/30' : w.status === 'pending' ? 'text-amber-500 border-amber-500/30' : 'text-red-500 border-red-500/30'}`}>{w.status}</Badge>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </TabsContent>
+        </Tabs>
+      </div>
+    </div>
+  );
+}
+
 function UsersPanel() {
   const { data: users, isLoading } = useQuery({
     queryKey: ['admin-users'],
     queryFn: () => apiFetch('/admin/users'),
     refetchInterval: 30000,
   });
-  const [revealed, setRevealed] = useState<Record<number, boolean>>({});
-  const toggle = (id: number) => setRevealed(r => ({ ...r, [id]: !r[id] }));
+  const [expanded, setExpanded] = useState<number | null>(null);
+  const [search, setSearch] = useState('');
+
+  const toggle = (id: number) => setExpanded(prev => prev === id ? null : id);
 
   if (isLoading) return <div className="space-y-2">{[...Array(4)].map((_, i) => <Skeleton key={i} className="h-16" />)}</div>;
 
   const list = (users as any[] | undefined) ?? [];
+  const filtered = list.filter((u: any) =>
+    u.name.toLowerCase().includes(search.toLowerCase()) ||
+    u.email.toLowerCase().includes(search.toLowerCase()) ||
+    (u.phone ?? '').includes(search)
+  );
+
+  const kycBadgeClass = (status: string) => status === 'verified' ? 'bg-green-100 text-green-700 border-green-300' : status === 'pending' ? 'bg-amber-100 text-amber-700 border-amber-300' : status === 'rejected' ? 'bg-red-100 text-red-700 border-red-300' : 'bg-muted text-muted-foreground';
+
   return (
-    <div className="space-y-2">
-      <p className="text-xs text-muted-foreground">{list.length} registered user{list.length !== 1 ? 's' : ''}</p>
-      {list.length === 0 && <p className="text-sm text-muted-foreground text-center py-8">No users yet</p>}
-      {list.map((u: any) => (
-        <Card key={u.id}>
-          <CardContent className="p-3">
-            <div className="flex items-center gap-3">
-              <div className="w-9 h-9 rounded-full bg-primary/20 text-primary font-bold flex items-center justify-center text-sm shrink-0">
-                {u.name[0]?.toUpperCase()}
-              </div>
-              <div className="flex-1 min-w-0">
-                <p className="font-semibold text-sm truncate">{u.name}</p>
-                <p className="text-xs text-muted-foreground truncate">{u.email}</p>
-                <p className="text-xs text-muted-foreground">Joined {new Date(u.createdAt).toLocaleDateString()}</p>
-              </div>
-              <div className="text-right shrink-0 space-y-1">
-                <p className="text-[10px] text-muted-foreground font-medium uppercase tracking-wide">4-Digit PIN</p>
-                <div className="flex items-center gap-1.5 justify-end">
-                  <span className="font-mono font-bold text-sm tracking-widest">
-                    {revealed[u.id] ? (u.plainPin ?? '????') : '••••'}
-                  </span>
-                  <button
-                    onClick={() => toggle(u.id)}
-                    className="text-muted-foreground hover:text-foreground transition-colors"
-                    aria-label={revealed[u.id] ? 'Hide PIN' : 'Reveal PIN'}
-                  >
-                    {revealed[u.id] ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
-                  </button>
+    <div className="space-y-3">
+      {/* Header stats + search */}
+      <div className="flex items-center gap-3">
+        <div className="relative flex-1">
+          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
+          <Input placeholder="Search name, email or phone…" value={search} onChange={e => setSearch(e.target.value)} className="pl-8 h-8 text-xs" />
+        </div>
+        <p className="text-xs text-muted-foreground shrink-0">{filtered.length} / {list.length} user{list.length !== 1 ? 's' : ''}</p>
+      </div>
+
+      {filtered.length === 0 && <p className="text-sm text-muted-foreground text-center py-8">No users found</p>}
+
+      {filtered.map((u: any) => {
+        const isOpen = expanded === u.id;
+        const locked = u.sendLockedUntil && new Date(u.sendLockedUntil) > new Date();
+        return (
+          <div key={u.id} className="rounded-xl border border-border overflow-hidden">
+            {/* Row: click to expand */}
+            <button
+              type="button"
+              className={`w-full text-left transition-colors ${isOpen ? 'bg-primary/5' : 'bg-card hover:bg-muted/30'}`}
+              onClick={() => toggle(u.id)}
+            >
+              <div className="flex items-center gap-3 p-3">
+                <div className="w-9 h-9 rounded-full bg-primary/20 text-primary font-bold flex items-center justify-center text-sm shrink-0">
+                  {u.name[0]?.toUpperCase()}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <p className="font-semibold text-sm truncate">{u.name}</p>
+                    <Badge variant="outline" className={`text-[10px] px-1.5 py-0 border capitalize ${kycBadgeClass(u.kycStatus)}`}>{u.kycStatus}</Badge>
+                    {locked && <Badge variant="outline" className="text-[10px] px-1.5 py-0 bg-red-100 text-red-700 border-red-300"><Lock className="w-2.5 h-2.5 mr-0.5" />Locked</Badge>}
+                  </div>
+                  <p className="text-xs text-muted-foreground truncate">{u.email}</p>
+                  {u.phone && <p className="text-xs text-muted-foreground">{u.phone}</p>}
+                </div>
+                <div className="shrink-0">
+                  {isOpen ? <ChevronUp className="w-4 h-4 text-primary" /> : <ChevronDown className="w-4 h-4 text-muted-foreground" />}
                 </div>
               </div>
-            </div>
-          </CardContent>
-        </Card>
-      ))}
+            </button>
+
+            {/* Expanded detail */}
+            {isOpen && <UserDetailPanel userId={u.id} adminToken={sessionStorage.getItem(ADMIN_JWT_KEY) ?? ''} />}
+          </div>
+        );
+      })}
     </div>
   );
 }

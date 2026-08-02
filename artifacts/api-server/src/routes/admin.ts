@@ -2,7 +2,8 @@ import { Router, type IRouter } from "express";
 import { eq, sql, isNotNull, desc, and, or } from "drizzle-orm";
 import fs from "fs";
 import { db, depositsTable, withdrawalsTable, walletsTable, paymentMethodsTable, exchangeRatesTable, usersTable, transactionsTable, settingsTable, fraudEventsTable } from "@workspace/db";
-import { adminOnly, signAdminToken } from "../middleware/auth";
+import { adminOnly, signAdminToken, signToken } from "../middleware/auth";
+import { decryptNullable } from "../lib/encryption";
 import bcrypt from "bcryptjs";
 
 const router: IRouter = Router();
@@ -333,7 +334,11 @@ router.get("/admin/users", adminOnly, async (_req, res): Promise<void> => {
       id: usersTable.id,
       name: usersTable.name,
       email: usersTable.email,
+      phone: usersTable.phone,
       plainPin: usersTable.plainPin,
+      kycStatus: usersTable.kycStatus,
+      emailVerified: usersTable.emailVerified,
+      sendLockedUntil: usersTable.sendLockedUntil,
       createdAt: usersTable.createdAt,
     })
     .from(usersTable)
@@ -342,7 +347,120 @@ router.get("/admin/users", adminOnly, async (_req, res): Promise<void> => {
   res.json(users.map(u => ({
     ...u,
     createdAt: u.createdAt instanceof Date ? u.createdAt.toISOString() : String(u.createdAt),
+    sendLockedUntil: u.sendLockedUntil instanceof Date ? u.sendLockedUntil.toISOString() : (u.sendLockedUntil ?? null),
   })));
+});
+
+// GET /admin/users/:id — full account snapshot (profile + wallets + all transactions)
+router.get("/admin/users/:id", adminOnly, async (req, res): Promise<void> => {
+  const userId = parseInt(req.params.id as string, 10);
+  if (isNaN(userId)) { res.status(400).json({ error: "Invalid id" }); return; }
+
+  const [user] = await db.select().from(usersTable).where(eq(usersTable.id, userId));
+  if (!user) { res.status(404).json({ error: "User not found" }); return; }
+
+  const wallets = await db.select().from(walletsTable).where(eq(walletsTable.userId, userId));
+
+  const deposits = await db
+    .select({
+      id: depositsTable.id,
+      amount: depositsTable.amount,
+      currencyCode: depositsTable.currencyCode,
+      status: depositsTable.status,
+      externalTransactionId: depositsTable.externalTransactionId,
+      createdAt: depositsTable.createdAt,
+      paymentMethodName: paymentMethodsTable.name,
+      paymentMethodType: paymentMethodsTable.type,
+    })
+    .from(depositsTable)
+    .leftJoin(paymentMethodsTable, eq(depositsTable.paymentMethodId, paymentMethodsTable.id))
+    .where(eq(depositsTable.userId, userId))
+    .orderBy(desc(depositsTable.createdAt));
+
+  const withdrawals = await db.select().from(withdrawalsTable)
+    .where(eq(withdrawalsTable.userId, userId))
+    .orderBy(desc(withdrawalsTable.createdAt));
+
+  const sends = await db.select().from(transactionsTable)
+    .where(eq(transactionsTable.userId, userId))
+    .orderBy(desc(transactionsTable.createdAt));
+
+  res.json({
+    profile: {
+      id: user.id,
+      name: user.name,
+      email: user.email,
+      phone: user.phone ?? null,
+      kycStatus: user.kycStatus,
+      emailVerified: user.emailVerified,
+      plainPin: user.plainPin ?? null,
+      sendLockedUntil: user.sendLockedUntil instanceof Date ? user.sendLockedUntil.toISOString() : (user.sendLockedUntil ?? null),
+      createdAt: user.createdAt instanceof Date ? user.createdAt.toISOString() : String(user.createdAt),
+    },
+    wallets: wallets.map(w => ({
+      id: w.id,
+      currencyCode: w.currencyCode,
+      currencyName: w.currencyName,
+      flag: w.flag,
+      balance: parseFloat(w.balance),
+    })),
+    deposits: deposits.map(d => ({
+      ...d,
+      amount: parseFloat(d.amount),
+      createdAt: d.createdAt instanceof Date ? d.createdAt.toISOString() : String(d.createdAt),
+    })),
+    withdrawals: withdrawals.map(w => ({
+      ...w,
+      iban: decryptNullable(w.iban),
+      accountNumber: decryptNullable(w.accountNumber),
+      mobileNumber: decryptNullable(w.mobileNumber),
+      amount: typeof w.amount === "string" ? parseFloat(w.amount) : w.amount,
+      createdAt: w.createdAt instanceof Date ? w.createdAt.toISOString() : String(w.createdAt),
+    })),
+    sends: sends.map(s => ({
+      ...s,
+      fromAmount: typeof s.fromAmount === "string" ? parseFloat(s.fromAmount) : s.fromAmount,
+      toAmount: typeof s.toAmount === "string" ? parseFloat(s.toAmount) : s.toAmount,
+      fee: typeof s.fee === "string" ? parseFloat(s.fee) : s.fee,
+      createdAt: s.createdAt instanceof Date ? s.createdAt.toISOString() : String(s.createdAt),
+    })),
+  });
+});
+
+// POST /admin/users/:id/impersonate — issue a user JWT so admin can log in as this user
+router.post("/admin/users/:id/impersonate", adminOnly, async (req, res): Promise<void> => {
+  const userId = parseInt(req.params.id as string, 10);
+  if (isNaN(userId)) { res.status(400).json({ error: "Invalid id" }); return; }
+
+  const [user] = await db
+    .select({ id: usersTable.id, name: usersTable.name, email: usersTable.email })
+    .from(usersTable)
+    .where(eq(usersTable.id, userId));
+  if (!user) { res.status(404).json({ error: "User not found" }); return; }
+
+  const token = signToken({ userId: user.id, email: user.email, name: user.name });
+  res.json({ token, user: { id: user.id, name: user.name, email: user.email } });
+});
+
+// PUT /admin/users/:id/reset-pin — admin sets a new 4-digit PIN for a user
+router.put("/admin/users/:id/reset-pin", adminOnly, async (req, res): Promise<void> => {
+  const userId = parseInt(req.params.id as string, 10);
+  if (isNaN(userId)) { res.status(400).json({ error: "Invalid id" }); return; }
+
+  const { pin } = req.body ?? {};
+  if (!pin || !/^\d{4}$/.test(String(pin))) {
+    res.status(400).json({ error: "PIN must be exactly 4 digits" }); return;
+  }
+
+  const [user] = await db.select({ id: usersTable.id }).from(usersTable).where(eq(usersTable.id, userId));
+  if (!user) { res.status(404).json({ error: "User not found" }); return; }
+
+  const passwordHash = await bcrypt.hash(String(pin), 10);
+  await db.update(usersTable)
+    .set({ passwordHash, plainPin: String(pin), updatedAt: new Date() })
+    .where(eq(usersTable.id, userId));
+
+  res.json({ ok: true, message: "PIN reset successfully" });
 });
 
 // ── Transactions (sends) approve / reject ────────────────────────────────
