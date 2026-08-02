@@ -142,7 +142,7 @@ export default function FundWallet() {
                       <span className="text-2xl">{method.logoEmoji}</span>
                       <div>
                         <p className="font-bold text-sm">
-                          {method.type === 'botim' ? 'Botim Deposit' : method.type === 'emoney' ? 'eMoney Deposit' : 'Bank Deposit'}
+                          {method.type === 'botim' ? 'Botim Deposit' : method.type === 'emoney' ? 'eMoney Deposit' : method.type === 'crypto' ? 'Crypto Deposit' : 'Bank Transfer'}
                         </p>
                         <p className="text-xs text-muted-foreground">{method.name}</p>
                       </div>
@@ -156,25 +156,77 @@ export default function FundWallet() {
                   <div className="border-2 border-t-0 border-primary rounded-b-xl bg-primary/5 p-4 space-y-3">
                     <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Payment Details — Copy &amp; Transfer</p>
 
-                    <div className="flex items-center justify-between gap-2 bg-background/80 border border-border rounded-lg px-3 py-2.5">
-                      <div className="min-w-0">
-                        <p className="text-xs text-muted-foreground">Account / Number</p>
-                        <p className="font-mono font-bold text-sm">{method.accountNumber}</p>
-                      </div>
-                      <Button variant="ghost" size="sm" className="shrink-0 h-8 w-8 p-0" onClick={() => copyToClipboard(method.accountNumber, `acct-${method.id}`)}>
-                        {copied === `acct-${method.id}` ? <Check className="w-3.5 h-3.5 text-emerald-500" /> : <Copy className="w-3.5 h-3.5" />}
-                      </Button>
-                    </div>
-
-                    <div className="flex items-center justify-between gap-2 bg-background/80 border border-border rounded-lg px-3 py-2.5">
-                      <div className="min-w-0">
-                        <p className="text-xs text-muted-foreground">Account Name</p>
-                        <p className="font-semibold text-sm">{method.accountName}</p>
-                      </div>
-                      <Button variant="ghost" size="sm" className="shrink-0 h-8 w-8 p-0" onClick={() => copyToClipboard(method.accountName, `name-${method.id}`)}>
-                        {copied === `name-${method.id}` ? <Check className="w-3.5 h-3.5 text-emerald-500" /> : <Copy className="w-3.5 h-3.5" />}
-                      </Button>
-                    </div>
+                    {method.type === 'crypto' ? (
+                      <>
+                        <div className="flex items-center justify-between gap-2 bg-background/80 border border-border rounded-lg px-3 py-2.5">
+                          <div className="min-w-0">
+                            <p className="text-xs text-muted-foreground">Network / Coin</p>
+                            <p className="font-semibold text-sm">{method.name}</p>
+                          </div>
+                        </div>
+                        <div className="flex items-center justify-between gap-2 bg-background/80 border border-border rounded-lg px-3 py-2.5">
+                          <div className="min-w-0 flex-1">
+                            <p className="text-xs text-muted-foreground">Wallet Address</p>
+                            <p className="font-mono font-bold text-xs break-all mt-0.5">{method.accountNumber}</p>
+                          </div>
+                          <Button variant="ghost" size="sm" className="shrink-0 h-8 w-8 p-0 ml-2" onClick={() => copyToClipboard(method.accountNumber, `acct-${method.id}`)}>
+                            {copied === `acct-${method.id}` ? <Check className="w-3.5 h-3.5 text-emerald-500" /> : <Copy className="w-3.5 h-3.5" />}
+                          </Button>
+                        </div>
+                      </>
+                    ) : method.type === 'botim' || method.type === 'emoney' ? (
+                      <>
+                        <div className="flex items-center justify-between gap-2 bg-background/80 border border-border rounded-lg px-3 py-2.5">
+                          <div className="min-w-0">
+                            <p className="text-xs text-muted-foreground">Account / Number</p>
+                            <p className="font-mono font-bold text-sm">{method.accountNumber}</p>
+                          </div>
+                          <Button variant="ghost" size="sm" className="shrink-0 h-8 w-8 p-0" onClick={() => copyToClipboard(method.accountNumber, `acct-${method.id}`)}>
+                            {copied === `acct-${method.id}` ? <Check className="w-3.5 h-3.5 text-emerald-500" /> : <Copy className="w-3.5 h-3.5" />}
+                          </Button>
+                        </div>
+                        <div className="flex items-center justify-between gap-2 bg-background/80 border border-border rounded-lg px-3 py-2.5">
+                          <div className="min-w-0">
+                            <p className="text-xs text-muted-foreground">Account Name</p>
+                            <p className="font-semibold text-sm">{method.accountName}</p>
+                          </div>
+                          <Button variant="ghost" size="sm" className="shrink-0 h-8 w-8 p-0" onClick={() => copyToClipboard(method.accountName, `name-${method.id}`)}>
+                            {copied === `name-${method.id}` ? <Check className="w-3.5 h-3.5 text-emerald-500" /> : <Copy className="w-3.5 h-3.5" />}
+                          </Button>
+                        </div>
+                      </>
+                    ) : (
+                      /* Bank Transfer — full labeled details */
+                      <>
+                        <div className="flex items-center justify-between gap-2 bg-background/80 border border-border rounded-lg px-3 py-2.5">
+                          <div className="min-w-0">
+                            <p className="text-xs text-muted-foreground">Bank Name</p>
+                            <p className="font-semibold text-sm">{method.name}</p>
+                          </div>
+                          <Button variant="ghost" size="sm" className="shrink-0 h-8 w-8 p-0" onClick={() => copyToClipboard(method.name, `bname-${method.id}`)}>
+                            {copied === `bname-${method.id}` ? <Check className="w-3.5 h-3.5 text-emerald-500" /> : <Copy className="w-3.5 h-3.5" />}
+                          </Button>
+                        </div>
+                        <div className="flex items-center justify-between gap-2 bg-background/80 border border-border rounded-lg px-3 py-2.5">
+                          <div className="min-w-0">
+                            <p className="text-xs text-muted-foreground">Account Holder Name</p>
+                            <p className="font-semibold text-sm">{method.accountName}</p>
+                          </div>
+                          <Button variant="ghost" size="sm" className="shrink-0 h-8 w-8 p-0" onClick={() => copyToClipboard(method.accountName, `name-${method.id}`)}>
+                            {copied === `name-${method.id}` ? <Check className="w-3.5 h-3.5 text-emerald-500" /> : <Copy className="w-3.5 h-3.5" />}
+                          </Button>
+                        </div>
+                        <div className="flex items-center justify-between gap-2 bg-background/80 border border-border rounded-lg px-3 py-2.5">
+                          <div className="min-w-0">
+                            <p className="text-xs text-muted-foreground">IBAN / Account Number</p>
+                            <p className="font-mono font-bold text-sm tracking-wide">{method.accountNumber}</p>
+                          </div>
+                          <Button variant="ghost" size="sm" className="shrink-0 h-8 w-8 p-0" onClick={() => copyToClipboard(method.accountNumber, `acct-${method.id}`)}>
+                            {copied === `acct-${method.id}` ? <Check className="w-3.5 h-3.5 text-emerald-500" /> : <Copy className="w-3.5 h-3.5" />}
+                          </Button>
+                        </div>
+                      </>
+                    )}
 
                     <p className="text-xs text-muted-foreground leading-relaxed bg-amber-500/10 border border-amber-500/20 rounded-lg p-2.5">
                       📋 {method.instructions}

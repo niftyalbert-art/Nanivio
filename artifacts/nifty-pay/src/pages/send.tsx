@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useMemo } from 'react';
 import {
   useGetWallets, useCreateTransaction, useGetSupportedCountries,
   getGetWalletsQueryKey, getGetTransactionsQueryKey, getGetDashboardSummaryQueryKey,
@@ -11,6 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Skeleton } from '@/components/ui/skeleton';
 import { Badge } from '@/components/ui/badge';
 import { Clock, ArrowLeft, ChevronRight, Building2, Smartphone, ShieldCheck } from 'lucide-react';
+import { groupByRegion } from '@/lib/regions';
 import { useQueryClient } from '@tanstack/react-query';
 import { useLocation } from 'wouter';
 import { useToast } from '@/hooks/use-toast';
@@ -254,7 +255,8 @@ export default function Send() {
 
   const filteredCountries = countries?.filter(c =>
     c.name.toLowerCase().includes(countrySearch.toLowerCase()) ||
-    c.currencyCode.toLowerCase().includes(countrySearch.toLowerCase())
+    c.currencyCode.toLowerCase().includes(countrySearch.toLowerCase()) ||
+    c.currencyName?.toLowerCase().includes(countrySearch.toLowerCase())
   ) ?? [];
 
   const canProceedFromReceiver = () => {
@@ -788,11 +790,10 @@ export default function Send() {
         </span>
       </div>
 
-      <div ref={countryListRef} className="space-y-2 max-h-[60vh] overflow-y-auto pr-1">
-        {filteredCountries.length === 0 && (
-          <p className="text-sm text-muted-foreground text-center py-8">No countries found</p>
-        )}
-        {filteredCountries.map(c => (
+      {(() => {
+        const isSearching = countrySearch.trim().length > 0;
+        const grouped = isSearching ? null : groupByRegion(filteredCountries ?? [], c => c.code);
+        const CountryBtn = ({ c }: { c: NonNullable<typeof countries>[0] }) => (
           <button
             key={c.code}
             type="button"
@@ -806,8 +807,26 @@ export default function Send() {
             </div>
             <ChevronRight className="w-4 h-4 text-muted-foreground shrink-0" />
           </button>
-        ))}
-      </div>
+        );
+        return (
+          <div ref={countryListRef} className="space-y-1 max-h-[60vh] overflow-y-auto pr-1">
+            {(filteredCountries?.length ?? 0) === 0 && (
+              <p className="text-sm text-muted-foreground text-center py-8">No countries found</p>
+            )}
+            {isSearching
+              ? filteredCountries?.map(c => <CountryBtn key={c.code} c={c} />)
+              : grouped?.map(({ group, items }) => (
+                  <div key={group} className="space-y-1">
+                    <p className="text-[11px] font-bold uppercase tracking-widest text-muted-foreground px-1 pt-3 pb-0.5">
+                      {group.startsWith('Africa') ? '🌍' : group === 'Middle East' ? '🕌' : group === 'Asia' ? '🌏' : group === 'Europe' ? '🌎' : '🌐'} {group}
+                    </p>
+                    {items.map(c => <CountryBtn key={c.code} c={c} />)}
+                  </div>
+                ))
+            }
+          </div>
+        );
+      })()}
     </div>
   );
 }

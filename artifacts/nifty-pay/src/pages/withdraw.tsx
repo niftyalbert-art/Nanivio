@@ -18,6 +18,53 @@ import { useQueryClient } from '@tanstack/react-query';
 import { useToast } from '@/hooks/use-toast';
 import { Link } from 'wouter';
 
+// Country display info: flag + currency code
+const COUNTRY_INFO: Record<string, { flag: string; currency: string }> = {
+  Ghana:        { flag: '🇬🇭', currency: 'GHS' },
+  Nigeria:      { flag: '🇳🇬', currency: 'NGN' },
+  Kenya:        { flag: '🇰🇪', currency: 'KES' },
+  Uganda:       { flag: '🇺🇬', currency: 'UGX' },
+  Tanzania:     { flag: '🇹🇿', currency: 'TZS' },
+  Ethiopia:     { flag: '🇪🇹', currency: 'ETB' },
+  Rwanda:       { flag: '🇷🇼', currency: 'RWF' },
+  Cameroon:     { flag: '🇨🇲', currency: 'XAF' },
+  Senegal:      { flag: '🇸🇳', currency: 'XOF' },
+  Egypt:        { flag: '🇪🇬', currency: 'EGP' },
+  Morocco:      { flag: '🇲🇦', currency: 'MAD' },
+  'South Africa': { flag: '🇿🇦', currency: 'ZAR' },
+  UAE:          { flag: '🇦🇪', currency: 'AED' },
+  India:        { flag: '🇮🇳', currency: 'INR' },
+  Pakistan:     { flag: '🇵🇰', currency: 'PKR' },
+  Bangladesh:   { flag: '🇧🇩', currency: 'BDT' },
+  'Sri Lanka':  { flag: '🇱🇰', currency: 'LKR' },
+  Philippines:  { flag: '🇵🇭', currency: 'PHP' },
+  Malaysia:     { flag: '🇲🇾', currency: 'MYR' },
+  UK:           { flag: '🇬🇧', currency: 'GBP' },
+  USA:          { flag: '🇺🇸', currency: 'USD' },
+  Mexico:       { flag: '🇲🇽', currency: 'MXN' },
+  Brazil:       { flag: '🇧🇷', currency: 'BRL' },
+};
+
+// Ordered by region: Africa first, then Middle East, Asia, Europe, Americas
+const ORDERED_COUNTRIES = [
+  // Africa · West
+  'Ghana', 'Nigeria', 'Senegal', 'Cameroon',
+  // Africa · North
+  'Egypt', 'Morocco',
+  // Africa · East
+  'Kenya', 'Uganda', 'Tanzania', 'Ethiopia', 'Rwanda',
+  // Africa · South
+  'South Africa',
+  // Middle East
+  'UAE',
+  // Asia
+  'India', 'Pakistan', 'Bangladesh', 'Sri Lanka', 'Philippines', 'Malaysia',
+  // Europe
+  'UK',
+  // Americas
+  'USA', 'Mexico', 'Brazil',
+];
+
 // Mobile money networks by country
 const MOBILE_MONEY_NETWORKS: Record<string, string[]> = {
   Ghana: ['MTN Mobile Money', 'Vodafone Cash', 'AirtelTigo Money'],
@@ -229,9 +276,14 @@ export default function Withdraw() {
                     <SelectValue placeholder="Select country" />
                   </SelectTrigger>
                   <SelectContent>
-                    {['Ghana', 'Nigeria', 'Kenya', 'Philippines', 'India', 'Pakistan', 'Uganda', 'Tanzania', 'UAE', 'USA', 'UK', 'Bangladesh', 'Egypt', 'Morocco', 'Sri Lanka', 'Senegal', 'Malaysia', 'Mexico', 'Brazil', 'Cameroon', 'Ethiopia'].sort().map(c => (
-                      <SelectItem key={c} value={c}>{c}</SelectItem>
-                    ))}
+                    {ORDERED_COUNTRIES.map(c => {
+                      const info = COUNTRY_INFO[c];
+                      return (
+                        <SelectItem key={c} value={c}>
+                          {info ? `${info.flag} ${c} · ${info.currency}` : c}
+                        </SelectItem>
+                      );
+                    })}
                   </SelectContent>
                 </Select>
               </div>

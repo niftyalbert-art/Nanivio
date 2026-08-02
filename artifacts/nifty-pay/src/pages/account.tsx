@@ -15,7 +15,7 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
-import { Copy, Check, ArrowDownLeft, ArrowUpLeft, MessageSquare, CheckCircle2, ExternalLink, Send, LogOut, ShieldCheck, ChevronDown, ChevronUp, Phone, Video, BadgeCheck, ChevronRight } from 'lucide-react';
+import { Copy, Check, ArrowDownLeft, ArrowUpLeft, MessageSquare, CheckCircle2, ExternalLink, Send, LogOut, ShieldCheck, ChevronDown, ChevronUp, Phone, Video, BadgeCheck, ChevronRight, TrendingUp, ArrowLeftRight } from 'lucide-react';
 import { useLocation } from 'wouter';
 import { Switch } from '@/components/ui/switch';
 import { formatDistanceToNow } from 'date-fns';
@@ -35,7 +35,15 @@ export default function Account() {
   const { data: methods, isLoading: methodsLoading } = useGetPaymentMethods();
   const { data: deposits, isLoading: depositsLoading } = useGetDeposits();
   const { data: withdrawals, isLoading: withdrawalsLoading } = useGetWithdrawals();
+  const { data: allRates, isLoading: ratesLoading } = useQuery<{ code: string; rateToUsd: number }[]>({
+    queryKey: ['rates-all'],
+    queryFn: () => fetch(`${API_BASE}/rates/all`).then(r => r.json()),
+    staleTime: 5 * 60 * 1000,
+  });
   const [copied, setCopied] = useState<string | null>(null);
+  const [calcFrom, setCalcFrom] = useState('USD');
+  const [calcTo, setCalcTo] = useState('AED');
+  const [calcAmount, setCalcAmount] = useState('100');
   const queryClient = useQueryClient();
 
   // Calling settings
@@ -362,6 +370,7 @@ export default function Account() {
           <TabsTrigger value="payment-details" className="flex-1 text-xs md:text-sm">Pay Details</TabsTrigger>
           <TabsTrigger value="deposits" className="flex-1 text-xs md:text-sm">Deposits</TabsTrigger>
           <TabsTrigger value="withdrawals" className="flex-1 text-xs md:text-sm">Sends</TabsTrigger>
+          <TabsTrigger value="rates" className="flex-1 text-xs md:text-sm">Rates</TabsTrigger>
           <TabsTrigger value="support" className="flex-1 text-xs md:text-sm">Support</TabsTrigger>
         </TabsList>
 
@@ -379,27 +388,83 @@ export default function Account() {
                 <CardTitle className="text-sm font-bold flex items-center gap-2">
                   <span className="text-xl">{method.logoEmoji}</span>
                   {method.name}
+                  <span className="ml-auto text-[10px] font-normal text-muted-foreground bg-muted px-2 py-0.5 rounded-full">
+                    {method.type === 'crypto' ? 'Crypto' : method.type === 'botim' ? 'Botim' : method.type === 'emoney' ? 'eMoney' : 'Bank'}
+                  </span>
                 </CardTitle>
               </CardHeader>
               <CardContent className="p-4 pt-0 space-y-2">
-                <div className="flex items-center justify-between gap-2 bg-muted/60 rounded-lg px-3 py-2.5">
-                  <div className="min-w-0">
-                    <p className="text-xs text-muted-foreground">Account / Number</p>
-                    <p className="font-mono font-bold text-sm truncate">{method.accountNumber}</p>
-                  </div>
-                  <Button variant="ghost" size="sm" className="h-8 w-8 p-0 shrink-0" onClick={() => copy(method.accountNumber, `acct-${method.id}`)}>
-                    {copied === `acct-${method.id}` ? <Check className="w-3.5 h-3.5 text-emerald-500" /> : <Copy className="w-3.5 h-3.5" />}
-                  </Button>
-                </div>
-                <div className="flex items-center justify-between gap-2 bg-muted/60 rounded-lg px-3 py-2.5">
-                  <div className="min-w-0">
-                    <p className="text-xs text-muted-foreground">Account Name</p>
-                    <p className="font-semibold text-sm truncate">{method.accountName}</p>
-                  </div>
-                  <Button variant="ghost" size="sm" className="h-8 w-8 p-0 shrink-0" onClick={() => copy(method.accountName, `name-${method.id}`)}>
-                    {copied === `name-${method.id}` ? <Check className="w-3.5 h-3.5 text-emerald-500" /> : <Copy className="w-3.5 h-3.5" />}
-                  </Button>
-                </div>
+                {method.type === 'crypto' ? (
+                  <>
+                    <div className="flex items-center justify-between gap-2 bg-muted/60 rounded-lg px-3 py-2.5">
+                      <div className="min-w-0">
+                        <p className="text-xs text-muted-foreground">Network / Coin</p>
+                        <p className="font-semibold text-sm truncate">{method.name}</p>
+                      </div>
+                    </div>
+                    <div className="flex items-center justify-between gap-2 bg-muted/60 rounded-lg px-3 py-2.5">
+                      <div className="min-w-0 flex-1">
+                        <p className="text-xs text-muted-foreground">Wallet Address</p>
+                        <p className="font-mono font-bold text-xs break-all mt-0.5">{method.accountNumber}</p>
+                      </div>
+                      <Button variant="ghost" size="sm" className="h-8 w-8 p-0 shrink-0 ml-2" onClick={() => copy(method.accountNumber, `acct-${method.id}`)}>
+                        {copied === `acct-${method.id}` ? <Check className="w-3.5 h-3.5 text-emerald-500" /> : <Copy className="w-3.5 h-3.5" />}
+                      </Button>
+                    </div>
+                  </>
+                ) : method.type === 'botim' || method.type === 'emoney' ? (
+                  <>
+                    <div className="flex items-center justify-between gap-2 bg-muted/60 rounded-lg px-3 py-2.5">
+                      <div className="min-w-0">
+                        <p className="text-xs text-muted-foreground">Account / Number</p>
+                        <p className="font-mono font-bold text-sm truncate">{method.accountNumber}</p>
+                      </div>
+                      <Button variant="ghost" size="sm" className="h-8 w-8 p-0 shrink-0" onClick={() => copy(method.accountNumber, `acct-${method.id}`)}>
+                        {copied === `acct-${method.id}` ? <Check className="w-3.5 h-3.5 text-emerald-500" /> : <Copy className="w-3.5 h-3.5" />}
+                      </Button>
+                    </div>
+                    <div className="flex items-center justify-between gap-2 bg-muted/60 rounded-lg px-3 py-2.5">
+                      <div className="min-w-0">
+                        <p className="text-xs text-muted-foreground">Account Name</p>
+                        <p className="font-semibold text-sm truncate">{method.accountName}</p>
+                      </div>
+                      <Button variant="ghost" size="sm" className="h-8 w-8 p-0 shrink-0" onClick={() => copy(method.accountName, `name-${method.id}`)}>
+                        {copied === `name-${method.id}` ? <Check className="w-3.5 h-3.5 text-emerald-500" /> : <Copy className="w-3.5 h-3.5" />}
+                      </Button>
+                    </div>
+                  </>
+                ) : (
+                  /* Bank Transfer — full labeled details */
+                  <>
+                    <div className="flex items-center justify-between gap-2 bg-muted/60 rounded-lg px-3 py-2.5">
+                      <div className="min-w-0">
+                        <p className="text-xs text-muted-foreground">Bank Name</p>
+                        <p className="font-semibold text-sm truncate">{method.name}</p>
+                      </div>
+                      <Button variant="ghost" size="sm" className="h-8 w-8 p-0 shrink-0" onClick={() => copy(method.name, `bname-${method.id}`)}>
+                        {copied === `bname-${method.id}` ? <Check className="w-3.5 h-3.5 text-emerald-500" /> : <Copy className="w-3.5 h-3.5" />}
+                      </Button>
+                    </div>
+                    <div className="flex items-center justify-between gap-2 bg-muted/60 rounded-lg px-3 py-2.5">
+                      <div className="min-w-0">
+                        <p className="text-xs text-muted-foreground">Account Holder Name</p>
+                        <p className="font-semibold text-sm truncate">{method.accountName}</p>
+                      </div>
+                      <Button variant="ghost" size="sm" className="h-8 w-8 p-0 shrink-0" onClick={() => copy(method.accountName, `name-${method.id}`)}>
+                        {copied === `name-${method.id}` ? <Check className="w-3.5 h-3.5 text-emerald-500" /> : <Copy className="w-3.5 h-3.5" />}
+                      </Button>
+                    </div>
+                    <div className="flex items-center justify-between gap-2 bg-muted/60 rounded-lg px-3 py-2.5">
+                      <div className="min-w-0">
+                        <p className="text-xs text-muted-foreground">IBAN / Account Number</p>
+                        <p className="font-mono font-bold text-sm tracking-wide truncate">{method.accountNumber}</p>
+                      </div>
+                      <Button variant="ghost" size="sm" className="h-8 w-8 p-0 shrink-0" onClick={() => copy(method.accountNumber, `acct-${method.id}`)}>
+                        {copied === `acct-${method.id}` ? <Check className="w-3.5 h-3.5 text-emerald-500" /> : <Copy className="w-3.5 h-3.5" />}
+                      </Button>
+                    </div>
+                  </>
+                )}
                 <p className="text-xs text-muted-foreground leading-relaxed">{method.instructions}</p>
               </CardContent>
             </Card>
@@ -490,6 +555,112 @@ export default function Account() {
               ))}
             </div>
           )}
+        </TabsContent>
+
+        {/* Rates Tab */}
+        <TabsContent value="rates" className="space-y-4 mt-3">
+          <p className="text-xs text-muted-foreground">Live exchange rates — updated every 5 minutes. All rates shown vs USD.</p>
+
+          {/* Calculator */}
+          <Card className="border-primary/20 bg-primary/5">
+            <CardHeader className="p-4 pb-2">
+              <CardTitle className="text-sm font-bold flex items-center gap-2">
+                <ArrowLeftRight className="w-4 h-4 text-primary" /> Currency Calculator
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="p-4 pt-0 space-y-3">
+              {ratesLoading ? (
+                <Skeleton className="h-24" />
+              ) : (() => {
+                const rateMap: Record<string, number> = {};
+                allRates?.forEach(r => { rateMap[r.code] = r.rateToUsd; });
+                const currencies = ['USD', ...(allRates?.map(r => r.code).filter(c => c !== 'USD') ?? [])];
+                const numAmount = parseFloat(calcAmount) || 0;
+                const fromRate = rateMap[calcFrom] ?? 1;
+                const toRate = rateMap[calcTo] ?? 1;
+                // Convert: amount in FROM → USD → TO
+                const fromUsd = calcFrom === 'USD' ? numAmount : numAmount * fromRate;
+                const result = calcTo === 'USD' ? fromUsd : fromUsd / toRate;
+                return (
+                  <div className="space-y-3">
+                    <div className="grid grid-cols-2 gap-2">
+                      <div className="space-y-1">
+                        <label className="text-xs text-muted-foreground">From</label>
+                        <select
+                          className="w-full text-sm border border-border rounded-lg px-2 py-1.5 bg-background"
+                          value={calcFrom}
+                          onChange={e => setCalcFrom(e.target.value)}
+                        >
+                          {currencies.map(c => <option key={c} value={c}>{c}</option>)}
+                        </select>
+                      </div>
+                      <div className="space-y-1">
+                        <label className="text-xs text-muted-foreground">To</label>
+                        <select
+                          className="w-full text-sm border border-border rounded-lg px-2 py-1.5 bg-background"
+                          value={calcTo}
+                          onChange={e => setCalcTo(e.target.value)}
+                        >
+                          {currencies.map(c => <option key={c} value={c}>{c}</option>)}
+                        </select>
+                      </div>
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-xs text-muted-foreground">Amount in {calcFrom}</label>
+                      <Input
+                        type="number"
+                        min="0"
+                        step="any"
+                        value={calcAmount}
+                        onChange={e => setCalcAmount(e.target.value)}
+                        className="font-mono text-base"
+                        placeholder="100"
+                      />
+                    </div>
+                    <div className="bg-background border border-border rounded-lg px-4 py-3 text-center">
+                      <p className="text-xs text-muted-foreground mb-0.5">{numAmount.toLocaleString('en-US')} {calcFrom} =</p>
+                      <p className="text-2xl font-bold font-mono text-primary">
+                        {result.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: result >= 1000 ? 0 : 2 })} {calcTo}
+                      </p>
+                    </div>
+                  </div>
+                );
+              })()}
+            </CardContent>
+          </Card>
+
+          {/* Rates table */}
+          <Card>
+            <CardHeader className="p-4 pb-2">
+              <CardTitle className="text-sm font-bold flex items-center gap-2">
+                <TrendingUp className="w-4 h-4" /> All Exchange Rates
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="p-0">
+              {ratesLoading ? (
+                <div className="p-4 space-y-2">{[...Array(6)].map((_, i) => <Skeleton key={i} className="h-8" />)}</div>
+              ) : (
+                <div className="divide-y divide-border">
+                  {allRates?.map((r) => {
+                    const usdRate = r.rateToUsd > 0 ? (1 / r.rateToUsd) : 0;
+                    return (
+                      <div key={r.code} className="flex items-center justify-between px-4 py-2.5">
+                        <p className="text-sm font-semibold font-mono">{r.code}</p>
+                        <div className="text-right">
+                          <p className="text-sm font-mono font-semibold">
+                            {usdRate >= 1000
+                              ? usdRate.toLocaleString('en-US', { maximumFractionDigits: 0 })
+                              : usdRate.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 4 })}
+                          </p>
+                          <p className="text-[10px] text-muted-foreground">per 1 USD</p>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </CardContent>
+          </Card>
         </TabsContent>
 
         {/* Support Tab */}
