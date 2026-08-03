@@ -626,6 +626,27 @@ function ChatInner({
     } catch { /* ignore */ }
   };
 
+  // Auto-accept invites from people already in my contacts — once two users
+  // have connected, no new permission round-trip is needed to chat again.
+  const autoAcceptingRef = useRef<Set<string>>(new Set());
+  useEffect(() => {
+    for (const ch of pendingInvites) {
+      const cid = ch.cid;
+      if (!cid || autoAcceptingRef.current.has(cid)) continue;
+      const inviter = (Object.values(ch.state?.members ?? {}) as any[])
+        .find(m => m.user_id !== streamData.userId && !m.invited);
+      if (inviter?.user_id && contacts.some(c => c.streamUserId === inviter.user_id)) {
+        autoAcceptingRef.current.add(cid);
+        ch.acceptInvite()
+          .then(() => {
+            setPendingInvites(prev => prev.filter(c => c.cid !== cid));
+            setTick(t => t + 1);
+          })
+          .catch(() => autoAcceptingRef.current.delete(cid));
+      }
+    }
+  }, [pendingInvites, contacts, streamData.userId]);
+
   const declineInvite = async (ch: StreamChannel) => {
     try {
       await ch.rejectInvite();
@@ -1383,15 +1404,21 @@ function ChatConnected() {
         return;
       }
 
+      // Contacts skip the invitation step: once two users are in each other's
+      // contact list the chat opens directly, like any messaging app.
+      const allAreContacts = inviteeIds.every(id => contacts.some(c => c.streamUserId === id));
+
       // Explicit channel ID avoids Stream's "≥2 members" rule for distinct channels
       const channelId = `ch-${streamData.userId}-${Date.now()}`;
       const ch = chatClient.channel('messaging', channelId, {
         ...(isGroup && groupName.trim() ? { name: groupName.trim() } : {}),
-        members: [streamData.userId],
+        members: allAreContacts ? [streamData.userId, ...inviteeIds] : [streamData.userId],
       });
       await ch.create();
-      // Invite selected users — they must accept before messaging starts
-      await ch.inviteMembers(inviteeIds);
+      if (!allAreContacts) {
+        // Not saved contacts yet — they must accept before messaging starts
+        await ch.inviteMembers(inviteeIds);
+      }
       await ch.watch();
       closeNewChat();
       setActiveChannelRef.current?.(ch);
