@@ -13,10 +13,12 @@ app.set("trust proxy", 1);
 
 // ── Rate limiting ─────────────────────────────────────────────────────────────
 
-/** Global fallback: 100 requests per 15 minutes per IP */
+/** Global fallback: 3000 requests per 15 minutes per IP.
+ * The app polls several endpoints every few seconds per open tab, so a real
+ * user easily exceeds a low ceiling; this guards against floods, not usage. */
 const globalLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: 100,
+  max: 3000,
   standardHeaders: "draft-7",
   legacyHeaders: false,
   message: { error: "Too many requests, please try again later." },
@@ -40,10 +42,12 @@ const transactionLimiter = rateLimit({
   message: { error: "Too many transfer requests, please slow down." },
 });
 
-/** Admin routes: 30 requests per 15 minutes per IP */
+/** Admin routes: 2000 requests per 15 minutes per IP.
+ * The admin dashboard polls ~6 endpoints every few seconds (~1400 req/15min),
+ * so anything lower locks admins out with 429s. Auth still gates access. */
 const adminLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: 30,
+  max: 2000,
   standardHeaders: "draft-7",
   legacyHeaders: false,
   message: { error: "Too many admin requests, please try again later." },
