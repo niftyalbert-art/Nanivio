@@ -135,6 +135,8 @@ export function StreamVideoProvider({ children }: { children: ReactNode }) {
       const kind = incomingKindRef.current;
       try { await incomingCall.microphone.enable(); } catch {}
       if (kind === 'video') {
+        // Cap publish resolution — smoother calls on average mobile networks
+        try { incomingCall.camera.selectTargetResolution({ width: 640, height: 480 }); } catch {}
         try { await incomingCall.camera.enable(); } catch {}
       } else {
         try { await incomingCall.camera.disable(); } catch {}
@@ -192,6 +194,8 @@ export function StreamVideoProvider({ children }: { children: ReactNode }) {
       // Publish media tracks — without this the receiver sees no video/audio.
       try { await call.microphone.enable(); } catch {}
       if (type === 'video') {
+        // Cap publish resolution — smoother calls on average mobile networks
+        try { call.camera.selectTargetResolution({ width: 640, height: 480 }); } catch {}
         try { await call.camera.enable(); } catch {}
       } else {
         try { await call.camera.disable(); } catch {}
