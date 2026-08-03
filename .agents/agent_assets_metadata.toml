@@ -7,3 +7,10 @@ uri = "file://attached_assets/generated_images/nanivio-royal-wallpaper.png"
 type = "image"
 title = "Royal Classic — Nanivio by Nifty wallpaper"
 description = "Premium dark-silk chat wallpaper with the purple & gold N monogram, nanivio wordmark, and 'by Nifty' tagline."
+
+[[outputs]]
+id = "AOL8bw8SxM6qh0GuIhLiD"
+uri = "file://artifacts/nifty-pay/public/wallpapers/royal-classic.jpg"
+type = "image"
+title = "Royal Classic — brightened"
+description = "Slightly brighter version of the Nanivio by Nifty wallpaper, now live in the chat wallpaper picker."
