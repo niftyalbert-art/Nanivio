@@ -54,6 +54,7 @@ function streamAvatarUrl(user: any): string | undefined {
 /* ─── chat wallpaper presets ─── */
 const CHAT_BG_PRESETS: { id: string; label: string; css: string; official?: boolean }[] = [
   /* ── Official Nanivio backgrounds ── */
+  { id: 'royal-classic', label: 'Royal Classic', official: true, css: `#0b0d1a url(${import.meta.env.BASE_URL}wallpapers/royal-classic.jpg) center / cover no-repeat` },
   { id: 'nano-glow',    label: 'Nano Glow',    official: true, css: `#160b33 url(${import.meta.env.BASE_URL}wallpapers/nano-glow.png) center / cover no-repeat` },
   { id: 'wave-flow',    label: 'Wave Flow',    official: true, css: `#120a2e url(${import.meta.env.BASE_URL}wallpapers/wave-flow.png) center / cover no-repeat` },
   { id: 'hexa-tech',    label: 'Hexa Tech',    official: true, css: `#150d35 url(${import.meta.env.BASE_URL}wallpapers/hexa-tech.png) center / cover no-repeat` },
