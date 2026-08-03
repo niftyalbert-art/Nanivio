@@ -134,11 +134,11 @@ export default function Countries() {
             {/* Quick stats row */}
             <div className="pt-2 border-t border-border space-y-1.5">
               {usdRate !== null && (
-                <div className="flex items-center justify-between text-xs md:text-sm">
-                  <span className="text-muted-foreground flex items-center gap-1.5">
+                <div className="flex items-start justify-between gap-2 text-xs md:text-sm">
+                  <span className="text-muted-foreground flex items-center gap-1.5 shrink-0 whitespace-nowrap pt-px">
                     <TrendingUp className="w-3 h-3" /> Rate
                   </span>
-                  <span className="font-semibold font-mono">
+                  <span className="font-semibold font-mono text-right min-w-0 break-all">
                     1 USD = {usdRate >= 1000
                       ? usdRate.toLocaleString('en-US', { maximumFractionDigits: 0 })
                       : usdRate.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 4 })
@@ -146,18 +146,18 @@ export default function Countries() {
                   </span>
                 </div>
               )}
-              <div className="flex items-center justify-between text-xs md:text-sm">
-                <span className="text-muted-foreground flex items-center gap-1.5">
+              <div className="flex items-center justify-between gap-2 text-xs md:text-sm">
+                <span className="text-muted-foreground flex items-center gap-1.5 shrink-0 whitespace-nowrap">
                   <Clock className="w-3 h-3" /> Transfer Fee
                 </span>
-                <span className="font-semibold">{country.transferFee}%</span>
+                <span className="font-semibold text-right">{country.transferFee}%</span>
               </div>
-              <div className="flex items-center justify-between text-xs md:text-sm">
-                <span className="text-muted-foreground">Est. Time</span>
-                <span className="font-semibold">{country.estimatedTime}</span>
+              <div className="flex items-center justify-between gap-2 text-xs md:text-sm">
+                <span className="text-muted-foreground shrink-0 whitespace-nowrap">Est. Time</span>
+                <span className="font-semibold text-right">{country.estimatedTime}</span>
               </div>
-              <div className="flex items-center justify-between text-xs md:text-sm pt-0.5">
-                <span className="text-muted-foreground flex items-center gap-1.5">
+              <div className="flex items-center justify-between gap-2 text-xs md:text-sm pt-0.5">
+                <span className="text-muted-foreground flex items-center gap-1.5 shrink-0 whitespace-nowrap">
                   <Calculator className="w-3 h-3" /> Calculator
                 </span>
                 <span className="text-xs text-primary font-medium">{isOpen ? 'Hide ↑' : 'Open ↓'}</span>
@@ -168,68 +168,63 @@ export default function Countries() {
 
         {/* ── Rate calculator panel ── */}
         {isOpen && (
-          <div className="p-4 space-y-4 bg-card">
+          <div className="p-4 space-y-3 bg-card">
             <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Currency Calculator</p>
 
-            {/* Amount + swap row */}
-            <div className="space-y-2">
-              {/* You send */}
-              <div className="flex gap-2 items-center">
-                <div className="flex-1 space-y-1">
-                  <p className="text-xs text-muted-foreground">You send</p>
-                  <div className="flex gap-2">
-                    <Input
-                      type="number"
-                      min="0"
-                      step="any"
-                      placeholder="Amount"
-                      value={calc.amount}
-                      onChange={e => setCalc(c => ({ ...c, amount: e.target.value }))}
-                      className="font-mono w-28 shrink-0"
-                    />
-                    <select
-                      className="flex-1 text-sm border border-border rounded-lg px-2.5 py-2 bg-background font-mono"
-                      value={calc.fromCurrency}
-                      onChange={e => setCalc(c => ({ ...c, fromCurrency: e.target.value }))}
-                    >
-                      {currencyList.map(code => (
-                        <option key={code} value={code}>{code}</option>
-                      ))}
-                    </select>
-                  </div>
-                </div>
+            {/* You send row */}
+            <div className="space-y-1">
+              <p className="text-xs text-muted-foreground">You send</p>
+              <div className="flex gap-2">
+                <Input
+                  type="number"
+                  min="0"
+                  step="any"
+                  placeholder="Amount"
+                  value={calc.amount}
+                  onChange={e => setCalc(c => ({ ...c, amount: e.target.value }))}
+                  className="font-mono flex-1 min-w-0"
+                />
+                <select
+                  className="flex-1 min-w-0 text-sm border border-border rounded-lg px-2.5 py-2 bg-background font-mono"
+                  value={calc.fromCurrency}
+                  onChange={e => setCalc(c => ({ ...c, fromCurrency: e.target.value }))}
+                >
+                  {currencyList.map(code => (
+                    <option key={code} value={code}>{code}</option>
+                  ))}
+                </select>
+              </div>
+            </div>
 
-                {/* Swap button */}
-                <div className="pt-5">
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    className="h-9 w-9 p-0 rounded-full"
-                    onClick={swapCurrencies}
-                  >
-                    <ArrowLeftRight className="w-3.5 h-3.5" />
-                  </Button>
-                </div>
+            {/* Swap button */}
+            <div className="flex justify-center">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="h-8 w-8 p-0 rounded-full"
+                onClick={swapCurrencies}
+              >
+                <ArrowLeftRight className="w-3.5 h-3.5 rotate-90" />
+              </Button>
+            </div>
 
-                {/* Recipient gets */}
-                <div className="flex-1 space-y-1">
-                  <p className="text-xs text-muted-foreground">Recipient gets</p>
-                  <div className="flex gap-2">
-                    <div className="font-mono w-28 shrink-0 h-10 flex items-center px-3 rounded-lg bg-primary/10 border border-primary/20 text-primary font-bold text-sm">
-                      {calcResult !== null ? formatResult(calcResult) : '—'}
-                    </div>
-                    <select
-                      className="flex-1 text-sm border border-border rounded-lg px-2.5 py-2 bg-background font-mono"
-                      value={calc.toCurrency}
-                      onChange={e => setCalc(c => ({ ...c, toCurrency: e.target.value }))}
-                    >
-                      {currencyList.map(code => (
-                        <option key={code} value={code}>{code}</option>
-                      ))}
-                    </select>
-                  </div>
+            {/* Recipient gets row */}
+            <div className="space-y-1">
+              <p className="text-xs text-muted-foreground">Recipient gets</p>
+              <div className="flex gap-2">
+                <div className="font-mono flex-1 min-w-0 h-10 flex items-center px-3 rounded-lg bg-primary/10 border border-primary/20 text-primary font-bold text-sm overflow-hidden">
+                  <span className="truncate">{calcResult !== null ? formatResult(calcResult) : '—'}</span>
                 </div>
+                <select
+                  className="flex-1 min-w-0 text-sm border border-border rounded-lg px-2.5 py-2 bg-background font-mono"
+                  value={calc.toCurrency}
+                  onChange={e => setCalc(c => ({ ...c, toCurrency: e.target.value }))}
+                >
+                  {currencyList.map(code => (
+                    <option key={code} value={code}>{code}</option>
+                  ))}
+                </select>
               </div>
             </div>
 
