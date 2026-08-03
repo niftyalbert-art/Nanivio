@@ -77,7 +77,17 @@ export function StreamVideoProvider({ children }: { children: ReactNode }) {
             return prev;
           });
         });
+        vc.on('call.accepted', (event: any) => {
+          // Callee answered — stop the caller's outgoing ringtone. Also clears
+          // the incoming banner if this user accepted on another device.
+          stopRingtoneRef.current?.();
+          stopRingtoneRef.current = null;
+          setIncomingCall((prev: any) =>
+            prev && event.call?.id === prev.id ? null : prev);
+        });
         vc.on('call.ring', (event: any) => {
+          // The server also delivers the ring event to the caller — ignore our own.
+          if (event.call?.created_by?.id === streamData.userId) return;
           stopRingtoneRef.current?.();
           stopRingtoneRef.current = createRingtone('incoming');
           // Create a proper Call SDK instance (not just raw event data) so
@@ -186,8 +196,8 @@ export function StreamVideoProvider({ children }: { children: ReactNode }) {
       } else {
         try { await call.camera.disable(); } catch {}
       }
-      stopRingtoneRef.current?.();
-      stopRingtoneRef.current = null;
+      // Keep the outgoing ringtone playing until the callee accepts
+      // (stopped by the call.accepted / call.rejected / call.ended handlers).
       setCallKind(type);
       setActiveCall(call);
     } catch (e) {
