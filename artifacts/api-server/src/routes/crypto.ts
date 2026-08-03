@@ -18,7 +18,8 @@
 
 import { Router, type IRouter } from "express";
 import { eq, desc, and, or } from "drizzle-orm";
-import { db, cryptoPaymentsTable, paymentMethodsTable, usersTable } from "@workspace/db";
+import { db, cryptoPaymentsTable, paymentMethodsTable, usersTable, walletsTable } from "@workspace/db";
+import { sql } from "drizzle-orm";
 import { requireAuth, adminOnly } from "../middleware/auth";
 
 const router: IRouter = Router();
@@ -267,12 +268,28 @@ router.post("/admin/crypto/:id/complete", adminOnly, async (req, res): Promise<v
   if (!payment) { res.status(404).json({ error: "Payment not found" }); return; }
   if (payment.status === "completed") { res.status(400).json({ error: "Already completed" }); return; }
 
+  // For USDT payments, credit the sender's USD wallet 1:1 upon completion.
+  // (USDT is treated as USD parity, same as the auto-detected deposit flow.)
+  let creditedWalletId: number | null = null;
+  if (payment.currency === "USDT") {
+    const [usdWallet] = await db.select().from(walletsTable)
+      .where(and(eq(walletsTable.userId, payment.senderId), eq(walletsTable.currencyCode, "USD")));
+    if (!usdWallet) {
+      res.status(400).json({ error: "Cannot complete: sender has no USD wallet to credit. Ask the user to create a USD wallet first." });
+      return;
+    }
+    await db.update(walletsTable)
+      .set({ balance: sql`${walletsTable.balance} + ${parseFloat(payment.amount as string)}`, updatedAt: new Date() })
+      .where(eq(walletsTable.id, usdWallet.id));
+    creditedWalletId = usdWallet.id;
+  }
+
   const [updated] = await db.update(cryptoPaymentsTable)
     .set({
       status: "completed",
       transactionHash: transactionHash ?? payment.transactionHash,
       confirmations: confirmations ?? payment.requiredConfirmations,
-      adminNote: adminNote ?? null,
+      adminNote: adminNote ?? (creditedWalletId ? `Credited ${payment.amount} USD to wallet #${creditedWalletId}` : null),
       completedAt: new Date(),
       updatedAt: new Date(),
     })
