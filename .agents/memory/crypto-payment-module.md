@@ -59,3 +59,15 @@ Crypto is added as a third card on the `step === 'type'` screen in `send.tsx`. I
 **USD-only enforcement (three-layer):** (1) Frontend filters wallet picker to `currencyCode === 'USD'` only. (2) Backend rejects `POST /crypto/deposits` if selected wallet is not USD. (3) Monitor hard-fails `creditUserWallet` if wallet currency is not USD — no silent fallback to any non-USD wallet. USDT is always credited 1:1 as USD.
 
 **Duplicate prevention:** `transaction_hash` has a UNIQUE partial index on `crypto_deposits` — guaranteed at DB level.
+
+## Auto-Completion from Chain (no admin needed)
+
+The TRON monitor (`tron-monitor.ts`) matches incoming USDT TRC20 txs against BOTH tables: `crypto_deposits` first (FIFO), then `crypto_payments` (statuses waiting_for_payment/confirming, unexpired, tx hash null). On match it credits the sender's USD wallet 1:1 and marks the payment completed — admin Complete is a fallback, not the primary path.
+
+**Money-handling concurrency rules (apply to any future credit path):**
+- Claim via conditional UPDATE with `.returning()` and check affected-row count — never read-then-write.
+- Status transition + wallet credit must share one DB transaction; credit only if the guarded transition affected exactly 1 row.
+- Unique partial index on `transaction_hash` (both tables) is the backstop; catch 23505 and bail.
+- Attribution: prefer exact senderWalletAddress==on-chain from match; amount-tolerance FIFO only among candidates with no declared sender address.
+
+**Why:** code review found the naive read-then-credit pattern allowed double-credits between concurrent polls and admin actions.

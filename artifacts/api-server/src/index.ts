@@ -65,6 +65,12 @@ async function runCryptoSchemaMigration() {
         expires_at             TIMESTAMPTZ
       );
     `);
+    // Duplicate-credit prevention: one on-chain tx can only ever complete one payment
+    await pool.query(`
+      CREATE UNIQUE INDEX IF NOT EXISTS crypto_payments_tx_hash_unique
+        ON crypto_payments (transaction_hash)
+        WHERE transaction_hash IS NOT NULL;
+    `);
     logger.info("Crypto payments schema migration complete");
   } catch (err) {
     logger.error({ err }, "Crypto schema migration FAILED");

@@ -21,8 +21,8 @@
  * - No private keys or seed phrases are ever stored or used.
  */
 
-import { db, cryptoDepositsTable, walletsTable, usersTable } from "@workspace/db";
-import { eq, and, isNull, lt, sql } from "drizzle-orm";
+import { db, cryptoDepositsTable, cryptoPaymentsTable, walletsTable, usersTable } from "@workspace/db";
+import { eq, and, isNull, lt, gt, or, sql, inArray } from "drizzle-orm";
 import pino from "pino";
 
 const logger = pino({ name: "tron-monitor" });
@@ -237,9 +237,12 @@ async function processTransaction(tx: any, businessAddress: string): Promise<boo
   });
 
   if (!matchedDeposit) {
+    // No deposit matched — try the crypto payments flow (auto-complete, no admin needed)
+    const paymentMatched = await matchAndCompletePayment(txHash, fromAddress, receivedAmount, businessAddress);
+    if (paymentMatched) return true;
     logger.info(
       { txHash, receivedAmount, pendingCount: pendingDeposits.length },
-      "No matching pending deposit for this transaction — may be an unrelated transfer"
+      "No matching pending deposit or payment for this transaction — may be an unrelated transfer"
     );
     return false;
   }
@@ -392,6 +395,152 @@ async function creditUserWallet(
     logger.error({ err, userId, depositId, txHash }, "Unexpected error crediting wallet for crypto deposit");
     return false;
   }
+}
+
+/**
+ * Auto-complete a crypto payment from an on-chain transaction — no admin action needed.
+ * Mirrors the deposit flow's safety layers:
+ *  - amount within 1% tolerance of the payment's expected amount
+ *  - claim via conditional update on transactionHash IS NULL
+ *  - UNIQUE partial index on transaction_hash (duplicate prevention layer 2)
+ *  - pre-credit re-read (layer 3)
+ *  - credit goes ONLY to the sender's USD wallet, 1:1 USDT parity
+ */
+async function matchAndCompletePayment(
+  txHash: string,
+  fromAddress: string,
+  receivedAmount: number,
+  businessAddress: string
+): Promise<boolean> {
+  const now = new Date();
+  const candidates = await db
+    .select()
+    .from(cryptoPaymentsTable)
+    .where(
+      and(
+        inArray(cryptoPaymentsTable.status, ["waiting_for_payment", "confirming"]),
+        eq(cryptoPaymentsTable.receiverAddress, businessAddress),
+        eq(cryptoPaymentsTable.currency, "USDT"),
+        eq(cryptoPaymentsTable.network, "TRC20"),
+        isNull(cryptoPaymentsTable.transactionHash),
+        or(isNull(cryptoPaymentsTable.expiresAt), gt(cryptoPaymentsTable.expiresAt, now)),
+      )
+    )
+    .orderBy(cryptoPaymentsTable.createdAt);
+
+  const amountOk = (p: typeof candidates[number]) => {
+    const expected = parseFloat(p.amount as string);
+    if (expected <= 0) return false;
+    return Math.abs(receivedAmount - expected) / expected <= AMOUNT_TOLERANCE;
+  };
+
+  // Attribution: prefer a candidate whose recorded sender wallet matches the
+  // on-chain from-address exactly; fall back to amount-match only among
+  // candidates that never declared a sender address.
+  const matched =
+    candidates.find(p => amountOk(p) && p.senderWalletAddress?.toLowerCase() === fromAddress.toLowerCase())
+    ?? candidates.find(p => amountOk(p) && !p.senderWalletAddress);
+
+  if (!matched) return false;
+
+  // ── Atomic claim: conditional update + affected-row check ──
+  // If another poll/process already claimed this row (or this tx hash — unique
+  // index), the claim returns zero rows or throws 23505; either way we bail.
+  let claimedRows: { id: number }[];
+  try {
+    claimedRows = await db
+      .update(cryptoPaymentsTable)
+      .set({
+        transactionHash: txHash,
+        confirmations: REQUIRED_CONFIRMATIONS,
+        updatedAt: new Date(),
+      } as any)
+      .where(
+        and(
+          eq(cryptoPaymentsTable.id, matched.id),
+          isNull(cryptoPaymentsTable.transactionHash),
+          inArray(cryptoPaymentsTable.status, ["waiting_for_payment", "confirming"]),
+          or(isNull(cryptoPaymentsTable.expiresAt), gt(cryptoPaymentsTable.expiresAt, new Date())),
+        )
+      )
+      .returning({ id: cryptoPaymentsTable.id });
+  } catch (err: any) {
+    if (err?.code === "23505" || err?.message?.includes("unique")) {
+      logger.warn({ txHash, paymentId: matched.id }, "TX hash already claimed on a payment — duplicate prevented");
+      return false;
+    }
+    throw err;
+  }
+  if (claimedRows.length === 0) {
+    logger.warn({ paymentId: matched.id, txHash }, "Payment claim lost race — another process claimed it first");
+    return false;
+  }
+
+  // ── Resolve the sender's USD wallet ──
+  const [usdWallet] = await db.select().from(walletsTable)
+    .where(and(eq(walletsTable.userId, matched.senderId), eq(walletsTable.currencyCode, "USD")));
+
+  if (!usdWallet) {
+    // Leave the claim in place (tx hash recorded) but flag for admin — user has no USD wallet
+    await db.update(cryptoPaymentsTable)
+      .set({ adminNote: "Auto-credit failed: user has no USD wallet. Credit manually once a USD wallet exists.", updatedAt: new Date() } as any)
+      .where(eq(cryptoPaymentsTable.id, matched.id));
+    logger.error({ paymentId: matched.id, userId: matched.senderId, txHash }, "Payment matched on-chain but user has no USD wallet — flagged for admin");
+    return false;
+  }
+
+  // ── Complete + credit atomically in one DB transaction ──
+  // Status transition is guarded (must still hold OUR tx hash and be
+  // non-completed); the wallet credit only happens if that transition
+  // affected exactly one row. Any failure rolls both back together.
+  const creditedAt = new Date();
+  let creditApplied = false;
+  await db.transaction(async (trx) => {
+    const done = await trx
+      .update(cryptoPaymentsTable)
+      .set({
+        status: "completed",
+        completedAt: creditedAt,
+        updatedAt: creditedAt,
+        adminNote: `Auto-completed from chain — credited ${receivedAmount} USD to wallet #${usdWallet.id}`,
+      } as any)
+      .where(
+        and(
+          eq(cryptoPaymentsTable.id, matched.id),
+          eq(cryptoPaymentsTable.transactionHash, txHash),
+          inArray(cryptoPaymentsTable.status, ["waiting_for_payment", "confirming"]),
+        )
+      )
+      .returning({ id: cryptoPaymentsTable.id });
+
+    if (done.length !== 1) return; // already completed elsewhere — no credit
+
+    await trx.update(walletsTable)
+      .set({ balance: sql`${walletsTable.balance} + ${receivedAmount}`, updatedAt: creditedAt })
+      .where(eq(walletsTable.id, usdWallet.id));
+    creditApplied = true;
+  });
+
+  if (!creditApplied) {
+    logger.warn({ paymentId: matched.id, txHash }, "Payment was completed by another process — credit skipped (duplicate prevented)");
+    return false;
+  }
+
+  logger.info(
+    {
+      event: "payment_auto_completed",
+      paymentId: matched.id,
+      userId: matched.senderId,
+      walletId: usdWallet.id,
+      receivedUsdt: receivedAmount,
+      creditedUsd: receivedAmount,
+      from: fromAddress,
+      txHash,
+      creditedAt: creditedAt.toISOString(),
+    },
+    "Crypto payment auto-completed from chain — user wallet credited"
+  );
+  return true;
 }
 
 async function expireStaleDeposits() {

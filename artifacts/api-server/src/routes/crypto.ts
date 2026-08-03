@@ -268,9 +268,11 @@ router.post("/admin/crypto/:id/complete", adminOnly, async (req, res): Promise<v
   if (!payment) { res.status(404).json({ error: "Payment not found" }); return; }
   if (payment.status === "completed") { res.status(400).json({ error: "Already completed" }); return; }
 
-  // For USDT payments, credit the sender's USD wallet 1:1 upon completion.
-  // (USDT is treated as USD parity, same as the auto-detected deposit flow.)
-  let creditedWalletId: number | null = null;
+  // For USDT payments, the sender's USD wallet is credited 1:1 upon completion.
+  // Status transition and wallet credit happen atomically in one transaction,
+  // with the transition guarded on "not yet completed" — this prevents
+  // double-credit races with a concurrent admin request or the chain monitor.
+  let usdWalletId: number | null = null;
   if (payment.currency === "USDT") {
     const [usdWallet] = await db.select().from(walletsTable)
       .where(and(eq(walletsTable.userId, payment.senderId), eq(walletsTable.currencyCode, "USD")));
@@ -278,23 +280,50 @@ router.post("/admin/crypto/:id/complete", adminOnly, async (req, res): Promise<v
       res.status(400).json({ error: "Cannot complete: sender has no USD wallet to credit. Ask the user to create a USD wallet first." });
       return;
     }
-    await db.update(walletsTable)
-      .set({ balance: sql`${walletsTable.balance} + ${parseFloat(payment.amount as string)}`, updatedAt: new Date() })
-      .where(eq(walletsTable.id, usdWallet.id));
-    creditedWalletId = usdWallet.id;
+    usdWalletId = usdWallet.id;
   }
 
-  const [updated] = await db.update(cryptoPaymentsTable)
-    .set({
-      status: "completed",
-      transactionHash: transactionHash ?? payment.transactionHash,
-      confirmations: confirmations ?? payment.requiredConfirmations,
-      adminNote: adminNote ?? (creditedWalletId ? `Credited ${payment.amount} USD to wallet #${creditedWalletId}` : null),
-      completedAt: new Date(),
-      updatedAt: new Date(),
-    })
-    .where(eq(cryptoPaymentsTable.id, id))
-    .returning();
+  const now = new Date();
+  let updated: typeof payment | undefined;
+  try {
+    await db.transaction(async (trx) => {
+      const rows = await trx.update(cryptoPaymentsTable)
+        .set({
+          status: "completed",
+          transactionHash: transactionHash ?? payment.transactionHash,
+          confirmations: confirmations ?? payment.requiredConfirmations,
+          adminNote: adminNote ?? (usdWalletId ? `Admin-completed — credited ${payment.amount} USD to wallet #${usdWalletId}` : null),
+          completedAt: now,
+          updatedAt: now,
+        })
+        .where(and(
+          eq(cryptoPaymentsTable.id, id),
+          or(eq(cryptoPaymentsTable.status, "waiting_for_payment"), eq(cryptoPaymentsTable.status, "confirming")),
+        ))
+        .returning();
+
+      if (rows.length !== 1) return; // already completed/failed by another process — no credit
+
+      if (usdWalletId !== null) {
+        await trx.update(walletsTable)
+          .set({ balance: sql`${walletsTable.balance} + ${parseFloat(payment.amount as string)}`, updatedAt: now })
+          .where(eq(walletsTable.id, usdWalletId));
+      }
+      updated = rows[0];
+    });
+  } catch (err: any) {
+    // Unique tx-hash index violation rolls back the whole transaction (no credit applied)
+    if (err?.code === "23505" || err?.message?.includes("unique")) {
+      res.status(409).json({ error: "This transaction hash is already linked to another payment." });
+      return;
+    }
+    throw err;
+  }
+
+  if (!updated) {
+    res.status(409).json({ error: "Payment was already completed or failed by another process — no credit applied." });
+    return;
+  }
 
   res.json(fmt(updated));
 });
