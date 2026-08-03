@@ -29,6 +29,13 @@ function CallUI({ onEnd }: { onEnd: () => void }) {
 
   const other = remote[0]; // 1:1 calls — first remote participant fills the screen
 
+  // No-answer timeout: if nobody joins within 60s, end the call
+  useEffect(() => {
+    if (other) return;
+    const t = setTimeout(() => onEnd(), 60_000);
+    return () => clearTimeout(t);
+  }, [other, onEnd]);
+
   return (
     <StreamTheme className="h-full wa-call">
       {/* ── Remote participant — fills the entire screen (WhatsApp style) ── */}
@@ -72,6 +79,7 @@ export function CallOverlay() {
     try {
       await acceptCall();
     } catch (e: any) {
+      console.error('[call] accept failed:', e); // full error for diagnostics
       const msg: string = e?.message ?? String(e);
       if (msg.toLowerCase().includes('country') || msg.toLowerCase().includes('region') || msg.toLowerCase().includes('geo')) {
         toast({

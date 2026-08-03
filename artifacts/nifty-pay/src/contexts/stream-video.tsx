@@ -61,6 +61,22 @@ export function StreamVideoProvider({ children }: { children: ReactNode }) {
           user:   { id: streamData.userId, name: streamData.userName },
           token,
         });
+        // Clean up overlays when a call ends/rejects remotely
+        vc.on('call.ended', () => {
+          stopRingtoneRef.current?.();
+          stopRingtoneRef.current = null;
+          setIncomingCall(null);
+          setActiveCall((prev: any) => { prev?.leave?.().catch(() => {}); return null; });
+        });
+        vc.on('call.rejected', (event: any) => {
+          // 1:1: if the other side declines, stop the outgoing call
+          stopRingtoneRef.current?.();
+          stopRingtoneRef.current = null;
+          setActiveCall((prev: any) => {
+            if (prev && event.call?.id === prev.id) { prev.leave?.().catch(() => {}); return null; }
+            return prev;
+          });
+        });
         vc.on('call.ring', (event: any) => {
           stopRingtoneRef.current?.();
           stopRingtoneRef.current = createRingtone('incoming');
@@ -90,6 +106,10 @@ export function StreamVideoProvider({ children }: { children: ReactNode }) {
     stopRingtoneRef.current?.();
     stopRingtoneRef.current = null;
     try {
+      // Disable devices before join so the SDK never fails the whole call
+      // trying to auto-acquire media on devices without a camera/mic.
+      try { await incomingCall.camera.disable(); } catch {}
+      try { await incomingCall.microphone.disable(); } catch {}
       await incomingCall.join();
       // Publish media tracks — without this the other side sees no video/audio.
       const kind = incomingKindRef.current;
@@ -145,6 +165,8 @@ export function StreamVideoProvider({ children }: { children: ReactNode }) {
           custom:  { kind: type },
         },
       });
+      try { await call.camera.disable(); } catch {}
+      try { await call.microphone.disable(); } catch {}
       await call.join({ create: false });
       // Publish media tracks — without this the receiver sees no video/audio.
       try { await call.microphone.enable(); } catch {}
