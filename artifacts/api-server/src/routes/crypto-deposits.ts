@@ -22,6 +22,10 @@ const router: IRouter = Router();
 
 const DEPOSIT_EXPIRY_MINUTES = 60; // 1 hour window for auto-detection
 
+// Deposit limits — must match tron-monitor constants; override via env vars
+const MIN_DEPOSIT_USDT = parseFloat(process.env["CRYPTO_DEPOSIT_MIN_USDT"] ?? "1");
+const MAX_DEPOSIT_USDT = parseFloat(process.env["CRYPTO_DEPOSIT_MAX_USDT"] ?? "50000");
+
 function fmt(d: any) {
   return {
     ...d,
@@ -39,8 +43,21 @@ router.post("/crypto/deposits", requireAuth, async (req, res): Promise<void> => 
   const userId = req.userId!;
   const { amount, walletId, note } = req.body ?? {};
 
-  if (!amount || isNaN(parseFloat(amount)) || parseFloat(amount) <= 0) {
+  const parsedAmount = parseFloat(amount);
+  if (!amount || isNaN(parsedAmount) || parsedAmount <= 0) {
     res.status(400).json({ error: "amount must be a positive number" }); return;
+  }
+  if (parsedAmount < MIN_DEPOSIT_USDT) {
+    res.status(400).json({
+      error: `Minimum deposit is ${MIN_DEPOSIT_USDT} USDT`,
+      minDeposit: MIN_DEPOSIT_USDT,
+    }); return;
+  }
+  if (parsedAmount > MAX_DEPOSIT_USDT) {
+    res.status(400).json({
+      error: `Maximum deposit is ${MAX_DEPOSIT_USDT.toLocaleString()} USDT`,
+      maxDeposit: MAX_DEPOSIT_USDT,
+    }); return;
   }
   if (!walletId || isNaN(parseInt(walletId, 10))) {
     res.status(400).json({ error: "walletId is required" }); return;

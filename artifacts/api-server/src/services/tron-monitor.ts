@@ -6,11 +6,18 @@
  * it automatically credits the user's wallet and marks the deposit complete.
  *
  * Security guarantees:
- * - Duplicate prevention: transaction_hash is UNIQUE in the database; a second
- *   insert will throw a unique-constraint violation, which we catch and ignore.
- * - Amount validation: received amount must be within 1% of the expected amount.
- * - Network/token validation: only USDT TRC20 on TRON mainnet is processed.
+ * - Token contract: only the canonical USDT TRC20 contract is accepted.
  * - Address validation: destination must be the configured business wallet.
+ * - Confirmed-only: transactions where tx.confirmed !== true are skipped.
+ * - Amount range: amounts below MIN or above MAX are rejected.
+ * - Amount tolerance: received amount must be within 1% of the expected amount.
+ * - Duplicate prevention (layer 1): isNull(transactionHash) filter — only
+ *   unmatched deposits enter the matching pool.
+ * - Duplicate prevention (layer 2): DB UNIQUE constraint on transaction_hash;
+ *   a race-condition second write throws a unique-constraint violation (23505).
+ * - Duplicate prevention (layer 3): pre-credit re-read confirms deposit is
+ *   still in "detecting" state with our txHash before any wallet update.
+ * - USD-only wallet: creditUserWallet hard-fails on any non-USD target wallet.
  * - No private keys or seed phrases are ever stored or used.
  */
 
@@ -31,6 +38,10 @@ const AMOUNT_TOLERANCE = 0.01; // 1%
 
 // Confirmations required before crediting
 const REQUIRED_CONFIRMATIONS = 20;
+
+// Deposit limits — override via env vars CRYPTO_DEPOSIT_MIN_USDT / CRYPTO_DEPOSIT_MAX_USDT
+const MIN_DEPOSIT_USDT = parseFloat(process.env["CRYPTO_DEPOSIT_MIN_USDT"] ?? "1");
+const MAX_DEPOSIT_USDT = parseFloat(process.env["CRYPTO_DEPOSIT_MAX_USDT"] ?? "50000");
 
 // How far back to look for transactions on first poll (5 minutes in ms)
 const INITIAL_LOOKBACK_MS = 5 * 60 * 1000;
@@ -125,38 +136,86 @@ async function pollTronTransactions() {
 }
 
 async function processTransaction(tx: any, businessAddress: string): Promise<boolean> {
-  // Basic structure validation
-  const txHash: string | undefined = tx.transaction_id;
+  // ── 1. Basic structure validation ─────────────────────────────────────────
+  const txHash: string | undefined    = tx.transaction_id;
   const toAddress: string | undefined = tx.to;
   const fromAddress: string | undefined = tx.from;
-  const rawValue: string | undefined = tx.value;
+  const rawValue: string | undefined  = tx.value;
   const tokenContract: string | undefined = tx.token_info?.address;
+  const tokenSymbol: string | undefined   = tx.token_info?.symbol;
 
   if (!txHash || !toAddress || !fromAddress || !rawValue) {
-    logger.debug({ tx }, "Skipping malformed transaction");
+    logger.debug({ txHash }, "Skipping malformed transaction (missing required fields)");
     return false;
   }
 
-  // 1. Token contract validation — must be USDT TRC20
-  if (tokenContract?.toLowerCase() !== USDT_TRC20_CONTRACT.toLowerCase()) {
-    logger.debug({ tokenContract }, "Skipping non-USDT-TRC20 transaction");
+  // ── 2. Confirmed-only — reject unconfirmed / reverted transactions ─────────
+  // TronGrid sets tx.confirmed = true once the block is finalised.
+  // Absence of the field (older API versions) is treated as unconfirmed.
+  if (tx.confirmed !== true) {
+    logger.debug({ txHash }, "Skipping unconfirmed transaction");
     return false;
   }
 
-  // 2. Destination address validation — must be our business wallet
+  // ── 3. Token contract validation — ONLY the canonical USDT TRC20 contract ──
+  if (!tokenContract || tokenContract.toLowerCase() !== USDT_TRC20_CONTRACT.toLowerCase()) {
+    logger.warn(
+      { txHash, tokenContract, tokenSymbol },
+      "SECURITY: Rejected transaction — unsupported token contract (not USDT TRC20)"
+    );
+    return false;
+  }
+
+  // ── 4. Destination address validation — must be our business wallet ────────
   if (toAddress.toLowerCase() !== businessAddress.toLowerCase()) {
-    logger.debug("Skipping transaction to non-business address");
+    logger.warn(
+      { txHash, toAddress, businessAddress },
+      "SECURITY: Rejected transaction — destination address does not match business wallet"
+    );
     return false;
   }
 
-  // 3. Parse amount (USDT has 6 decimals)
+  // ── 5. Parse and range-check amount ───────────────────────────────────────
   const receivedAmount = parseInt(rawValue, 10) / Math.pow(10, USDT_DECIMALS);
   if (isNaN(receivedAmount) || receivedAmount <= 0) {
-    logger.debug({ rawValue }, "Skipping transaction with invalid amount");
+    logger.debug({ txHash, rawValue }, "Skipping transaction with unparseable amount");
     return false;
   }
 
-  // 4. Find the oldest matching pending deposit
+  if (receivedAmount < MIN_DEPOSIT_USDT) {
+    logger.warn(
+      { txHash, receivedAmount, minAllowed: MIN_DEPOSIT_USDT },
+      "SECURITY: Rejected transaction — amount below minimum deposit limit"
+    );
+    return false;
+  }
+
+  if (receivedAmount > MAX_DEPOSIT_USDT) {
+    logger.warn(
+      { txHash, receivedAmount, maxAllowed: MAX_DEPOSIT_USDT },
+      "SECURITY: Rejected transaction — amount exceeds maximum deposit limit"
+    );
+    return false;
+  }
+
+  // ── 6. Transaction detected — log before any DB work ──────────────────────
+  logger.info(
+    {
+      txHash,
+      from: fromAddress,
+      to: toAddress,
+      receivedAmount,
+      currency: "USDT",
+      network: "TRC20",
+      contract: tokenContract,
+      detectedAt: new Date().toISOString(),
+    },
+    "TRON transaction detected — searching for matching pending deposit"
+  );
+
+  // ── 7. Find the oldest matching pending deposit (FIFO) ────────────────────
+  // Filters: status=waiting, correct deposit address, USDT TRC20,
+  //          no tx hash yet (unmatched), not expired.
   const pendingDeposits = await db
     .select()
     .from(cryptoDepositsTable)
@@ -169,19 +228,23 @@ async function processTransaction(tx: any, businessAddress: string): Promise<boo
         isNull(cryptoDepositsTable.transactionHash),
       )
     )
-    .orderBy(cryptoDepositsTable.createdAt); // FIFO — oldest deposit gets matched first
+    .orderBy(cryptoDepositsTable.createdAt);
 
   const matchedDeposit = pendingDeposits.find(d => {
     const expected = parseFloat(d.amount as string);
+    if (expected <= 0) return false;
     return Math.abs(receivedAmount - expected) / expected <= AMOUNT_TOLERANCE;
   });
 
   if (!matchedDeposit) {
-    logger.debug({ txHash, receivedAmount }, "No matching pending deposit for this transaction");
+    logger.info(
+      { txHash, receivedAmount, pendingCount: pendingDeposits.length },
+      "No matching pending deposit for this transaction — may be an unrelated transfer"
+    );
     return false;
   }
 
-  // 5. Attempt to write the tx hash (UNIQUE constraint prevents double-processing)
+  // ── 8. Claim deposit with tx hash (UNIQUE constraint = duplicate prevention layer 2) ──
   try {
     await db
       .update(cryptoDepositsTable)
@@ -190,39 +253,44 @@ async function processTransaction(tx: any, businessAddress: string): Promise<boo
         transactionHash: txHash,
         fromAddress,
         receivedAmount: String(receivedAmount),
-        confirmations: REQUIRED_CONFIRMATIONS, // TronGrid only returns confirmed transactions
+        confirmations: REQUIRED_CONFIRMATIONS, // TronGrid only returns finalised transactions
         updatedAt: new Date(),
       } as any)
       .where(
         and(
           eq(cryptoDepositsTable.id, matchedDeposit.id),
-          isNull(cryptoDepositsTable.transactionHash), // only if not yet assigned
+          isNull(cryptoDepositsTable.transactionHash), // only if still unmatched
         )
       );
   } catch (err: any) {
-    // Unique constraint violation — another process already claimed this tx hash
+    // Unique constraint violation (PG error 23505) — another concurrent poll
+    // already claimed this tx hash; skip safely.
     if (err?.code === "23505" || err?.message?.includes("unique")) {
-      logger.warn({ txHash }, "TX hash already processed (unique constraint) — skipping");
+      logger.warn({ txHash, depositId: matchedDeposit.id }, "TX hash already claimed (unique constraint) — duplicate credit prevented");
       return false;
     }
     throw err;
   }
 
-  // 6. Credit the user's wallet
-  const credited = await creditUserWallet(matchedDeposit.userId, receivedAmount, matchedDeposit.walletId, matchedDeposit.id, txHash);
+  // ── 9. Credit the user's wallet ───────────────────────────────────────────
+  const credited = await creditUserWallet(
+    matchedDeposit.userId,
+    receivedAmount,
+    matchedDeposit.walletId,
+    matchedDeposit.id,
+    txHash
+  );
+
   if (!credited) {
-    // Roll back to waiting if we couldn't credit
+    // Roll back to waiting so the deposit can be re-matched on the next poll
     await db
       .update(cryptoDepositsTable)
       .set({ status: "waiting", transactionHash: null, fromAddress: null } as any)
       .where(eq(cryptoDepositsTable.id, matchedDeposit.id));
+    logger.warn({ depositId: matchedDeposit.id, txHash }, "Credit failed — deposit rolled back to waiting");
     return false;
   }
 
-  logger.info(
-    { depositId: matchedDeposit.id, userId: matchedDeposit.userId, txHash, receivedAmount },
-    "Crypto deposit completed — wallet credited"
-  );
   return true;
 }
 
@@ -234,13 +302,11 @@ async function creditUserWallet(
   txHash: string
 ): Promise<boolean> {
   try {
-    // Enforce USD-only: resolve the wallet and hard-fail if it is not USD.
-    // USDT is credited 1:1 as USD — crediting any other currency wallet is a
-    // data integrity error, so we never silently fall back to a non-USD wallet.
+    // ── A. Resolve wallet (USD-only enforced) ─────────────────────────────
     const walletId = preferredWalletId ?? null;
 
     if (!walletId) {
-      logger.error({ userId, depositId }, "No walletId on deposit record — cannot credit");
+      logger.error({ userId, depositId, txHash }, "SECURITY: No walletId on deposit record — credit refused");
       return false;
     }
 
@@ -248,39 +314,82 @@ async function creditUserWallet(
       .where(and(eq(walletsTable.id, walletId), eq(walletsTable.userId, userId)));
 
     if (!wallet) {
-      logger.error({ userId, walletId, depositId }, "Target wallet not found — cannot credit");
+      logger.error({ userId, walletId, depositId, txHash }, "SECURITY: Target wallet not found or does not belong to user — credit refused");
       return false;
     }
 
     if (wallet.currencyCode !== "USD") {
       logger.error(
-        { userId, walletId, currencyCode: wallet.currencyCode, depositId },
-        "Target wallet is not USD — refusing to credit USDT amount into non-USD wallet"
+        { userId, walletId, currencyCode: wallet.currencyCode, depositId, txHash },
+        "SECURITY: Target wallet is not USD — USDT cannot be credited into non-USD wallet"
       );
       return false;
     }
 
-    // Credit the wallet
+    // ── B. Duplicate-credit guard (layer 3) ───────────────────────────────
+    // Re-read the deposit row to confirm it is still in "detecting" state
+    // with OUR txHash. If another process already completed it, bail out.
+    const [current] = await db
+      .select()
+      .from(cryptoDepositsTable)
+      .where(eq(cryptoDepositsTable.id, depositId));
+
+    if (!current) {
+      logger.error({ depositId, txHash }, "SECURITY: Deposit record vanished before credit — aborting");
+      return false;
+    }
+    if (current.status === "completed") {
+      logger.warn({ depositId, txHash }, "SECURITY: Deposit already completed — duplicate credit prevented (layer 3)");
+      return false;
+    }
+    if ((current as any).transactionHash !== txHash) {
+      logger.warn(
+        { depositId, txHash, storedHash: (current as any).transactionHash },
+        "SECURITY: TX hash mismatch on pre-credit re-read — concurrent process may have overwritten; aborting"
+      );
+      return false;
+    }
+
+    // ── C. Credit the wallet ──────────────────────────────────────────────
+    const creditedAt = new Date();
+
     await db
       .update(walletsTable)
-      .set({ balance: sql`${walletsTable.balance} + ${amount}`, updatedAt: new Date() })
+      .set({ balance: sql`${walletsTable.balance} + ${amount}`, updatedAt: creditedAt })
       .where(eq(walletsTable.id, walletId));
 
-    // Mark deposit completed
+    // ── D. Mark deposit completed ─────────────────────────────────────────
     await db
       .update(cryptoDepositsTable)
       .set({
         status: "completed",
         walletId,
         confirmations: REQUIRED_CONFIRMATIONS,
-        confirmedAt: new Date(),
-        updatedAt: new Date(),
+        confirmedAt: creditedAt,
+        updatedAt: creditedAt,
       } as any)
       .where(eq(cryptoDepositsTable.id, depositId));
 
+    // ── E. Audit log — structured record of every credit ─────────────────
+    logger.info(
+      {
+        event:        "deposit_credited",
+        depositId,
+        userId,
+        walletId,
+        receivedUsdt: amount,
+        creditedUsd:  amount,          // 1:1 parity — explicit for log clarity
+        currency:     "USDT",
+        network:      "TRC20",
+        txHash,
+        creditedAt:   creditedAt.toISOString(),
+      },
+      "Crypto deposit completed — user wallet credited"
+    );
+
     return true;
   } catch (err) {
-    logger.error({ err, userId, depositId }, "Failed to credit wallet for crypto deposit");
+    logger.error({ err, userId, depositId, txHash }, "Unexpected error crediting wallet for crypto deposit");
     return false;
   }
 }
