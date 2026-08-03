@@ -1582,8 +1582,8 @@ function ChatPanel() {
   );
 }
 
-// ── KYC Document Viewer — fetches image with admin auth header ───────────────
-function KycDocumentViewer({ userId, onExpand }: { userId: number; onExpand: (src: string) => void }) {
+// ── KYC Image Viewer — fetches document or selfie with admin auth header ─────
+function KycDocumentViewer({ userId, onExpand, kind = 'document', label = 'Government ID' }: { userId: number; onExpand: (src: string) => void; kind?: 'document' | 'selfie'; label?: string }) {
   const [blobSrc, setBlobSrc] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [failed, setFailed] = useState(false);
@@ -1593,7 +1593,7 @@ function KycDocumentViewer({ userId, onExpand }: { userId: number; onExpand: (sr
     setLoading(true);
     try {
       const token = sessionStorage.getItem(ADMIN_JWT_KEY);
-      const r = await fetch(`${API}/admin/kyc/${userId}/document`, {
+      const r = await fetch(`${API}/admin/kyc/${userId}/${kind}`, {
         headers: { Authorization: `Bearer ${token}` },
       });
       if (!r.ok) throw new Error('fetch failed');
@@ -1615,7 +1615,7 @@ function KycDocumentViewer({ userId, onExpand }: { userId: number; onExpand: (sr
     (async () => {
       setLoading(true);
       try {
-        const r = await fetch(`${API}/admin/kyc/${userId}/document`, {
+        const r = await fetch(`${API}/admin/kyc/${userId}/${kind}`, {
           headers: { Authorization: `Bearer ${token}` },
         });
         if (!r.ok) throw new Error('fetch failed');
@@ -1631,18 +1631,18 @@ function KycDocumentViewer({ userId, onExpand }: { userId: number; onExpand: (sr
 
   return (
     <div className="space-y-1">
-      <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Government ID</p>
+      <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">{label}</p>
       <button
         type="button"
         onClick={() => blobSrc && onExpand(blobSrc)}
         className="w-full relative group rounded-xl overflow-hidden border-2 border-primary/20 hover:border-primary/60 transition-colors bg-muted/40 min-h-[80px] flex items-center justify-center"
         disabled={!blobSrc}
       >
-        {loading && <p className="text-xs text-muted-foreground py-6">Loading document…</p>}
-        {failed && <p className="text-xs text-destructive py-6">⚠️ Could not load document</p>}
+        {loading && <p className="text-xs text-muted-foreground py-6">Loading image…</p>}
+        {failed && <p className="text-xs text-destructive py-6">⚠️ Could not load image</p>}
         {blobSrc && (
           <>
-            <img src={blobSrc} alt="Government ID" className="w-full max-h-52 object-contain" />
+            <img src={blobSrc} alt={label} className="w-full max-h-52 object-contain" />
             <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors flex items-center justify-center">
               <span className="opacity-0 group-hover:opacity-100 transition-opacity bg-black/60 text-white text-xs px-3 py-1.5 rounded-full font-medium">
                 Tap to enlarge
@@ -1734,6 +1734,15 @@ function KycPanel() {
               ) : (
                 <div className="border-2 border-dashed border-border rounded-xl p-4 text-center">
                   <p className="text-xs text-muted-foreground">⚠️ No document uploaded</p>
+                </div>
+              )}
+
+              {/* Facial verification selfie preview */}
+              {s.hasSelfie ? (
+                <KycDocumentViewer userId={s.id} kind="selfie" label="Facial Verification" onExpand={src => setLightbox(src)} />
+              ) : (
+                <div className="border-2 border-dashed border-border rounded-xl p-4 text-center">
+                  <p className="text-xs text-muted-foreground">⚠️ No facial verification photo uploaded</p>
                 </div>
               )}
 

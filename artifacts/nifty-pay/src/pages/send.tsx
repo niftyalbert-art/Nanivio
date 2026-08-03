@@ -10,7 +10,7 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Badge } from '@/components/ui/badge';
-import { Clock, ArrowLeft, ChevronRight, Building2, Smartphone, ShieldCheck, Bitcoin } from 'lucide-react';
+import { Clock, ArrowLeft, ChevronRight, Building2, Smartphone, ShieldCheck } from 'lucide-react';
 import { groupByRegion } from '@/lib/regions';
 import { useQueryClient } from '@tanstack/react-query';
 import { useLocation } from 'wouter';
@@ -768,21 +768,8 @@ export default function Send() {
             );
           })}
 
-          {/* Crypto — independent module, navigates to /crypto page */}
-          <button
-            type="button"
-            onClick={() => setLocation('/crypto')}
-            className="w-full text-left rounded-xl border-2 border-border hover:border-orange-500/50 bg-card p-4 transition-all flex items-center gap-4"
-          >
-            <div className="w-12 h-12 rounded-full bg-orange-500/10 flex items-center justify-center shrink-0">
-              <Bitcoin className="w-6 h-6 text-orange-500" />
-            </div>
-            <div className="flex-1">
-              <p className="font-bold text-base">Crypto Payment</p>
-              <p className="text-xs text-muted-foreground">Pay with USDT TRC20, Bitcoin, and more</p>
-            </div>
-            <ChevronRight className="w-4 h-4 text-muted-foreground shrink-0" />
-          </button>
+          {/* Crypto intentionally NOT offered here — crypto is only for topping up
+              the Nanivio balance, via the deposit/top-up flow. */}
         </div>
       </div>
     );

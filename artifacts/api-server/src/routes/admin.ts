@@ -603,6 +603,7 @@ router.get("/admin/kyc", adminOnly, async (_req, res): Promise<void> => {
       email: usersTable.email,
       kycStatus: usersTable.kycStatus,
       kycDocumentPath: usersTable.kycDocumentPath,
+      kycSelfiePath: usersTable.kycSelfiePath,
       kycRejectionReason: usersTable.kycRejectionReason,
       kycSubmittedAt: usersTable.kycSubmittedAt,
       kycReviewedAt: usersTable.kycReviewedAt,
@@ -618,7 +619,9 @@ router.get("/admin/kyc", adminOnly, async (_req, res): Promise<void> => {
   res.json(users.map(u => ({
     ...u,
     hasDocument: !!u.kycDocumentPath,
+    hasSelfie: !!u.kycSelfiePath,
     kycDocumentPath: undefined, // never expose filesystem path to client
+    kycSelfiePath: undefined,   // never expose filesystem path to client
     kycSubmittedAt: u.kycSubmittedAt ? u.kycSubmittedAt.toISOString() : null,
     kycReviewedAt: u.kycReviewedAt ? u.kycReviewedAt.toISOString() : null,
   })));
@@ -643,6 +646,27 @@ router.get("/admin/kyc/:userId/document", adminOnly, async (req, res): Promise<v
   res.setHeader("Content-Type", contentType);
   res.setHeader("Cache-Control", "private, no-store");
   fs.createReadStream(user.kycDocumentPath).pipe(res);
+});
+
+// Serve the facial-verification selfie image for a user (admin only)
+router.get("/admin/kyc/:userId/selfie", adminOnly, async (req, res): Promise<void> => {
+  const userId = parseInt(req.params.userId as string, 10);
+  if (isNaN(userId)) { res.status(400).json({ error: "Invalid userId" }); return; }
+
+  const [user] = await db.select({ kycSelfiePath: usersTable.kycSelfiePath }).from(usersTable).where(eq(usersTable.id, userId));
+  if (!user?.kycSelfiePath) { res.status(404).json({ error: "No selfie on file" }); return; }
+
+  if (!fs.existsSync(user.kycSelfiePath)) {
+    res.status(404).json({ error: "Selfie file not found" }); return;
+  }
+
+  const ext = user.kycSelfiePath.split(".").pop()?.toLowerCase() ?? "jpg";
+  const mimeMap: Record<string, string> = { jpg: "image/jpeg", jpeg: "image/jpeg", png: "image/png", webp: "image/webp" };
+  const contentType = mimeMap[ext] ?? "application/octet-stream";
+
+  res.setHeader("Content-Type", contentType);
+  res.setHeader("Cache-Control", "private, no-store");
+  fs.createReadStream(user.kycSelfiePath).pipe(res);
 });
 
 // Approve or reject a KYC submission
