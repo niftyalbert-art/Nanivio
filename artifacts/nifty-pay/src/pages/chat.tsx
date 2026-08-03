@@ -23,7 +23,7 @@ import {
   MessageSquare, Phone, Video, ArrowLeft, Plus, Users,
   Search, X, Check, PhoneCall, Sparkles, Bell,
   UserCheck, UserX, Clock, UserPlus, ChevronDown, ChevronUp,
-  ImageIcon, Upload, Paintbrush,
+  ImageIcon, Upload, Paintbrush, BellRing,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -1685,11 +1685,29 @@ function ChatConnected() {
 /* ─── page entry — reads persistent client from StreamChatProvider ─── */
 export default function ChatPage() {
   const { streamData, chatClient } = useStreamChat();
+  const [needsPushOptIn, setNeedsPushOptIn] = useState(false);
 
-  // Subscribe this device to incoming-call push notifications
+  // Subscribe this device to incoming-call push notifications.
+  // On iOS the permission prompt only works from a user tap, so when
+  // permission is still 'default' after the automatic attempt we show
+  // an explicit "Enable" banner instead.
   useEffect(() => {
-    if (streamData) void ensurePushSubscription();
+    if (!streamData) return;
+    void ensurePushSubscription().finally(() => {
+      if (typeof Notification !== 'undefined' && Notification.permission === 'default'
+          && 'serviceWorker' in navigator && 'PushManager' in window) {
+        setNeedsPushOptIn(true);
+      }
+    });
   }, [streamData]);
+
+  const handleEnablePush = useCallback(() => {
+    void ensurePushSubscription().finally(() => {
+      if (typeof Notification === 'undefined' || Notification.permission !== 'default') {
+        setNeedsPushOptIn(false);
+      }
+    });
+  }, []);
 
   if (!streamData || !chatClient) {
     return (
@@ -1702,5 +1720,29 @@ export default function ChatPage() {
     );
   }
 
-  return <ChatConnected />;
+  return (
+    <>
+      {needsPushOptIn && (
+        <div className="flex items-center gap-3 px-4 py-2.5 bg-primary/10 border-b border-primary/20 text-sm">
+          <BellRing className="w-4 h-4 text-primary shrink-0" />
+          <span className="flex-1 text-foreground/90">Turn on notifications to get calls when the app is closed</span>
+          <button
+            onClick={handleEnablePush}
+            className="px-3 py-1.5 rounded-full bg-primary text-primary-foreground text-xs font-semibold"
+            data-testid="button-enable-call-notifications"
+          >
+            Enable
+          </button>
+          <button
+            onClick={() => setNeedsPushOptIn(false)}
+            className="text-muted-foreground text-xs px-1"
+            aria-label="Dismiss"
+          >
+            ✕
+          </button>
+        </div>
+      )}
+      <ChatConnected />
+    </>
+  );
 }
