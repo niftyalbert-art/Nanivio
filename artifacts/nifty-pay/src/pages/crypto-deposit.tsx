@@ -11,7 +11,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { useToast } from '@/hooks/use-toast';
 import {
   Bitcoin, CheckCircle2, XCircle, Clock, AlertTriangle, Copy,
-  ArrowLeft, RefreshCw, Zap, ShieldCheck, Wallet
+  ArrowLeft, RefreshCw, Zap, ShieldCheck, Wallet, ExternalLink, Receipt
 } from 'lucide-react';
 
 const API = import.meta.env.BASE_URL.replace(/\/$/, '') + '/api';
@@ -36,8 +36,9 @@ type Step = 'select_wallet' | 'enter_amount' | 'waiting' | 'completed' | 'expire
 function statusBadge(status: string) {
   switch (status) {
     case 'waiting':    return <Badge className="bg-amber-500/10 text-amber-500 border-amber-500/20 gap-1"><Clock className="w-3 h-3"/>Waiting for Payment</Badge>;
-    case 'detecting':  return <Badge className="bg-blue-500/10 text-blue-500 border-blue-500/20 gap-1"><RefreshCw className="w-3 h-3 animate-spin"/>Detecting on Blockchain</Badge>;
-    case 'completed':  return <Badge className="bg-emerald-500/10 text-emerald-500 border-emerald-500/20 gap-1"><CheckCircle2 className="w-3 h-3"/>Completed ✓</Badge>;
+    case 'detecting':  return <Badge className="bg-blue-500/10 text-blue-500 border-blue-500/20 gap-1"><RefreshCw className="w-3 h-3 animate-spin"/>Confirming on Blockchain</Badge>;
+    case 'completed':  return <Badge className="bg-emerald-500/10 text-emerald-500 border-emerald-500/20 gap-1"><CheckCircle2 className="w-3 h-3"/>Completed</Badge>;
+    case 'failed':     return <Badge className="bg-red-500/10 text-red-500 border-red-500/20 gap-1"><XCircle className="w-3 h-3"/>Failed</Badge>;
     case 'expired':    return <Badge className="bg-muted text-muted-foreground gap-1"><AlertTriangle className="w-3 h-3"/>Expired</Badge>;
     default:           return <Badge variant="outline">{status}</Badge>;
   }
@@ -72,23 +73,39 @@ function DepositDetailView({ id }: { id: string }) {
 
   const d = deposit as any;
   const isActive = ['waiting', 'detecting'].includes(d.status);
+  const isFailed = ['failed', 'expired'].includes(d.status);
   const timeLeft = d.expiresAt ? Math.max(0, Math.floor((new Date(d.expiresAt).getTime() - Date.now()) / 1000)) : null;
+
+  // USDT is credited 1:1 as USD
+  const receivedUsdt = d.receivedAmount ? Number(d.receivedAmount) : null;
+  const creditedUsd  = receivedUsdt; // 1:1 parity, no conversion
 
   return (
     <div className="space-y-5">
-      {/* Status */}
-      <Card className={d.status === 'completed' ? 'border-emerald-500/30 bg-emerald-500/5' : d.status === 'expired' ? 'border-red-500/20' : 'border-amber-500/20 bg-amber-500/5'}>
+
+      {/* ── Status card ───────────────────────────────────────────────── */}
+      <Card className={
+        d.status === 'completed' ? 'border-emerald-500/30 bg-emerald-500/5' :
+        d.status === 'detecting' ? 'border-blue-500/30 bg-blue-500/5' :
+        isFailed                 ? 'border-red-500/20 bg-red-500/5' :
+                                   'border-amber-500/20 bg-amber-500/5'
+      }>
         <CardContent className="p-5 text-center space-y-3">
-          <div className="w-16 h-16 rounded-full bg-background flex items-center justify-center mx-auto">
+          <div className="w-16 h-16 rounded-full bg-background flex items-center justify-center mx-auto shadow-sm">
             {d.status === 'completed' ? <CheckCircle2 className="w-8 h-8 text-emerald-500" /> :
              d.status === 'detecting' ? <RefreshCw className="w-8 h-8 text-blue-500 animate-spin" /> :
-             d.status === 'expired'   ? <XCircle className="w-8 h-8 text-red-500" /> :
+             isFailed                 ? <XCircle className="w-8 h-8 text-red-500" /> :
              <Clock className="w-8 h-8 text-amber-500" />}
           </div>
-          {statusBadge(d.status)}
-          <p className="text-3xl font-bold font-mono">{Number(d.amount).toLocaleString('en-US', { minimumFractionDigits: 2 })} USDT</p>
-          <p className="text-sm text-muted-foreground">TRC20 Network</p>
 
+          {statusBadge(d.status)}
+
+          <div>
+            <p className="text-3xl font-bold font-mono">{Number(d.amount).toLocaleString('en-US', { minimumFractionDigits: 2 })} USDT</p>
+            <p className="text-xs text-muted-foreground mt-1">TRON Network · TRC20</p>
+          </div>
+
+          {/* Countdown timer */}
           {isActive && timeLeft !== null && timeLeft > 0 && (
             <div className="inline-flex items-center gap-1.5 bg-amber-500/10 text-amber-600 rounded-full px-3 py-1 text-xs font-semibold">
               <Clock className="w-3 h-3" />
@@ -96,24 +113,79 @@ function DepositDetailView({ id }: { id: string }) {
             </div>
           )}
 
-          {d.status === 'completed' && (
-            <div className="space-y-1">
-              <p className="text-sm font-semibold text-emerald-600">Your wallet has been credited!</p>
-              {d.receivedAmount && <p className="text-xs text-muted-foreground">Received: {Number(d.receivedAmount).toLocaleString('en-US', { minimumFractionDigits: 2 })} USDT</p>}
-            </div>
-          )}
-
-          {d.status === 'detecting' && (
-            <p className="text-xs text-muted-foreground">Transaction found on blockchain — verifying confirmations. This usually takes 2–5 minutes.</p>
-          )}
-
+          {/* Waiting */}
           {d.status === 'waiting' && (
             <div className="flex items-center gap-2 bg-emerald-500/5 rounded-xl px-3 py-2 border border-emerald-500/20 text-xs text-emerald-600 font-semibold justify-center">
               <Zap className="w-3.5 h-3.5" /> Auto-detecting — no action needed from you
             </div>
           )}
+
+          {/* Confirming */}
+          {d.status === 'detecting' && (
+            <p className="text-xs text-muted-foreground">Transaction found on TRON blockchain — verifying confirmations. This usually takes 2–5 minutes.</p>
+          )}
+
+          {/* Failed */}
+          {d.status === 'failed' && (
+            <p className="text-xs text-red-600 dark:text-red-400">This deposit could not be completed. Please contact support if you sent funds.</p>
+          )}
         </CardContent>
       </Card>
+
+      {/* ── Completed receipt ─────────────────────────────────────────── */}
+      {d.status === 'completed' && (
+        <Card className="border-emerald-500/30">
+          <CardContent className="p-5 space-y-4">
+            <div className="flex items-center gap-2">
+              <Receipt className="w-4 h-4 text-emerald-500" />
+              <p className="text-sm font-bold">Deposit Receipt</p>
+            </div>
+
+            <div className="divide-y divide-border/50">
+              {[
+                { label: 'Status',             value: 'Completed ✓',                                          color: 'text-emerald-600' },
+                { label: 'USDT Received',       value: `${(receivedUsdt ?? Number(d.amount)).toLocaleString('en-US', { minimumFractionDigits: 6 })} USDT` },
+                { label: 'USD Credited (1:1)',  value: `$${(creditedUsd ?? Number(d.amount)).toLocaleString('en-US', { minimumFractionDigits: 2 })} USD`,  color: 'text-emerald-600 font-bold' },
+                { label: 'Network',             value: 'TRON · TRC20' },
+                { label: 'Confirmed At',        value: d.confirmedAt ? new Date(d.confirmedAt).toLocaleString() : '—' },
+              ].map(({ label, value, color }: any) => (
+                <div key={label} className="flex justify-between items-center py-2.5 gap-3">
+                  <span className="text-xs text-muted-foreground shrink-0">{label}</span>
+                  <span className={`text-xs font-semibold text-right ${color ?? ''}`}>{value}</span>
+                </div>
+              ))}
+
+              {/* TX Hash row with Tronscan link */}
+              {d.transactionHash && (
+                <div className="py-2.5 space-y-1">
+                  <span className="text-xs text-muted-foreground">Transaction Hash</span>
+                  <div className="flex items-center gap-2 mt-1">
+                    <code className="text-[11px] font-mono text-foreground break-all flex-1 bg-muted/50 rounded px-2 py-1">{d.transactionHash}</code>
+                    <div className="flex flex-col gap-1 shrink-0">
+                      <button type="button" onClick={() => { navigator.clipboard?.writeText(d.transactionHash); toast({ title: '📋 TX hash copied' }); }}
+                        className="text-muted-foreground hover:text-foreground transition-colors">
+                        <Copy className="w-3.5 h-3.5" />
+                      </button>
+                      <a href={`https://tronscan.org/#/transaction/${d.transactionHash}`} target="_blank" rel="noopener noreferrer"
+                        className="text-primary hover:text-primary/80 transition-colors">
+                        <ExternalLink className="w-3.5 h-3.5" />
+                      </a>
+                    </div>
+                  </div>
+                  <a href={`https://tronscan.org/#/transaction/${d.transactionHash}`} target="_blank" rel="noopener noreferrer"
+                    className="text-[10px] text-primary underline underline-offset-2">
+                    View on Tronscan ↗
+                  </a>
+                </div>
+              )}
+            </div>
+
+            <p className="text-[10px] text-muted-foreground text-center">
+              USDT TRC20 is pegged 1:1 to USD. No exchange rate was applied.
+            </p>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Payment instructions (while waiting) */}
       {isActive && (
@@ -133,6 +205,17 @@ function DepositDetailView({ id }: { id: string }) {
                 <Button size="sm" variant="outline" className="h-10 shrink-0 gap-1.5" onClick={copyAddress}>
                   <Copy className="w-3.5 h-3.5" /> Copy
                 </Button>
+              </div>
+            </div>
+
+            {/* TRX fee education */}
+            <div className="bg-blue-500/5 border border-blue-500/20 rounded-xl p-3 flex items-start gap-2.5">
+              <Zap className="w-3.5 h-3.5 text-blue-500 shrink-0 mt-0.5" />
+              <div className="space-y-0.5">
+                <p className="text-xs font-semibold text-blue-700 dark:text-blue-400">Network fee reminder</p>
+                <p className="text-xs text-muted-foreground">
+                  USDT TRC20 transactions require a small amount of <strong>TRX</strong> in your external wallet for network fees. Make sure your sending wallet holds some TRX before initiating the transfer.
+                </p>
               </div>
             </div>
 
@@ -160,23 +243,43 @@ function DepositDetailView({ id }: { id: string }) {
         </Card>
       )}
 
-      {/* Details */}
+      {/* Details — always shown; receipt above already covers completed fields, so keep this brief */}
       <Card>
         <CardContent className="p-4 space-y-1">
           <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2">Deposit Details</p>
           {[
-            { label: 'Deposit ID',  value: `#${d.id}` },
-            { label: 'Network',     value: 'USDT TRC20' },
-            { label: 'Amount',      value: `${Number(d.amount).toLocaleString('en-US', { minimumFractionDigits: 2 })} USDT` },
-            { label: 'Created',     value: new Date(d.createdAt).toLocaleString() },
-            ...(d.transactionHash ? [{ label: 'TX Hash', value: d.transactionHash, mono: true }] : []),
-            ...(d.fromAddress ? [{ label: 'Sent From', value: d.fromAddress, mono: true }] : []),
+            { label: 'Deposit ID',       value: `#${d.id}` },
+            { label: 'Network',          value: 'TRON · TRC20' },
+            { label: 'Expected Amount',  value: `${Number(d.amount).toLocaleString('en-US', { minimumFractionDigits: 2 })} USDT` },
+            ...(receivedUsdt !== null   ? [{ label: 'Received',    value: `${receivedUsdt.toLocaleString('en-US', { minimumFractionDigits: 6 })} USDT` }] : []),
+            ...(creditedUsd !== null    ? [{ label: 'USD Credited', value: `$${creditedUsd.toLocaleString('en-US', { minimumFractionDigits: 2 })}` }] : []),
+            { label: 'Created',          value: new Date(d.createdAt).toLocaleString() },
+            ...(d.confirmedAt           ? [{ label: 'Confirmed At', value: new Date(d.confirmedAt).toLocaleString() }] : []),
+            ...(d.fromAddress           ? [{ label: 'Sent From',    value: d.fromAddress, mono: true }] : []),
           ].map(({ label, value, mono }: any) => (
             <div key={label} className="flex items-start justify-between gap-3 py-1.5 border-b border-border/50 last:border-0">
               <span className="text-xs text-muted-foreground shrink-0">{label}</span>
-              <span className={`text-xs font-semibold text-right truncate max-w-[200px] ${mono ? 'font-mono' : ''}`}>{value}</span>
+              <span className={`text-xs font-semibold text-right ${mono ? 'font-mono truncate max-w-[180px]' : ''}`}>{value}</span>
             </div>
           ))}
+
+          {/* TX hash row — full width with copy + Tronscan link */}
+          {d.transactionHash && d.status !== 'completed' && (
+            <div className="pt-1.5 space-y-1">
+              <span className="text-xs text-muted-foreground">TX Hash</span>
+              <div className="flex items-center gap-2">
+                <code className="text-[11px] font-mono break-all flex-1 bg-muted/60 rounded px-2 py-1">{d.transactionHash}</code>
+                <button type="button" onClick={() => { navigator.clipboard?.writeText(d.transactionHash); toast({ title: '📋 Copied' }); }}
+                  className="shrink-0 text-muted-foreground hover:text-foreground">
+                  <Copy className="w-3.5 h-3.5" />
+                </button>
+                <a href={`https://tronscan.org/#/transaction/${d.transactionHash}`} target="_blank" rel="noopener noreferrer"
+                  className="shrink-0 text-primary hover:text-primary/80">
+                  <ExternalLink className="w-3.5 h-3.5" />
+                </a>
+              </div>
+            </div>
+          )}
         </CardContent>
       </Card>
 
