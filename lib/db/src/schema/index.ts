@@ -11,3 +11,4 @@ export * from "./contacts";
 export * from "./fraud_events";
 export * from "./crypto_payments";
 export * from "./crypto_deposits";
+export * from "./wallpapers";

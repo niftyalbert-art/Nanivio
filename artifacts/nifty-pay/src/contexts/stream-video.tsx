@@ -20,6 +20,8 @@ export interface StreamVideoCtx {
   videoClient:   StreamVideoClient | null;
   incomingCall:  any;
   activeCall:    any;
+  /** 'audio' or 'video' — kind of the active call */
+  callKind:      'audio' | 'video';
   /** Initiate a call from a chat channel */
   startCall:   (type: 'audio' | 'video', callId: string, memberIds: string[]) => Promise<void>;
   acceptCall:  () => Promise<void>;
@@ -28,7 +30,7 @@ export interface StreamVideoCtx {
 }
 
 const Ctx = createContext<StreamVideoCtx>({
-  videoClient: null, incomingCall: null, activeCall: null,
+  videoClient: null, incomingCall: null, activeCall: null, callKind: 'video',
   startCall:   async () => {},
   acceptCall:  async () => {},
   declineCall: () => {},
@@ -40,6 +42,8 @@ export function StreamVideoProvider({ children }: { children: ReactNode }) {
   const [videoClient,  setVideoClient]  = useState<StreamVideoClient | null>(null);
   const [incomingCall, setIncomingCall] = useState<any>(null);
   const [activeCall,   setActiveCall]   = useState<any>(null);
+  const [callKind,     setCallKind]     = useState<'audio' | 'video'>('video');
+  const incomingKindRef = useRef<'audio' | 'video'>('video');
   const stopRingtoneRef = useRef<(() => void) | null>(null);
 
   /* ── init video client — once per authenticated session ── */
@@ -63,6 +67,7 @@ export function StreamVideoProvider({ children }: { children: ReactNode }) {
           // Create a proper Call SDK instance (not just raw event data) so
           // .join() / .leave() are available when the user accepts / declines.
           const callInstance = vc.call(event.call.type, event.call.id);
+          incomingKindRef.current = (event.call?.custom?.kind === 'audio') ? 'audio' : 'video';
           setIncomingCall(callInstance);
         });
         setVideoClient(vc);
@@ -86,6 +91,15 @@ export function StreamVideoProvider({ children }: { children: ReactNode }) {
     stopRingtoneRef.current = null;
     try {
       await incomingCall.join();
+      // Publish media tracks — without this the other side sees no video/audio.
+      const kind = incomingKindRef.current;
+      try { await incomingCall.microphone.enable(); } catch {}
+      if (kind === 'video') {
+        try { await incomingCall.camera.enable(); } catch {}
+      } else {
+        try { await incomingCall.camera.disable(); } catch {}
+      }
+      setCallKind(kind);
       setActiveCall(incomingCall);
       setIncomingCall(null);
     } catch (e: any) {
@@ -126,11 +140,22 @@ export function StreamVideoProvider({ children }: { children: ReactNode }) {
     try {
       await call.getOrCreate({
         ring: true,
-        data: { members: memberIds.map(id => ({ user_id: id })) },
+        data: {
+          members: memberIds.map(id => ({ user_id: id })),
+          custom:  { kind: type },
+        },
       });
       await call.join({ create: false });
+      // Publish media tracks — without this the receiver sees no video/audio.
+      try { await call.microphone.enable(); } catch {}
+      if (type === 'video') {
+        try { await call.camera.enable(); } catch {}
+      } else {
+        try { await call.camera.disable(); } catch {}
+      }
       stopRingtoneRef.current?.();
       stopRingtoneRef.current = null;
+      setCallKind(type);
       setActiveCall(call);
     } catch (e) {
       stopRingtoneRef.current?.();
@@ -140,7 +165,7 @@ export function StreamVideoProvider({ children }: { children: ReactNode }) {
   }, [videoClient]);
 
   return (
-    <Ctx.Provider value={{ videoClient, incomingCall, activeCall, startCall, acceptCall, declineCall, endCall }}>
+    <Ctx.Provider value={{ videoClient, incomingCall, activeCall, callKind, startCall, acceptCall, declineCall, endCall }}>
       {children}
     </Ctx.Provider>
   );

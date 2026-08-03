@@ -18,6 +18,7 @@ import kycRouter from "./kyc";
 import profileRouter from "./profile";
 import cryptoRouter from "./crypto";
 import cryptoDepositsRouter from "./crypto-deposits";
+import wallpapersRouter from "./wallpapers";
 
 const router: IRouter = Router();
 
@@ -40,5 +41,6 @@ router.use(kycRouter);
 router.use(profileRouter);
 router.use(cryptoRouter);
 router.use(cryptoDepositsRouter);
+router.use(wallpapersRouter);
 
 export default router;

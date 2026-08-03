@@ -78,6 +78,7 @@ app.use("/api/kyc/submit", express.json({ limit: "25mb" }));
 // base64 data-URLs (~+33% overhead), so these routes need larger JSON bodies.
 app.use("/api/profile/avatar", express.json({ limit: "12mb" }));
 app.use("/api/profile/chat-background", express.json({ limit: "15mb" }));
+app.use("/api/admin/wallpapers", express.json({ limit: "15mb" })); // 8 MB image ≈ 10.7 MB base64
 app.use(express.json({ limit: "10mb" }));
 app.use(express.urlencoded({ extended: true, limit: "10mb" }));
 

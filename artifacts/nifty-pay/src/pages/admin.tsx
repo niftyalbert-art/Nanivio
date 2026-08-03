@@ -8,7 +8,7 @@ import { Badge } from '@/components/ui/badge';
 import { Textarea } from '@/components/ui/textarea';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { Skeleton } from '@/components/ui/skeleton';
-import { CheckCircle2, XCircle, Clock, ArrowDownLeft, ArrowUpRight, MessageSquare, Lock, Plus, Edit2, TrendingUp, Settings2, Link, Eye, EyeOff, Users, ArrowLeftRight, KeyRound, ShieldCheck, ArrowLeft, BadgeCheck, Shield, AlertTriangle, Unlock, Search, ChevronDown, ChevronUp, LogIn, Wallet, Phone, Mail, CalendarDays, RefreshCw, Bitcoin, Copy } from 'lucide-react';
+import { CheckCircle2, XCircle, Clock, ArrowDownLeft, ArrowUpRight, MessageSquare, Lock, Plus, Edit2, TrendingUp, Settings2, Link, Eye, EyeOff, Users, ArrowLeftRight, KeyRound, ShieldCheck, ArrowLeft, BadgeCheck, Shield, AlertTriangle, Unlock, Search, ChevronDown, ChevronUp, LogIn, Wallet, Phone, Mail, CalendarDays, RefreshCw, Bitcoin, Copy, Paintbrush, Trash2, Upload } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import { useToast } from '@/hooks/use-toast';
 
@@ -2357,6 +2357,128 @@ function playNotificationSound(type: 'deposit' | 'send' | 'ticket' | 'withdrawal
 }
 
 // ── Main Admin Page ─────────────────────────────────────────────────────────
+// ── Wallpapers panel — manage the chat wallpaper catalog ────────────────────
+function WallpapersPanel() {
+  const { toast } = useToast();
+  const qc = useQueryClient();
+  const fileRef = useRef<HTMLInputElement>(null);
+  const [newLabel, setNewLabel] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [renaming, setRenaming] = useState<string | null>(null);
+  const [renameVal, setRenameVal] = useState('');
+
+  const { data, isLoading } = useQuery({ queryKey: ['admin-wallpapers'], queryFn: () => apiFetch('/wallpapers') });
+  const wallpapers: any[] = data?.wallpapers ?? [];
+
+  const tileCss = (w: any) => {
+    const img = w.imageFile ? `${import.meta.env.BASE_URL}wallpapers/${w.imageFile}`
+      : w.hasUpload ? `${API}/wallpapers/${w.id}/image` : null;
+    return img ? `${w.css ?? '#0b0d1a'} url(${img}) center / cover no-repeat` : (w.css ?? '#0b0d1a');
+  };
+
+  const refresh = () => qc.invalidateQueries({ queryKey: ['admin-wallpapers'] });
+
+  const upload = async (file: File) => {
+    if (!newLabel.trim() || newLabel.trim().length < 2) {
+      toast({ title: 'Name required', description: 'Enter a wallpaper name before choosing an image.', variant: 'destructive' });
+      return;
+    }
+    if (file.size > 8 * 1024 * 1024) {
+      toast({ title: 'Image too large', description: 'Maximum 8 MB.', variant: 'destructive' });
+      return;
+    }
+    setBusy(true);
+    try {
+      const dataUrl: string = await new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(String(reader.result));
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
+      });
+      await apiFetch('/admin/wallpapers', { method: 'POST', body: JSON.stringify({ label: newLabel.trim(), imageBase64: dataUrl }) });
+      setNewLabel('');
+      refresh();
+      toast({ title: 'Wallpaper added', description: 'It now appears in every user\u2019s wallpaper picker.' });
+    } catch (e: any) {
+      toast({ title: 'Upload failed', description: e.message, variant: 'destructive' });
+    } finally { setBusy(false); }
+  };
+
+  const remove = async (w: any) => {
+    if (!window.confirm(`Delete "${w.label}"? Users who chose it will fall back to the default wallpaper.`)) return;
+    try {
+      await apiFetch(`/admin/wallpapers/${w.id}`, { method: 'DELETE' });
+      refresh();
+      toast({ title: 'Wallpaper deleted', description: `"${w.label}" was removed from the catalog.` });
+    } catch (e: any) {
+      toast({ title: 'Delete failed', description: e.message, variant: 'destructive' });
+    }
+  };
+
+  const saveRename = async (w: any) => {
+    const label = renameVal.trim();
+    setRenaming(null);
+    if (!label || label === w.label) return;
+    try {
+      await apiFetch(`/admin/wallpapers/${w.id}`, { method: 'PUT', body: JSON.stringify({ label }) });
+      refresh();
+    } catch (e: any) {
+      toast({ title: 'Rename failed', description: e.message, variant: 'destructive' });
+    }
+  };
+
+  return (
+    <div className="space-y-4">
+      <Card>
+        <CardHeader className="pb-3">
+          <CardTitle className="text-sm flex items-center gap-2"><Paintbrush className="w-4 h-4" /> Add a wallpaper</CardTitle>
+          <CardDescription className="text-xs">Uploads appear in the "Official Nanivio" section of every user's wallpaper picker.</CardDescription>
+        </CardHeader>
+        <CardContent className="flex gap-2">
+          <Input placeholder="Wallpaper name (e.g. Emerald Silk)" value={newLabel} onChange={e => setNewLabel(e.target.value)} className="text-sm" />
+          <Button onClick={() => fileRef.current?.click()} disabled={busy} className="gap-2 shrink-0">
+            {busy ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />} Image
+          </Button>
+          <input ref={fileRef} type="file" accept="image/jpeg,image/png,image/webp" className="hidden"
+            onChange={e => { const f = e.target.files?.[0]; if (f) upload(f); e.target.value = ''; }} />
+        </CardContent>
+      </Card>
+
+      {isLoading ? <Skeleton className="h-40 w-full" /> : (
+        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
+          {wallpapers.map(w => (
+            <div key={w.id} className="relative rounded-xl overflow-hidden border border-border/60 group">
+              <div className="h-28 w-full" style={{ background: tileCss(w) }} />
+              <div className="p-2 bg-card space-y-1">
+                {renaming === w.id ? (
+                  <Input autoFocus value={renameVal} onChange={e => setRenameVal(e.target.value)}
+                    onBlur={() => saveRename(w)} onKeyDown={e => { if (e.key === 'Enter') saveRename(w); if (e.key === 'Escape') setRenaming(null); }}
+                    className="h-6 text-xs" />
+                ) : (
+                  <p className="text-xs font-semibold truncate">{w.label}</p>
+                )}
+                <div className="flex items-center justify-between">
+                  <Badge variant="outline" className="text-[9px] px-1.5">{w.official ? 'Official' : 'Texture'}</Badge>
+                  <div className="flex gap-1">
+                    <button onClick={() => { setRenaming(w.id); setRenameVal(w.label); }}
+                      className="p-1 rounded hover:bg-muted text-muted-foreground" aria-label={`Rename ${w.label}`}>
+                      <Edit2 className="w-3 h-3" />
+                    </button>
+                    <button onClick={() => remove(w)}
+                      className="p-1 rounded hover:bg-red-500/10 text-red-500" aria-label={`Delete ${w.label}`}>
+                      <Trash2 className="w-3 h-3" />
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function Admin() {
   const [username, setUsername] = useState('');
   const [pin, setPin] = useState('');
@@ -2683,6 +2805,7 @@ export default function Admin() {
           <TabsTrigger value="methods" className="text-[11px] shrink-0 flex-1 min-w-[40px]">Pay</TabsTrigger>
           <TabsTrigger value="rates" className="text-[11px] shrink-0 flex-1 min-w-[40px]">Rates</TabsTrigger>
           <TabsTrigger value="crypto" className="text-[11px] shrink-0 flex-1 min-w-[40px]"><Bitcoin className="w-3 h-3" /></TabsTrigger>
+          <TabsTrigger value="wallpapers" className="text-[11px] shrink-0 flex-1 min-w-[40px]"><Paintbrush className="w-3 h-3" /></TabsTrigger>
           <TabsTrigger value="security" className="text-[11px] shrink-0 flex-1 min-w-[40px]"><Shield className="w-3 h-3" /></TabsTrigger>
           <TabsTrigger value="settings" className="text-[11px] shrink-0 flex-1 min-w-[36px]"><Settings2 className="w-3 h-3" /></TabsTrigger>
         </TabsList>
@@ -2696,6 +2819,7 @@ export default function Admin() {
         <TabsContent value="methods"     className="mt-4"><PaymentMethodsPanel /></TabsContent>
         <TabsContent value="rates"       className="mt-4"><RatesPanel /></TabsContent>
         <TabsContent value="crypto"       className="mt-4"><CryptoPanel /></TabsContent>
+        <TabsContent value="wallpapers"  className="mt-4"><WallpapersPanel /></TabsContent>
         <TabsContent value="security"    className="mt-4"><SecurityPanel /></TabsContent>
         <TabsContent value="settings"    className="mt-4"><SettingsPanel /></TabsContent>
       </Tabs>

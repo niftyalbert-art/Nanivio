@@ -3,7 +3,7 @@ import { eq } from "drizzle-orm";
 import fs from "fs";
 import path from "path";
 import { StreamChat } from "stream-chat";
-import { db, usersTable } from "@workspace/db";
+import { db, usersTable, chatWallpapersTable } from "@workspace/db";
 import { requireAuth } from "../middleware/auth";
 
 const router: IRouter = Router();
@@ -161,10 +161,21 @@ router.post("/profile/chat-background", requireAuth, async (req, res): Promise<v
     return;
   }
 
-  if (typeof preset === "string" && CHAT_BG_PRESETS.has(preset)) {
-    await db.update(usersTable).set({ chatBackground: preset, updatedAt: new Date() }).where(eq(usersTable.id, req.userId!));
-    res.json({ ok: true, background: preset });
-    return;
+  if (typeof preset === "string" && preset.length > 0 && preset.length <= 60) {
+    // Validate against the DB-backed wallpaper catalog (fallback to the legacy
+    // built-in set if the catalog table is unavailable).
+    let valid = false;
+    try {
+      const [row] = await db.select({ slug: chatWallpapersTable.slug }).from(chatWallpapersTable).where(eq(chatWallpapersTable.slug, preset));
+      valid = !!row;
+    } catch {
+      valid = CHAT_BG_PRESETS.has(preset);
+    }
+    if (valid) {
+      await db.update(usersTable).set({ chatBackground: preset, updatedAt: new Date() }).where(eq(usersTable.id, req.userId!));
+      res.json({ ok: true, background: preset });
+      return;
+    }
   }
 
   res.status(400).json({ error: "Provide either a valid preset or an imageBase64 upload" });

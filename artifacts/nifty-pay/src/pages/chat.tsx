@@ -74,7 +74,21 @@ const CHAT_BG_PRESETS: { id: string; label: string; css: string; official?: bool
   { id: 'slate',    label: 'Slate',    css: `#111 url(${import.meta.env.BASE_URL}wallpapers/slate.png) center / cover no-repeat` },
   { id: 'noir',     label: 'Noir',     css: `#0a0c12 url(${import.meta.env.BASE_URL}wallpapers/noir.png) center / cover no-repeat` },
 ];
-const presetCss = (id: string) => CHAT_BG_PRESETS.find(p => p.id === id)?.css ?? CHAT_BG_PRESETS[0].css;
+type WallpaperPreset = { id: string; label: string; css: string; official?: boolean };
+const presetCss = (id: string, list: WallpaperPreset[] = CHAT_BG_PRESETS) =>
+  list.find(p => p.id === id)?.css
+  ?? list.find(p => p.id === 'royal-classic')?.css
+  ?? CHAT_BG_PRESETS[0].css; // Royal Classic is the app default fallback
+
+/* Build CSS from a server catalog row (admin-managed wallpapers) */
+function serverWallpaperCss(w: { id: string; css?: string | null; imageFile?: string | null; hasUpload?: boolean }): string {
+  const img = w.imageFile
+    ? `${import.meta.env.BASE_URL}wallpapers/${w.imageFile}`
+    : w.hasUpload
+      ? `${API}/wallpapers/${w.id}/image`
+      : null;
+  return img ? `${w.css ?? '#0b0d1a'} url(${img}) center / cover no-repeat` : (w.css ?? '#0b0d1a');
+}
 
 /* Subtle WhatsApp-style doodle pattern layered over preset wallpapers */
 const DOODLE_PATTERN = `url("data:image/svg+xml,%3Csvg width='120' height='120' viewBox='0 0 120 120' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' stroke='%23ffffff' stroke-opacity='0.045' stroke-width='1.5'%3E%3Ccircle cx='20' cy='20' r='6'/%3E%3Cpath d='M70 15 l8 8 M78 15 l-8 8'/%3E%3Crect x='95' y='40' width='12' height='12' rx='3'/%3E%3Cpath d='M30 70 q6 -10 12 0'/%3E%3Ccircle cx='85' cy='90' r='5'/%3E%3Cpath d='M15 100 h14 M22 93 v14'/%3E%3Cpath d='M55 50 l5 9 h-10 z'/%3E%3Cpath d='M105 105 a5 5 0 1 0 0.1 0'/%3E%3C/g%3E%3C/svg%3E")`;
@@ -243,6 +257,22 @@ function StreamEmojiPicker() {
 /* ─── chat wallpaper hook + picker sheet ─── */
 function useChatWallpaper() {
   const [background, setBackground] = useState<string>('royal-classic');
+  const [presets, setPresets] = useState<WallpaperPreset[]>(CHAT_BG_PRESETS);
+
+  // Load the admin-managed wallpaper catalog (falls back to built-ins)
+  useEffect(() => {
+    fetch(`${API}/wallpapers`)
+      .then(r => (r.ok ? r.json() : null))
+      .then(d => {
+        const rows = d?.wallpapers;
+        if (Array.isArray(rows) && rows.length > 0) {
+          setPresets(rows.map((w: any) => ({
+            id: w.id, label: w.label, official: !!w.official, css: serverWallpaperCss(w),
+          })));
+        }
+      })
+      .catch(() => {});
+  }, []);
   const [customUrl, setCustomUrl] = useState<string | null>(null);
   const customUrlRef = useRef<string | null>(null);
   useEffect(() => { customUrlRef.current = customUrl; }, [customUrl]);
@@ -278,17 +308,18 @@ function useChatWallpaper() {
       .catch(() => {});
   }, [loadCustomImage]);
 
-  return { background, setBackground, customUrl, loadCustomImage };
+  return { background, setBackground, customUrl, loadCustomImage, presets };
 }
 
 function WallpaperSheet({
-  open, onClose, background, onPicked, onUploaded,
+  open, onClose, background, onPicked, onUploaded, presets = CHAT_BG_PRESETS,
 }: {
   open: boolean;
   onClose: () => void;
   background: string;
   onPicked: (id: string) => void;
   onUploaded: () => void;
+  presets?: WallpaperPreset[];
 }) {
   const { toast } = useToast();
   const fileRef = useRef<HTMLInputElement>(null);
@@ -359,7 +390,7 @@ function WallpaperSheet({
         </div>
         <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/70 -mb-2">Official Nanivio</p>
         <div className="grid grid-cols-3 gap-2.5">
-          {CHAT_BG_PRESETS.filter(p => p.official).map(p => (
+          {presets.filter(p => p.official).map(p => (
             <button
               key={p.id}
               onClick={() => pickPreset(p.id)}
@@ -380,7 +411,7 @@ function WallpaperSheet({
         </div>
         <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/70 -mb-2">Colors & Textures</p>
         <div className="grid grid-cols-4 gap-2.5">
-          {CHAT_BG_PRESETS.filter(p => !p.official).map(p => (
+          {presets.filter(p => !p.official).map(p => (
             <button
               key={p.id}
               onClick={() => pickPreset(p.id)}
@@ -490,7 +521,7 @@ function ChatInner({
 }) {
   const { client, channel: activeChannel, setActiveChannel } = useChatContext();
   const [tick, setTick] = useState(0);
-  const { background, setBackground, customUrl, loadCustomImage } = useChatWallpaper();
+  const { background, setBackground, customUrl, loadCustomImage, presets } = useChatWallpaper();
   const [showWallpaper, setShowWallpaper] = useState(false);
   // In-app flash: { name, text } shown for 3 s when a message arrives in a background channel
   const [msgFlash, setMsgFlash] = useState<{ name: string; text: string } | null>(null);
@@ -1119,11 +1150,11 @@ function ChatInner({
                   style={
                     background === 'custom' && customUrl
                       ? { backgroundImage: `url(${customUrl})`, backgroundSize: 'cover', backgroundPosition: 'center' }
-                      : { background: presetCss(background) }
+                      : { background: presetCss(background, presets) }
                   }
                 />
                 {/* WhatsApp-style doodle pattern over gradient presets (not image wallpapers) */}
-                {!(background === 'custom' && customUrl) && !presetCss(background).includes('url(') && (
+                {!(background === 'custom' && customUrl) && !presetCss(background, presets).includes('url(') && (
                   <div className="absolute inset-0 pointer-events-none" style={{ backgroundImage: DOODLE_PATTERN }} />
                 )}
                 {/* readability overlay on top of custom photos */}
@@ -1135,7 +1166,7 @@ function ChatInner({
                 </div>
                 {/* typing indicator — "typing…" like WhatsApp, just above the composer */}
                 <div className="relative shrink-0 px-4 wa-typing">
-                  <TypingIndicator />
+                  <TypingIndicator scrollToBottom={() => {}} />
                 </div>
                 {/* Composer + visible emoji button */}
                 <div className="relative shrink-0 w-full border-t border-white/[0.06] bg-background/70 backdrop-blur-xl">
@@ -1152,6 +1183,7 @@ function ChatInner({
                 <WallpaperSheet
                   open={showWallpaper}
                   onClose={() => setShowWallpaper(false)}
+                  presets={presets}
                   background={background}
                   onPicked={id => setBackground(id)}
                   onUploaded={() => { setBackground('custom'); loadCustomImage(); }}

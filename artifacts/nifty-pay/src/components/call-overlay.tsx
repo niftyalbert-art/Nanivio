@@ -8,7 +8,7 @@
 import { useEffect } from 'react';
 import {
   StreamVideo, StreamCall, StreamTheme,
-  SpeakerLayout, CallControls, useCallStateHooks, CallingState,
+  ParticipantView, CallControls, useCallStateHooks, CallingState,
 } from '@stream-io/video-react-sdk';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { PhoneCall, PhoneOff } from 'lucide-react';
@@ -17,22 +17,45 @@ import { useToast } from '@/hooks/use-toast';
 
 /* ─── inner call UI — must live inside <StreamCall> context ─── */
 function CallUI({ onEnd }: { onEnd: () => void }) {
-  const { useCallCallingState } = useCallStateHooks();
-  const state = useCallCallingState();
+  const { useCallCallingState, useLocalParticipant, useRemoteParticipants } = useCallStateHooks();
+  const state  = useCallCallingState();
+  const local  = useLocalParticipant();
+  const remote = useRemoteParticipants();
 
   // Auto-end when the call leaves / goes idle
   useEffect(() => {
     if (state === CallingState.LEFT || state === CallingState.IDLE) onEnd();
   }, [state, onEnd]);
 
+  const other = remote[0]; // 1:1 calls — first remote participant fills the screen
+
   return (
-    <StreamTheme className="h-full">
-      {/*
-       * SpeakerLayout: dominant speaker fills the screen, other participants
-       * shown in a horizontal bar at the bottom. Works for 1:1 and group calls.
-       */}
-      <SpeakerLayout />
-      <CallControls onLeave={onEnd} />
+    <StreamTheme className="h-full wa-call">
+      {/* ── Remote participant — fills the entire screen (WhatsApp style) ── */}
+      <div className="absolute inset-0">
+        {other ? (
+          <ParticipantView participant={other} ParticipantViewUI={null} />
+        ) : (
+          <div className="w-full h-full flex flex-col items-center justify-center gap-3 text-white/80">
+            <div className="w-20 h-20 rounded-full bg-white/10 flex items-center justify-center">
+              <PhoneCall className="w-8 h-8 animate-pulse" />
+            </div>
+            <p className="text-sm animate-pulse">Waiting for the other person…</p>
+          </div>
+        )}
+      </div>
+
+      {/* ── Own camera — floating medium box, top-right ── */}
+      {local && (
+        <div className="absolute top-4 right-4 w-[30vw] max-w-[140px] aspect-[3/4] rounded-2xl overflow-hidden border border-white/20 shadow-2xl z-10 bg-black/60">
+          <ParticipantView participant={local} ParticipantViewUI={null} muteAudio />
+        </div>
+      )}
+
+      {/* ── Controls — bottom center ── */}
+      <div className="absolute inset-x-0 bottom-6 z-10 flex justify-center">
+        <CallControls onLeave={onEnd} />
+      </div>
     </StreamTheme>
   );
 }
