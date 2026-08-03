@@ -1,0 +1,9 @@
+uploads = []
+generated = []
+
+[[outputs]]
+id = "HVvs4SMvr31_qwQB3Z_vZ"
+uri = "file://attached_assets/generated_images/nanivio-royal-wallpaper.png"
+type = "image"
+title = "Royal Classic — Nanivio by Nifty wallpaper"
+description = "Premium dark-silk chat wallpaper with the purple & gold N monogram, nanivio wordmark, and 'by Nifty' tagline."
