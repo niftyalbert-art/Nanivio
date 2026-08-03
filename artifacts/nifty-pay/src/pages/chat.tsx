@@ -61,6 +61,10 @@ const CHAT_BG_PRESETS: { id: string; label: string; css: string }[] = [
   { id: 'forest',   label: 'Forest',   css: 'radial-gradient(900px 500px at 85% 0%, hsl(150 60% 22% / 0.45), transparent 60%), radial-gradient(700px 450px at 5% 100%, hsl(120 45% 18% / 0.4), transparent 60%), linear-gradient(180deg, hsl(160 40% 5%), hsl(170 35% 8%))' },
   { id: 'royal',    label: 'Royal',    css: 'radial-gradient(900px 500px at 75% -10%, hsl(268 75% 32% / 0.45), transparent 60%), radial-gradient(800px 500px at 10% 110%, hsl(290 60% 25% / 0.4), transparent 60%), linear-gradient(180deg, hsl(260 45% 7%), hsl(268 40% 9%))' },
   { id: 'blush',    label: 'Blush',    css: 'radial-gradient(900px 500px at 80% -10%, hsl(340 70% 35% / 0.35), transparent 60%), radial-gradient(700px 450px at 5% 110%, hsl(20 75% 32% / 0.3), transparent 60%), linear-gradient(180deg, hsl(335 35% 7%), hsl(350 30% 9%))' },
+  { id: 'dots',     label: 'Dots',     css: 'radial-gradient(#1a1a1a 1px, transparent 1px) 0 0 / 20px 20px #0f0f0f' },
+  { id: 'graphite', label: 'Graphite', css: `#16181c url(${import.meta.env.BASE_URL}wallpapers/graphite.png) center / cover no-repeat` },
+  { id: 'slate',    label: 'Slate',    css: `#111 url(${import.meta.env.BASE_URL}wallpapers/slate.png) center / cover no-repeat` },
+  { id: 'noir',     label: 'Noir',     css: `#0a0c12 url(${import.meta.env.BASE_URL}wallpapers/noir.png) center / cover no-repeat` },
 ];
 const presetCss = (id: string) => CHAT_BG_PRESETS.find(p => p.id === id)?.css ?? CHAT_BG_PRESETS[0].css;
 
