@@ -19,6 +19,7 @@ const EXT_MIME: Record<string, string> = { jpg: "image/jpeg", jpeg: "image/jpeg"
 export const CHAT_BG_PRESETS = new Set([
   "default", "aurora", "midnight", "sunset", "ocean", "forest", "royal", "blush",
   "dots", "graphite", "slate", "noir",
+  "nano-glow", "wave-flow", "hexa-tech", "luxe-marble", "cosmic-orbit", "aurora-mesh",
 ]);
 
 function parseImageBase64(base64Data: string, maxBytes: number): { buffer: Buffer; ext: string } {

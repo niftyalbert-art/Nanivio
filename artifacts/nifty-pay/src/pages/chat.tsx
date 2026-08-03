@@ -52,7 +52,14 @@ function streamAvatarUrl(user: any): string | undefined {
 }
 
 /* ─── chat wallpaper presets ─── */
-const CHAT_BG_PRESETS: { id: string; label: string; css: string }[] = [
+const CHAT_BG_PRESETS: { id: string; label: string; css: string; official?: boolean }[] = [
+  /* ── Official Nanivio backgrounds ── */
+  { id: 'nano-glow',    label: 'Nano Glow',    official: true, css: `#160b33 url(${import.meta.env.BASE_URL}wallpapers/nano-glow.png) center / cover no-repeat` },
+  { id: 'wave-flow',    label: 'Wave Flow',    official: true, css: `#120a2e url(${import.meta.env.BASE_URL}wallpapers/wave-flow.png) center / cover no-repeat` },
+  { id: 'hexa-tech',    label: 'Hexa Tech',    official: true, css: `#150d35 url(${import.meta.env.BASE_URL}wallpapers/hexa-tech.png) center / cover no-repeat` },
+  { id: 'luxe-marble',  label: 'Luxe Marble',  official: true, css: `#1d1040 url(${import.meta.env.BASE_URL}wallpapers/luxe-marble.png) center / cover no-repeat` },
+  { id: 'cosmic-orbit', label: 'Cosmic Orbit', official: true, css: `#0e0827 url(${import.meta.env.BASE_URL}wallpapers/cosmic-orbit.png) center / cover no-repeat` },
+  { id: 'aurora-mesh',  label: 'Aurora Mesh',  official: true, css: `#140c31 url(${import.meta.env.BASE_URL}wallpapers/aurora-mesh.png) center / cover no-repeat` },
   { id: 'default',  label: 'Classic',  css: 'radial-gradient(1200px 500px at 80% -10%, hsl(217 60% 16% / 0.55), transparent 60%), radial-gradient(900px 420px at 0% 110%, hsl(262 55% 18% / 0.45), transparent 60%), linear-gradient(180deg, hsl(222 45% 7%), hsl(224 42% 9%))' },
   { id: 'aurora',   label: 'Aurora',   css: 'radial-gradient(800px 400px at 20% 0%, hsl(160 80% 30% / 0.35), transparent 60%), radial-gradient(700px 500px at 90% 30%, hsl(190 90% 35% / 0.3), transparent 55%), radial-gradient(900px 500px at 50% 110%, hsl(260 70% 30% / 0.4), transparent 60%), linear-gradient(180deg, hsl(222 50% 6%), hsl(230 45% 9%))' },
   { id: 'midnight', label: 'Midnight', css: 'radial-gradient(1000px 600px at 50% -20%, hsl(230 70% 20% / 0.6), transparent 65%), linear-gradient(180deg, hsl(232 55% 5%), hsl(240 45% 8%))' },
@@ -336,7 +343,7 @@ function WallpaperSheet({
     <div className="absolute inset-0 z-40 flex items-end" onClick={onClose}>
       <div className="absolute inset-0 bg-black/50 backdrop-blur-[2px]" />
       <div
-        className="relative w-full rounded-t-3xl border-t border-white/10 bg-card/95 backdrop-blur-xl p-4 pb-6 space-y-4 animate-in slide-in-from-bottom-4 duration-300"
+        className="relative w-full max-h-[75%] overflow-y-auto overscroll-contain rounded-t-3xl border-t border-white/10 bg-card/95 backdrop-blur-xl p-4 pb-6 space-y-4 animate-in slide-in-from-bottom-4 duration-300"
         onClick={e => e.stopPropagation()}
       >
         <div className="mx-auto w-10 h-1 rounded-full bg-white/20" />
@@ -349,8 +356,9 @@ function WallpaperSheet({
             <X className="w-4 h-4" />
           </button>
         </div>
-        <div className="grid grid-cols-4 gap-2.5">
-          {CHAT_BG_PRESETS.map(p => (
+        <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/70 -mb-2">Official Nanivio</p>
+        <div className="grid grid-cols-3 gap-2.5">
+          {CHAT_BG_PRESETS.filter(p => p.official).map(p => (
             <button
               key={p.id}
               onClick={() => pickPreset(p.id)}
@@ -365,7 +373,28 @@ function WallpaperSheet({
                   <Check className="w-2.5 h-2.5 text-primary-foreground" />
                 </span>
               )}
-              <span className="absolute bottom-1 inset-x-0 text-[9px] font-semibold text-white/90 drop-shadow">{p.label}</span>
+              <span className="absolute bottom-1 inset-x-0 text-[9px] font-semibold text-white/90 drop-shadow text-center">{p.label}</span>
+            </button>
+          ))}
+        </div>
+        <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/70 -mb-2">Colors & Textures</p>
+        <div className="grid grid-cols-4 gap-2.5">
+          {CHAT_BG_PRESETS.filter(p => !p.official).map(p => (
+            <button
+              key={p.id}
+              onClick={() => pickPreset(p.id)}
+              className={cn(
+                'relative h-20 rounded-xl overflow-hidden border-2 transition-all',
+                background === p.id ? 'border-primary shadow-lg shadow-primary/20 scale-[1.03]' : 'border-white/10 hover:border-white/30',
+              )}
+              style={{ background: p.css }}
+            >
+              {background === p.id && (
+                <span className="absolute top-1 right-1 w-4 h-4 rounded-full bg-primary flex items-center justify-center">
+                  <Check className="w-2.5 h-2.5 text-primary-foreground" />
+                </span>
+              )}
+              <span className="absolute bottom-1 inset-x-0 text-[9px] font-semibold text-white/90 drop-shadow text-center">{p.label}</span>
             </button>
           ))}
         </div>
