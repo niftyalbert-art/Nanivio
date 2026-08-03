@@ -26,6 +26,33 @@ export function playMessageNotification() {
 
 /** Repeating ringtone. Returns a stop function. */
 export function createRingtone(type: 'incoming' | 'outgoing'): () => void {
+  // Preferred: real ringtone audio files (loud, phone-like). Falls back to
+  // WebAudio-generated tones if playback is blocked or the file fails.
+  const src = `${import.meta.env.BASE_URL}sounds/${type === 'incoming' ? 'ringtone-incoming' : 'ringback-outgoing'}.mp3`;
+  try {
+    const audio = new Audio(src);
+    audio.loop = true;
+    audio.volume = 1.0;
+    const played = audio.play();
+    if (played && typeof played.catch === 'function') {
+      let stopped = false;
+      let fallbackStop: (() => void) | null = null;
+      played.catch(() => { if (!stopped) fallbackStop = createOscRingtone(type); });
+      return () => {
+        stopped = true;
+        audio.pause();
+        audio.src = '';
+        fallbackStop?.();
+      };
+    }
+    return () => { audio.pause(); audio.src = ''; };
+  } catch {
+    return createOscRingtone(type);
+  }
+}
+
+/** WebAudio fallback ringtone (used if audio file playback fails). */
+function createOscRingtone(type: 'incoming' | 'outgoing'): () => void {
   let live = true;
   function ring() {
     if (!live) return;

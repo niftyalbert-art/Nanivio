@@ -181,6 +181,25 @@ async function runEmailVerificationMigration() {
   }
 }
 
+/** Idempotent migration: push_subscriptions table for call notifications. */
+async function runPushSchemaMigration() {
+  try {
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS push_subscriptions (
+        id SERIAL PRIMARY KEY,
+        user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        endpoint TEXT NOT NULL UNIQUE,
+        p256dh TEXT NOT NULL,
+        auth TEXT NOT NULL,
+        created_at TIMESTAMPTZ DEFAULT NOW()
+      );
+    `);
+    logger.info("Push subscriptions schema migration OK");
+  } catch (err) {
+    logger.error({ err }, "Push subscriptions schema migration FAILED");
+  }
+}
+
 /** Idempotent migration: fraud_events table, user lockout columns, tx USD amount column. */
 async function runFraudSchemaMigration() {
   try {
@@ -271,6 +290,7 @@ app.listen(port, () => {
     await runWallpaperCatalogMigration();
     await runEmailVerificationMigration();
     await runFraudSchemaMigration();
+    await runPushSchemaMigration();
     // Clear any legacy plain-text PINs (bcrypt hash is in passwordHash)
     clearLegacyPlainPins();
     // Sync all existing DB users into Stream so they're searchable

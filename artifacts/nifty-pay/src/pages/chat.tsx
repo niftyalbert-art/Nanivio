@@ -18,6 +18,7 @@ init({ data });
 import type { Channel as StreamChannel } from 'stream-chat';
 import { useToast } from '@/hooks/use-toast';
 import { playMessageNotification } from '@/lib/sounds';
+import { ensurePushSubscription, notifyCallPush } from '@/lib/push';
 import {
   MessageSquare, Phone, Video, ArrowLeft, Plus, Users,
   Search, X, Check, PhoneCall, Sparkles, Bell,
@@ -1434,6 +1435,8 @@ function ChatConnected() {
     const memberIds = Object.keys(ch.state?.members ?? {});
     try {
       await streamVideo.startCall(type, callId, memberIds);
+      // Ring the callee's device(s) even if the app is closed
+      if (other?.user_id) notifyCallPush(other.user_id, type);
     } catch (e: any) {
       const msg: string = e?.message ?? String(e);
       const isRegion = msg.toLowerCase().includes('country') || msg.toLowerCase().includes('region') || msg.toLowerCase().includes('geo');
@@ -1673,6 +1676,11 @@ function ChatConnected() {
 /* ─── page entry — reads persistent client from StreamChatProvider ─── */
 export default function ChatPage() {
   const { streamData, chatClient } = useStreamChat();
+
+  // Subscribe this device to incoming-call push notifications
+  useEffect(() => {
+    if (streamData) void ensurePushSubscription();
+  }, [streamData]);
 
   if (!streamData || !chatClient) {
     return (

@@ -19,6 +19,7 @@ import profileRouter from "./profile";
 import cryptoRouter from "./crypto";
 import cryptoDepositsRouter from "./crypto-deposits";
 import wallpapersRouter from "./wallpapers";
+import pushRouter from "./push";
 
 const router: IRouter = Router();
 
@@ -42,5 +43,6 @@ router.use(profileRouter);
 router.use(cryptoRouter);
 router.use(cryptoDepositsRouter);
 router.use(wallpapersRouter);
+router.use(pushRouter);
 
 export default router;

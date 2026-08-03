@@ -145,6 +145,8 @@ export function StreamVideoProvider({ children }: { children: ReactNode }) {
       setActiveCall(incomingCall);
       setIncomingCall(null);
     } catch (e: any) {
+      // Leave/decline so the caller isn't left ringing a dead call
+      incomingCall?.leave?.({ reject: true }).catch(() => {});
       setIncomingCall(null);
       throw e; // caller (CallOverlay) shows the toast
     }

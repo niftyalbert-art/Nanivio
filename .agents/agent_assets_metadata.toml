@@ -14,3 +14,17 @@ uri = "file://artifacts/nifty-pay/public/wallpapers/royal-classic.jpg"
 type = "image"
 title = "Royal Classic — app colors (teal & gold)"
 description = "The Nanivio by Nifty wallpaper redone in the app's teal-and-gold palette on the brightened dark silk background."
+
+[[outputs]]
+id = "Ocvz2n8cbGGMaskvfE2OR"
+uri = "file://attached_assets/generated_audio/ringtone-incoming.mp3"
+type = "audio"
+title = "incoming call ringtone"
+description = "Generated sound effect: Loud modern smartphone incoming call ringtone: bright melodic marimba-style riff, energetic and attention-grabbing, high volume, seamlessly loopable phone ring melody"
+
+[[outputs]]
+id = "xIWVSy_wjxmVJ0bCUYGQY"
+uri = "file://attached_assets/generated_audio/ringback-outgoing.mp3"
+type = "audio"
+title = "outgoing ringback tone"
+description = "Generated sound effect: Classic telephone ring-back tone (the tone a caller hears while waiting): a warm dual-frequency 'toooo... toooo' pattern, one ring burst about 1 second followed by 2 seconds o…"
