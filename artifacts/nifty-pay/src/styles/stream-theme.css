@@ -122,3 +122,108 @@
 
 /* ── Stream Video overrides ── */
 .str-video { --str-video__primary-color: #2dd4bf; font-family: 'Inter', ui-sans-serif, sans-serif; }
+
+/* ── Chat wallpaper support ──
+ * When the message area sits over a wallpaper layer, the Stream list must be
+ * transparent so the wallpaper shows through. */
+.chat-wallpaper-active .str-chat__list,
+.chat-wallpaper-active .str-chat__main-panel-inner,
+.chat-wallpaper-active .str-chat__message-list-scroll,
+.chat-wallpaper-active .str-chat__virtual-list,
+.chat-wallpaper-active .str-chat__container,
+.chat-wallpaper-active .str-chat__thread-list,
+.chat-wallpaper-active {
+  background: transparent !important;
+  --str-chat__background-color: transparent;
+}
+
+/* Premium message bubbles */
+.str-chat__message-bubble {
+  border-radius: 18px !important;
+  box-shadow: 0 1px 8px rgb(0 0 0 / 0.25);
+}
+.str-chat__message--me .str-chat__message-bubble,
+.str-chat__own-message .str-chat__message-bubble {
+  background: linear-gradient(135deg, #2dd4bf, #0ea5e9) !important;
+  color: #04222b !important;
+}
+
+/* ══ WhatsApp-style look ══════════════════════════════════════════════════ */
+
+/* Bubble colors — WhatsApp dark palette */
+.str-chat__theme-dark {
+  --str-chat__message-bubble-background-color: #202c33;
+  --str-chat__own-message-bubble-background-color: #005c4b;
+  --str-chat__own-message-bubble-text-color: #e9edef;
+}
+.str-chat__message-bubble {
+  border-radius: 10px !important;
+  box-shadow: 0 1px 1px rgb(0 0 0 / 0.35);
+  padding: 2px 2px;
+}
+.str-chat__message--me .str-chat__message-bubble,
+.str-chat__own-message .str-chat__message-bubble {
+  background: #005c4b !important;
+  color: #e9edef !important;
+}
+.str-chat__message--other .str-chat__message-bubble {
+  background: #202c33 !important;
+  color: #e9edef !important;
+}
+
+/* Bubble tails on the first message of a group (WhatsApp style) */
+.str-chat__message--other[class*="--single"] .str-chat__message-bubble,
+.str-chat__message--other[class*="--top"] .str-chat__message-bubble {
+  border-top-left-radius: 2px !important;
+  position: relative;
+}
+.str-chat__message--me[class*="--single"] .str-chat__message-bubble,
+.str-chat__message--me[class*="--top"] .str-chat__message-bubble {
+  border-top-right-radius: 2px !important;
+  position: relative;
+}
+
+/* Compact metadata row (time + status) — small and subtle like WA */
+.str-chat__message-data,
+.str-chat__message-simple-data,
+.str-chat__message-metadata {
+  font-size: 10px !important;
+  opacity: 0.75;
+  margin-top: 1px !important;
+}
+
+/* Tighter message spacing */
+.str-chat__li { margin-bottom: 1px !important; }
+.str-chat__list .str-chat__message { padding-top: 1px; padding-bottom: 1px; }
+
+/* Pill-shaped composer input like WhatsApp */
+.str-chat__message-input .str-chat__message-textarea-container,
+.str-chat__message-input textarea,
+.str-chat__message-input [contenteditable] {
+  border-radius: 22px !important;
+  background: #202c33 !important;
+}
+.str-chat__message-input {
+  background: transparent !important;
+}
+
+/* Date separators — floating pill like WhatsApp */
+.str-chat__date-separator {
+  display: flex; justify-content: center;
+  padding: 8px 0 !important;
+}
+.str-chat__date-separator hr { display: none !important; }
+.str-chat__date-separator-date {
+  background: #182229; color: #8696a0;
+  font-size: 11px; font-weight: 600;
+  padding: 4px 10px; border-radius: 8px;
+  box-shadow: 0 1px 2px rgb(0 0 0 / 0.3);
+}
+
+/* Send button — round green like WhatsApp */
+.str-chat__send-button, button[data-testid="send-button"] {
+  background: #00a884 !important;
+  border-radius: 9999px !important;
+  color: #fff !important;
+}
+.str-chat__send-button svg, button[data-testid="send-button"] svg { fill: #fff; }

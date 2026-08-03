@@ -95,6 +95,21 @@ async function runKycSchemaMigration() {
   }
 }
 
+/** Idempotent migration: profile personalization columns (avatar + chat wallpaper). */
+async function runProfilePersonalizationMigration() {
+  try {
+    await pool.query(`
+      ALTER TABLE users
+        ADD COLUMN IF NOT EXISTS avatar_path TEXT,
+        ADD COLUMN IF NOT EXISTS chat_background TEXT,
+        ADD COLUMN IF NOT EXISTS chat_background_path TEXT;
+    `);
+    logger.info("Profile personalization schema migration complete");
+  } catch (err) {
+    logger.error({ err }, "Profile personalization migration FAILED — avatar/wallpaper routes will not work correctly");
+  }
+}
+
 /** Idempotent migration: email verification columns (existing users defaulted to verified). */
 async function runEmailVerificationMigration() {
   try {
@@ -197,6 +212,7 @@ app.listen(port, () => {
     await runCryptoDepositsMigration();
     await runCryptoSchemaMigration();
     await runKycSchemaMigration();
+    await runProfilePersonalizationMigration();
     await runEmailVerificationMigration();
     await runFraudSchemaMigration();
     // Clear any legacy plain-text PINs (bcrypt hash is in passwordHash)

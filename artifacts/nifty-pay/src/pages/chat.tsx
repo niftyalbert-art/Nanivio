@@ -3,7 +3,7 @@ import '@/styles/stream-theme.css';
 import { useState, useEffect, useRef, useCallback } from 'react';
 import {
   Chat, Channel, ChannelList, MessageList, MessageComposer,
-  useChatContext,
+  TypingIndicator, useChatContext,
 } from 'stream-chat-react';
 import { useStreamChat } from '@/contexts/stream-chat';
 import { useStreamVideo } from '@/contexts/stream-video';
@@ -22,10 +22,11 @@ import {
   MessageSquare, Phone, Video, ArrowLeft, Plus, Users,
   Search, X, Check, PhoneCall, Sparkles, Bell,
   UserCheck, UserX, Clock, UserPlus, ChevronDown, ChevronUp,
+  ImageIcon, Upload, Paintbrush,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Avatar, AvatarFallback } from '@/components/ui/avatar';
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Dialog, DialogContent } from '@/components/ui/dialog';
 import { cn } from '@/lib/utils';
 
@@ -39,6 +40,46 @@ let _lastChannelType: string        = 'messaging';
 interface StreamData { token: string; userId: string; userName: string; apiKey: string; }
 interface SUser { id: string; name?: string; }
 interface ContactEntry { id: number; streamUserId: string; name: string; }
+
+/* ─── avatars ───
+ * Stream stores user.image as a relative path like "avatars/12?v=169..."
+ * (set by the API when a profile photo is uploaded). Build the full URL here. */
+function streamAvatarUrl(user: any): string | undefined {
+  const img = user?.image;
+  if (!img || typeof img !== 'string') return undefined;
+  if (img.startsWith('http')) return img;
+  return `${API}/${img}`;
+}
+
+/* ─── chat wallpaper presets ─── */
+const CHAT_BG_PRESETS: { id: string; label: string; css: string }[] = [
+  { id: 'default',  label: 'Classic',  css: 'radial-gradient(1200px 500px at 80% -10%, hsl(217 60% 16% / 0.55), transparent 60%), radial-gradient(900px 420px at 0% 110%, hsl(262 55% 18% / 0.45), transparent 60%), linear-gradient(180deg, hsl(222 45% 7%), hsl(224 42% 9%))' },
+  { id: 'aurora',   label: 'Aurora',   css: 'radial-gradient(800px 400px at 20% 0%, hsl(160 80% 30% / 0.35), transparent 60%), radial-gradient(700px 500px at 90% 30%, hsl(190 90% 35% / 0.3), transparent 55%), radial-gradient(900px 500px at 50% 110%, hsl(260 70% 30% / 0.4), transparent 60%), linear-gradient(180deg, hsl(222 50% 6%), hsl(230 45% 9%))' },
+  { id: 'midnight', label: 'Midnight', css: 'radial-gradient(1000px 600px at 50% -20%, hsl(230 70% 20% / 0.6), transparent 65%), linear-gradient(180deg, hsl(232 55% 5%), hsl(240 45% 8%))' },
+  { id: 'sunset',   label: 'Sunset',   css: 'radial-gradient(900px 500px at 80% -10%, hsl(15 85% 35% / 0.4), transparent 60%), radial-gradient(700px 400px at 10% 100%, hsl(320 65% 30% / 0.35), transparent 60%), linear-gradient(180deg, hsl(255 40% 8%), hsl(275 40% 9%))' },
+  { id: 'ocean',    label: 'Ocean',    css: 'radial-gradient(1000px 500px at 70% -10%, hsl(200 90% 30% / 0.45), transparent 60%), radial-gradient(800px 500px at 10% 110%, hsl(220 80% 25% / 0.5), transparent 60%), linear-gradient(180deg, hsl(212 60% 6%), hsl(216 55% 9%))' },
+  { id: 'forest',   label: 'Forest',   css: 'radial-gradient(900px 500px at 85% 0%, hsl(150 60% 22% / 0.45), transparent 60%), radial-gradient(700px 450px at 5% 100%, hsl(120 45% 18% / 0.4), transparent 60%), linear-gradient(180deg, hsl(160 40% 5%), hsl(170 35% 8%))' },
+  { id: 'royal',    label: 'Royal',    css: 'radial-gradient(900px 500px at 75% -10%, hsl(268 75% 32% / 0.45), transparent 60%), radial-gradient(800px 500px at 10% 110%, hsl(290 60% 25% / 0.4), transparent 60%), linear-gradient(180deg, hsl(260 45% 7%), hsl(268 40% 9%))' },
+  { id: 'blush',    label: 'Blush',    css: 'radial-gradient(900px 500px at 80% -10%, hsl(340 70% 35% / 0.35), transparent 60%), radial-gradient(700px 450px at 5% 110%, hsl(20 75% 32% / 0.3), transparent 60%), linear-gradient(180deg, hsl(335 35% 7%), hsl(350 30% 9%))' },
+];
+const presetCss = (id: string) => CHAT_BG_PRESETS.find(p => p.id === id)?.css ?? CHAT_BG_PRESETS[0].css;
+
+/* Subtle WhatsApp-style doodle pattern layered over preset wallpapers */
+const DOODLE_PATTERN = `url("data:image/svg+xml,%3Csvg width='120' height='120' viewBox='0 0 120 120' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' stroke='%23ffffff' stroke-opacity='0.045' stroke-width='1.5'%3E%3Ccircle cx='20' cy='20' r='6'/%3E%3Cpath d='M70 15 l8 8 M78 15 l-8 8'/%3E%3Crect x='95' y='40' width='12' height='12' rx='3'/%3E%3Cpath d='M30 70 q6 -10 12 0'/%3E%3Ccircle cx='85' cy='90' r='5'/%3E%3Cpath d='M15 100 h14 M22 93 v14'/%3E%3Cpath d='M55 50 l5 9 h-10 z'/%3E%3Cpath d='M105 105 a5 5 0 1 0 0.1 0'/%3E%3C/g%3E%3C/svg%3E")`;
+
+/* WhatsApp-style "last seen" formatting */
+function lastSeenLabel(user: any): string {
+  if (user?.online) return 'Online';
+  const la = user?.last_active ? new Date(user.last_active) : null;
+  if (!la || isNaN(la.getTime())) return 'Offline';
+  const now = new Date();
+  const time = la.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  const sameDay = la.toDateString() === now.toDateString();
+  const yesterday = new Date(now); yesterday.setDate(now.getDate() - 1);
+  if (sameDay) return `last seen today at ${time}`;
+  if (la.toDateString() === yesterday.toDateString()) return `last seen yesterday at ${time}`;
+  return `last seen ${la.toLocaleDateString([], { month: 'short', day: 'numeric' })} at ${time}`;
+}
 
 /* ─── custom channel list item ─── */
 function ChannelItem({
@@ -60,6 +101,8 @@ function ChannelItem({
     (channel.data as any)?.name ??
     (other as any)?.user?.name ??
     'Chat';
+  const avatarSrc = streamAvatarUrl((other as any)?.user);
+  const online = !!(other as any)?.user?.online;
   const msgs = channel.state.messages;
   const last = msgs[msgs.length - 1];
   const lastText =
@@ -75,17 +118,25 @@ function ChannelItem({
   return (
     <button
       className={cn(
-        'w-full flex items-center gap-3 px-4 py-3 text-left transition-colors border-l-2',
-        active ? 'bg-primary/10 border-primary' : 'hover:bg-muted/30 border-transparent',
+        'w-[calc(100%-1rem)] mx-2 mb-1.5 flex items-center gap-3 px-3 py-3 text-left transition-all rounded-2xl border',
+        active
+          ? 'bg-primary/10 border-primary/40 shadow-lg shadow-primary/5'
+          : 'bg-white/[0.02] border-white/[0.05] hover:bg-white/[0.05] hover:border-white/10 active:scale-[0.99]',
       )}
       onClick={onSelect}
     >
       <div className="relative shrink-0">
-        <Avatar className="w-11 h-11">
-          <AvatarFallback className="bg-primary/20 text-primary font-bold text-sm">{initials}</AvatarFallback>
-        </Avatar>
+        <div className={cn('rounded-full p-[2px]', unread ? 'bg-gradient-to-tr from-primary via-sky-400 to-violet-500' : 'bg-white/10')}>
+          <Avatar className="w-11 h-11 border-2 border-background">
+            {avatarSrc && <AvatarImage src={avatarSrc} alt={title} className="object-cover" />}
+            <AvatarFallback className="bg-gradient-to-br from-primary/30 to-violet-500/30 text-primary font-bold text-sm">{initials}</AvatarFallback>
+          </Avatar>
+        </div>
+        {online && (
+          <span className="absolute bottom-0 right-0 w-3 h-3 rounded-full bg-emerald-500 border-2 border-background" />
+        )}
         {unread > 0 && (
-          <span className="absolute -top-1 -right-1 w-5 h-5 bg-primary text-primary-foreground rounded-full text-[10px] font-bold flex items-center justify-center leading-none">
+          <span className="absolute -top-1 -right-1 w-5 h-5 bg-primary text-primary-foreground rounded-full text-[10px] font-bold flex items-center justify-center leading-none shadow-md shadow-primary/40">
             {unread > 99 ? '99+' : unread}
           </span>
         )}
@@ -177,6 +228,168 @@ function StreamEmojiPicker() {
 
 /* ─── invite request banner — shown as a floating card when an invite arrives
        while the user is already viewing a conversation ─── */
+/* ─── chat wallpaper hook + picker sheet ─── */
+function useChatWallpaper() {
+  const [background, setBackground] = useState<string>('default');
+  const [customUrl, setCustomUrl] = useState<string | null>(null);
+  const customUrlRef = useRef<string | null>(null);
+  useEffect(() => { customUrlRef.current = customUrl; }, [customUrl]);
+  // Revoke the active blob URL on unmount to avoid leaking one per remount
+  useEffect(() => () => { if (customUrlRef.current) URL.revokeObjectURL(customUrlRef.current); }, []);
+
+  const loadCustomImage = useCallback(async () => {
+    try {
+      const token = localStorage.getItem('nanivio_token') ?? sessionStorage.getItem('nanivio_token');
+      const r = await fetch(`${API}/profile/chat-background/image`, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+        credentials: 'include',
+      });
+      if (!r.ok) return null;
+      const url = URL.createObjectURL(await r.blob());
+      setCustomUrl(prev => { if (prev) URL.revokeObjectURL(prev); return url; });
+      return url;
+    } catch { return null; }
+  }, []);
+
+  useEffect(() => {
+    const token = localStorage.getItem('nanivio_token') ?? sessionStorage.getItem('nanivio_token');
+    fetch(`${API}/profile/chat-background`, {
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+      credentials: 'include',
+    })
+      .then(r => (r.ok ? r.json() : null))
+      .then(d => {
+        if (!d) return;
+        setBackground(d.background ?? 'default');
+        if (d.background === 'custom' && d.hasCustomImage) loadCustomImage();
+      })
+      .catch(() => {});
+  }, [loadCustomImage]);
+
+  return { background, setBackground, customUrl, loadCustomImage };
+}
+
+function WallpaperSheet({
+  open, onClose, background, onPicked, onUploaded,
+}: {
+  open: boolean;
+  onClose: () => void;
+  background: string;
+  onPicked: (id: string) => void;
+  onUploaded: () => void;
+}) {
+  const { toast } = useToast();
+  const fileRef = useRef<HTMLInputElement>(null);
+  const [busy, setBusy] = useState(false);
+  const token = localStorage.getItem('nanivio_token') ?? sessionStorage.getItem('nanivio_token');
+  const authHeaders: Record<string, string> = {
+    'Content-Type': 'application/json',
+    ...(token ? { Authorization: `Bearer ${token}` } : {}),
+  };
+
+  const pickPreset = async (id: string) => {
+    onPicked(id); // optimistic
+    try {
+      await fetch(`${API}/profile/chat-background`, {
+        method: 'POST', headers: authHeaders, credentials: 'include',
+        body: JSON.stringify({ preset: id }),
+      });
+    } catch { /* keep optimistic value */ }
+  };
+
+  const uploadFile = async (file: File) => {
+    if (file.size > 10 * 1024 * 1024) {
+      toast({ title: 'Image too large', description: 'Maximum 10 MB.', variant: 'destructive' });
+      return;
+    }
+    setBusy(true);
+    try {
+      const dataUrl: string = await new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(String(reader.result));
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
+      });
+      const r = await fetch(`${API}/profile/chat-background`, {
+        method: 'POST', headers: authHeaders, credentials: 'include',
+        body: JSON.stringify({ imageBase64: dataUrl }),
+      });
+      if (!r.ok) {
+        const e = await r.json().catch(() => ({}));
+        throw new Error((e as any).error ?? 'Upload failed');
+      }
+      onUploaded();
+      toast({ title: 'Wallpaper updated', description: 'Your photo is now the chat background.' });
+    } catch (e: any) {
+      toast({ title: 'Upload failed', description: e.message, variant: 'destructive' });
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  if (!open) return null;
+  return (
+    <div className="absolute inset-0 z-40 flex items-end" onClick={onClose}>
+      <div className="absolute inset-0 bg-black/50 backdrop-blur-[2px]" />
+      <div
+        className="relative w-full rounded-t-3xl border-t border-white/10 bg-card/95 backdrop-blur-xl p-4 pb-6 space-y-4 animate-in slide-in-from-bottom-4 duration-300"
+        onClick={e => e.stopPropagation()}
+      >
+        <div className="mx-auto w-10 h-1 rounded-full bg-white/20" />
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <Paintbrush className="w-4 h-4 text-primary" />
+            <p className="font-bold text-sm">Chat Wallpaper</p>
+          </div>
+          <button onClick={onClose} className="text-muted-foreground hover:text-foreground">
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+        <div className="grid grid-cols-4 gap-2.5">
+          {CHAT_BG_PRESETS.map(p => (
+            <button
+              key={p.id}
+              onClick={() => pickPreset(p.id)}
+              className={cn(
+                'relative h-20 rounded-xl overflow-hidden border-2 transition-all',
+                background === p.id ? 'border-primary shadow-lg shadow-primary/20 scale-[1.03]' : 'border-white/10 hover:border-white/30',
+              )}
+              style={{ background: p.css }}
+            >
+              {background === p.id && (
+                <span className="absolute top-1 right-1 w-4 h-4 rounded-full bg-primary flex items-center justify-center">
+                  <Check className="w-2.5 h-2.5 text-primary-foreground" />
+                </span>
+              )}
+              <span className="absolute bottom-1 inset-x-0 text-[9px] font-semibold text-white/90 drop-shadow">{p.label}</span>
+            </button>
+          ))}
+        </div>
+        <button
+          onClick={() => fileRef.current?.click()}
+          disabled={busy}
+          className={cn(
+            'w-full flex items-center justify-center gap-2 h-11 rounded-xl border-2 border-dashed transition-colors text-sm font-semibold',
+            background === 'custom' ? 'border-primary/60 text-primary bg-primary/5' : 'border-white/15 text-muted-foreground hover:border-primary/40 hover:text-foreground',
+          )}
+        >
+          {busy
+            ? <span className="w-4 h-4 border-2 border-primary/40 border-t-primary rounded-full animate-spin" />
+            : <Upload className="w-4 h-4" />}
+          {background === 'custom' ? 'Your photo is active — upload a new one' : 'Upload your own photo'}
+        </button>
+        <input
+          ref={fileRef}
+          type="file"
+          accept="image/jpeg,image/png,image/webp"
+          className="hidden"
+          onChange={e => { const f = e.target.files?.[0]; if (f) uploadFile(f); e.target.value = ''; }}
+        />
+      </div>
+    </div>
+  );
+}
+
 function InviteRequestBanner({
   channel, myUserId, onAccept, onDecline,
 }: {
@@ -243,6 +456,8 @@ function ChatInner({
 }) {
   const { client, channel: activeChannel, setActiveChannel } = useChatContext();
   const [tick, setTick] = useState(0);
+  const { background, setBackground, customUrl, loadCustomImage } = useChatWallpaper();
+  const [showWallpaper, setShowWallpaper] = useState(false);
   // In-app flash: { name, text } shown for 3 s when a message arrives in a background channel
   const [msgFlash, setMsgFlash] = useState<{ name: string; text: string } | null>(null);
   const flashTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -564,9 +779,12 @@ function ChatInner({
 
                       return (
                         <div key={c.streamUserId}>
-                          <button
+                          <div
+                            role="button"
+                            tabIndex={0}
                             onClick={() => setExpandedContactId(isExpanded ? null : c.streamUserId)}
-                            className="w-full flex items-center gap-3 px-3.5 py-2.5 hover:bg-white/[0.04] active:bg-white/[0.06] transition-colors text-left"
+                            onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setExpandedContactId(isExpanded ? null : c.streamUserId); } }}
+                            className="w-full flex items-center gap-3 px-3.5 py-2.5 hover:bg-white/[0.04] active:bg-white/[0.06] transition-colors text-left cursor-pointer"
                           >
                             <div className="relative shrink-0">
                               <Avatar className="w-8 h-8">
@@ -590,7 +808,7 @@ function ChatInner({
                             >
                               <X className="w-3 h-3" />
                             </button>
-                          </button>
+                          </div>
 
                           {/* expanded: "Request for Chat" */}
                           {isExpanded && (
@@ -726,16 +944,50 @@ function ChatInner({
            */}
 
           {/* ── channel header ── */}
-          <div className="flex items-center gap-3 px-3 py-2.5 border-b border-border/40 shrink-0 bg-background">
+          <div className="flex items-center gap-2.5 px-3 py-2 border-b border-white/[0.06] shrink-0 bg-background/80 backdrop-blur-xl">
             <button
               onClick={() => (setActiveChannel as any)(undefined)}
-              className="flex items-center gap-1.5 text-muted-foreground hover:text-foreground transition-colors group shrink-0"
+              className="w-9 h-9 rounded-full flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-white/5 transition-colors shrink-0"
+              title="Back"
             >
               <ArrowLeft className="w-5 h-5" />
-              <span className="text-sm font-medium">Back to contacts</span>
             </button>
-            <div className="flex-1" />
+            {(() => {
+              const other = Object.values(activeChannel.state.members ?? {}).find((m: any) => m.user_id !== streamData.userId) as any;
+              const title = (activeChannel.data as any)?.name ?? other?.user?.name ?? 'Chat';
+              const avatarSrc = streamAvatarUrl(other?.user);
+              const online = !!other?.user?.online;
+              return (
+                <div className="flex items-center gap-2.5 flex-1 min-w-0">
+                  <div className="relative shrink-0">
+                    <div className="rounded-full p-[2px] bg-gradient-to-tr from-primary/60 via-sky-400/60 to-violet-500/60">
+                      <Avatar className="w-9 h-9 border-2 border-background">
+                        {avatarSrc && <AvatarImage src={avatarSrc} alt={title} className="object-cover" />}
+                        <AvatarFallback className="bg-gradient-to-br from-primary/30 to-violet-500/30 text-primary font-bold text-xs">
+                          {String(title).slice(0, 2).toUpperCase()}
+                        </AvatarFallback>
+                      </Avatar>
+                    </div>
+                    {online && <span className="absolute bottom-0 right-0 w-2.5 h-2.5 rounded-full bg-emerald-500 border-2 border-background" />}
+                  </div>
+                  <div className="min-w-0">
+                    <p className="text-sm font-bold truncate leading-tight">{title}</p>
+                    <p className={cn('text-[10px] leading-tight truncate', online ? 'text-emerald-400' : 'text-muted-foreground')}>
+                      {lastSeenLabel(other?.user)}
+                    </p>
+                  </div>
+                </div>
+              );
+            })()}
             <div className="flex items-center gap-0.5 shrink-0">
+              <Button
+                size="icon" variant="ghost"
+                className="w-10 h-10 rounded-full text-muted-foreground hover:text-foreground hover:bg-primary/10"
+                title="Chat wallpaper"
+                onClick={() => setShowWallpaper(true)}
+              >
+                <ImageIcon className="w-4 h-4" />
+              </Button>
               <Button
                 size="icon" variant="ghost"
                 className="w-10 h-10 rounded-full text-muted-foreground hover:text-foreground hover:bg-primary/10"
@@ -826,12 +1078,33 @@ function ChatInner({
 
             // ── Normal: both users are full members ──
             return (
-              <div className="flex flex-col flex-1 min-h-0 overflow-hidden w-full">
-                <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain">
+              <div className="relative flex flex-col flex-1 min-h-0 overflow-hidden w-full">
+                {/* wallpaper layer */}
+                <div
+                  className="absolute inset-0 pointer-events-none"
+                  style={
+                    background === 'custom' && customUrl
+                      ? { backgroundImage: `url(${customUrl})`, backgroundSize: 'cover', backgroundPosition: 'center' }
+                      : { background: presetCss(background) }
+                  }
+                />
+                {/* WhatsApp-style doodle pattern over preset wallpapers */}
+                {!(background === 'custom' && customUrl) && (
+                  <div className="absolute inset-0 pointer-events-none" style={{ backgroundImage: DOODLE_PATTERN }} />
+                )}
+                {/* readability overlay on top of custom photos */}
+                {background === 'custom' && customUrl && (
+                  <div className="absolute inset-0 pointer-events-none bg-black/45" />
+                )}
+                <div className="relative flex-1 min-h-0 overflow-y-auto overscroll-contain chat-wallpaper-active">
                   <MessageList />
                 </div>
+                {/* typing indicator — "typing…" like WhatsApp, just above the composer */}
+                <div className="relative shrink-0 px-4 wa-typing">
+                  <TypingIndicator />
+                </div>
                 {/* Composer + visible emoji button */}
-                <div className="shrink-0 w-full border-t border-border/20">
+                <div className="relative shrink-0 w-full border-t border-white/[0.06] bg-background/70 backdrop-blur-xl">
                   <div className="flex items-center px-3 pt-2 pb-0.5">
                     <StreamEmojiPicker />
                     <span className="ml-2 text-[11px] text-muted-foreground/50">emoji</span>
@@ -842,6 +1115,13 @@ function ChatInner({
                     emojiSearchIndex={SearchIndex}
                   />
                 </div>
+                <WallpaperSheet
+                  open={showWallpaper}
+                  onClose={() => setShowWallpaper(false)}
+                  background={background}
+                  onPicked={id => setBackground(id)}
+                  onUploaded={() => { setBackground('custom'); loadCustomImage(); }}
+                />
               </div>
             );
           })()}

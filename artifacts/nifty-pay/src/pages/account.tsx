@@ -15,7 +15,7 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
-import { Copy, Check, ArrowDownLeft, ArrowUpLeft, MessageSquare, CheckCircle2, ExternalLink, Send, LogOut, ShieldCheck, ChevronDown, ChevronUp, Phone, Video, BadgeCheck, ChevronRight, TrendingUp, ArrowLeftRight } from 'lucide-react';
+import { Copy, Check, ArrowDownLeft, ArrowUpLeft, MessageSquare, CheckCircle2, ExternalLink, Send, LogOut, ShieldCheck, ChevronDown, ChevronUp, Phone, Video, BadgeCheck, ChevronRight, TrendingUp, ArrowLeftRight, Camera } from 'lucide-react';
 import { useLocation } from 'wouter';
 import { Switch } from '@/components/ui/switch';
 import { formatDistanceToNow } from 'date-fns';
@@ -41,6 +41,42 @@ export default function Account() {
     staleTime: 5 * 60 * 1000,
   });
   const [copied, setCopied] = useState<string | null>(null);
+  // Profile photo
+  const [avatarVersion, setAvatarVersion] = useState(() => Date.now());
+  const [avatarFailed, setAvatarFailed] = useState(false);
+  const [avatarUploading, setAvatarUploading] = useState(false);
+
+  const uploadAvatar = async (file: File) => {
+    if (file.size > 8 * 1024 * 1024) {
+      toast({ title: 'Image too large', description: 'Maximum 8 MB.', variant: 'destructive' });
+      return;
+    }
+    setAvatarUploading(true);
+    try {
+      const dataUrl: string = await new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(String(reader.result));
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
+      });
+      const r = await fetch(`${API_BASE}/profile/avatar`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ imageBase64: dataUrl }),
+      });
+      if (!r.ok) {
+        const e = await r.json().catch(() => ({}));
+        throw new Error((e as { error?: string }).error ?? 'Upload failed');
+      }
+      setAvatarFailed(false);
+      setAvatarVersion(Date.now());
+      toast({ title: 'Profile photo updated', description: 'Your new photo will also appear in chats.' });
+    } catch (e: any) {
+      toast({ title: 'Upload failed', description: e.message, variant: 'destructive' });
+    } finally {
+      setAvatarUploading(false);
+    }
+  };
   const [calcFrom, setCalcFrom] = useState('USD');
   const [calcTo, setCalcTo] = useState('AED');
   const [calcAmount, setCalcAmount] = useState('100');
@@ -170,8 +206,35 @@ export default function Account() {
       ) : profile && (
         <Card>
           <CardContent className="p-4 flex items-center gap-4">
-            <div className="w-12 h-12 rounded-full bg-primary flex items-center justify-center shrink-0">
-              <span className="text-primary-foreground font-bold text-lg">{profile.avatarInitials}</span>
+            <div className="relative shrink-0">
+              <label className="block cursor-pointer group" title="Change profile photo">
+                <div className="w-14 h-14 rounded-full p-[2px] bg-gradient-to-tr from-primary via-sky-400 to-violet-500">
+                  <div className="w-full h-full rounded-full bg-primary flex items-center justify-center overflow-hidden border-2 border-background">
+                    {!avatarFailed ? (
+                      <img
+                        src={`${API_BASE}/avatars/${profile.id}?v=${avatarVersion}`}
+                        alt="Profile"
+                        className="w-full h-full object-cover"
+                        onError={() => setAvatarFailed(true)}
+                      />
+                    ) : (
+                      <span className="text-primary-foreground font-bold text-lg">{profile.avatarInitials}</span>
+                    )}
+                  </div>
+                </div>
+                <span className="absolute -bottom-0.5 -right-0.5 w-6 h-6 rounded-full bg-primary border-2 border-background flex items-center justify-center shadow-md group-hover:scale-110 transition-transform">
+                  {avatarUploading
+                    ? <span className="w-3 h-3 border-2 border-primary-foreground/40 border-t-primary-foreground rounded-full animate-spin" />
+                    : <Camera className="w-3 h-3 text-primary-foreground" />}
+                </span>
+                <input
+                  type="file"
+                  accept="image/jpeg,image/png,image/webp"
+                  className="hidden"
+                  disabled={avatarUploading}
+                  onChange={e => { const f = e.target.files?.[0]; if (f) uploadAvatar(f); e.target.value = ''; }}
+                />
+              </label>
             </div>
             <div>
               <p className="font-bold text-lg">{profile.name}</p>

@@ -15,6 +15,7 @@ import settingsRouter from "./settings";
 import streamRouter from "./stream";
 import contactsRouter from "./contacts";
 import kycRouter from "./kyc";
+import profileRouter from "./profile";
 import cryptoRouter from "./crypto";
 import cryptoDepositsRouter from "./crypto-deposits";
 
@@ -36,6 +37,7 @@ router.use(settingsRouter);
 router.use(streamRouter);
 router.use(contactsRouter);
 router.use(kycRouter);
+router.use(profileRouter);
 router.use(cryptoRouter);
 router.use(cryptoDepositsRouter);
 

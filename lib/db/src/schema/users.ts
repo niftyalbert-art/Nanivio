@@ -24,6 +24,10 @@ export const usersTable = pgTable("users", {
   sendLockedUntil: timestamp("send_locked_until", { withTimezone: true }),          // null = not locked
   failedTransferAttempts: text("failed_transfer_attempts").notNull().default("0"),  // stored as text for compat
   lastFailedTransferAt: timestamp("last_failed_transfer_at", { withTimezone: true }),
+  // Profile & chat personalization
+  avatarPath: text("avatar_path"),                       // uploaded profile photo
+  chatBackground: text("chat_background"),               // preset id (e.g. "aurora") or "custom"
+  chatBackgroundPath: text("chat_background_path"),      // uploaded wallpaper file
   // Email verification (added post-launch; existing users default to true via migration)
   emailVerified: boolean("email_verified").notNull().default(false),
   emailVerificationCode: text("email_verification_code"),

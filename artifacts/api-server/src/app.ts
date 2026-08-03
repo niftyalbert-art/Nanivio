@@ -73,7 +73,11 @@ app.use(cors());
 // KYC submit carries a base64-encoded document — 8 MB binary → ~10.7 MB base64 — so
 // this route needs a larger body limit. Apply it BEFORE the global parser so Express
 // honours the per-route limit (once a body parser runs, subsequent ones are skipped).
-app.use("/api/kyc/submit", express.json({ limit: "12mb" }));
+app.use("/api/kyc/submit", express.json({ limit: "25mb" }));
+// Profile avatar (8 MB binary) and chat wallpaper (10 MB binary) arrive as
+// base64 data-URLs (~+33% overhead), so these routes need larger JSON bodies.
+app.use("/api/profile/avatar", express.json({ limit: "12mb" }));
+app.use("/api/profile/chat-background", express.json({ limit: "15mb" }));
 app.use(express.json({ limit: "10mb" }));
 app.use(express.urlencoded({ extended: true, limit: "10mb" }));
 
