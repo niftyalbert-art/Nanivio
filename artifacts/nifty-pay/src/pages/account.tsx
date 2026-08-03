@@ -213,7 +213,7 @@ export default function Account() {
                 {kycState.kycStatus === 'verified'   ? 'Verified — full transfer limits active'        :
                  kycState.kycStatus === 'pending'    ? 'Under review — we\'ll notify you soon'          :
                  kycState.kycStatus === 'rejected'   ? `Rejected — tap to resubmit`                    :
-                 'Unverified — $200 limit per transfer'}
+                 'Unverified — $2,000 limit per transfer'}
               </p>
             </div>
             <div className="flex items-center gap-2 shrink-0">
