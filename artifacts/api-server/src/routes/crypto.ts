@@ -83,28 +83,40 @@ router.post("/crypto/payments", requireAuth, async (req, res): Promise<void> => 
   const networkConfig = CRYPTO_NETWORKS[networkKey];
   const resolvedCurrency = currency ?? networkConfig.symbol;
 
-  // Find an active crypto payment method for this network (Nanivio's receiving wallet)
+  // Resolve Nanivio's receiving wallet address for this network.
+  //
+  // Priority order:
+  //   1. Active payment_methods row whose name/instructions mention this network
+  //   2. NANIVIO_CRYPTO_WALLET_ADDRESS env var (used by the deposit monitor)
+  //
+  // This means the system works out-of-the-box as long as the env var is set,
+  // with no manual DB configuration required.
   const allCryptoMethods = await db
     .select()
     .from(paymentMethodsTable)
     .where(and(eq(paymentMethodsTable.type, "crypto"), eq(paymentMethodsTable.isActive, true)));
 
-  // Pick the method whose name/instructions mention this network
   const method = allCryptoMethods.find(m =>
     m.name?.toUpperCase().includes(networkKey) ||
     m.instructions?.toUpperCase().includes(networkKey) ||
     m.name?.toUpperCase().includes(resolvedCurrency)
-  ) ?? allCryptoMethods[0]; // fallback to first active crypto method
+  ) ?? allCryptoMethods[0];
 
-  if (!method || !method.accountNumber) {
-    res.status(400).json({ error: "No active crypto payment method configured for this network. Please contact support." }); return;
+  // Fall back to the treasury wallet env var when no DB method is configured
+  const receiverAddress: string | null =
+    method?.accountNumber ?? process.env["NANIVIO_CRYPTO_WALLET_ADDRESS"] ?? null;
+
+  if (!receiverAddress) {
+    res.status(503).json({
+      error: "Crypto payments are not configured yet. Please contact support.",
+    }); return;
   }
 
   const expiresAt = new Date(Date.now() + PAYMENT_EXPIRY_MINUTES * 60 * 1000);
 
   const [payment] = await db.insert(cryptoPaymentsTable).values({
     senderId: userId,
-    receiverAddress: method.accountNumber, // Nanivio's wallet address for this network
+    receiverAddress,
     senderWalletAddress: senderWalletAddress ?? null,
     walletType: walletType ?? (paymentMethod === "connect_wallet" ? "manual" : null),
     amount: String(parseFloat(amount)),
@@ -114,7 +126,7 @@ router.post("/crypto/payments", requireAuth, async (req, res): Promise<void> => 
     status: "waiting_for_payment",
     requiredConfirmations: networkConfig.requiredConfirmations,
     note: note ?? null,
-    paymentMethodId: method.id,
+    paymentMethodId: method?.id ?? null,
     expiresAt,
   }).returning();
 
