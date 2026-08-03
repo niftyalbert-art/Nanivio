@@ -1436,7 +1436,16 @@ function ChatConnected() {
     try {
       await streamVideo.startCall(type, callId, memberIds);
       // Ring the callee's device(s) even if the app is closed
-      if (other?.user_id) notifyCallPush(other.user_id, type);
+      if (other?.user_id) {
+        notifyCallPush(other.user_id, type).then((sent) => {
+          if (sent === 0) {
+            toast({
+              title: 'Ringing in-app only',
+              description: `${other.user?.name ?? 'This person'} hasn't enabled call notifications yet — they'll only see the call if the app is open.`,
+            });
+          }
+        });
+      }
     } catch (e: any) {
       const msg: string = e?.message ?? String(e);
       const isRegion = msg.toLowerCase().includes('country') || msg.toLowerCase().includes('region') || msg.toLowerCase().includes('geo');

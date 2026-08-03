@@ -47,13 +47,23 @@ export async function ensurePushSubscription(): Promise<void> {
   }
 }
 
-/** Fire-and-forget: ask the server to ring the callee's devices. */
-export function notifyCallPush(toUserId: string | number, kind: 'audio' | 'video'): void {
+/**
+ * Ask the server to ring the callee's devices.
+ * Resolves with the number of devices notified (-1 when the request failed).
+ */
+export async function notifyCallPush(toUserId: string | number, kind: 'audio' | 'video'): Promise<number> {
   const token = localStorage.getItem('nanivio_token');
-  if (!token) return;
-  fetch(`${API}/push/notify-call`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-    body: JSON.stringify({ toUserId, kind }),
-  }).catch(() => {});
+  if (!token) return -1;
+  try {
+    const res = await fetch(`${API}/push/notify-call`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ toUserId, kind }),
+    });
+    if (!res.ok) return -1;
+    const data = await res.json();
+    return typeof data?.sent === 'number' ? data.sent : -1;
+  } catch {
+    return -1;
+  }
 }
