@@ -22,6 +22,8 @@ const globalLimiter = rateLimit({
   standardHeaders: "draft-7",
   legacyHeaders: false,
   message: { error: "Too many requests, please try again later." },
+  // Admin surface is exempt — admins must never be throttled or locked out.
+  skip: (req) => req.path.startsWith("/admin") || req.path.startsWith("/api/admin"),
 });
 
 /** Auth routes (login, signup, password reset): 10 requests per 15 minutes per IP */
@@ -42,16 +44,9 @@ const transactionLimiter = rateLimit({
   message: { error: "Too many transfer requests, please slow down." },
 });
 
-/** Admin routes: 2000 requests per 15 minutes per IP.
- * The admin dashboard polls ~6 endpoints every few seconds (~1400 req/15min),
- * so anything lower locks admins out with 429s. Auth still gates access. */
-const adminLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000,
-  max: 2000,
-  standardHeaders: "draft-7",
-  legacyHeaders: false,
-  message: { error: "Too many admin requests, please try again later." },
-});
+// Admin routes are intentionally NOT rate limited: the dashboard polls many
+// endpoints continuously and admins must never be locked out. Access is
+// protected by the admin JWT plus per-section access keys instead.
 
 // ── Middleware ────────────────────────────────────────────────────────────────
 
@@ -90,10 +85,8 @@ app.use("/api/auth/forgot-password", authLimiter);
 app.use("/api/auth/reset-password", authLimiter);
 app.use("/api/transactions", transactionLimiter);
 app.use("/api/withdrawals", transactionLimiter);
-app.use("/api/admin", adminLimiter);
 app.use("/api/kyc", transactionLimiter);
 app.use("/api/crypto", transactionLimiter);
-app.use("/api/admin/crypto", adminLimiter);
 
 app.use("/api", router);
 

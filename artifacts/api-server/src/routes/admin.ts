@@ -1,12 +1,67 @@
 import { Router, type IRouter } from "express";
 import { eq, sql, isNotNull, desc, and, or } from "drizzle-orm";
 import fs from "fs";
+import { timingSafeEqual } from "crypto";
 import { db, depositsTable, withdrawalsTable, walletsTable, paymentMethodsTable, exchangeRatesTable, usersTable, transactionsTable, settingsTable, fraudEventsTable } from "@workspace/db";
 import { adminOnly, signAdminToken, signToken } from "../middleware/auth";
 import { decryptNullable } from "../lib/encryption";
 import bcrypt from "bcryptjs";
 
 const router: IRouter = Router();
+
+// ── Per-section access keys ──────────────────────────────────────────────────
+// The Users and Engagements (chat) sections carry the most sensitive data, so
+// on top of the admin JWT they each require a dedicated access key, supplied
+// via a request header. Keys live in env vars — never hardcoded.
+const USERS_KEY_ENV = "ADMIN_USERS_ACCESS_KEY";
+const ENGAGEMENTS_KEY_ENV = "ADMIN_ENGAGEMENTS_ACCESS_KEY";
+
+// Constant-time key comparison — prevents timing attacks on key guessing.
+function keysMatch(provided: unknown, expected: string): boolean {
+  if (typeof provided !== "string" || provided.length === 0) return false;
+  const a = Buffer.from(provided);
+  const b = Buffer.from(expected);
+  if (a.length !== b.length) return false;
+  return timingSafeEqual(a, b);
+}
+
+function sectionKeyGuard(envName: string, headerName: string) {
+  return (req: any, res: any, next: any): void => {
+    const expected = process.env[envName];
+    if (!expected) {
+      res.status(503).json({ error: "Section access key is not configured" });
+      return;
+    }
+    if (keysMatch(req.headers[headerName], expected)) {
+      next();
+      return;
+    }
+    res.status(403).json({ error: "SECTION_KEY_REQUIRED" });
+  };
+}
+
+const usersSectionKey = sectionKeyGuard(USERS_KEY_ENV, "x-admin-users-key");
+const engagementsSectionKey = sectionKeyGuard(ENGAGEMENTS_KEY_ENV, "x-admin-engagements-key");
+
+// POST /admin/section-access/verify — validate a section key up front (for the unlock prompt)
+router.post("/admin/section-access/verify", adminOnly, (req, res): void => {
+  const { section, key } = req.body ?? {};
+  const envName = section === "users" ? USERS_KEY_ENV : section === "engagements" ? ENGAGEMENTS_KEY_ENV : null;
+  if (!envName || typeof key !== "string") {
+    res.status(400).json({ error: "section ('users' | 'engagements') and key are required" });
+    return;
+  }
+  const expected = process.env[envName];
+  if (!expected) {
+    res.status(503).json({ error: "Section access key is not configured" });
+    return;
+  }
+  if (keysMatch(key, expected)) {
+    res.json({ ok: true });
+    return;
+  }
+  res.status(403).json({ error: "Invalid access key" });
+});
 
 // ── Helper: verify the submitted password against DB hash or env-var fallback
 async function verifyAdminPassword(submitted: string): Promise<boolean> {
@@ -328,7 +383,7 @@ router.get("/admin/pending-resets", adminOnly, async (_req, res): Promise<void> 
 });
 
 // ── Users list (admin view) ───────────────────────────────────────────────
-router.get("/admin/users", adminOnly, async (_req, res): Promise<void> => {
+router.get("/admin/users", adminOnly, usersSectionKey, async (_req, res): Promise<void> => {
   const users = await db
     .select({
       id: usersTable.id,
@@ -352,7 +407,7 @@ router.get("/admin/users", adminOnly, async (_req, res): Promise<void> => {
 });
 
 // GET /admin/users/:id — full account snapshot (profile + wallets + all transactions)
-router.get("/admin/users/:id", adminOnly, async (req, res): Promise<void> => {
+router.get("/admin/users/:id", adminOnly, usersSectionKey, async (req, res): Promise<void> => {
   const userId = parseInt(req.params.id as string, 10);
   if (isNaN(userId)) { res.status(400).json({ error: "Invalid id" }); return; }
 
@@ -428,7 +483,7 @@ router.get("/admin/users/:id", adminOnly, async (req, res): Promise<void> => {
 });
 
 // POST /admin/users/:id/impersonate — issue a user JWT so admin can log in as this user
-router.post("/admin/users/:id/impersonate", adminOnly, async (req, res): Promise<void> => {
+router.post("/admin/users/:id/impersonate", adminOnly, usersSectionKey, async (req, res): Promise<void> => {
   const userId = parseInt(req.params.id as string, 10);
   if (isNaN(userId)) { res.status(400).json({ error: "Invalid id" }); return; }
 
@@ -443,7 +498,7 @@ router.post("/admin/users/:id/impersonate", adminOnly, async (req, res): Promise
 });
 
 // PUT /admin/users/:id/reset-pin — admin sets a new 4-digit PIN for a user
-router.put("/admin/users/:id/reset-pin", adminOnly, async (req, res): Promise<void> => {
+router.put("/admin/users/:id/reset-pin", adminOnly, usersSectionKey, async (req, res): Promise<void> => {
   const userId = parseInt(req.params.id as string, 10);
   if (isNaN(userId)) { res.status(400).json({ error: "Invalid id" }); return; }
 
@@ -670,7 +725,7 @@ router.get("/admin/locked-users", adminOnly, async (_req, res): Promise<void> =>
 });
 
 // POST /admin/users/:userId/clear-lock — clear a user's send lock
-router.post("/admin/users/:userId/clear-lock", adminOnly, async (req, res): Promise<void> => {
+router.post("/admin/users/:userId/clear-lock", adminOnly, usersSectionKey, async (req, res): Promise<void> => {
   const userId = parseInt(req.params.userId as string, 10);
   if (isNaN(userId)) { res.status(400).json({ error: "Invalid userId" }); return; }
 
@@ -686,7 +741,7 @@ router.post("/admin/users/:userId/clear-lock", adminOnly, async (req, res): Prom
 // ── Chat admin — list channels and read messages via Stream Chat server SDK ──
 
 // GET /admin/chat/channels — all channels ordered by most recent message
-router.get("/admin/chat/channels", adminOnly, async (_req, res): Promise<void> => {
+router.get("/admin/chat/channels", adminOnly, engagementsSectionKey, async (_req, res): Promise<void> => {
   const key = process.env.STREAM_API_KEY;
   const secret = process.env.STREAM_API_SECRET;
   if (!key || !secret) { res.json([]); return; }
@@ -723,7 +778,7 @@ router.get("/admin/chat/channels", adminOnly, async (_req, res): Promise<void> =
 });
 
 // GET /admin/chat/channels/:channelId/messages — all messages in a channel
-router.get("/admin/chat/channels/:channelId/messages", adminOnly, async (req, res): Promise<void> => {
+router.get("/admin/chat/channels/:channelId/messages", adminOnly, engagementsSectionKey, async (req, res): Promise<void> => {
   const key = process.env.STREAM_API_KEY;
   const secret = process.env.STREAM_API_SECRET;
   if (!key || !secret) { res.json([]); return; }

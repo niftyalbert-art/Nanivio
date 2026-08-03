@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useCallback } from 'react';
+import { useState, useRef, useEffect, useCallback, type ReactNode } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
@@ -15,18 +15,81 @@ import { useToast } from '@/hooks/use-toast';
 const API = import.meta.env.BASE_URL.replace(/\/$/, '') + '/api';
 const ADMIN_JWT_KEY = 'nanivio_admin_jwt';
 
+const USERS_SECTION_KEY = 'nanivio_admin_users_key';
+const ENGAGEMENTS_SECTION_KEY = 'nanivio_admin_engagements_key';
+
 function apiFetch(path: string, opts?: RequestInit) {
   const token = sessionStorage.getItem(ADMIN_JWT_KEY);
+  // Scope each section key to its own routes — never send keys where they aren't needed.
+  const usersKey = path.startsWith('/admin/users') ? sessionStorage.getItem(USERS_SECTION_KEY) : null;
+  const engagementsKey = path.startsWith('/admin/chat') ? sessionStorage.getItem(ENGAGEMENTS_SECTION_KEY) : null;
   return fetch(`${API}${path}`, {
     headers: {
       'Content-Type': 'application/json',
       ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
+      ...(usersKey ? { 'X-Admin-Users-Key': usersKey } : {}),
+      ...(engagementsKey ? { 'X-Admin-Engagements-Key': engagementsKey } : {}),
     },
     ...opts,
   }).then(async r => {
     if (!r.ok) throw new Error(await r.text());
     return r.json();
   });
+}
+
+// ── SectionGate — asks for a per-section admin access key before rendering ──
+function SectionGate({ section, title, children }: { section: 'users' | 'engagements'; title: string; children: ReactNode }) {
+  const storageKey = section === 'users' ? USERS_SECTION_KEY : ENGAGEMENTS_SECTION_KEY;
+  const [unlocked, setUnlocked] = useState(() => !!sessionStorage.getItem(storageKey));
+  const [key, setKey] = useState('');
+  const [error, setError] = useState('');
+  const [busy, setBusy] = useState(false);
+
+  const submit = async () => {
+    if (!key.trim() || busy) return;
+    setBusy(true);
+    setError('');
+    try {
+      await apiFetch('/admin/section-access/verify', {
+        method: 'POST',
+        body: JSON.stringify({ section, key: key.trim() }),
+      });
+      sessionStorage.setItem(storageKey, key.trim());
+      setUnlocked(true);
+    } catch {
+      setError('Invalid access key. Please try again.');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  if (unlocked) return <>{children}</>;
+
+  return (
+    <Card className="max-w-sm mx-auto mt-8">
+      <CardHeader className="text-center">
+        <div className="mx-auto w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center mb-2">
+          <Lock className="w-6 h-6 text-primary" />
+        </div>
+        <CardTitle className="text-base">{title} — Restricted</CardTitle>
+        <CardDescription>Enter the {title} access key to continue.</CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        <Input
+          type="password"
+          placeholder="Access key"
+          value={key}
+          onChange={e => setKey(e.target.value)}
+          onKeyDown={e => { if (e.key === 'Enter') submit(); }}
+          autoFocus
+        />
+        {error && <p className="text-xs text-red-500">{error}</p>}
+        <Button className="w-full" onClick={submit} disabled={busy || !key.trim()}>
+          {busy ? 'Verifying…' : 'Unlock'}
+        </Button>
+      </CardContent>
+    </Card>
+  );
 }
 
 const statusColor = (s: string) => {
@@ -2542,7 +2605,7 @@ export default function Admin() {
           <h1 className="text-xl font-bold">Admin Panel</h1>
           <p className="text-xs text-muted-foreground">Nanivio Operations</p>
         </div>
-        <Button variant="outline" size="sm" onClick={() => { sessionStorage.removeItem(ADMIN_JWT_KEY); setAuthed(false); qc.clear(); }}>Sign Out</Button>
+        <Button variant="outline" size="sm" onClick={() => { sessionStorage.removeItem(ADMIN_JWT_KEY); sessionStorage.removeItem(USERS_SECTION_KEY); sessionStorage.removeItem(ENGAGEMENTS_SECTION_KEY); setAuthed(false); qc.clear(); }}>Sign Out</Button>
       </div>
 
       {/* 5 clickable stat cards */}
@@ -2572,7 +2635,7 @@ export default function Admin() {
           <TabsTrigger value="tickets" className="text-[11px] shrink-0 flex-1 min-w-[44px]">
             Tix{openTickets > 0 && <span className="ml-1 bg-red-500 text-white text-[9px] rounded-full w-3.5 h-3.5 inline-flex items-center justify-center font-bold">{openTickets}</span>}
           </TabsTrigger>
-          <TabsTrigger value="chat"    className="text-[11px] shrink-0 flex-1 min-w-[40px]">Chat</TabsTrigger>
+          <TabsTrigger value="chat"    className="text-[11px] shrink-0 flex-1 min-w-[40px]">Engagements</TabsTrigger>
           <TabsTrigger value="methods" className="text-[11px] shrink-0 flex-1 min-w-[40px]">Pay</TabsTrigger>
           <TabsTrigger value="rates" className="text-[11px] shrink-0 flex-1 min-w-[40px]">Rates</TabsTrigger>
           <TabsTrigger value="crypto" className="text-[11px] shrink-0 flex-1 min-w-[40px]"><Bitcoin className="w-3 h-3" /></TabsTrigger>
@@ -2583,9 +2646,9 @@ export default function Admin() {
         <TabsContent value="sends"       className="mt-4"><SendsPanel /></TabsContent>
         <TabsContent value="withdrawals" className="mt-4"><WithdrawalsPanel /></TabsContent>
         <TabsContent value="kyc"         className="mt-4"><KycPanel /></TabsContent>
-        <TabsContent value="users"       className="mt-4"><UsersPanel /></TabsContent>
+        <TabsContent value="users"       className="mt-4"><SectionGate section="users" title="Users"><UsersPanel /></SectionGate></TabsContent>
         <TabsContent value="tickets"     className="mt-4"><TicketsPanel /></TabsContent>
-        <TabsContent value="chat"        className="mt-4"><ChatPanel /></TabsContent>
+        <TabsContent value="chat"        className="mt-4"><SectionGate section="engagements" title="Engagements"><ChatPanel /></SectionGate></TabsContent>
         <TabsContent value="methods"     className="mt-4"><PaymentMethodsPanel /></TabsContent>
         <TabsContent value="rates"       className="mt-4"><RatesPanel /></TabsContent>
         <TabsContent value="crypto"       className="mt-4"><CryptoPanel /></TabsContent>
