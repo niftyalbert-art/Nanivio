@@ -38,9 +38,44 @@ function apiFetch(path: string, opts?: RequestInit) {
 }
 
 // ── SectionGate — asks for a per-section admin access key before rendering ──
+const SECTION_IDLE_TIMEOUT_MS = 5 * 60 * 1000; // auto-lock after 5 minutes of inactivity
+
+function sectionStillFresh(storageKey: string): boolean {
+  if (!sessionStorage.getItem(storageKey)) return false;
+  const last = Number(sessionStorage.getItem(`${storageKey}_last_activity`) ?? 0);
+  if (Date.now() - last > SECTION_IDLE_TIMEOUT_MS) {
+    sessionStorage.removeItem(storageKey);
+    sessionStorage.removeItem(`${storageKey}_last_activity`);
+    return false;
+  }
+  return true;
+}
+
 function SectionGate({ section, title, children }: { section: 'users' | 'engagements'; title: string; children: ReactNode }) {
   const storageKey = section === 'users' ? USERS_SECTION_KEY : ENGAGEMENTS_SECTION_KEY;
-  const [unlocked, setUnlocked] = useState(() => !!sessionStorage.getItem(storageKey));
+  const [unlocked, setUnlocked] = useState(() => sectionStillFresh(storageKey));
+
+  // Auto-lock after 5 minutes without any user activity
+  useEffect(() => {
+    if (!unlocked) return;
+    const activityKey = `${storageKey}_last_activity`;
+    sessionStorage.setItem(activityKey, String(Date.now()));
+    const bump = () => sessionStorage.setItem(activityKey, String(Date.now()));
+    const events: (keyof WindowEventMap)[] = ['mousemove', 'mousedown', 'keydown', 'touchstart', 'scroll'];
+    events.forEach(ev => window.addEventListener(ev, bump, { passive: true }));
+    const interval = setInterval(() => {
+      const last = Number(sessionStorage.getItem(activityKey) ?? 0);
+      if (Date.now() - last > SECTION_IDLE_TIMEOUT_MS) {
+        sessionStorage.removeItem(storageKey);
+        sessionStorage.removeItem(activityKey);
+        setUnlocked(false);
+      }
+    }, 10_000);
+    return () => {
+      events.forEach(ev => window.removeEventListener(ev, bump));
+      clearInterval(interval);
+    };
+  }, [unlocked, storageKey]);
   const [key, setKey] = useState('');
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
