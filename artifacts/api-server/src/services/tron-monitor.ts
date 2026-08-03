@@ -44,7 +44,10 @@ const MIN_DEPOSIT_USDT = parseFloat(process.env["CRYPTO_DEPOSIT_MIN_USDT"] ?? "1
 const MAX_DEPOSIT_USDT = parseFloat(process.env["CRYPTO_DEPOSIT_MAX_USDT"] ?? "50000");
 
 // How far back to look for transactions on first poll (5 minutes in ms)
-const INITIAL_LOOKBACK_MS = 5 * 60 * 1000;
+// 60 min boot lookback: safe to re-scan old txs because matching is idempotent
+// (claimed rows carry the tx hash + unique index blocks duplicate credits),
+// and it lets a freshly restarted server pick up payments made while it was down.
+const INITIAL_LOOKBACK_MS = 60 * 60 * 1000;
 
 let lastPollTimestamp: number = Date.now() - INITIAL_LOOKBACK_MS;
 let pollTimer: ReturnType<typeof setTimeout> | null = null;
@@ -149,10 +152,11 @@ async function processTransaction(tx: any, businessAddress: string): Promise<boo
     return false;
   }
 
-  // ── 2. Confirmed-only — reject unconfirmed / reverted transactions ─────────
-  // TronGrid sets tx.confirmed = true once the block is finalised.
-  // Absence of the field (older API versions) is treated as unconfirmed.
-  if (tx.confirmed !== true) {
+  // ── 2. Confirmed-only — reject explicitly unconfirmed transactions ─────────
+  // TronGrid's /transactions/trc20 endpoint only returns finalised transfers
+  // and does NOT include a `confirmed` field at all. Only skip when the API
+  // explicitly says confirmed === false; absence of the field means confirmed.
+  if (tx.confirmed === false) {
     logger.debug({ txHash }, "Skipping unconfirmed transaction");
     return false;
   }

@@ -71,3 +71,8 @@ The TRON monitor (`tron-monitor.ts`) matches incoming USDT TRC20 txs against BOT
 - Attribution: prefer exact senderWalletAddress==on-chain from match; amount-tolerance FIFO only among candidates with no declared sender address.
 
 **Why:** code review found the naive read-then-credit pattern allowed double-credits between concurrent polls and admin actions.
+
+## TronGrid API gotcha (root cause of all "matched:0" mysteries)
+
+TronGrid's `/v1/accounts/{addr}/transactions/trc20` endpoint returns ONLY finalised transfers and includes NO `confirmed` field on tx objects. A guard like `if (tx.confirmed !== true) skip` silently rejects EVERY transaction. Only skip on explicit `tx.confirmed === false`.
+**How to apply:** if the monitor logs `txCount>0, matched:0` with no "transaction detected" or rejection logs in between, suspect a silent early filter, not the matching logic. Boot lookback is 60 min (safe: matching is idempotent via tx-hash unique index).
