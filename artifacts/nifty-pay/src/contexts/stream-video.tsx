@@ -100,9 +100,19 @@ export function StreamVideoProvider({ children }: { children: ReactNode }) {
     };
   }, [streamData?.userId]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  /* ── WebRTC support check ── */
+  const assertWebRtcSupport = () => {
+    if (typeof (window as any).RTCPeerConnection !== 'function') {
+      throw new Error(
+        "This browser can't make calls. Please open Nanivio in Safari or Chrome directly (not inside another app), and make sure WebRTC isn't disabled by a privacy setting or extension.",
+      );
+    }
+  };
+
   /* ── accept incoming call ── */
   const acceptCall = useCallback(async () => {
     if (!incomingCall) return;
+    assertWebRtcSupport();
     stopRingtoneRef.current?.();
     stopRingtoneRef.current = null;
     try {
@@ -151,6 +161,7 @@ export function StreamVideoProvider({ children }: { children: ReactNode }) {
     memberIds: string[],
   ) => {
     if (!videoClient) throw new Error('Video not ready — please try again');
+    assertWebRtcSupport();
     stopRingtoneRef.current?.();
     stopRingtoneRef.current = createRingtone('outgoing');
     // Always use 'default' — 'audio_room' is broadcast-style and fails for 1-1 calls.
