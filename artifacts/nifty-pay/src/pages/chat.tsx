@@ -242,7 +242,7 @@ function StreamEmojiPicker() {
        while the user is already viewing a conversation ─── */
 /* ─── chat wallpaper hook + picker sheet ─── */
 function useChatWallpaper() {
-  const [background, setBackground] = useState<string>('default');
+  const [background, setBackground] = useState<string>('royal-classic');
   const [customUrl, setCustomUrl] = useState<string | null>(null);
   const customUrlRef = useRef<string | null>(null);
   useEffect(() => { customUrlRef.current = customUrl; }, [customUrl]);
@@ -272,7 +272,7 @@ function useChatWallpaper() {
       .then(r => (r.ok ? r.json() : null))
       .then(d => {
         if (!d) return;
-        setBackground(d.background ?? 'default');
+        setBackground(d.background ?? 'royal-classic');
         if (d.background === 'custom' && d.hasCustomImage) loadCustomImage();
       })
       .catch(() => {});

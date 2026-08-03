@@ -132,7 +132,7 @@ router.get("/profile/chat-background", requireAuth, async (req, res): Promise<vo
   const [user] = await db.select({ chatBackground: usersTable.chatBackground, chatBackgroundPath: usersTable.chatBackgroundPath }).from(usersTable).where(eq(usersTable.id, req.userId!));
   if (!user) { res.status(404).json({ error: "User not found" }); return; }
   res.json({
-    background: user.chatBackground ?? "default",
+    background: user.chatBackground ?? "royal-classic",
     hasCustomImage: !!user.chatBackgroundPath,
   });
 });
