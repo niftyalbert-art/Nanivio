@@ -126,12 +126,21 @@
 /* ── Chat wallpaper support ──
  * When the message area sits over a wallpaper layer, the Stream list must be
  * transparent so the wallpaper shows through. */
+.chat-wallpaper-active .str-chat,
 .chat-wallpaper-active .str-chat__list,
+.chat-wallpaper-active .str-chat__main-panel,
 .chat-wallpaper-active .str-chat__main-panel-inner,
+.chat-wallpaper-active .str-chat__message-list,
+.chat-wallpaper-active .str-chat__message-list-main-panel,
 .chat-wallpaper-active .str-chat__message-list-scroll,
 .chat-wallpaper-active .str-chat__virtual-list,
+.chat-wallpaper-active .str-chat__virtual-list-message-list,
+.chat-wallpaper-active .str-chat__ul,
+.chat-wallpaper-active .str-chat__li,
 .chat-wallpaper-active .str-chat__container,
 .chat-wallpaper-active .str-chat__thread-list,
+.chat-wallpaper-active .str-chat__date-separator,
+.chat-wallpaper-active .str-chat__unread-messages-separator-wrapper,
 .chat-wallpaper-active {
   background: transparent !important;
   --str-chat__background-color: transparent;

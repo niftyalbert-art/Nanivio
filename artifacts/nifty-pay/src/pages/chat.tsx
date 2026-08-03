@@ -1121,8 +1121,8 @@ function ChatInner({
                       : { background: presetCss(background) }
                   }
                 />
-                {/* WhatsApp-style doodle pattern over preset wallpapers */}
-                {!(background === 'custom' && customUrl) && (
+                {/* WhatsApp-style doodle pattern over gradient presets (not image wallpapers) */}
+                {!(background === 'custom' && customUrl) && !presetCss(background).includes('url(') && (
                   <div className="absolute inset-0 pointer-events-none" style={{ backgroundImage: DOODLE_PATTERN }} />
                 )}
                 {/* readability overlay on top of custom photos */}
