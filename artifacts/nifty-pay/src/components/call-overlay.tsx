@@ -3,100 +3,137 @@
  * of which page the user is on.
  *
  * • IncomingCallBanner: fixed banner at top of screen — accepts or declines
- * • ActiveCallOverlay:  full-screen call UI that persists across navigation
+ * • ActiveCallOverlay:  full-screen WhatsApp-style call UI (Agora RTC)
+ *   — remote video fills the screen, own camera floats top-right.
  */
-import { useEffect } from 'react';
-import {
-  StreamVideo, StreamCall, StreamTheme,
-  ParticipantView, CallControls, useCallStateHooks, CallingState,
-} from '@stream-io/video-react-sdk';
+import { useEffect, useRef, useState } from 'react';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
-import { PhoneCall, PhoneOff } from 'lucide-react';
-import { useStreamVideo } from '@/contexts/stream-video';
+import { PhoneCall, PhoneOff, Mic, MicOff, Video, VideoOff } from 'lucide-react';
+import { useAgoraCall } from '@/contexts/agora-call';
 import { useToast } from '@/hooks/use-toast';
 
-/* ─── inner call UI — must live inside <StreamCall> context ─── */
-function CallUI({ onEnd }: { onEnd: () => void }) {
-  const { useCallCallingState, useLocalParticipant, useRemoteParticipants } = useCallStateHooks();
-  const state  = useCallCallingState();
-  const local  = useLocalParticipant();
-  const remote = useRemoteParticipants();
+/* ─── active call UI ─── */
+function CallUI() {
+  const {
+    activeCall, callKind, remoteJoined, remoteVideoTrack, localVideoTrack,
+    micOn, camOn, toggleMic, toggleCamera, endCall,
+  } = useAgoraCall();
+  const remoteRef = useRef<HTMLDivElement>(null);
+  const localRef = useRef<HTMLDivElement>(null);
+  const [seconds, setSeconds] = useState(0);
 
-  // Auto-end when the call leaves / goes idle
+  /* play remote video into the full-screen container */
   useEffect(() => {
-    if (state === CallingState.LEFT || state === CallingState.IDLE) onEnd();
-  }, [state, onEnd]);
+    if (!remoteVideoTrack || !remoteRef.current) return undefined;
+    remoteVideoTrack.play(remoteRef.current, { fit: 'cover' });
+    return () => { try { remoteVideoTrack.stop(); } catch {} };
+  }, [remoteVideoTrack]);
 
-  const other = remote[0]; // 1:1 calls — first remote participant fills the screen
-
-  // No-answer timeout: if nobody joins within 60s, end the call
+  /* play own camera into the floating box */
   useEffect(() => {
-    if (other) return;
-    const t = setTimeout(() => onEnd(), 60_000);
-    return () => clearTimeout(t);
-  }, [other, onEnd]);
+    if (!localVideoTrack || !localRef.current || !camOn) return undefined;
+    localVideoTrack.play(localRef.current, { fit: 'cover' });
+    return () => { try { localVideoTrack.stop(); } catch {} };
+  }, [localVideoTrack, camOn]);
+
+  /* call duration once connected */
+  useEffect(() => {
+    if (!remoteJoined) return;
+    setSeconds(0);
+    const iv = setInterval(() => setSeconds(s => s + 1), 1000);
+    return () => clearInterval(iv);
+  }, [remoteJoined]);
+
+  const mmss = `${String(Math.floor(seconds / 60)).padStart(2, '0')}:${String(seconds % 60).padStart(2, '0')}`;
+  const otherName = activeCall?.otherName ?? 'Call';
 
   return (
-    <StreamTheme className="h-full wa-call">
-      {/* ── Remote participant — fills the entire screen (WhatsApp style) ── */}
-      <div className="absolute inset-0">
-        {other ? (
-          <ParticipantView participant={other} ParticipantViewUI={null} />
-        ) : (
-          <div className="w-full h-full flex flex-col items-center justify-center gap-3 text-white/80">
-            <div className="w-20 h-20 rounded-full bg-white/10 flex items-center justify-center">
-              <PhoneCall className="w-8 h-8 animate-pulse" />
-            </div>
-            <p className="text-sm animate-pulse">Waiting for the other person…</p>
+    <div className="absolute inset-0">
+      {/* ── Remote — fills the entire screen ── */}
+      <div ref={remoteRef} className="absolute inset-0 bg-black" />
+      {(!remoteVideoTrack) && (
+        <div className="absolute inset-0 flex flex-col items-center justify-center gap-4 text-white/90">
+          <div className="w-24 h-24 rounded-full bg-white/10 flex items-center justify-center">
+            <span className="text-3xl font-bold">{otherName.slice(0, 2).toUpperCase()}</span>
           </div>
-        )}
-      </div>
+          <p className="font-semibold text-lg">{otherName}</p>
+          {remoteJoined ? (
+            <p className="text-sm text-white/70">{callKind === 'audio' ? `Voice call · ${mmss}` : mmss}</p>
+          ) : (
+            <p className="text-sm animate-pulse text-white/70">Ringing…</p>
+          )}
+        </div>
+      )}
 
-      {/* ── Own camera — floating medium box, top-right ── */}
-      {local && (
+      {/* ── header with name + timer over remote video ── */}
+      {remoteVideoTrack && (
+        <div className="absolute top-4 left-4 z-10 px-3 py-1.5 rounded-full bg-black/40 backdrop-blur text-white text-sm">
+          {otherName} · {mmss}
+        </div>
+      )}
+
+      {/* ── Own camera — floating box, top-right ── */}
+      {callKind === 'video' && (
         <div className="absolute top-4 right-4 w-[30vw] max-w-[140px] aspect-[3/4] rounded-2xl overflow-hidden border border-white/20 shadow-2xl z-10 bg-black/60">
-          <ParticipantView participant={local} ParticipantViewUI={null} muteAudio />
+          <div ref={localRef} className="w-full h-full" />
+          {!camOn && (
+            <div className="absolute inset-0 flex items-center justify-center text-white/60">
+              <VideoOff className="w-6 h-6" />
+            </div>
+          )}
         </div>
       )}
 
       {/* ── Controls — bottom center ── */}
-      <div className="absolute inset-x-0 bottom-6 z-10 flex justify-center">
-        <CallControls onLeave={onEnd} />
+      <div className="absolute inset-x-0 bottom-8 z-10 flex justify-center gap-5">
+        <button
+          onClick={() => void toggleMic()}
+          className={`w-14 h-14 rounded-full flex items-center justify-center transition-colors ${micOn ? 'bg-white/15 hover:bg-white/25 text-white' : 'bg-white text-black'}`}
+          aria-label={micOn ? 'Mute microphone' : 'Unmute microphone'}
+        >
+          {micOn ? <Mic className="w-6 h-6" /> : <MicOff className="w-6 h-6" />}
+        </button>
+        {callKind === 'video' && (
+          <button
+            onClick={() => void toggleCamera()}
+            className={`w-14 h-14 rounded-full flex items-center justify-center transition-colors ${camOn ? 'bg-white/15 hover:bg-white/25 text-white' : 'bg-white text-black'}`}
+            aria-label={camOn ? 'Turn camera off' : 'Turn camera on'}
+          >
+            {camOn ? <Video className="w-6 h-6" /> : <VideoOff className="w-6 h-6" />}
+          </button>
+        )}
+        <button
+          onClick={endCall}
+          className="w-14 h-14 bg-red-500 hover:bg-red-600 rounded-full flex items-center justify-center transition-colors"
+          aria-label="End call"
+        >
+          <PhoneOff className="w-6 h-6 text-white" />
+        </button>
       </div>
-    </StreamTheme>
+    </div>
   );
 }
 
 /* ─── exported overlay — always rendered inside AppLayout ─── */
 export function CallOverlay() {
-  const { videoClient, incomingCall, activeCall, acceptCall, declineCall, endCall } = useStreamVideo();
+  const { incomingCall, activeCall, acceptCall, declineCall } = useAgoraCall();
   const { toast } = useToast();
 
-  const callerName =
-    (Object.values(incomingCall?.state?.members ?? {})[0] as any)?.user?.name ?? 'Someone';
+  const callerName = incomingCall?.fromName ?? 'Someone';
 
   const handleAccept = async () => {
     try {
       await acceptCall();
     } catch (e: any) {
-      console.error('[call] accept failed:', e); // full error for diagnostics
-      const msg: string = e?.message ?? String(e);
-      if (msg.toLowerCase().includes('country') || msg.toLowerCase().includes('region') || msg.toLowerCase().includes('geo')) {
-        toast({
-          title: 'Not available in your region',
-          description: 'Video and audio calls are not supported in your country.',
-          variant: 'destructive',
-        });
-      } else {
-        toast({ title: 'Could not join call', description: msg, variant: 'destructive' });
-      }
+      console.error('[call] accept failed:', e);
+      toast({ title: 'Could not join call', description: e?.message ?? String(e), variant: 'destructive' });
     }
   };
 
   return (
     <>
       {/* ── Incoming call banner — z-[200] guarantees it sits above nav bars ── */}
-      {incomingCall && (
+      {incomingCall && !activeCall && (
         <div className="fixed inset-x-4 top-4 z-[200] bg-card border border-primary/30 rounded-2xl shadow-2xl p-4 flex items-center gap-3 animate-in slide-in-from-top-4 duration-300"
           style={{ boxShadow: '0 0 0 1px rgba(45,212,191,0.15), 0 12px 48px rgba(0,0,0,0.6)' }}>
           <Avatar className="w-12 h-12 shrink-0">
@@ -106,7 +143,9 @@ export function CallOverlay() {
           </Avatar>
           <div className="flex-1 min-w-0">
             <p className="font-bold text-sm truncate">{callerName}</p>
-            <p className="text-xs text-muted-foreground animate-pulse">Incoming call…</p>
+            <p className="text-xs text-muted-foreground animate-pulse">
+              Incoming {incomingCall.kind === 'audio' ? 'voice' : 'video'} call…
+            </p>
           </div>
           {/* Decline */}
           <button
@@ -128,13 +167,9 @@ export function CallOverlay() {
       )}
 
       {/* ── Active call full-screen overlay — persists across navigation ── */}
-      {activeCall && videoClient && (
+      {activeCall && (
         <div className="fixed inset-0 z-[190] bg-black flex flex-col">
-          <StreamVideo client={videoClient}>
-            <StreamCall call={activeCall}>
-              <CallUI onEnd={endCall} />
-            </StreamCall>
-          </StreamVideo>
+          <CallUI />
         </div>
       )}
     </>

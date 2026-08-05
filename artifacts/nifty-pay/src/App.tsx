@@ -4,7 +4,7 @@ import { TooltipProvider } from '@/components/ui/tooltip';
 import { Route, Switch, Router as WouterRouter } from 'wouter';
 import { AuthProvider, useAuth } from '@/contexts/auth';
 import { StreamChatProvider } from '@/contexts/stream-chat';
-import { StreamVideoProvider } from '@/contexts/stream-video';
+import { AgoraCallProvider } from '@/contexts/agora-call';
 import { AppErrorBoundary } from '@/components/error-boundary';
 import { AppLayout } from '@/components/layout/app-layout';
 import Dashboard from '@/pages/dashboard';
@@ -59,7 +59,7 @@ function Router() {
     <AppErrorBoundary label="Chat">
     <StreamChatProvider>
     <AppErrorBoundary label="Video">
-    <StreamVideoProvider>
+    <AgoraCallProvider>
     <Switch>
       {/* Standalone pages — no app chrome */}
       <Route path="/admin" component={Admin} />
@@ -90,7 +90,7 @@ function Router() {
         </AppLayout>
       </Route>
     </Switch>
-    </StreamVideoProvider>
+    </AgoraCallProvider>
     </AppErrorBoundary>
     </StreamChatProvider>
     </AppErrorBoundary>

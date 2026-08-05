@@ -6,7 +6,7 @@ import {
   TypingIndicator, useChatContext,
 } from 'stream-chat-react';
 import { useStreamChat } from '@/contexts/stream-chat';
-import { useStreamVideo } from '@/contexts/stream-video';
+import { useAgoraCall } from '@/contexts/agora-call';
 import Picker from '@emoji-mart/react';
 import data from '@emoji-mart/data';
 import { init, SearchIndex } from 'emoji-mart';
@@ -1239,7 +1239,7 @@ function ChatInner({
 function ChatConnected() {
   const { streamData: _sd, chatClient } = useStreamChat();
   const streamData = _sd!; // guaranteed by ChatPage guard
-  const streamVideo = useStreamVideo();
+  const agoraCall = useAgoraCall();
   const { toast } = useToast();
   const setActiveChannelRef = useRef<((ch: any) => void) | null>(null);
 
@@ -1435,8 +1435,8 @@ function ChatConnected() {
   };
 
   const handleStartCall = useCallback(async (type: 'audio' | 'video', ch: StreamChannel) => {
-    if (!streamVideo.videoClient) {
-      toast({ title: 'Video not ready', description: 'Please wait a moment and try again.', variant: 'destructive' });
+    if (!agoraCall.ready) {
+      toast({ title: 'Calls not ready', description: 'Please wait a moment and try again.', variant: 'destructive' });
       return;
     }
     // Check the other user's calling preferences before dialling
@@ -1458,21 +1458,22 @@ function ChatConnected() {
         }
       } catch { /* allow the call if the preference check fails */ }
     }
+    if (!other?.user_id) {
+      toast({ title: 'Call failed', description: 'Could not find the other person in this chat.', variant: 'destructive' });
+      return;
+    }
     const callId = `nanivio-${(ch.id ?? Date.now()).toString().replace(/[^a-zA-Z0-9_-]/g, '-')}`;
-    const memberIds = Object.keys(ch.state?.members ?? {});
     try {
-      await streamVideo.startCall(type, callId, memberIds);
+      await agoraCall.startCall(type, callId, other.user_id, other.user?.name ?? 'Call');
       // Ring the callee's device(s) even if the app is closed
-      if (other?.user_id) {
-        notifyCallPush(other.user_id, type).then((sent) => {
-          if (sent === 0) {
-            toast({
-              title: 'Ringing in-app only',
-              description: `${other.user?.name ?? 'This person'} hasn't enabled call notifications yet — they'll only see the call if the app is open.`,
-            });
-          }
-        });
-      }
+      notifyCallPush(other.user_id, type).then((sent) => {
+        if (sent === 0) {
+          toast({
+            title: 'Ringing in-app only',
+            description: `${other.user?.name ?? 'This person'} hasn't enabled call notifications yet — they'll only see the call if the app is open.`,
+          });
+        }
+      });
     } catch (e: any) {
       const msg: string = e?.message ?? String(e);
       const isRegion = msg.toLowerCase().includes('country') || msg.toLowerCase().includes('region') || msg.toLowerCase().includes('geo');
@@ -1482,7 +1483,7 @@ function ChatConnected() {
         variant: 'destructive',
       });
     }
-  }, [streamVideo, streamData?.userId, toast]);
+  }, [agoraCall, streamData?.userId, toast]);
 
   const closeNewChat = () => {
     setShowNewChat(false);

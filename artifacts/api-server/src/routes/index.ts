@@ -20,6 +20,7 @@ import cryptoRouter from "./crypto";
 import cryptoDepositsRouter from "./crypto-deposits";
 import wallpapersRouter from "./wallpapers";
 import pushRouter from "./push";
+import agoraRouter from "./agora";
 
 const router: IRouter = Router();
 
@@ -44,5 +45,6 @@ router.use(cryptoRouter);
 router.use(cryptoDepositsRouter);
 router.use(wallpapersRouter);
 router.use(pushRouter);
+router.use(agoraRouter);
 
 export default router;

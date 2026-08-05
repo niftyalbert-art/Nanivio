@@ -4,3 +4,4 @@
 - [Stream Chat queryChannels security](stream-chat-query-security.md) — always use current user's own ID in $in filter; querying by third-party IDs triggers server-side security rejection
 - [Stream Video upsertUsers 500](stream-video-upsert.md) — generateUserToken is local JWT; never call upsertUsers() in video-token route; it hits Stream Video HTTP API which returns 500 if Video not enabled
 - [Crypto Payment Module](crypto-payment-module.md) — independent module; wallet address from payment_methods table; QR via qrserver.com; WalletConnect is UI-only (no SDK); Crypto card in send.tsx navigates to /crypto not into bank flow
+- [Agora calling migration](agora-calling.md) — calls on Agora 4.23.4 (firewall blocks 4.24.x), signaling via Stream custom user events, needs AGORA_APP_ID/CERT secrets
