@@ -150,6 +150,23 @@ export function AgoraCallProvider({ children }: { children: ReactNode }) {
     const assertFresh = () => {
       if (epochRef.current !== epoch) throw new Error('call-cancelled');
     };
+    // Acquire devices in parallel with the token fetch + network join —
+    // device acquisition is usually the slowest step, so overlapping them
+    // cuts connect time roughly in half.
+    const micP: Promise<IMicrophoneAudioTrack | null> = AgoraRTC.createMicrophoneAudioTrack()
+      .catch((e) => { console.warn('[call] mic unavailable:', e); return null; });
+    const camP: Promise<ICameraVideoTrack | null> = kind === 'video'
+      ? AgoraRTC.createCameraVideoTrack({
+          encoderConfig: { width: 640, height: 480, frameRate: 24 }, // smooth on mobile networks
+        }).catch((e) => { console.warn('[call] camera unavailable:', e); return null; })
+      : Promise.resolve(null);
+    // If we bail out before the tracks are stored in refs, close them on arrival
+    const closeUnclaimedTracks = () => {
+      micP.then(t => { if (micTrackRef.current !== t) { try { t?.close(); } catch {} } });
+      camP.then(t => { if (camTrackRef.current !== t) { try { t?.close(); } catch {} } });
+    };
+
+    try {
     const { appId, token, uid } = await fetchRtcToken(channel, chatId);
     assertFresh();
     const client = AgoraRTC.createClient({ mode: 'rtc', codec: 'vp8' });
@@ -192,34 +209,21 @@ export function AgoraCallProvider({ children }: { children: ReactNode }) {
     }
     assertFresh();
 
-    // Publish microphone; tolerate devices without one so join never fails
-    try {
-      const mic = await AgoraRTC.createMicrophoneAudioTrack();
-      assertFresh();
-      micTrackRef.current = mic;
-      await client.publish(mic);
-      setMicOn(true);
-    } catch (e: any) {
-      if (e?.message === 'call-cancelled') throw e;
-      console.warn('[call] mic unavailable:', e); setMicOn(false);
+    // Publish whatever devices we got; missing mic/camera never fails the join
+    const [mic, cam] = await Promise.all([micP, camP]);
+    assertFresh();
+    if (mic) micTrackRef.current = mic;
+    if (cam) camTrackRef.current = cam;
+    const tracks = [mic, cam].filter(Boolean) as any[];
+    if (tracks.length) {
+      try { await client.publish(tracks); } catch (e) { console.warn('[call] publish failed:', e); }
     }
-
-    if (kind === 'video') {
-      try {
-        const cam = await AgoraRTC.createCameraVideoTrack({
-          encoderConfig: { width: 640, height: 480, frameRate: 24 }, // smooth on mobile networks
-        });
-        assertFresh();
-        camTrackRef.current = cam;
-        await client.publish(cam);
-        setLocalVideoTrack(cam);
-        setCamOn(true);
-      } catch (e: any) {
-        if (e?.message === 'call-cancelled') throw e;
-        console.warn('[call] camera unavailable:', e); setCamOn(false);
-      }
-    } else {
-      setCamOn(false);
+    setMicOn(!!mic);
+    setCamOn(kind === 'video' && !!cam);
+    setLocalVideoTrack(kind === 'video' ? cam : null);
+    } catch (e) {
+      closeUnclaimedTracks();
+      throw e;
     }
   }, []);
 
@@ -272,16 +276,18 @@ export function AgoraCallProvider({ children }: { children: ReactNode }) {
     assertWebRtcSupport();
     joiningRef.current = true;
     stopTone();
+    // Optimistic accept: tell the caller and switch to the call UI right
+    // away, then connect media in the background — accept feels instant.
+    sendSignal(inc.fromUserId, { type: 'call_accept', channel: inc.channel, chatId: inc.chatId }).catch(() => {});
+    setCallKind(inc.kind);
+    setActiveCall({ channel: inc.channel, chatId: inc.chatId, otherUserId: inc.fromUserId, otherName: inc.fromName });
+    setIncomingCall(null);
     try {
       await joinAndPublish(inc.channel, inc.chatId, inc.kind);
-      await sendSignal(inc.fromUserId, { type: 'call_accept', channel: inc.channel, chatId: inc.chatId });
-      setCallKind(inc.kind);
-      setActiveCall({ channel: inc.channel, chatId: inc.chatId, otherUserId: inc.fromUserId, otherName: inc.fromName });
-      setIncomingCall(null);
     } catch (e: any) {
       if (e?.message !== 'call-cancelled') {
-        sendSignal(inc.fromUserId, { type: 'call_reject', channel: inc.channel, chatId: inc.chatId }).catch(() => {});
-        setIncomingCall(null);
+        sendSignal(inc.fromUserId, { type: 'call_end', channel: inc.channel, chatId: inc.chatId }).catch(() => {});
+        setActiveCall(null);
         await teardownMedia();
       }
       throw e; // CallOverlay shows the toast
