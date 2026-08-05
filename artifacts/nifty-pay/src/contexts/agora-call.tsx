@@ -165,7 +165,19 @@ export function AgoraCallProvider({ children }: { children: ReactNode }) {
       void endCallRef.current?.();
     });
 
-    await client.join(appId, channel, token, uid);
+    try {
+      await client.join(appId, channel, token, uid);
+    } catch (e: any) {
+      // Agora projects in "Testing: App ID only" mode reject all tokens.
+      // Fall back to a token-less join so calls work in either project mode.
+      const msg = String(e?.message ?? e);
+      if (e?.code === 'CAN_NOT_GET_GATEWAY_SERVER' || /invalid token|dynamic key/i.test(msg)) {
+        console.warn('[call] token rejected — retrying token-less join (App ID-only project mode)');
+        await client.join(appId, channel, null, uid);
+      } else {
+        throw e;
+      }
+    }
 
     // Publish microphone; tolerate devices without one so join never fails
     try {

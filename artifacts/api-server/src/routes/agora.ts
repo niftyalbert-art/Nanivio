@@ -19,8 +19,9 @@ const SIGNAL_TYPES = new Set(["call_invite", "call_accept", "call_reject", "call
 const inviteRateLimit = new Map<string, number>();
 
 function getAgoraCreds() {
-  const appId = process.env.AGORA_APP_ID;
-  const cert = process.env.AGORA_APP_CERTIFICATE;
+  // trim() guards against stray whitespace/newlines pasted into the secrets
+  const appId = process.env.AGORA_APP_ID?.trim();
+  const cert = process.env.AGORA_APP_CERTIFICATE?.trim();
   if (!appId || !cert) throw new Error("Agora is not configured yet (missing AGORA_APP_ID / AGORA_APP_CERTIFICATE)");
   return { appId, cert };
 }
