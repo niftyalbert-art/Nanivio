@@ -116,6 +116,9 @@ export function AgoraCallProvider({ children }: { children: ReactNode }) {
   // invalidates joins still awaiting (epoch bump → stale join aborts).
   const joiningRef = useRef(false);
   const epochRef = useRef(0);
+  // Channel of an outgoing call still connecting — lets reject/cancel/end
+  // signals abort a call before activeCall is set.
+  const pendingChannelRef = useRef<string | null>(null);
 
   const assertWebRtcSupport = () => {
     if (typeof (window as any).RTCPeerConnection !== 'function') {
@@ -128,6 +131,8 @@ export function AgoraCallProvider({ children }: { children: ReactNode }) {
   /** Leave the media channel and release devices. */
   const teardownMedia = useCallback(async () => {
     epochRef.current += 1; // invalidate any join still in flight
+    joiningRef.current = false; // never leave the join lock stuck
+    pendingChannelRef.current = null;
     if (noAnswerTimerRef.current) { clearTimeout(noAnswerTimerRef.current); noAnswerTimerRef.current = null; }
     stopTone();
     try { micTrackRef.current?.close(); } catch {}
@@ -167,7 +172,10 @@ export function AgoraCallProvider({ children }: { children: ReactNode }) {
     };
 
     try {
-    const { appId, token, uid } = await fetchRtcToken(channel, chatId);
+    const withTimeout = <T,>(p: Promise<T>, ms: number, what: string): Promise<T> =>
+      Promise.race([p, new Promise<T>((_, rej) => setTimeout(() => rej(new Error(`${what} timed out — please check your connection and try again`)), ms))]);
+
+    const { appId, token, uid } = await withTimeout(fetchRtcToken(channel, chatId), 10_000, 'Call setup');
     assertFresh();
     const client = AgoraRTC.createClient({ mode: 'rtc', codec: 'vp8' });
     clientRef.current = client;
@@ -195,7 +203,7 @@ export function AgoraCallProvider({ children }: { children: ReactNode }) {
     });
 
     try {
-      await client.join(appId, channel, token, uid);
+      await withTimeout(client.join(appId, channel, token, uid), 15_000, 'Connecting');
     } catch (e: any) {
       // Agora projects in "Testing: App ID only" mode reject all tokens.
       // Fall back to a token-less join so calls work in either project mode.
@@ -247,13 +255,16 @@ export function AgoraCallProvider({ children }: { children: ReactNode }) {
     // Unique channel per call attempt so stale signals from an earlier call
     // in the same conversation can never affect this one.
     const channel = `nanivio-${chatId}-${Math.random().toString(36).slice(2, 10)}`;
+    pendingChannelRef.current = channel;
     stopTone();
     stopRingtoneRef.current = createRingtone('outgoing');
+    // Show the ringing overlay immediately — joining takes a couple of
+    // seconds and silent buttons invite double-taps.
+    setCallKind(type);
+    setActiveCall({ channel, chatId, otherUserId, otherName });
     try {
       await joinAndPublish(channel, chatId, type);
       await sendSignal(otherUserId, { type: 'call_invite', channel, chatId, kind: type });
-      setCallKind(type);
-      setActiveCall({ channel, chatId, otherUserId, otherName });
       // No-answer timeout — hang up after 60s if nobody joins
       noAnswerTimerRef.current = setTimeout(() => {
         if (!clientRef.current) return;
@@ -262,10 +273,14 @@ export function AgoraCallProvider({ children }: { children: ReactNode }) {
         void teardownMedia();
       }, 60_000);
     } catch (e: any) {
-      if (e?.message !== 'call-cancelled') await teardownMedia();
+      if (e?.message !== 'call-cancelled') {
+        setActiveCall(null);
+        await teardownMedia();
+      }
       throw e;
     } finally {
       joiningRef.current = false;
+      pendingChannelRef.current = null;
     }
   }, [joinAndPublish, teardownMedia]);
 
@@ -352,7 +367,8 @@ export function AgoraCallProvider({ children }: { children: ReactNode }) {
           break;
         }
         case 'call_reject': {
-          if (activeCallRef.current?.channel === event.callChannel) {
+          if (activeCallRef.current?.channel === event.callChannel
+              || pendingChannelRef.current === event.callChannel) {
             setActiveCall(null);
             void teardownMedia();
           }
@@ -366,7 +382,8 @@ export function AgoraCallProvider({ children }: { children: ReactNode }) {
           break;
         }
         case 'call_end': {
-          if (activeCallRef.current?.channel === event.callChannel) {
+          if (activeCallRef.current?.channel === event.callChannel
+              || pendingChannelRef.current === event.callChannel) {
             setActiveCall(null);
             void teardownMedia();
           }

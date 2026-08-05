@@ -132,37 +132,59 @@ export function CallOverlay() {
 
   return (
     <>
-      {/* ── Incoming call banner — z-[200] guarantees it sits above nav bars ── */}
+      {/* ── Incoming call — full-screen imo-style ring screen ── */}
       {incomingCall && !activeCall && (
-        <div className="fixed inset-x-4 top-4 z-[200] bg-card border border-primary/30 rounded-2xl shadow-2xl p-4 flex items-center gap-3 animate-in slide-in-from-top-4 duration-300"
-          style={{ boxShadow: '0 0 0 1px rgba(45,212,191,0.15), 0 12px 48px rgba(0,0,0,0.6)' }}>
-          <Avatar className="w-12 h-12 shrink-0">
-            <AvatarFallback className="bg-primary/20 text-primary font-bold">
-              {callerName.slice(0, 2).toUpperCase()}
-            </AvatarFallback>
-          </Avatar>
-          <div className="flex-1 min-w-0">
-            <p className="font-bold text-sm truncate">{callerName}</p>
-            <p className="text-xs text-muted-foreground animate-pulse">
-              Incoming {incomingCall.kind === 'audio' ? 'voice' : 'video'} call…
-            </p>
+        <div className="fixed inset-0 z-[200] flex flex-col items-center text-white animate-in fade-in duration-300"
+          style={{ background: 'linear-gradient(180deg, #0c2f2b 0%, #09131f 55%, #060a12 100%)' }}>
+
+          {/* caller info */}
+          <div className="flex-1 flex flex-col items-center justify-center gap-5 px-6">
+            <div className="relative">
+              {/* pulsing rings */}
+              <span className="absolute inset-0 rounded-full bg-emerald-400/25 animate-ping" style={{ animationDuration: '1.6s' }} />
+              <span className="absolute -inset-3 rounded-full border-2 border-emerald-400/25 animate-pulse" />
+              <Avatar className="relative w-28 h-28 border-4 border-white/15 shadow-2xl">
+                <AvatarFallback className="bg-primary/25 text-primary text-4xl font-bold">
+                  {callerName.slice(0, 2).toUpperCase()}
+                </AvatarFallback>
+              </Avatar>
+            </div>
+            <div className="text-center">
+              <p className="text-3xl font-extrabold tracking-tight drop-shadow">{callerName}</p>
+              <p className="mt-2 text-base font-semibold text-emerald-300/90 animate-pulse flex items-center justify-center gap-2">
+                {incomingCall.kind === 'audio'
+                  ? <><PhoneCall className="w-4 h-4" /> Incoming voice call…</>
+                  : <><Video className="w-4 h-4" /> Incoming video call…</>}
+              </p>
+            </div>
           </div>
-          {/* Decline */}
-          <button
-            onClick={declineCall}
-            className="w-11 h-11 bg-destructive hover:bg-destructive/90 rounded-full flex items-center justify-center shrink-0 transition-colors"
-            aria-label="Decline call"
-          >
-            <PhoneOff className="w-4 h-4 text-white" />
-          </button>
-          {/* Accept */}
-          <button
-            onClick={handleAccept}
-            className="w-11 h-11 bg-emerald-500 hover:bg-emerald-600 rounded-full flex items-center justify-center shrink-0 transition-colors"
-            aria-label="Accept call"
-          >
-            <PhoneCall className="w-4 h-4 text-white" />
-          </button>
+
+          {/* big bold accept / decline buttons */}
+          <div className="w-full max-w-sm px-10 pb-14 flex items-end justify-between">
+            <div className="flex flex-col items-center gap-2.5">
+              <button
+                onClick={declineCall}
+                className="w-[76px] h-[76px] rounded-full bg-red-500 hover:bg-red-600 active:scale-95 flex items-center justify-center shadow-[0_10px_30px_rgba(239,68,68,0.45)] transition-all"
+                aria-label="Decline call"
+              >
+                <PhoneOff className="w-9 h-9 text-white" strokeWidth={2.5} />
+              </button>
+              <span className="text-sm font-bold text-red-300">Decline</span>
+            </div>
+            <div className="flex flex-col items-center gap-2.5">
+              <button
+                onClick={handleAccept}
+                className="w-[76px] h-[76px] rounded-full bg-emerald-500 hover:bg-emerald-600 active:scale-95 flex items-center justify-center shadow-[0_10px_30px_rgba(16,185,129,0.5)] transition-all animate-bounce"
+                style={{ animationDuration: '1.4s' }}
+                aria-label="Accept call"
+              >
+                {incomingCall.kind === 'audio'
+                  ? <PhoneCall className="w-9 h-9 text-white" strokeWidth={2.5} />
+                  : <Video className="w-9 h-9 text-white" strokeWidth={2.5} />}
+              </button>
+              <span className="text-sm font-bold text-emerald-300">Accept</span>
+            </div>
+          </div>
         </div>
       )}
 
