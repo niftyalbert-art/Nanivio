@@ -3,17 +3,25 @@
  *  - GET  /agora/token   → RTC token for joining a call channel
  *  - POST /agora/signal  → relay call signaling (invite/accept/reject/end)
  *    to the other user's devices via Stream Chat custom user events.
+ *
+ * Authorization model: every call is bound to a Stream chat channel
+ * (`chatId`). Both the token and every signal require the requester to be a
+ * member of that chat channel, and the Agora channel name must be derived
+ * from it (`nanivio-<chatId>-<random>`), so a user can never mint a token
+ * for (or signal into) someone else's call.
  */
 import { Router, type IRouter } from "express";
-import { and, eq, or } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import { RtcTokenBuilder, RtcRole } from "agora-token";
 import { StreamChat } from "stream-chat";
-import { db, contactsTable, usersTable } from "@workspace/db";
+import { db, usersTable } from "@workspace/db";
 import { requireAuth } from "../middleware/auth";
 
 const router: IRouter = Router();
 
 const SIGNAL_TYPES = new Set(["call_invite", "call_accept", "call_reject", "call_end", "call_cancel"]);
+const CHAT_ID_RE = /^[a-zA-Z0-9!_-]{1,60}$/;
+const CHANNEL_RE = /^[a-zA-Z0-9_-]{1,64}$/;
 
 /** In-memory caller→target invite throttle (invite only). */
 const inviteRateLimit = new Map<string, number>();
@@ -33,23 +41,27 @@ function getStreamClient() {
   return StreamChat.getInstance(key, secret);
 }
 
-async function usersAreConnected(a: number, b: number): Promise<boolean> {
-  const [link] = await db.select({ id: contactsTable.userId }).from(contactsTable).where(or(
-    and(eq(contactsTable.userId, a), eq(contactsTable.contactUserId, b)),
-    and(eq(contactsTable.userId, b), eq(contactsTable.contactUserId, a)),
-  )).limit(1);
-  if (link) return true;
-  // Not contacts — allow if they share an existing 1-1 chat channel
+/** The Agora channel for a call must be derived from the chat channel id. */
+function channelMatchesChat(channel: string, chatId: string): boolean {
+  return channel === `nanivio-${chatId}` || channel.startsWith(`nanivio-${chatId}-`);
+}
+
+/**
+ * Returns the member user-ids of the chat channel IF `userId` is a member,
+ * otherwise null. This is the authorization gate for tokens and signals.
+ */
+async function chatMembersIfMember(userId: number, chatId: string): Promise<string[] | null> {
   try {
     const client = getStreamClient();
     const channels = await client.queryChannels(
-      { type: "messaging", members: { $in: [String(a)] } } as any,
+      { type: "messaging", id: { $eq: chatId }, members: { $in: [String(userId)] } } as any,
       {},
-      { limit: 30 },
+      { limit: 1 },
     );
-    return channels.some((ch: any) => Object.keys(ch.state?.members ?? {}).includes(String(b)));
+    if (!channels.length) return null;
+    return Object.keys((channels[0] as any).state?.members ?? {});
   } catch {
-    return false;
+    return null;
   }
 }
 
@@ -58,8 +70,14 @@ router.get("/agora/token", requireAuth, async (req: any, res): Promise<void> => 
   try {
     const { appId, cert } = getAgoraCreds();
     const channel = String(req.query.channel ?? "");
-    if (!/^[a-zA-Z0-9_-]{1,64}$/.test(channel)) {
+    const chatId = String(req.query.chatId ?? "");
+    if (!CHAT_ID_RE.test(chatId) || !CHANNEL_RE.test(channel) || !channelMatchesChat(channel, chatId)) {
       res.status(400).json({ error: "Invalid channel" });
+      return;
+    }
+    // Only members of the underlying chat may join its call channel
+    if (!(await chatMembersIfMember(req.userId, chatId))) {
+      res.status(403).json({ error: "You are not part of this conversation" });
       return;
     }
     const uid = req.userId as number;
@@ -86,11 +104,16 @@ router.post("/agora/signal", requireAuth, async (req: any, res): Promise<void> =
       res.status(400).json({ error: "Invalid signal type" });
       return;
     }
-    if (typeof event.channel !== "string" || !/^[a-zA-Z0-9_-]{1,64}$/.test(event.channel)) {
+    const chatId = String(event.chatId ?? "");
+    const channel = String(event.channel ?? "");
+    if (!CHAT_ID_RE.test(chatId) || !CHANNEL_RE.test(channel) || !channelMatchesChat(channel, chatId)) {
       res.status(400).json({ error: "Invalid channel" });
       return;
     }
-    if (!(await usersAreConnected(req.userId, toUserId))) {
+    // Sender must be a member of the chat, and the target must be too —
+    // signals are confined to the conversation the call belongs to.
+    const members = await chatMembersIfMember(req.userId, chatId);
+    if (!members || !members.includes(String(toUserId))) {
       res.status(403).json({ error: "You can only call people you chat with" });
       return;
     }
@@ -111,7 +134,9 @@ router.post("/agora/signal", requireAuth, async (req: any, res): Promise<void> =
     const client = getStreamClient();
     await client.sendUserCustomEvent(String(toUserId), {
       type: event.type,
-      channel: event.channel,
+      // "channel" is a reserved key in Stream events and gets stripped — use callChannel
+      callChannel: channel,
+      callChatId: chatId,
       kind: event.kind === "audio" ? "audio" : "video",
       fromUserId: String(req.userId),
       fromName: caller?.name ?? "Someone",

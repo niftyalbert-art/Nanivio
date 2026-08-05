@@ -1462,9 +1462,12 @@ function ChatConnected() {
       toast({ title: 'Call failed', description: 'Could not find the other person in this chat.', variant: 'destructive' });
       return;
     }
-    const callId = `nanivio-${(ch.id ?? Date.now()).toString().replace(/[^a-zA-Z0-9_-]/g, '-')}`;
+    if (!ch.id) {
+      toast({ title: 'Call failed', description: 'This chat is not ready yet.', variant: 'destructive' });
+      return;
+    }
     try {
-      await agoraCall.startCall(type, callId, other.user_id, other.user?.name ?? 'Call');
+      await agoraCall.startCall(type, String(ch.id), other.user_id, other.user?.name ?? 'Call');
       // Ring the callee's device(s) even if the app is closed
       notifyCallPush(other.user_id, type).then((sent) => {
         if (sent === 0) {

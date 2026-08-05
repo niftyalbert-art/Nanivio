@@ -27,6 +27,7 @@ AgoraRTC.setLogLevel(2); // warnings+errors only
 
 export interface IncomingCall {
   channel:    string;
+  chatId:     string;
   kind:       'audio' | 'video';
   fromUserId: string;
   fromName:   string;
@@ -37,7 +38,7 @@ export interface AgoraCallCtx {
   ready:        boolean;
   incomingCall: IncomingCall | null;
   /** non-null while a call is active (dialing or connected) */
-  activeCall:   { channel: string; otherUserId: string; otherName: string } | null;
+  activeCall:   { channel: string; chatId: string; otherUserId: string; otherName: string } | null;
   callKind:     'audio' | 'video';
   /** remote side has joined the media channel */
   remoteJoined: boolean;
@@ -47,7 +48,7 @@ export interface AgoraCallCtx {
   camOn: boolean;
   toggleMic:    () => Promise<void>;
   toggleCamera: () => Promise<void>;
-  startCall:   (type: 'audio' | 'video', channel: string, otherUserId: string, otherName: string) => Promise<void>;
+  startCall:   (type: 'audio' | 'video', chatId: string, otherUserId: string, otherName: string) => Promise<void>;
   acceptCall:  () => Promise<void>;
   declineCall: () => void;
   endCall:     () => void;
@@ -66,14 +67,14 @@ function authHeaders() {
   return { Authorization: `Bearer ${localStorage.getItem('nanivio_token')}` };
 }
 
-async function fetchRtcToken(channel: string): Promise<{ appId: string; token: string; uid: number }> {
-  const r = await fetch(`${API}/agora/token?channel=${encodeURIComponent(channel)}`, { headers: authHeaders() });
+async function fetchRtcToken(channel: string, chatId: string): Promise<{ appId: string; token: string; uid: number }> {
+  const r = await fetch(`${API}/agora/token?channel=${encodeURIComponent(channel)}&chatId=${encodeURIComponent(chatId)}`, { headers: authHeaders() });
   const d = await r.json();
   if (!r.ok || !d?.appId) throw new Error(d?.error ?? 'Could not get call access');
   return d;
 }
 
-function sendSignal(toUserId: string | number, event: { type: string; channel: string; kind?: 'audio' | 'video' }): Promise<void> {
+function sendSignal(toUserId: string | number, event: { type: string; channel: string; chatId: string; kind?: 'audio' | 'video' }): Promise<void> {
   return fetch(`${API}/agora/signal`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', ...authHeaders() },
@@ -89,7 +90,7 @@ function sendSignal(toUserId: string | number, event: { type: string; channel: s
 export function AgoraCallProvider({ children }: { children: ReactNode }) {
   const { streamData, chatClient } = useStreamChat();
   const [incomingCall, setIncomingCall] = useState<IncomingCall | null>(null);
-  const [activeCall, setActiveCall] = useState<{ channel: string; otherUserId: string; otherName: string } | null>(null);
+  const [activeCall, setActiveCall] = useState<{ channel: string; chatId: string; otherUserId: string; otherName: string } | null>(null);
   const [callKind, setCallKind] = useState<'audio' | 'video'>('video');
   const [remoteJoined, setRemoteJoined] = useState(false);
   const [remoteVideoTrack, setRemoteVideoTrack] = useState<IRemoteVideoTrack | null>(null);
@@ -111,6 +112,11 @@ export function AgoraCallProvider({ children }: { children: ReactNode }) {
 
   const stopTone = () => { stopRingtoneRef.current?.(); stopRingtoneRef.current = null; };
 
+  // Guards against races: only one join may be in flight, and any teardown
+  // invalidates joins still awaiting (epoch bump → stale join aborts).
+  const joiningRef = useRef(false);
+  const epochRef = useRef(0);
+
   const assertWebRtcSupport = () => {
     if (typeof (window as any).RTCPeerConnection !== 'function') {
       throw new Error(
@@ -121,6 +127,7 @@ export function AgoraCallProvider({ children }: { children: ReactNode }) {
 
   /** Leave the media channel and release devices. */
   const teardownMedia = useCallback(async () => {
+    epochRef.current += 1; // invalidate any join still in flight
     if (noAnswerTimerRef.current) { clearTimeout(noAnswerTimerRef.current); noAnswerTimerRef.current = null; }
     stopTone();
     try { micTrackRef.current?.close(); } catch {}
@@ -138,8 +145,13 @@ export function AgoraCallProvider({ children }: { children: ReactNode }) {
   }, []);
 
   /** Join an Agora channel and publish mic (+camera for video). */
-  const joinAndPublish = useCallback(async (channel: string, kind: 'audio' | 'video') => {
-    const { appId, token, uid } = await fetchRtcToken(channel);
+  const joinAndPublish = useCallback(async (channel: string, chatId: string, kind: 'audio' | 'video') => {
+    const epoch = epochRef.current;
+    const assertFresh = () => {
+      if (epochRef.current !== epoch) throw new Error('call-cancelled');
+    };
+    const { appId, token, uid } = await fetchRtcToken(channel, chatId);
+    assertFresh();
     const client = AgoraRTC.createClient({ mode: 'rtc', codec: 'vp8' });
     clientRef.current = client;
 
@@ -178,25 +190,34 @@ export function AgoraCallProvider({ children }: { children: ReactNode }) {
         throw e;
       }
     }
+    assertFresh();
 
     // Publish microphone; tolerate devices without one so join never fails
     try {
       const mic = await AgoraRTC.createMicrophoneAudioTrack();
+      assertFresh();
       micTrackRef.current = mic;
       await client.publish(mic);
       setMicOn(true);
-    } catch (e) { console.warn('[call] mic unavailable:', e); setMicOn(false); }
+    } catch (e: any) {
+      if (e?.message === 'call-cancelled') throw e;
+      console.warn('[call] mic unavailable:', e); setMicOn(false);
+    }
 
     if (kind === 'video') {
       try {
         const cam = await AgoraRTC.createCameraVideoTrack({
           encoderConfig: { width: 640, height: 480, frameRate: 24 }, // smooth on mobile networks
         });
+        assertFresh();
         camTrackRef.current = cam;
         await client.publish(cam);
         setLocalVideoTrack(cam);
         setCamOn(true);
-      } catch (e) { console.warn('[call] camera unavailable:', e); setCamOn(false); }
+      } catch (e: any) {
+        if (e?.message === 'call-cancelled') throw e;
+        console.warn('[call] camera unavailable:', e); setCamOn(false);
+      }
     } else {
       setCamOn(false);
     }
@@ -205,7 +226,7 @@ export function AgoraCallProvider({ children }: { children: ReactNode }) {
   /* ── end active call ── */
   const endCall = useCallback(() => {
     const ac = activeCallRef.current;
-    if (ac) sendSignal(ac.otherUserId, { type: 'call_end', channel: ac.channel }).catch(() => {});
+    if (ac) sendSignal(ac.otherUserId, { type: 'call_end', channel: ac.channel, chatId: ac.chatId }).catch(() => {});
     setActiveCall(null);
     void teardownMedia();
   }, [teardownMedia]);
@@ -214,47 +235,58 @@ export function AgoraCallProvider({ children }: { children: ReactNode }) {
 
   /* ── start outgoing call ── */
   const startCall = useCallback(async (
-    type: 'audio' | 'video', channel: string, otherUserId: string, otherName: string,
+    type: 'audio' | 'video', chatId: string, otherUserId: string, otherName: string,
   ) => {
     assertWebRtcSupport();
-    if (activeCallRef.current) throw new Error('You are already in a call');
+    if (activeCallRef.current || joiningRef.current) throw new Error('You are already in a call');
+    joiningRef.current = true;
+    // Unique channel per call attempt so stale signals from an earlier call
+    // in the same conversation can never affect this one.
+    const channel = `nanivio-${chatId}-${Math.random().toString(36).slice(2, 10)}`;
     stopTone();
     stopRingtoneRef.current = createRingtone('outgoing');
     try {
-      await joinAndPublish(channel, type);
-      await sendSignal(otherUserId, { type: 'call_invite', channel, kind: type });
+      await joinAndPublish(channel, chatId, type);
+      await sendSignal(otherUserId, { type: 'call_invite', channel, chatId, kind: type });
       setCallKind(type);
-      setActiveCall({ channel, otherUserId, otherName });
+      setActiveCall({ channel, chatId, otherUserId, otherName });
       // No-answer timeout — hang up after 60s if nobody joins
       noAnswerTimerRef.current = setTimeout(() => {
         if (!clientRef.current) return;
-        sendSignal(otherUserId, { type: 'call_cancel', channel }).catch(() => {});
+        sendSignal(otherUserId, { type: 'call_cancel', channel, chatId }).catch(() => {});
         setActiveCall(null);
         void teardownMedia();
       }, 60_000);
-    } catch (e) {
-      await teardownMedia();
+    } catch (e: any) {
+      if (e?.message !== 'call-cancelled') await teardownMedia();
       throw e;
+    } finally {
+      joiningRef.current = false;
     }
   }, [joinAndPublish, teardownMedia]);
 
   /* ── accept incoming call ── */
   const acceptCall = useCallback(async () => {
     const inc = incomingCallRef.current;
-    if (!inc) return;
+    if (!inc || joiningRef.current || activeCallRef.current) return;
     assertWebRtcSupport();
+    joiningRef.current = true;
     stopTone();
     try {
-      await joinAndPublish(inc.channel, inc.kind);
-      await sendSignal(inc.fromUserId, { type: 'call_accept', channel: inc.channel });
+      await joinAndPublish(inc.channel, inc.chatId, inc.kind);
+      await sendSignal(inc.fromUserId, { type: 'call_accept', channel: inc.channel, chatId: inc.chatId });
       setCallKind(inc.kind);
-      setActiveCall({ channel: inc.channel, otherUserId: inc.fromUserId, otherName: inc.fromName });
+      setActiveCall({ channel: inc.channel, chatId: inc.chatId, otherUserId: inc.fromUserId, otherName: inc.fromName });
       setIncomingCall(null);
-    } catch (e) {
-      sendSignal(inc.fromUserId, { type: 'call_reject', channel: inc.channel }).catch(() => {});
-      setIncomingCall(null);
-      await teardownMedia();
+    } catch (e: any) {
+      if (e?.message !== 'call-cancelled') {
+        sendSignal(inc.fromUserId, { type: 'call_reject', channel: inc.channel, chatId: inc.chatId }).catch(() => {});
+        setIncomingCall(null);
+        await teardownMedia();
+      }
       throw e; // CallOverlay shows the toast
+    } finally {
+      joiningRef.current = false;
     }
   }, [joinAndPublish, teardownMedia]);
 
@@ -262,7 +294,7 @@ export function AgoraCallProvider({ children }: { children: ReactNode }) {
   const declineCall = useCallback(() => {
     const inc = incomingCallRef.current;
     stopTone();
-    if (inc) sendSignal(inc.fromUserId, { type: 'call_reject', channel: inc.channel }).catch(() => {});
+    if (inc) sendSignal(inc.fromUserId, { type: 'call_reject', channel: inc.channel, chatId: inc.chatId }).catch(() => {});
     setIncomingCall(null);
   }, []);
 
@@ -291,14 +323,15 @@ export function AgoraCallProvider({ children }: { children: ReactNode }) {
       switch (event.type) {
         case 'call_invite': {
           // Already busy → auto-reject so the caller isn't left hanging
-          if (activeCallRef.current || incomingCallRef.current) {
-            sendSignal(event.fromUserId, { type: 'call_reject', channel: event.channel }).catch(() => {});
+          if (activeCallRef.current || incomingCallRef.current || joiningRef.current) {
+            sendSignal(event.fromUserId, { type: 'call_reject', channel: event.callChannel, chatId: event.callChatId }).catch(() => {});
             return;
           }
           stopTone();
           stopRingtoneRef.current = createRingtone('incoming');
           setIncomingCall({
-            channel: event.channel,
+            channel: event.callChannel,
+            chatId: event.callChatId,
             kind: event.kind === 'audio' ? 'audio' : 'video',
             fromUserId: event.fromUserId,
             fromName: event.fromName ?? 'Someone',
@@ -307,31 +340,31 @@ export function AgoraCallProvider({ children }: { children: ReactNode }) {
         }
         case 'call_accept': {
           // Callee answered — stop the outgoing tone (media join stops it too)
-          if (activeCallRef.current?.channel === event.channel) stopTone();
+          if (activeCallRef.current?.channel === event.callChannel) stopTone();
           // Accepted on another of MY devices → clear my local banner
-          if (incomingCallRef.current?.channel === event.channel) { stopTone(); setIncomingCall(null); }
+          if (incomingCallRef.current?.channel === event.callChannel) { stopTone(); setIncomingCall(null); }
           break;
         }
         case 'call_reject': {
-          if (activeCallRef.current?.channel === event.channel) {
+          if (activeCallRef.current?.channel === event.callChannel) {
             setActiveCall(null);
             void teardownMedia();
           }
           break;
         }
         case 'call_cancel': {
-          if (incomingCallRef.current?.channel === event.channel) {
+          if (incomingCallRef.current?.channel === event.callChannel) {
             stopTone();
             setIncomingCall(null);
           }
           break;
         }
         case 'call_end': {
-          if (activeCallRef.current?.channel === event.channel) {
+          if (activeCallRef.current?.channel === event.callChannel) {
             setActiveCall(null);
             void teardownMedia();
           }
-          if (incomingCallRef.current?.channel === event.channel) {
+          if (incomingCallRef.current?.channel === event.callChannel) {
             stopTone();
             setIncomingCall(null);
           }
