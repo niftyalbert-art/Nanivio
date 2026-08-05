@@ -19,6 +19,7 @@ import AgoraRTC, {
 } from 'agora-rtc-sdk-ng';
 import { useStreamChat } from './stream-chat';
 import { createRingtone } from '@/lib/sounds';
+import { toast } from '@/hooks/use-toast';
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, '');
 const API  = `${BASE}/api`;
@@ -369,8 +370,10 @@ export function AgoraCallProvider({ children }: { children: ReactNode }) {
         case 'call_reject': {
           if (activeCallRef.current?.channel === event.callChannel
               || pendingChannelRef.current === event.callChannel) {
+            const name = activeCallRef.current?.otherName ?? event.fromName ?? 'User';
             setActiveCall(null);
             void teardownMedia();
+            toast({ title: 'User busy', description: `${name} is busy right now. Try again later.` });
           }
           break;
         }

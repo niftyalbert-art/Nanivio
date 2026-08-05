@@ -516,7 +516,7 @@ function ChatInner({
   setActiveChannelRef: React.MutableRefObject<((ch: StreamChannel | undefined) => void) | null>;
   contacts: ContactEntry[];
   contactPresence: Record<string, boolean>;
-  onAddContact: (user: SUser) => Promise<void>;
+  onAddContact: (user: SUser, opts?: { silent?: boolean }) => Promise<void>;
   onRemoveContact: (streamUserId: string) => Promise<void>;
   onRequestChat: (user: SUser) => void;
 }) {
@@ -623,6 +623,13 @@ function ChatInner({
       setPendingInvites(prev => prev.filter(c => c.cid !== ch.cid));
       setActiveChannel(ch as any);
       setTick(t => t + 1);
+      // Save the inviter as a contact — accepting once connects the two users
+      // permanently, so no future invitation round-trips are needed.
+      const inviter = (Object.values(ch.state?.members ?? {}) as any[])
+        .find(m => m.user_id !== streamData.userId && !m.invited);
+      if (inviter?.user_id && !contacts.some(c => c.streamUserId === inviter.user_id)) {
+        void onAddContact({ id: inviter.user_id, name: inviter.user?.name ?? inviter.user_id } as SUser, { silent: true });
+      }
     } catch { /* ignore */ }
   };
 
@@ -862,15 +869,15 @@ function ChatInner({
                       const busy   = contactPresence[`busy_${c.streamUserId}`] ?? false;
                       const dotCls = busy ? 'bg-amber-400' : online ? 'bg-emerald-400' : 'bg-zinc-500';
                       const statusLabel = busy ? 'Busy' : online ? 'Online' : 'Offline';
-                      const isExpanded = expandedContactId === c.streamUserId;
+                      const openChat = () => onRequestChat({ id: c.streamUserId, name: c.name });
 
                       return (
                         <div key={c.streamUserId}>
                           <div
                             role="button"
                             tabIndex={0}
-                            onClick={() => setExpandedContactId(isExpanded ? null : c.streamUserId)}
-                            onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setExpandedContactId(isExpanded ? null : c.streamUserId); } }}
+                            onClick={openChat}
+                            onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openChat(); } }}
                             className="w-full flex items-center gap-3 px-3.5 py-2.5 hover:bg-white/[0.04] active:bg-white/[0.06] transition-colors text-left cursor-pointer"
                           >
                             <div className="relative shrink-0">
@@ -896,29 +903,6 @@ function ChatInner({
                               <X className="w-3 h-3" />
                             </button>
                           </div>
-
-                          {/* expanded: "Request for Chat" */}
-                          {isExpanded && (
-                            <div className="px-3.5 pb-3 pt-1 flex items-center gap-2">
-                              <Button
-                                size="sm"
-                                className="h-8 text-xs gap-1.5 rounded-xl font-semibold flex-1 transition-all active:scale-[0.97]"
-                                style={{
-                                  background: 'linear-gradient(135deg,rgba(45,212,191,0.18),rgba(20,184,166,0.10))',
-                                  border: '1px solid rgba(45,212,191,0.25)',
-                                  color: '#2dd4bf',
-                                  boxShadow: '0 2px 8px rgba(45,212,191,0.12)',
-                                }}
-                                onClick={() => {
-                                  setExpandedContactId(null);
-                                  onRequestChat({ id: c.streamUserId, name: c.name });
-                                }}
-                              >
-                                <MessageSquare className="w-3.5 h-3.5" />
-                                Request for Chat
-                              </Button>
-                            </div>
-                          )}
                         </div>
                       );
                     })}
@@ -1302,8 +1286,8 @@ function ChatConnected() {
     return () => chatClient.off('user.presence.changed', handler);
   }, [chatClient]);
 
-  /* add a user to the contacts list */
-  const addContact = useCallback(async (user: SUser) => {
+  /* add a user to the contacts list (silent: no toast — used for auto-saving) */
+  const addContact = useCallback(async (user: SUser, opts?: { silent?: boolean }) => {
     const token = localStorage.getItem('nanivio_token');
     try {
       const r = await fetch(`${API}/contacts`, {
@@ -1315,18 +1299,18 @@ function ChatConnected() {
       if (r.ok) {
         const newEntry: ContactEntry = { id: d.contact?.id ?? Date.now(), streamUserId: user.id, name: user.name ?? user.id };
         setContacts(prev => prev.some(c => c.streamUserId === user.id) ? prev : [...prev, newEntry]);
-        toast({ title: `${user.name ?? 'User'} added to contacts` });
+        if (!opts?.silent) toast({ title: `${user.name ?? 'User'} added to contacts` });
         // Fetch their presence
         if (chatClient) {
           chatClient.queryUsers({ id: { $in: [user.id] } }, {}, { presence: true })
             .then(res => { const u = res.users[0]; if (u) setContactPresence(p => ({ ...p, [u.id]: (u as any).online ?? false })); })
             .catch(() => {});
         }
-      } else {
+      } else if (!opts?.silent) {
         toast({ title: d.error ?? 'Could not add contact', variant: 'destructive' });
       }
     } catch {
-      toast({ title: 'Could not add contact', variant: 'destructive' });
+      if (!opts?.silent) toast({ title: 'Could not add contact', variant: 'destructive' });
     }
   }, [chatClient, toast]);
 
@@ -1342,13 +1326,41 @@ function ChatConnected() {
     } catch { /* ignore */ }
   }, []);
 
-  /* start a 1-to-1 chat directly with a contact (from "Request for Chat" button) */
+  /* open a 1-to-1 chat in one tap — reuses an existing conversation when there
+     is one; saved contacts never go through the invitation round-trip again */
+  const openDirectChat = useCallback(async (user: SUser) => {
+    if (!chatClient) return;
+    try {
+      const raw = await chatClient.queryChannels(
+        { type: 'messaging', members: { $in: [streamData.userId] } },
+        [{ last_message_at: -1 }],
+        { limit: 50, state: true },
+      );
+      const list: StreamChannel[] = Array.isArray(raw) ? raw : (raw as any)?.channels ?? [];
+      const match = list.find(ch => {
+        const ids = Object.keys(ch.state.members ?? {});
+        return ids.length === 2 && ids.includes(user.id) && ids.includes(streamData.userId);
+      });
+      if (match) { setActiveChannelRef.current?.(match); return; }
+
+      const isContact = contacts.some(c => c.streamUserId === user.id);
+      const channelId = `ch-${streamData.userId}-${Date.now()}`;
+      const ch = chatClient.channel('messaging', channelId, {
+        members: isContact ? [streamData.userId, user.id] : [streamData.userId],
+      });
+      await ch.create();
+      if (!isContact) await ch.inviteMembers([user.id]);
+      await ch.watch();
+      setActiveChannelRef.current?.(ch);
+    } catch (err: any) {
+      toast({ title: 'Could not open chat', description: err?.message ?? 'Please try again', variant: 'destructive' });
+    }
+  }, [chatClient, contacts, streamData.userId, toast]);
+
+  /* clicking a saved contact opens the conversation immediately */
   const requestChatWith = useCallback((user: SUser) => {
-    setSelectedUsers([user]);
-    setIsGroup(false);
-    setGroupName('');
-    setShowNewChat(true);
-  }, []);
+    void openDirectChat(user);
+  }, [openDirectChat]);
 
   /* search users */
   useEffect(() => {
@@ -1401,6 +1413,10 @@ function ChatConnected() {
       if (match) {
         closeNewChat();
         setActiveChannelRef.current?.(match);
+        // Connected once — keep them as contacts so no future invitation is needed
+        if (!isGroup) selectedUsers
+          .filter(u => !contacts.some(c => c.streamUserId === u.id))
+          .forEach(u => void addContact(u, { silent: true }));
         return;
       }
 
@@ -1422,6 +1438,10 @@ function ChatConnected() {
       await ch.watch();
       closeNewChat();
       setActiveChannelRef.current?.(ch);
+      // Auto-save chat partners as contacts — once connected, always connected
+      if (!isGroup) selectedUsers
+        .filter(u => !contacts.some(c => c.streamUserId === u.id))
+        .forEach(u => void addContact(u, { silent: true }));
     } catch (err: any) {
       console.error('startChat error:', err);
       toast({
