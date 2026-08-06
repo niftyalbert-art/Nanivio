@@ -13,7 +13,7 @@
  *     send ability is locked for 1 hour.
  */
 
-import { db, fraudEventsTable, transactionsTable, usersTable, settingsTable, p2pTransfersTable } from "@workspace/db";
+import { db, fraudEventsTable, transactionsTable, usersTable, settingsTable, p2pTransfersTable, escrowsTable } from "@workspace/db";
 import { eq, and, gte, sql } from "drizzle-orm";
 import { logger } from "./logger";
 
@@ -86,7 +86,19 @@ export async function getDailyVolumeUsd(userId: number, executor: { select: type
         sql`${p2pTransfersTable.status} != 'failed'`,
       ),
     );
-  return parseFloat(row?.total ?? "0") + parseFloat(p2pRow?.total ?? "0");
+  // ALL escrows funded in the window count as outbound volume, regardless of
+  // later status. Refunds must NOT erase historical send volume — otherwise
+  // repeated fund→refund cycles would bypass the daily cap.
+  const [escrowRow] = await executor
+    .select({ total: sql<string>`COALESCE(SUM(${escrowsTable.amountUsd}), 0)` })
+    .from(escrowsTable)
+    .where(
+      and(
+        eq(escrowsTable.buyerUserId, userId),
+        gte(escrowsTable.createdAt, since),
+      ),
+    );
+  return parseFloat(row?.total ?? "0") + parseFloat(p2pRow?.total ?? "0") + parseFloat(escrowRow?.total ?? "0");
 }
 
 const LOCKOUT_WINDOW_MS = 10 * 60 * 1000; // 10 minutes

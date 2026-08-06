@@ -16,6 +16,7 @@ const DEFAULT_SETTINGS: Record<string, string> = {
   fraud_tx_cap_usd: "10000",      // max single transfer (USD equivalent)
   fraud_daily_cap_usd: "50000",   // max rolling 24h send volume (USD equivalent)
   fraud_lockout_threshold: "3",   // failed attempts before 1-hour lockout
+  escrow_fee_percent: "1.5",      // fee taken from the held amount when escrow is released
 };
 
 async function getSetting(key: string): Promise<string> {

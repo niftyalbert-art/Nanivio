@@ -158,6 +158,118 @@ function ReceiptLightbox({ src, onClose }: { src: string; onClose: () => void })
 }
 
 // ── Deposits Panel ──────────────────────────────────────────────────────────
+function EscrowsPanel() {
+  const { toast } = useToast();
+  const qc = useQueryClient();
+  const [filter, setFilter] = useState<string>('disputed');
+  const { data: escrows, isLoading } = useQuery({
+    queryKey: ['admin-escrows', filter],
+    queryFn: () => apiFetch(`/admin/escrows${filter === 'all' ? '' : `?status=${filter}`}`),
+    refetchInterval: 20000,
+  });
+  const [note, setNote] = useState<Record<number, string>>({});
+
+  const resolve = useMutation({
+    mutationFn: ({ id, action, adminNote }: { id: number; action: 'release' | 'refund'; adminNote?: string }) =>
+      apiFetch(`/admin/escrows/${id}/resolve`, { method: 'POST', body: JSON.stringify({ action, note: adminNote }) }),
+    onSuccess: (_d, v) => {
+      qc.invalidateQueries({ queryKey: ['admin-escrows'] });
+      toast({ title: v.action === 'release' ? 'Released to seller ✓' : 'Refunded to buyer ✓' });
+    },
+    onError: (e: any) => toast({ title: 'Error', description: e.message, variant: 'destructive' }),
+  });
+
+  const statusCls: Record<string, string> = {
+    funded: 'bg-violet-500/15 text-violet-500',
+    released: 'bg-emerald-500/15 text-emerald-500',
+    refunded: 'bg-sky-500/15 text-sky-500',
+    disputed: 'bg-red-500/15 text-red-500',
+  };
+
+  if (isLoading) return <div className="space-y-3">{[...Array(3)].map((_, i) => <Skeleton key={i} className="h-40" />)}</div>;
+  const rows = (escrows as any[] | undefined) ?? [];
+
+  return (
+    <div className="space-y-4">
+      <div className="flex gap-1.5 flex-wrap">
+        {['disputed', 'funded', 'released', 'refunded', 'all'].map(s => (
+          <Button key={s} size="sm" variant={filter === s ? 'default' : 'outline'} className="h-7 text-xs capitalize" onClick={() => setFilter(s)}>
+            {s}
+          </Button>
+        ))}
+      </div>
+
+      {rows.length === 0 && (
+        <Card><CardContent className="py-10 text-center">
+          <ShieldCheck className="w-8 h-8 mx-auto mb-2 text-emerald-500 opacity-50" />
+          <p className="text-sm text-muted-foreground">No {filter === 'all' ? '' : filter + ' '}escrows</p>
+        </CardContent></Card>
+      )}
+
+      {rows.map((e: any) => (
+        <Card key={e.id} className={e.status === 'disputed' ? 'border-red-500/40' : ''} data-testid={`escrow-card-${e.id}`}>
+          <CardContent className="p-4 space-y-3">
+            <div className="flex items-start justify-between gap-2">
+              <div className="min-w-0">
+                <p className="font-bold text-sm">Escrow #{e.id} · <span className="font-mono">{parseFloat(e.amount).toLocaleString()} {e.currencyCode}</span></p>
+                <p className="text-[11px] text-muted-foreground truncate">
+                  Buyer: {e.buyer?.name} · Seller: {e.seller?.name}
+                </p>
+              </div>
+              <div className="flex flex-col items-end gap-1 shrink-0">
+                <Badge className={statusCls[e.status] ?? ''}>{e.status}</Badge>
+                <span className="text-[10px] text-muted-foreground">{formatDistanceToNow(new Date(e.createdAt))} ago</span>
+              </div>
+            </div>
+
+            {e.description && <p className="text-xs italic text-foreground/80">“{e.description}”</p>}
+            {e.deadline && <p className="text-[11px] text-muted-foreground">Deadline: {new Date(e.deadline).toLocaleString()}</p>}
+            {e.status === 'disputed' && (
+              <div className="p-2.5 rounded-lg bg-red-500/10 border border-red-500/20 text-xs">
+                <p className="font-bold text-red-500 mb-0.5">Disputed by {e.disputedBy === e.buyer?.id ? `buyer (${e.buyer?.name})` : `seller (${e.seller?.name})`}</p>
+                {e.disputeReason && <p className="text-foreground/80">{e.disputeReason}</p>}
+              </div>
+            )}
+
+            {/* Audit trail */}
+            {e.events?.length > 0 && (
+              <div className="space-y-1">
+                <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Audit trail</p>
+                {e.events.map((ev: any) => (
+                  <p key={ev.id} className="text-[11px] text-muted-foreground">
+                    <span className="font-mono">{new Date(ev.createdAt).toLocaleString()}</span> — <span className="font-semibold capitalize">{ev.actorType}</span> {ev.action}{ev.detail ? ` · ${ev.detail}` : ''}
+                  </p>
+                ))}
+              </div>
+            )}
+
+            {e.status === 'disputed' && (
+              <div className="space-y-2 pt-1">
+                <Input placeholder="Resolution note (optional)" className="h-8 text-xs"
+                  value={note[e.id] ?? ''} onChange={ev => setNote(n => ({ ...n, [e.id]: ev.target.value }))} />
+                <div className="flex gap-2">
+                  <Button size="sm" className="flex-1 h-8 text-xs font-bold bg-emerald-500 hover:bg-emerald-600 text-white"
+                    disabled={resolve.isPending}
+                    onClick={() => window.confirm(`Release ${parseFloat(e.amount).toLocaleString()} ${e.currencyCode} (minus fee) to seller ${e.seller?.name}?`) && resolve.mutate({ id: e.id, action: 'release', adminNote: note[e.id] })}
+                    data-testid={`escrow-resolve-release-${e.id}`}>
+                    Release to seller
+                  </Button>
+                  <Button size="sm" variant="outline" className="flex-1 h-8 text-xs font-bold"
+                    disabled={resolve.isPending}
+                    onClick={() => window.confirm(`Refund ${parseFloat(e.amount).toLocaleString()} ${e.currencyCode} in full to buyer ${e.buyer?.name}?`) && resolve.mutate({ id: e.id, action: 'refund', adminNote: note[e.id] })}
+                    data-testid={`escrow-resolve-refund-${e.id}`}>
+                    Refund buyer
+                  </Button>
+                </div>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      ))}
+    </div>
+  );
+}
+
 function DepositsPanel() {
   const { toast } = useToast();
   const qc = useQueryClient();
@@ -2805,6 +2917,7 @@ export default function Admin() {
           <TabsTrigger value="methods" className="text-[11px] shrink-0 flex-1 min-w-[40px]">Pay</TabsTrigger>
           <TabsTrigger value="rates" className="text-[11px] shrink-0 flex-1 min-w-[40px]">Rates</TabsTrigger>
           <TabsTrigger value="crypto" className="text-[11px] shrink-0 flex-1 min-w-[40px]"><Bitcoin className="w-3 h-3" /></TabsTrigger>
+          <TabsTrigger value="escrows" className="text-[11px] shrink-0 flex-1 min-w-[40px]" data-testid="admin-tab-escrows"><Lock className="w-3 h-3" /></TabsTrigger>
           <TabsTrigger value="wallpapers" className="text-[11px] shrink-0 flex-1 min-w-[40px]"><Paintbrush className="w-3 h-3" /></TabsTrigger>
           <TabsTrigger value="security" className="text-[11px] shrink-0 flex-1 min-w-[40px]"><Shield className="w-3 h-3" /></TabsTrigger>
           <TabsTrigger value="settings" className="text-[11px] shrink-0 flex-1 min-w-[36px]"><Settings2 className="w-3 h-3" /></TabsTrigger>
@@ -2819,6 +2932,7 @@ export default function Admin() {
         <TabsContent value="methods"     className="mt-4"><PaymentMethodsPanel /></TabsContent>
         <TabsContent value="rates"       className="mt-4"><RatesPanel /></TabsContent>
         <TabsContent value="crypto"       className="mt-4"><CryptoPanel /></TabsContent>
+        <TabsContent value="escrows"     className="mt-4"><EscrowsPanel /></TabsContent>
         <TabsContent value="wallpapers"  className="mt-4"><WallpapersPanel /></TabsContent>
         <TabsContent value="security"    className="mt-4"><SecurityPanel /></TabsContent>
         <TabsContent value="settings"    className="mt-4"><SettingsPanel /></TabsContent>

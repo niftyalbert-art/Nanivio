@@ -22,6 +22,7 @@ import wallpapersRouter from "./wallpapers";
 import pushRouter from "./push";
 import agoraRouter from "./agora";
 import p2pRouter from "./p2p";
+import escrowRouter from "./escrow";
 
 const router: IRouter = Router();
 
@@ -48,5 +49,6 @@ router.use(wallpapersRouter);
 router.use(pushRouter);
 router.use(agoraRouter);
 router.use(p2pRouter);
+router.use(escrowRouter);
 
 export default router;

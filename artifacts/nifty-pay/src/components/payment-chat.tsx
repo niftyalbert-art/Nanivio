@@ -13,7 +13,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { cn } from '@/lib/utils';
-import { X, ShieldCheck, ArrowUpRight, HandCoins, CheckCircle2, XCircle, Clock } from 'lucide-react';
+import { X, ShieldCheck, ArrowUpRight, HandCoins, CheckCircle2, XCircle, Clock, Lock, AlertTriangle } from 'lucide-react';
 
 const API = `${import.meta.env.BASE_URL}api`;
 
@@ -142,14 +142,124 @@ function RequestBubble({ att, myStreamId }: { att: any; myStreamId: string }) {
   );
 }
 
+/* ────────────────────────── escrow bubble ────────────────────────── */
+
+function EscrowStatusPill({ status }: { status: string }) {
+  const map: Record<string, { label: string; cls: string; Icon: any }> = {
+    funded:   { label: 'Funds held', cls: 'bg-violet-500/15 text-violet-400', Icon: Lock },
+    released: { label: 'Released', cls: 'bg-emerald-500/15 text-emerald-400', Icon: CheckCircle2 },
+    refunded: { label: 'Refunded', cls: 'bg-sky-500/15 text-sky-400', Icon: XCircle },
+    disputed: { label: 'Disputed', cls: 'bg-red-500/15 text-red-400', Icon: AlertTriangle },
+  };
+  const s = map[status] ?? map.funded;
+  return (
+    <span className={cn('inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold', s.cls)}>
+      <s.Icon className="w-3 h-3" /> {s.label}
+    </span>
+  );
+}
+
+function EscrowBubble({ att, myStreamId }: { att: any; myStreamId: string }) {
+  const { toast } = useToast();
+  const queryClient = useQueryClient();
+  const [busy, setBusy] = useState<string | null>(null);
+  // Server updates the attachment via partialUpdateMessage, but reflect actions
+  // instantly for the acting user in case the live update lags.
+  const [localStatus, setLocalStatus] = useState<string | null>(null);
+  const status = localStatus ?? att.status ?? 'funded';
+  const iAmBuyer = att.buyer_user_id === myStreamId;
+  const iAmSeller = att.seller_user_id === myStreamId;
+  const deadlinePassed = !!att.deadline_passed || (att.deadline && new Date(att.deadline).getTime() < Date.now());
+
+  const act = async (action: 'release' | 'refund' | 'dispute') => {
+    const confirms: Record<string, string> = {
+      release: `Release ${fmt(att.amount)} ${att.currency} to ${att.seller_name ?? 'the seller'}? A small escrow fee applies. This cannot be undone.`,
+      refund: `Refund ${fmt(att.amount)} ${att.currency} in full to ${att.buyer_name ?? 'the buyer'}? This cannot be undone.`,
+      dispute: 'Open a dispute? Funds will stay frozen until Nanivio support reviews it.',
+    };
+    if (!window.confirm(confirms[action])) return;
+    setBusy(action);
+    try {
+      const r = await fetch(`${API}/escrows/${att.escrow_id}/${action}`, {
+        method: 'POST', headers: authHeaders(),
+        body: action === 'dispute' ? JSON.stringify({}) : undefined,
+      });
+      const d = await r.json().catch(() => ({} as any));
+      if (!r.ok) throw new Error(d.message ?? d.error ?? 'Action failed');
+      setLocalStatus(action === 'release' ? 'released' : action === 'refund' ? 'refunded' : 'disputed');
+      queryClient.invalidateQueries({ queryKey: getGetWalletsQueryKey() });
+      queryClient.invalidateQueries({ queryKey: getGetDashboardSummaryQueryKey() });
+      toast({
+        title: action === 'release' ? 'Funds released ✅' : action === 'refund' ? 'Buyer refunded' : 'Dispute opened',
+        description: action === 'dispute'
+          ? 'Nanivio support will review this escrow.'
+          : action === 'release'
+            ? `${fmt(Number(d.netAmount ?? att.amount))} ${att.currency} sent to ${att.seller_name ?? 'seller'}.`
+            : `${fmt(att.amount)} ${att.currency} returned to ${att.buyer_name ?? 'buyer'}.`,
+      });
+    } catch (e: any) {
+      toast({ title: 'Escrow action failed', description: e.message, variant: 'destructive' });
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  return (
+    <div className="w-64 max-w-full rounded-2xl border border-violet-500/25 bg-gradient-to-br from-violet-500/15 to-fuchsia-600/10 p-3.5 space-y-2" data-testid="escrow-bubble">
+      <div className="flex items-center justify-between gap-2">
+        <span className="flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider text-violet-400">
+          <Lock className="w-3.5 h-3.5" /> Escrow
+        </span>
+        <EscrowStatusPill status={status} />
+      </div>
+      <p className="text-2xl font-extrabold font-mono leading-none">
+        {fmt(att.amount)} <span className="text-sm font-bold">{att.currency}</span>
+      </p>
+      {att.description && <p className="text-xs text-foreground/80 italic">“{att.description}”</p>}
+      <p className="text-[10px] text-muted-foreground">
+        {iAmBuyer ? `Held for ${att.seller_name ?? 'seller'}` : `From ${att.buyer_name ?? 'buyer'} — held by Nanivio`}
+        {att.deadline && <> · due {new Date(att.deadline).toLocaleDateString()}</>}
+      </p>
+      {status === 'funded' && deadlinePassed && (
+        <p className="text-[10px] font-bold text-amber-400 flex items-center gap-1"><Clock className="w-3 h-3" /> Deadline passed — funds still held</p>
+      )}
+      {status === 'funded' && (iAmBuyer || iAmSeller) && (
+        <div className="flex gap-2 pt-1">
+          {iAmBuyer && (
+            <Button size="sm" className="flex-1 h-8 text-xs font-bold bg-emerald-500 hover:bg-emerald-600 text-white"
+              disabled={!!busy} onClick={() => act('release')} data-testid="escrow-release-btn">
+              {busy === 'release' ? '…' : 'Release'}
+            </Button>
+          )}
+          {iAmSeller && (
+            <Button size="sm" className="flex-1 h-8 text-xs font-bold bg-sky-500 hover:bg-sky-600 text-white"
+              disabled={!!busy} onClick={() => act('refund')} data-testid="escrow-refund-btn">
+              {busy === 'refund' ? '…' : 'Refund'}
+            </Button>
+          )}
+          <Button size="sm" variant="outline" className="flex-1 h-8 text-xs font-bold"
+            disabled={!!busy} onClick={() => act('dispute')} data-testid="escrow-dispute-btn">
+            {busy === 'dispute' ? '…' : 'Dispute'}
+          </Button>
+        </div>
+      )}
+      {status === 'disputed' && (
+        <p className="text-[10px] text-muted-foreground">Under review by Nanivio support. Funds are frozen.</p>
+      )}
+    </div>
+  );
+}
+
 /** Factory: builds an Attachment override bound to the current user's stream id. */
 export function makePaymentAttachment(myStreamId: string) {
   return function PaymentAttachment(props: AttachmentProps) {
     const atts = props.attachments ?? [];
     const payment = atts.find((a: any) => a.type === 'nanivio_payment') as any;
     const request = atts.find((a: any) => a.type === 'nanivio_payment_request') as any;
+    const escrow = atts.find((a: any) => a.type === 'nanivio_escrow') as any;
     if (payment) return <PaymentBubble att={payment} myStreamId={myStreamId} />;
     if (request) return <RequestBubble att={request} myStreamId={myStreamId} />;
+    if (escrow) return <EscrowBubble att={escrow} myStreamId={myStreamId} />;
     return <DefaultAttachment {...props} />;
   };
 }
@@ -171,7 +281,8 @@ export function PaymentSheet({
   const queryClient = useQueryClient();
   const { data: wallets } = useGetWallets();
 
-  const [mode, setMode] = useState<'pay' | 'request'>('pay');
+  const [mode, setMode] = useState<'pay' | 'request' | 'escrow'>('pay');
+  const [deadline, setDeadline] = useState('');
   const [walletId, setWalletId] = useState('');
   const [amount, setAmount] = useState('');
   const [note, setNote] = useState('');
@@ -190,6 +301,7 @@ export function PaymentSheet({
     if (!open) return;
     setMode('pay');
     setNote('');
+    setDeadline('');
     setPin('');
     setError('');
     setConvertedAmount(null);
@@ -235,7 +347,30 @@ export function PaymentSheet({
     if (!selectedWallet || numAmount <= 0) { setError('Enter a valid amount.'); return; }
     setBusy(true);
     try {
-      if (effectiveMode === 'pay') {
+      if (effectiveMode === 'escrow') {
+        if (!/^\d{4}$/.test(pin)) { setError('Enter your 4-digit PIN.'); setBusy(false); return; }
+        if (!note.trim()) { setError('Describe what this escrow is for.'); setBusy(false); return; }
+        const r = await fetch(`${API}/escrows`, {
+          method: 'POST', headers: authHeaders(),
+          body: JSON.stringify({
+            toUserId: Number(otherUserId),
+            fromWalletId: selectedWallet.id,
+            amount: numAmount,
+            description: note.trim(),
+            ...(deadline ? { deadline: new Date(`${deadline}T23:59:59`).toISOString() } : {}),
+            pin,
+            chatId,
+          }),
+        });
+        const d = await r.json().catch(() => ({} as any));
+        if (!r.ok) throw new Error(d.message ?? d.error ?? 'Escrow failed');
+        queryClient.invalidateQueries({ queryKey: getGetWalletsQueryKey() });
+        queryClient.invalidateQueries({ queryKey: getGetDashboardSummaryQueryKey() });
+        toast({
+          title: 'Escrow funded 🛡️',
+          description: `${fmt(Number(d.amount ?? numAmount))} ${d.currency ?? selectedWallet.currencyCode} is now safely held for ${otherName}. Release it when you receive what you agreed on.`,
+        });
+      } else if (effectiveMode === 'pay') {
         if (!/^\d{4}$/.test(pin)) { setError('Enter your 4-digit PIN.'); setBusy(false); return; }
         const r = await fetch(`${API}/p2p/transfers`, {
           method: 'POST', headers: authHeaders(),
@@ -298,18 +433,18 @@ export function PaymentSheet({
         </div>
 
         {!isPayingRequest && (
-          <div className="grid grid-cols-2 gap-2 p-1 rounded-xl bg-white/[0.04]">
-            {(['pay', 'request'] as const).map(m => (
+          <div className="grid grid-cols-3 gap-2 p-1 rounded-xl bg-white/[0.04]">
+            {(['pay', 'request', 'escrow'] as const).map(m => (
               <button
                 key={m}
                 onClick={() => { setMode(m); setError(''); }}
                 data-testid={`mode-${m}`}
                 className={cn(
-                  'h-9 rounded-lg text-sm font-bold transition-colors',
+                  'h-9 rounded-lg text-xs font-bold transition-colors',
                   mode === m ? 'bg-primary text-primary-foreground shadow' : 'text-muted-foreground hover:text-foreground',
                 )}
               >
-                {m === 'pay' ? '💸 Send' : '🙏 Request'}
+                {m === 'pay' ? '💸 Send' : m === 'request' ? '🙏 Request' : '🛡️ Escrow'}
               </button>
             ))}
           </div>
@@ -355,11 +490,26 @@ export function PaymentSheet({
         </div>
 
         <div className="space-y-2">
-          <Label className="text-xs">Note (optional)</Label>
-          <Input value={note} onChange={e => setNote(e.target.value)} maxLength={200} placeholder="What's it for?" data-testid="note-input" />
+          <Label className="text-xs">{effectiveMode === 'escrow' ? 'What are you buying?' : 'Note (optional)'}</Label>
+          <Input value={note} onChange={e => setNote(e.target.value)} maxLength={200}
+            placeholder={effectiveMode === 'escrow' ? 'e.g. iPhone 15, delivered to Dubai' : "What's it for?"} data-testid="note-input" />
         </div>
 
-        {effectiveMode === 'pay' && (
+        {effectiveMode === 'escrow' && (
+          <>
+            <div className="p-3 rounded-xl bg-violet-500/10 border border-violet-500/20 text-[11px] text-foreground/80">
+              🛡️ Money leaves your wallet now and is held safely by Nanivio. Release it to {otherName} when you receive what you agreed on — or they can refund you. A small escrow fee applies on release.
+            </div>
+            <div className="space-y-2">
+              <Label className="text-xs">Delivery deadline (optional)</Label>
+              <Input type="date" value={deadline} min={new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString().slice(0, 10)}
+                onChange={e => setDeadline(e.target.value)} data-testid="deadline-input" />
+              <p className="text-[11px] text-muted-foreground">You'll both be reminded if the deadline passes without action.</p>
+            </div>
+          </>
+        )}
+
+        {(effectiveMode === 'pay' || effectiveMode === 'escrow') && (
           <div className="space-y-2">
             <Label className="text-xs flex items-center gap-1"><ShieldCheck className="w-3.5 h-3.5 text-primary" /> 4-digit PIN</Label>
             <Input
@@ -376,7 +526,7 @@ export function PaymentSheet({
 
         <Button
           className="w-full h-11 font-bold"
-          disabled={busy || !selectedWallet || numAmount <= 0 || (effectiveMode === 'pay' && pin.length !== 4)}
+          disabled={busy || !selectedWallet || numAmount <= 0 || (effectiveMode !== 'request' && pin.length !== 4) || (effectiveMode === 'escrow' && !note.trim())}
           onClick={submit}
           data-testid="payment-submit"
         >
@@ -384,7 +534,9 @@ export function PaymentSheet({
             ? 'Processing…'
             : effectiveMode === 'pay'
               ? `Send ${numAmount > 0 ? fmt(numAmount) : ''} ${selectedWallet?.currencyCode ?? ''}`
-              : `Request ${numAmount > 0 ? fmt(numAmount) : ''} ${selectedWallet?.currencyCode ?? ''}`}
+              : effectiveMode === 'escrow'
+                ? `Hold ${numAmount > 0 ? fmt(numAmount) : ''} ${selectedWallet?.currencyCode ?? ''} in escrow`
+                : `Request ${numAmount > 0 ? fmt(numAmount) : ''} ${selectedWallet?.currencyCode ?? ''}`}
         </Button>
       </div>
     </div>
