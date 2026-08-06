@@ -13,3 +13,5 @@ export * from "./crypto_payments";
 export * from "./crypto_deposits";
 export * from "./wallpapers";
 export * from "./push_subscriptions";
+export * from "./p2p_transfers";
+export * from "./money_requests";

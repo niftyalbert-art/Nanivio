@@ -1,7 +1,8 @@
 import { Router, type IRouter } from "express";
-import { eq, and, sql, desc } from "drizzle-orm";
+import { eq, and, sql, desc, gte } from "drizzle-orm";
 import bcrypt from "bcryptjs";
-import { db, walletsTable, transactionsTable, exchangeRatesTable, settingsTable, usersTable } from "@workspace/db";
+import { db, walletsTable, transactionsTable, exchangeRatesTable, settingsTable, usersTable, p2pTransfersTable } from "@workspace/db";
+import { or } from "drizzle-orm";
 import {
   GetTransactionsQueryParams,
   GetTransactionsResponse,
@@ -16,6 +17,43 @@ import { encryptNullable, decryptNullable } from "../lib/encryption";
 import { logFraudEvent, loadFraudSettings, getDailyVolumeUsd, recordFailedAttempt } from "../lib/fraud";
 
 const router: IRouter = Router();
+
+// P2P transfers are merged into the transactions list with offset ids so
+// /transactions/:id links keep working without colliding with remittance ids.
+// Offset chosen far above any realistic serial id (int4 max ≈ 2.1e9) to avoid collisions.
+const P2P_ID_OFFSET = 1_000_000_000;
+
+/** Map a p2p_transfers row (+user names) into the Transaction response shape. */
+function p2pToTransactionShape(row: typeof p2pTransfersTable.$inferSelect, userId: number, names: Map<number, string>) {
+  const sent = row.fromUserId === userId;
+  const counterpartyName = names.get(sent ? row.toUserId : row.fromUserId) ?? "Nanivio user";
+  return {
+    id: P2P_ID_OFFSET + row.id,
+    fromCurrency: row.fromCurrency,
+    toCurrency: row.toCurrency,
+    fromAmount: parseFloat(row.fromAmount),
+    toAmount: parseFloat(row.toAmount),
+    exchangeRate: parseFloat(row.exchangeRate),
+    fee: sent ? parseFloat(row.fee) : 0,
+    status: row.status === "failed" ? "failed" : "completed",
+    recipientName: counterpartyName,
+    recipientCountry: sent ? "Sent in chat · Nanivio" : "Received in chat · Nanivio",
+    recipientFlag: "💬",
+    note: row.note ? decryptNullable(row.note) : null,
+    createdAt: row.createdAt instanceof Date ? row.createdAt.toISOString() : String(row.createdAt),
+    direction: sent ? "sent" : "received",
+    counterpartyName,
+  };
+}
+
+async function getUserNames(ids: number[]): Promise<Map<number, string>> {
+  const names = new Map<number, string>();
+  if (ids.length === 0) return names;
+  const rows = await db.select({ id: usersTable.id, name: usersTable.name }).from(usersTable)
+    .where(or(...ids.map(i => eq(usersTable.id, i))));
+  for (const r of rows) names.set(r.id, r.name);
+  return names;
+}
 
 const FLAGS: Record<string, string> = {
   AED: "🇦🇪", GHS: "🇬🇭", PHP: "🇵🇭", INR: "🇮🇳", NGN: "🇳🇬",
@@ -99,6 +137,18 @@ router.get("/transactions", requireAuth, async (req, res): Promise<void> => {
 
   const rows = await query.limit(limit ?? 50);
 
+  // Merge in P2P transfers (sent + received)
+  let p2pRows = await db.select().from(p2pTransfersTable)
+    .where(or(eq(p2pTransfersTable.fromUserId, userId), eq(p2pTransfersTable.toUserId, userId)))
+    .orderBy(desc(p2pTransfersTable.createdAt))
+    .limit(limit ?? 50);
+  if (status) {
+    p2pRows = p2pRows.filter(r => (status === "failed" ? r.status === "failed" : status === "completed" ? r.status !== "failed" : false));
+  }
+  const nameIds = [...new Set(p2pRows.flatMap(r => [r.fromUserId, r.toUserId]))];
+  const names = await getUserNames(nameIds);
+  const p2pParsed = p2pRows.map(r => p2pToTransactionShape(r, userId, names));
+
   const parsed = rows.map((t) => ({
     ...t,
     fromAmount: parseFloat(t.fromAmount),
@@ -110,7 +160,11 @@ router.get("/transactions", requireAuth, async (req, res): Promise<void> => {
     createdAt: t.createdAt instanceof Date ? t.createdAt.toISOString() : String(t.createdAt),
   }));
 
-  res.json(GetTransactionsResponse.parse(parsed));
+  const merged = [...parsed, ...p2pParsed]
+    .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+    .slice(0, limit ?? 50);
+
+  res.json(GetTransactionsResponse.parse(merged));
 });
 
 router.post("/transactions", requireAuth, async (req, res): Promise<void> => {
@@ -253,39 +307,74 @@ router.post("/transactions", requireAuth, async (req, res): Promise<void> => {
   }
 
   // ── 9. Execute transaction ────────────────────────────────────────────────
+  // Atomic: per-user serialization (row lock) + in-transaction daily-cap re-check
+  // shared with the P2P flow, then conditional debit + insert.
   const exchangeRate = toRateToUsd / fromRateToUsd;
   const toAmount = fromAmount * exchangeRate;
   const recipientFlag = FLAGS[toCurrencyCode] ?? "🌐";
 
-  await db
-    .update(walletsTable)
-    .set({
-      balance: sql`${walletsTable.balance} - ${totalCost}`,
-      updatedAt: new Date(),
-    })
-    .where(eq(walletsTable.id, fromWalletId));
-
   // Encrypt the note field (contains account/mobile number)
   const encryptedNote = encryptNullable(note ?? null);
 
-  const [transaction] = await db
-    .insert(transactionsTable)
-    .values({
-      userId,
-      fromCurrency: wallet.currencyCode,
-      toCurrency: toCurrencyCode,
-      fromAmount: String(fromAmount),
-      toAmount: String(Math.round(toAmount * 100) / 100),
-      exchangeRate: String(Math.round(exchangeRate * 10000) / 10000),
-      fee: String(fee),
-      status: "pending",
-      recipientName,
-      recipientCountry,
-      recipientFlag,
-      note: encryptedNote,
-      fromAmountUsd: String(Math.round(fromAmountUsd * 10000) / 10000),
-    })
-    .returning();
+  let transaction;
+  try {
+    transaction = await db.transaction(async (tx) => {
+      // Serialize all outbound money movement (remittance + P2P) per user so
+      // concurrent sends cannot race past the combined daily cap.
+      await tx.execute(sql`SELECT id FROM users WHERE id = ${userId} FOR UPDATE`);
+      const dailyNow = await getDailyVolumeUsd(userId, tx as any);
+      if (dailyNow + fromAmountUsd > dailyCapUsd) throw new Error("DAILY_CAP_EXCEEDED");
+
+      const debited = await tx
+        .update(walletsTable)
+        .set({
+          balance: sql`${walletsTable.balance} - ${totalCost}`,
+          updatedAt: new Date(),
+        })
+        .where(and(
+          eq(walletsTable.id, fromWalletId),
+          eq(walletsTable.userId, userId),
+          gte(walletsTable.balance, String(totalCost)),
+        ))
+        .returning({ id: walletsTable.id });
+      if (debited.length === 0) throw new Error("INSUFFICIENT_BALANCE");
+
+      const [row] = await tx
+        .insert(transactionsTable)
+        .values({
+          userId,
+          fromCurrency: wallet.currencyCode,
+          toCurrency: toCurrencyCode,
+          fromAmount: String(fromAmount),
+          toAmount: String(Math.round(toAmount * 100) / 100),
+          exchangeRate: String(Math.round(exchangeRate * 10000) / 10000),
+          fee: String(fee),
+          status: "pending",
+          recipientName,
+          recipientCountry,
+          recipientFlag,
+          note: encryptedNote,
+          fromAmountUsd: String(Math.round(fromAmountUsd * 10000) / 10000),
+        })
+        .returning();
+      return row;
+    });
+  } catch (e: any) {
+    if (e?.message === "INSUFFICIENT_BALANCE") {
+      res.status(400).json({ error: "Insufficient balance. Please kindly add transfer fee." });
+      return;
+    }
+    if (e?.message === "DAILY_CAP_EXCEEDED") {
+      await logFraudEvent(userId, "daily_cap_exceeded", { newTxUsd: Math.round(fromAmountUsd * 100) / 100, dailyCapUsd, context: "remittance_tx_recheck" });
+      res.status(429).json({
+        error: "DAILY_CAP_EXCEEDED",
+        message: `You have reached your daily transfer limit of $${dailyCapUsd.toLocaleString()} USD. Your limit resets in 24 hours.`,
+        retryAfter: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
+      });
+      return;
+    }
+    throw e;
+  }
 
   res.status(201).json(
     CreateTransactionResponse.parse({
@@ -306,6 +395,19 @@ router.get("/transactions/:id", requireAuth, async (req, res): Promise<void> => 
   const params = GetTransactionParams.safeParse({ id: parseInt(raw, 10) });
   if (!params.success) {
     res.status(400).json({ error: params.error.message });
+    return;
+  }
+
+  // P2P transfer detail (offset id range)
+  if (params.data.id >= P2P_ID_OFFSET) {
+    const p2pId = params.data.id - P2P_ID_OFFSET;
+    const [row] = await db.select().from(p2pTransfersTable).where(eq(p2pTransfersTable.id, p2pId));
+    if (!row || (row.fromUserId !== req.userId! && row.toUserId !== req.userId!)) {
+      res.status(404).json({ error: "Transaction not found" });
+      return;
+    }
+    const names = await getUserNames([row.fromUserId, row.toUserId]);
+    res.json(GetTransactionResponse.parse(p2pToTransactionShape(row, req.userId!, names)));
     return;
   }
 

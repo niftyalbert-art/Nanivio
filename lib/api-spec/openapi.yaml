@@ -469,6 +469,13 @@ components:
           type: ["string", "null"]
         createdAt:
           type: string
+        direction:
+          type: string
+          enum: [sent, received]
+          description: P2P transfers only — whether the current user sent or received the money
+        counterpartyName:
+          type: string
+          description: P2P transfers only — the other user's name
 
     TransactionInput:
       type: object

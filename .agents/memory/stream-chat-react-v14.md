@@ -24,3 +24,7 @@ Custom fields upserted via `client.upsertUser({ id, name, phone })` are queryabl
 
 ## Avatars via Stream user.image
 Profile photos are stored on the API server; Stream `user.image` holds a *relative* path (`avatars/<id>?v=ts`) and the client prefixes its API base (`streamAvatarUrl` in chat.tsx). GET /api/avatars/:userId is deliberately public because chat partners load it via plain <img> tags. Base64 upload routes need their own express.json limit (~+33% over binary size) — the global parser is 10mb.
+
+## Component overrides (v14)
+- `<Channel>` no longer accepts `Attachment`/component-override props. Wrap children in `<WithComponents overrides={{ Attachment: MyAttachment }}>` inside `<Channel>`.
+- Server can post/update messages on behalf of a user (server SDK with API secret); attachment updates propagate live to clients via message.updated.

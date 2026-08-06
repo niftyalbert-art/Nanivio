@@ -13,7 +13,7 @@
  *     send ability is locked for 1 hour.
  */
 
-import { db, fraudEventsTable, transactionsTable, usersTable, settingsTable } from "@workspace/db";
+import { db, fraudEventsTable, transactionsTable, usersTable, settingsTable, p2pTransfersTable } from "@workspace/db";
 import { eq, and, gte, sql } from "drizzle-orm";
 import { logger } from "./logger";
 
@@ -57,10 +57,15 @@ export async function loadFraudSettings(): Promise<{
   return { txCapUsd, dailyCapUsd, lockoutThreshold };
 }
 
-/** Get rolling 24-hour USD send volume for a user (sum of non-failed txs). */
-export async function getDailyVolumeUsd(userId: number): Promise<number> {
+/**
+ * Get rolling 24-hour USD send volume for a user (sum of non-failed txs).
+ * Combines outbound remittance volume AND in-chat P2P send volume so
+ * neither flow can be used to bypass the daily cap.
+ * Accepts an optional executor so it can run inside a DB transaction.
+ */
+export async function getDailyVolumeUsd(userId: number, executor: { select: typeof db.select } = db): Promise<number> {
   const since = new Date(Date.now() - 24 * 60 * 60 * 1000);
-  const [row] = await db
+  const [row] = await executor
     .select({ total: sql<string>`COALESCE(SUM(${transactionsTable.fromAmountUsd}), 0)` })
     .from(transactionsTable)
     .where(
@@ -71,7 +76,17 @@ export async function getDailyVolumeUsd(userId: number): Promise<number> {
         sql`${transactionsTable.status} != 'failed'`,
       ),
     );
-  return parseFloat(row?.total ?? "0");
+  const [p2pRow] = await executor
+    .select({ total: sql<string>`COALESCE(SUM(${p2pTransfersTable.fromAmountUsd}), 0)` })
+    .from(p2pTransfersTable)
+    .where(
+      and(
+        eq(p2pTransfersTable.fromUserId, userId),
+        gte(p2pTransfersTable.createdAt, since),
+        sql`${p2pTransfersTable.status} != 'failed'`,
+      ),
+    );
+  return parseFloat(row?.total ?? "0") + parseFloat(p2pRow?.total ?? "0");
 }
 
 const LOCKOUT_WINDOW_MS = 10 * 60 * 1000; // 10 minutes

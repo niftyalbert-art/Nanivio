@@ -1,9 +1,9 @@
 import '@/styles/stream-theme.css';
 
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import {
   Chat, Channel, ChannelList, MessageList, MessageComposer,
-  TypingIndicator, useChatContext,
+  TypingIndicator, useChatContext, WithComponents,
 } from 'stream-chat-react';
 import { useStreamChat } from '@/contexts/stream-chat';
 import { useAgoraCall } from '@/contexts/agora-call';
@@ -30,6 +30,10 @@ import { Input } from '@/components/ui/input';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Dialog, DialogContent } from '@/components/ui/dialog';
 import { cn } from '@/lib/utils';
+import {
+  PaymentSheet, makePaymentAttachment, registerPayForRequestHandler,
+  type PayRequestInfo,
+} from '@/components/payment-chat';
 
 const API = `${import.meta.env.BASE_URL}api`;
 
@@ -524,6 +528,14 @@ function ChatInner({
   const [tick, setTick] = useState(0);
   const { background, setBackground, customUrl, loadCustomImage, presets } = useChatWallpaper();
   const [showWallpaper, setShowWallpaper] = useState(false);
+  // In-chat payments
+  const [showPaySheet, setShowPaySheet] = useState(false);
+  const [payRequestInfo, setPayRequestInfo] = useState<PayRequestInfo | null>(null);
+  const PaymentAttachment = useMemo(() => makePaymentAttachment(streamData.userId), [streamData.userId]);
+  useEffect(() => {
+    registerPayForRequestHandler((info) => { setPayRequestInfo(info); setShowPaySheet(true); });
+    return () => registerPayForRequestHandler(null);
+  }, []);
   // In-app flash: { name, text } shown for 3 s when a message arrives in a background channel
   const [msgFlash, setMsgFlash] = useState<{ name: string; text: string } | null>(null);
   const flashTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -1009,6 +1021,7 @@ function ChatInner({
       ) : (
         /* ── active channel ── */
         <Channel channel={activeChannel}>
+        <WithComponents overrides={{ Attachment: PaymentAttachment }}>
           {/*
            * Layout is controlled by customClasses.channel on <Chat> above,
            * which replaces str-chat__channel's default flex-row with flex-col.
@@ -1179,6 +1192,15 @@ function ChatInner({
                   <div className="flex items-center px-3 pt-2 pb-0.5">
                     <StreamEmojiPicker />
                     <span className="ml-2 text-[11px] text-muted-foreground/50">emoji</span>
+                    <button
+                      type="button"
+                      data-testid="chat-pay-btn"
+                      onClick={() => { setPayRequestInfo(null); setShowPaySheet(true); }}
+                      className="ml-3 flex items-center gap-1 h-7 px-2.5 rounded-full bg-emerald-500/15 text-emerald-400 hover:bg-emerald-500/25 transition-colors text-[11px] font-bold"
+                      title="Send or request money"
+                    >
+                      💸 Pay
+                    </button>
                   </div>
                   <MessageComposer
                     additionalTextareaProps={{ placeholder: 'Message…' }}
@@ -1186,6 +1208,19 @@ function ChatInner({
                     emojiSearchIndex={SearchIndex}
                   />
                 </div>
+                {(() => {
+                  const other = Object.values(activeChannel.state.members ?? {}).find((m: any) => m.user_id !== streamData.userId) as any;
+                  return (
+                    <PaymentSheet
+                      open={showPaySheet}
+                      onClose={() => { setShowPaySheet(false); setPayRequestInfo(null); }}
+                      chatId={(activeChannel as any).id ?? ''}
+                      otherUserId={payRequestInfo?.requesterUserId ?? other?.user_id ?? ''}
+                      otherName={payRequestInfo?.requesterName ?? other?.user?.name ?? 'Contact'}
+                      payRequest={payRequestInfo}
+                    />
+                  );
+                })()}
                 <WallpaperSheet
                   open={showWallpaper}
                   onClose={() => setShowWallpaper(false)}
@@ -1197,6 +1232,7 @@ function ChatInner({
               </div>
             );
           })()}
+        </WithComponents>
         </Channel>
       )}
 
