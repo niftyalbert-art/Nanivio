@@ -1,7 +1,7 @@
 import express, { type Express } from "express";
 import cors from "cors";
-import pinoHttp from "pino-http";
-import rateLimit from "express-rate-limit";
+import pinoHttp = require("pino-http");
+import rateLimit = require("express-rate-limit");
 import router from "./routes";
 import { logger } from "./lib/logger";
 
