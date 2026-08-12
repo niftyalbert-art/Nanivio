@@ -73,7 +73,7 @@ router.get('/stream/users/search', requireAuth, async (req, res): Promise<void> 
     if (isPhone) {
       // Search by phone custom field stored on Stream users
       const result = await client.queryUsers(
-        { id: { $ne: myId }, phone: { $autocomplete: q } },
+        { id: { $ne: myId }, phone: { $autocomplete: q } } as any,
         { name: 1 },
         { limit: 20 },
       );
@@ -81,7 +81,7 @@ router.get('/stream/users/search', requireAuth, async (req, res): Promise<void> 
     } else {
       // Search by name
       const result = await client.queryUsers(
-        { id: { $ne: myId }, name: { $autocomplete: q } },
+        { id: { $ne: myId }, name: { $autocomplete: q } } as any,
         { name: 1 },
         { limit: 20 },
       );

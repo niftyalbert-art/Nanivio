@@ -111,7 +111,11 @@ router.patch('/user/calling-settings', requireAuth, async (req, res): Promise<vo
 // Stream user IDs are the numeric DB id cast to string, so we parseInt them back.
 router.get('/user/calling-settings/:streamUserId', requireAuth, async (req, res): Promise<void> => {
   try {
-    const targetId = parseInt(req.params.streamUserId, 10);
+    const streamUserId = req.params.streamUserId;
+    const targetId = parseInt(
+      Array.isArray(streamUserId) ? streamUserId[0] : streamUserId,
+      10,
+    );
     if (isNaN(targetId)) { res.status(400).json({ error: 'Invalid user id' }); return; }
     const [user] = await db.select({ callsEnabled: usersTable.callsEnabled, videoCallsEnabled: usersTable.videoCallsEnabled })
       .from(usersTable).where(eq(usersTable.id, targetId));
