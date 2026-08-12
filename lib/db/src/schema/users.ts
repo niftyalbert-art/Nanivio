@@ -28,6 +28,10 @@ export const usersTable = pgTable("users", {
   avatarPath: text("avatar_path"),                       // uploaded profile photo
   chatBackground: text("chat_background"),               // preset id (e.g. "aurora") or "custom"
   chatBackgroundPath: text("chat_background_path"),      // uploaded wallpaper file
+  // Paid per-minute calls (experts)
+  paidCallsEnabled: boolean("paid_calls_enabled").notNull().default(false),
+  paidCallRate: text("paid_call_rate"),         // numeric(18,4) in DB; drizzle numeric maps to string anyway
+  paidCallCurrency: text("paid_call_currency"), // rate currency e.g. "USD"
   // Email verification (added post-launch; existing users default to true via migration)
   emailVerified: boolean("email_verified").notNull().default(false),
   emailVerificationCode: text("email_verification_code"),

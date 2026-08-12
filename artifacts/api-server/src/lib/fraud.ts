@@ -13,7 +13,7 @@
  *     send ability is locked for 1 hour.
  */
 
-import { db, fraudEventsTable, transactionsTable, usersTable, settingsTable, p2pTransfersTable, escrowsTable } from "@workspace/db";
+import { db, fraudEventsTable, transactionsTable, usersTable, settingsTable, p2pTransfersTable, escrowsTable, callSessionsTable, exchangeRatesTable } from "@workspace/db";
 import { eq, and, gte, sql } from "drizzle-orm";
 import { logger } from "./logger";
 
@@ -98,7 +98,34 @@ export async function getDailyVolumeUsd(userId: number, executor: { select: type
         gte(escrowsTable.createdAt, since),
       ),
     );
-  return parseFloat(row?.total ?? "0") + parseFloat(p2pRow?.total ?? "0") + parseFloat(escrowRow?.total ?? "0");
+  // ACTIVE paid-call sessions reserve their accrued cost against the cap so a
+  // caller cannot open a paid call and then drain the remaining daily headroom
+  // through P2P/remittance while the call is billing. Settled sessions are
+  // excluded (their settlement wrote a p2p_transfers row counted above); the
+  // settle transaction flips status and inserts the row atomically, so the
+  // reservation hands off to real volume without double counting.
+  const activeSessions = await executor
+    .select({
+      startedAt: callSessionsTable.startedAt,
+      ratePerMinute: callSessionsTable.ratePerMinute,
+      currencyCode: callSessionsTable.currencyCode,
+    })
+    .from(callSessionsTable)
+    .where(and(eq(callSessionsTable.callerUserId, userId), eq(callSessionsTable.status, "active")));
+  let callReservedUsd = 0;
+  for (const s of activeSessions) {
+    const minutes = Math.max(1, Math.ceil((Date.now() - new Date(s.startedAt).getTime()) / 60_000));
+    const rate = parseFloat(s.ratePerMinute);
+    if (!(rate > 0)) continue;
+    const [fx] = await executor
+      .select({ rateToUsd: exchangeRatesTable.rateToUsd })
+      .from(exchangeRatesTable)
+      .where(eq(exchangeRatesTable.currencyCode, s.currencyCode));
+    const toUsd = fx ? parseFloat(fx.rateToUsd) : NaN;
+    if (toUsd > 0) callReservedUsd += (minutes * rate) / toUsd;
+  }
+
+  return parseFloat(row?.total ?? "0") + parseFloat(p2pRow?.total ?? "0") + parseFloat(escrowRow?.total ?? "0") + callReservedUsd;
 }
 
 const LOCKOUT_WINDOW_MS = 10 * 60 * 1000; // 10 minutes

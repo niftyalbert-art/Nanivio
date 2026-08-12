@@ -16,7 +16,7 @@ import { useToast } from '@/hooks/use-toast';
 function CallUI() {
   const {
     activeCall, callKind, remoteJoined, remoteVideoTrack, localVideoTrack,
-    micOn, camOn, toggleMic, toggleCamera, endCall,
+    micOn, camOn, toggleMic, toggleCamera, endCall, billing,
   } = useAgoraCall();
   const remoteRef = useRef<HTMLDivElement>(null);
   const localRef = useRef<HTMLDivElement>(null);
@@ -69,6 +69,24 @@ function CallUI() {
       {remoteVideoTrack && (
         <div className="absolute top-4 left-4 z-10 px-3 py-1.5 rounded-full bg-black/40 backdrop-blur text-white text-sm">
           {otherName} · {mmss}
+        </div>
+      )}
+
+      {/* ── paid-call cost ticker (caller side only) ── */}
+      {billing && (
+        <div
+          data-testid="paid-call-ticker"
+          className={`absolute ${remoteVideoTrack ? 'top-14' : 'top-4'} left-4 z-10 px-3 py-1.5 rounded-full backdrop-blur text-sm font-semibold ${
+            billing.remainingMinutes != null && billing.remainingMinutes <= 1
+              ? 'bg-red-500/80 text-white animate-pulse'
+              : 'bg-amber-500/25 text-amber-200 border border-amber-400/30'
+          }`}
+        >
+          💰 {billing.accruedCost.toFixed(2)} {billing.currency}
+          <span className="opacity-75 font-normal"> · {billing.ratePerMinute} {billing.currency}/min</span>
+          {billing.remainingMinutes != null && billing.remainingMinutes <= 1 && (
+            <span> · ends soon</span>
+          )}
         </div>
       )}
 

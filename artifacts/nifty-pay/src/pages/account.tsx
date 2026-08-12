@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '@/contexts/auth';
 import {
@@ -15,7 +15,7 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
-import { Copy, Check, ArrowDownLeft, ArrowUpLeft, MessageSquare, CheckCircle2, ExternalLink, Send, LogOut, ShieldCheck, ChevronDown, ChevronUp, Phone, Video, BadgeCheck, ChevronRight, TrendingUp, ArrowLeftRight, Camera } from 'lucide-react';
+import { Copy, Check, ArrowDownLeft, ArrowUpLeft, MessageSquare, CheckCircle2, ExternalLink, Send, LogOut, ShieldCheck, ChevronDown, ChevronUp, Phone, Video, BadgeCheck, ChevronRight, TrendingUp, ArrowLeftRight, Camera, Banknote } from 'lucide-react';
 import { useLocation } from 'wouter';
 import { Switch } from '@/components/ui/switch';
 import { formatDistanceToNow } from 'date-fns';
@@ -89,6 +89,48 @@ export default function Account() {
       headers: { Authorization: `Bearer ${token}` },
     }).then(r => r.json()),
     enabled: !!token,
+  });
+
+  // Paid per-minute calls (expert mode)
+  const { data: paidCallSettings } = useQuery<{ enabled: boolean; ratePerMinute: number | null; currency: string }>({
+    queryKey: ['paid-call-settings'],
+    queryFn: () => fetch(`${API_BASE}/paid-calls/settings`, {
+      headers: { Authorization: `Bearer ${token}` },
+    }).then(r => r.json()),
+    enabled: !!token,
+  });
+  const [paidRateInput, setPaidRateInput] = useState('');
+  const [paidCurrencyInput, setPaidCurrencyInput] = useState('USD');
+  const paidFormInitialized = useRef(false);
+  useEffect(() => {
+    if (paidCallSettings && !paidFormInitialized.current) {
+      paidFormInitialized.current = true;
+      if (paidCallSettings.ratePerMinute) setPaidRateInput(String(paidCallSettings.ratePerMinute));
+      if (paidCallSettings.currency) setPaidCurrencyInput(paidCallSettings.currency);
+    }
+  }, [paidCallSettings]);
+
+  const updatePaidCallSettings = useMutation({
+    mutationFn: async (body: { enabled: boolean; ratePerMinute?: number; currency?: string }) => {
+      const r = await fetch(`${API_BASE}/paid-calls/settings`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify(body),
+      });
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(d?.error ?? 'Failed to save');
+      return d;
+    },
+    onSuccess: (_d, vars) => {
+      queryClient.invalidateQueries({ queryKey: ['paid-call-settings'] });
+      toast({
+        title: vars.enabled ? 'Paid calls enabled' : 'Paid calls disabled',
+        description: vars.enabled
+          ? `Callers will be charged ${vars.ratePerMinute} ${vars.currency}/min when you answer.`
+          : 'Your calls are free again.',
+      });
+    },
+    onError: (e: any) => toast({ title: 'Could not save', description: e.message, variant: 'destructive' }),
   });
 
   const updateCallingSettings = useMutation({
@@ -422,6 +464,71 @@ export default function Account() {
                     Calls are disabled — others will see a "calls not allowed" notice when they try to reach you.
                   </p>
                 )}
+
+                {/* ── Paid per-minute calls (expert mode) ── */}
+                <div className="px-4 py-3 space-y-3">
+                  <div className="flex items-center justify-between gap-4">
+                    <div className="flex items-center gap-3 min-w-0">
+                      <Banknote className="w-4 h-4 text-muted-foreground shrink-0" />
+                      <div className="min-w-0">
+                        <p className="text-sm font-medium">Paid calls</p>
+                        <p className="text-xs text-muted-foreground">Charge a per-minute rate when people call you</p>
+                      </div>
+                    </div>
+                    <Switch
+                      data-testid="paid-calls-toggle"
+                      checked={paidCallSettings?.enabled ?? false}
+                      disabled={updatePaidCallSettings.isPending}
+                      onCheckedChange={(v) => {
+                        if (!v) { updatePaidCallSettings.mutate({ enabled: false }); return; }
+                        const rate = parseFloat(paidRateInput);
+                        if (!(rate > 0)) {
+                          toast({ title: 'Set your rate first', description: 'Enter a per-minute rate below, then enable paid calls.', variant: 'destructive' });
+                          return;
+                        }
+                        updatePaidCallSettings.mutate({ enabled: true, ratePerMinute: rate, currency: paidCurrencyInput });
+                      }}
+                    />
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Input
+                      data-testid="paid-call-rate-input"
+                      type="number" min="0.01" step="0.01" placeholder="Rate per minute"
+                      value={paidRateInput}
+                      onChange={e => setPaidRateInput(e.target.value)}
+                      className="h-9 text-sm"
+                    />
+                    <select
+                      data-testid="paid-call-currency-select"
+                      value={paidCurrencyInput}
+                      onChange={e => setPaidCurrencyInput(e.target.value)}
+                      className="h-9 rounded-md border border-input bg-background px-2 text-sm"
+                    >
+                      {['USD', 'AED', 'EUR', 'GBP', 'INR', 'PHP', 'NGN', 'KES', 'GHS', 'PKR', 'BDT'].map(c => (
+                        <option key={c} value={c}>{c}</option>
+                      ))}
+                    </select>
+                    {(paidCallSettings?.enabled ?? false) && (
+                      <Button
+                        size="sm" variant="outline" className="h-9 shrink-0"
+                        data-testid="paid-call-save-rate"
+                        disabled={updatePaidCallSettings.isPending}
+                        onClick={() => {
+                          const rate = parseFloat(paidRateInput);
+                          if (!(rate > 0)) { toast({ title: 'Enter a valid rate', variant: 'destructive' }); return; }
+                          updatePaidCallSettings.mutate({ enabled: true, ratePerMinute: rate, currency: paidCurrencyInput });
+                        }}
+                      >
+                        Save
+                      </Button>
+                    )}
+                  </div>
+                  {(paidCallSettings?.enabled ?? false) && paidCallSettings?.ratePerMinute && (
+                    <p className="text-xs text-emerald-500 bg-emerald-500/5 rounded-md px-2 py-1.5">
+                      Active — callers see {paidCallSettings.ratePerMinute} {paidCallSettings.currency}/min and must confirm before ringing you. You're paid automatically when each call ends.
+                    </p>
+                  )}
+                </div>
               </div>
             )}
           </div>

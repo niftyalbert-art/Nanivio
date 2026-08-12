@@ -23,6 +23,7 @@ import pushRouter from "./push";
 import agoraRouter from "./agora";
 import p2pRouter from "./p2p";
 import escrowRouter from "./escrow";
+import paidCallsRouter from "./paid-calls";
 
 const router: IRouter = Router();
 
@@ -50,5 +51,6 @@ router.use(pushRouter);
 router.use(agoraRouter);
 router.use(p2pRouter);
 router.use(escrowRouter);
+router.use(paidCallsRouter);
 
 export default router;

@@ -34,6 +34,21 @@ export interface IncomingCall {
   fromName:   string;
 }
 
+export interface CallBillingRequest {
+  expertUserId: number;
+  ratePerMinute: number;
+  currency: string;
+}
+
+export interface CallBillingState {
+  ratePerMinute: number;
+  currency: string;
+  /** whole started minutes billed so far (server-confirmed) */
+  minutes: number;
+  accruedCost: number;
+  remainingMinutes: number | null;
+}
+
 export interface AgoraCallCtx {
   /** true once signaling is connected (chat client ready) */
   ready:        boolean;
@@ -47,9 +62,11 @@ export interface AgoraCallCtx {
   localVideoTrack:  ICameraVideoTrack | null;
   micOn: boolean;
   camOn: boolean;
+  /** non-null while this user is the paying caller in a paid call */
+  billing: CallBillingState | null;
   toggleMic:    () => Promise<void>;
   toggleCamera: () => Promise<void>;
-  startCall:   (type: 'audio' | 'video', chatId: string, otherUserId: string, otherName: string) => Promise<void>;
+  startCall:   (type: 'audio' | 'video', chatId: string, otherUserId: string, otherName: string, billing?: CallBillingRequest) => Promise<void>;
   acceptCall:  () => Promise<void>;
   declineCall: () => void;
   endCall:     () => void;
@@ -58,7 +75,7 @@ export interface AgoraCallCtx {
 const Ctx = createContext<AgoraCallCtx>({
   ready: false, incomingCall: null, activeCall: null, callKind: 'video',
   remoteJoined: false, remoteVideoTrack: null, localVideoTrack: null,
-  micOn: true, camOn: true,
+  micOn: true, camOn: true, billing: null,
   toggleMic: async () => {}, toggleCamera: async () => {},
   startCall: async () => {}, acceptCall: async () => {},
   declineCall: () => {}, endCall: () => {},
@@ -98,6 +115,7 @@ export function AgoraCallProvider({ children }: { children: ReactNode }) {
   const [localVideoTrack, setLocalVideoTrack] = useState<ICameraVideoTrack | null>(null);
   const [micOn, setMicOn] = useState(true);
   const [camOn, setCamOn] = useState(true);
+  const [billing, setBilling] = useState<CallBillingState | null>(null);
 
   const clientRef = useRef<IAgoraRTCClient | null>(null);
   const micTrackRef = useRef<IMicrophoneAudioTrack | null>(null);
@@ -121,6 +139,136 @@ export function AgoraCallProvider({ children }: { children: ReactNode }) {
   // signals abort a call before activeCall is set.
   const pendingChannelRef = useRef<string | null>(null);
 
+  /* ── paid-call billing (caller side only) ──
+   * The server session is the billing source of truth. We create it when the
+   * expert joins the media channel, heartbeat every 20s (the response carries
+   * accrued cost + remaining affordable minutes), warn at ≤1 remaining minute,
+   * auto-end at 0, and settle on end. Free calls: all refs stay null. */
+  const pendingBillingRef = useRef<CallBillingRequest & { chatId: string; channel: string; kind: 'audio' | 'video' } | null>(null);
+  const billingSessionIdRef = useRef<number | null>(null);
+  const billingTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const lowBalanceWarnedRef = useRef(false);
+
+  // teardownMedia (declared below) runs on every call-end path (remote hang-up,
+  // cancel, unmount) and settles through this ref, so settlement is never missed.
+  const settleBillingRef = useRef<((reason: 'ended' | 'balance_exhausted') => void) | null>(null);
+
+  const stopBillingTimers = () => {
+    if (billingTimerRef.current) { clearInterval(billingTimerRef.current); billingTimerRef.current = null; }
+  };
+
+  /** Settle the active billing session (fire-and-forget with a summary toast). */
+  const settleBillingSession = useCallback((reason: 'ended' | 'balance_exhausted') => {
+    const sessionId = billingSessionIdRef.current;
+    billingSessionIdRef.current = null;
+    pendingBillingRef.current = null;
+    stopBillingTimers();
+    lowBalanceWarnedRef.current = false;
+    setBilling(null);
+    if (!sessionId) return;
+    fetch(`${API}/paid-calls/sessions/${sessionId}/end`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...authHeaders() },
+      body: JSON.stringify({ reason }),
+    })
+      .then(async r => {
+        const d = await r.json().catch(() => ({}));
+        if (r.ok && (d?.status === 'settled' || d?.totalCharged != null)) {
+          const total = d.totalCharged ?? 0;
+          toast({
+            title: 'Call ended',
+            description: `Paid call: ${d.billedMinutes ?? '–'} min · ${Number(total).toFixed(2)} ${d.currency ?? ''} charged.`,
+          });
+        }
+      })
+      .catch(() => { /* stale-session sweep settles it server-side */ });
+  }, []);
+
+  settleBillingRef.current = settleBillingSession;
+
+  /** Called when the expert joins the media channel — starts the paid session. */
+  const startBillingSession = useCallback(async () => {
+    const pending = pendingBillingRef.current;
+    if (!pending || billingSessionIdRef.current) return;
+    try {
+      const r = await fetch(`${API}/paid-calls/sessions`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...authHeaders() },
+        body: JSON.stringify({
+          expertUserId: pending.expertUserId,
+          chatId: pending.chatId,
+          channel: pending.channel,
+          kind: pending.kind,
+          // Quote binding: bill only at the price the caller confirmed in the
+          // pre-call dialog — the server rejects if the expert's rate changed.
+          confirmedRate: pending.ratePerMinute,
+          confirmedCurrency: pending.currency,
+        }),
+      });
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok || !d?.sessionId) {
+        throw new Error(
+          d?.error === 'rate_changed'
+            ? (d?.message ?? "The expert's rate changed since you confirmed. Please start the call again.")
+            : (d?.error ?? 'Could not start paid call billing'),
+        );
+      }
+      // Guard against the caller hanging up while this request was in flight:
+      // the call is gone (teardown cleared pendingBillingRef / no active call
+      // on this channel), so settle the just-created session immediately
+      // instead of installing a zombie billing timer.
+      if (pendingBillingRef.current !== pending || activeCallRef.current?.channel !== pending.channel) {
+        fetch(`${API}/paid-calls/sessions/${d.sessionId}/end`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', ...authHeaders() },
+          body: JSON.stringify({ reason: 'ended' }),
+        }).catch(() => {});
+        return;
+      }
+      billingSessionIdRef.current = d.sessionId;
+      setBilling({
+        ratePerMinute: pending.ratePerMinute,
+        currency: pending.currency,
+        minutes: 1,
+        accruedCost: pending.ratePerMinute,
+        remainingMinutes: Math.max(0, (d.affordableMinutes ?? 1) - 1),
+      });
+      const beat = async () => {
+        const sid = billingSessionIdRef.current;
+        if (!sid) return;
+        try {
+          const hr = await fetch(`${API}/paid-calls/sessions/${sid}/heartbeat`, {
+            method: 'POST', headers: authHeaders(),
+          });
+          const hd = await hr.json().catch(() => ({}));
+          if (!hr.ok || hd?.status !== 'active') return;
+          setBilling({
+            ratePerMinute: pending.ratePerMinute,
+            currency: hd.currency ?? pending.currency,
+            minutes: hd.minutes ?? 0,
+            accruedCost: hd.accruedCost ?? 0,
+            remainingMinutes: hd.remainingMinutes ?? null,
+          });
+          if (hd.remainingMinutes != null) {
+            if (hd.remainingMinutes <= 0) {
+              toast({ title: 'Balance used up', description: 'The paid call has ended because your balance ran out.', variant: 'destructive' });
+              endCallRef.current?.('balance_exhausted');
+            } else if (hd.remainingMinutes <= 1 && !lowBalanceWarnedRef.current) {
+              lowBalanceWarnedRef.current = true;
+              toast({ title: '1 minute left', description: 'Your balance covers about one more minute — the call will end automatically after that.' });
+            }
+          }
+        } catch { /* transient network error — next beat retries */ }
+      };
+      stopBillingTimers();
+      billingTimerRef.current = setInterval(() => void beat(), 20_000);
+    } catch (e: any) {
+      // No billing session means the expert can't be paid — end rather than run free.
+      toast({ title: 'Paid call unavailable', description: e?.message ?? String(e), variant: 'destructive' });
+      endCallRef.current?.();
+    }
+  }, []);
+
   const assertWebRtcSupport = () => {
     if (typeof (window as any).RTCPeerConnection !== 'function') {
       throw new Error(
@@ -131,6 +279,7 @@ export function AgoraCallProvider({ children }: { children: ReactNode }) {
 
   /** Leave the media channel and release devices. */
   const teardownMedia = useCallback(async () => {
+    settleBillingRef.current?.('ended'); // no-op when no paid session is active
     epochRef.current += 1; // invalidate any join still in flight
     joiningRef.current = false; // never leave the join lock stuck
     pendingChannelRef.current = null;
@@ -196,6 +345,8 @@ export function AgoraCallProvider({ children }: { children: ReactNode }) {
       stopTone();
       if (noAnswerTimerRef.current) { clearTimeout(noAnswerTimerRef.current); noAnswerTimerRef.current = null; }
       setRemoteJoined(true);
+      // Paid call: the expert just connected — start billing (caller side only)
+      void startBillingSession();
     });
     client.on('user-left', () => {
       // 1:1 call — when the other side leaves, the call is over
@@ -237,18 +388,23 @@ export function AgoraCallProvider({ children }: { children: ReactNode }) {
   }, []);
 
   /* ── end active call ── */
-  const endCall = useCallback(() => {
+  const endCall = useCallback((billingReason?: unknown) => {
+    // endCall is also used directly as a DOM event handler, so the first arg
+    // may be a MouseEvent — only accept the known billing reason strings.
+    const reason = billingReason === 'balance_exhausted' ? 'balance_exhausted' : 'ended';
     const ac = activeCallRef.current;
     if (ac) sendSignal(ac.otherUserId, { type: 'call_end', channel: ac.channel, chatId: ac.chatId }).catch(() => {});
+    settleBillingSession(reason);
     setActiveCall(null);
     void teardownMedia();
-  }, [teardownMedia]);
+  }, [teardownMedia, settleBillingSession]);
   const endCallRef = useRef(endCall);
   endCallRef.current = endCall;
 
   /* ── start outgoing call ── */
   const startCall = useCallback(async (
     type: 'audio' | 'video', chatId: string, otherUserId: string, otherName: string,
+    billingReq?: CallBillingRequest,
   ) => {
     assertWebRtcSupport();
     if (activeCallRef.current || joiningRef.current) throw new Error('You are already in a call');
@@ -257,6 +413,10 @@ export function AgoraCallProvider({ children }: { children: ReactNode }) {
     // in the same conversation can never affect this one.
     const channel = `nanivio-${chatId}-${Math.random().toString(36).slice(2, 10)}`;
     pendingChannelRef.current = channel;
+    pendingBillingRef.current = billingReq
+      ? { ...billingReq, chatId, channel, kind: type }
+      : null;
+    lowBalanceWarnedRef.current = false;
     stopTone();
     stopRingtoneRef.current = createRingtone('outgoing');
     // Show the ringing overlay immediately — joining takes a couple of
@@ -411,7 +571,7 @@ export function AgoraCallProvider({ children }: { children: ReactNode }) {
   return (
     <Ctx.Provider value={{
       ready: !!chatClient, incomingCall, activeCall, callKind,
-      remoteJoined, remoteVideoTrack, localVideoTrack, micOn, camOn,
+      remoteJoined, remoteVideoTrack, localVideoTrack, micOn, camOn, billing,
       toggleMic, toggleCamera, startCall, acceptCall, declineCall, endCall,
     }}>
       {children}

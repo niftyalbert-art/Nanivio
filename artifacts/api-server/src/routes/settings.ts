@@ -17,6 +17,7 @@ const DEFAULT_SETTINGS: Record<string, string> = {
   fraud_daily_cap_usd: "50000",   // max rolling 24h send volume (USD equivalent)
   fraud_lockout_threshold: "3",   // failed attempts before 1-hour lockout
   escrow_fee_percent: "1.5",      // fee taken from the held amount when escrow is released
+  paid_call_fee_percent: "10",    // platform fee on paid per-minute call earnings
 };
 
 async function getSetting(key: string): Promise<string> {

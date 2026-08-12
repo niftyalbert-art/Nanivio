@@ -16,3 +16,4 @@ export * from "./push_subscriptions";
 export * from "./p2p_transfers";
 export * from "./money_requests";
 export * from "./escrows";
+export * from "./call-sessions";

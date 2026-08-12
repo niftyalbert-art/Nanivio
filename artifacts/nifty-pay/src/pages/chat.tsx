@@ -1060,6 +1060,7 @@ function ChatInner({
                       {lastSeenLabel(other?.user)}
                     </p>
                   </div>
+                  {other?.user_id && <PaidRateBadge userId={String(other.user_id)} />}
                 </div>
               );
             })()}
@@ -1522,8 +1523,41 @@ function ChatConnected() {
       toast({ title: 'Call failed', description: 'This chat is not ready yet.', variant: 'destructive' });
       return;
     }
+    // Paid per-minute calls: if the other user is an expert with paid calls
+    // enabled, show the rate and require explicit confirmation before ringing.
+    let billing: { expertUserId: number; ratePerMinute: number; currency: string } | undefined;
     try {
-      await agoraCall.startCall(type, String(ch.id), other.user_id, other.user?.name ?? 'Call');
+      const authToken = localStorage.getItem('nanivio_token');
+      const r = await fetch(`${API}/paid-calls/rate/${other.user_id}`, {
+        headers: { Authorization: `Bearer ${authToken}` },
+      });
+      const d = await r.json().catch(() => ({}));
+      if (r.ok && d?.enabled) {
+        const name = other.user?.name ?? 'This user';
+        if ((d.affordableMinutes ?? 0) < 1) {
+          toast({
+            title: 'Insufficient balance',
+            description: `${name} charges ${d.ratePerMinute} ${d.currency}/min for calls. Top up your wallet to call them.`,
+            variant: 'destructive',
+          });
+          return;
+        }
+        const ok = window.confirm(
+          `${name} charges ${d.ratePerMinute} ${d.currency} per minute for calls.\n\n` +
+          `Your balance covers about ${d.affordableMinutes} minute${d.affordableMinutes === 1 ? '' : 's'}. ` +
+          `Billing starts when they answer and you'll be charged automatically when the call ends.\n\nStart the paid call?`,
+        );
+        if (!ok) return;
+        billing = { expertUserId: Number(other.user_id), ratePerMinute: d.ratePerMinute, currency: d.currency };
+      }
+    } catch {
+      // If the rate check itself fails we do NOT silently start what might be a
+      // paid call — surface it and stop.
+      toast({ title: 'Call failed', description: 'Could not check call pricing. Please try again.', variant: 'destructive' });
+      return;
+    }
+    try {
+      await agoraCall.startCall(type, String(ch.id), other.user_id, other.user?.name ?? 'Call', billing);
       // Ring the callee's device(s) even if the app is closed
       notifyCallPush(other.user_id, type).then((sent) => {
         if (sent === 0) {
@@ -1831,5 +1865,32 @@ export default function ChatPage() {
       )}
       <ChatConnected />
     </>
+  );
+}
+
+/** Small "per-minute rate" pill shown in the chat header when the other user
+ *  has paid calls enabled, so contacts see the rate before pressing call. */
+function PaidRateBadge({ userId }: { userId: string }) {
+  const [rate, setRate] = useState<{ ratePerMinute: number; currency: string } | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    setRate(null);
+    const token = localStorage.getItem('nanivio_token');
+    if (!token) return;
+    fetch(`${API}/paid-calls/rate/${userId}`, { headers: { Authorization: `Bearer ${token}` } })
+      .then(r => (r.ok ? r.json() : null))
+      .then(d => { if (!cancelled && d?.enabled) setRate({ ratePerMinute: d.ratePerMinute, currency: d.currency }); })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [userId]);
+  if (!rate) return null;
+  return (
+    <span
+      data-testid="paid-rate-badge"
+      className="shrink-0 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-amber-500/15 text-amber-400 border border-amber-400/25"
+      title="This user charges per minute for calls"
+    >
+      {rate.ratePerMinute} {rate.currency}/min calls
+    </span>
   );
 }
