@@ -1,27 +1,13 @@
 import { Router, type IRouter } from "express";
-import { db } from "@workspace/db";
+import { db, supportTickets } from "@workspace/db";
 import { sql, eq, desc } from "drizzle-orm";
-import { integer, pgTable, serial, text, boolean, timestamp } from "drizzle-orm/pg-core";
 import { requireAuth, adminOnly } from "../middleware/auth";
-
-// Inline table definition
-const supportTicketsTable = pgTable("support_tickets", {
-  id: serial("id").primaryKey(),
-  userId: integer("user_id"),
-  subject: text("subject").notNull(),
-  message: text("message").notNull(),
-  userName: text("user_name").notNull().default("User"),
-  status: text("status").notNull().default("open"),
-  adminReply: text("admin_reply"),
-  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
-});
 
 const router: IRouter = Router();
 
 // List tickets (admin only — all tickets)
 router.get("/tickets", adminOnly, async (_req, res): Promise<void> => {
-  const tickets = await db.select().from(supportTicketsTable).orderBy(desc(supportTicketsTable.createdAt));
+  const tickets = await db.select().from(supportTickets).orderBy(desc(supportTickets.createdAt));
   const result = tickets.map(t => ({
     ...t,
     createdAt: t.createdAt instanceof Date ? t.createdAt.toISOString() : String(t.createdAt),
@@ -36,7 +22,7 @@ router.post("/tickets", requireAuth, async (req, res): Promise<void> => {
   if (!subject || !message) {
     res.status(400).json({ error: "subject and message are required" }); return;
   }
-  const [ticket] = await db.insert(supportTicketsTable)
+  const [ticket] = await db.insert(supportTickets)
     .values({
       userId: req.userId,
       subject: String(subject),
@@ -53,9 +39,9 @@ router.post("/tickets", requireAuth, async (req, res): Promise<void> => {
 
 // User: list own tickets
 router.get("/tickets/mine", requireAuth, async (req, res): Promise<void> => {
-  const tickets = await db.select().from(supportTicketsTable)
-    .where(eq(supportTicketsTable.userId, req.userId!))
-    .orderBy(desc(supportTicketsTable.createdAt));
+  const tickets = await db.select().from(supportTickets)
+    .where(eq(supportTickets.userId, req.userId!))
+    .orderBy(desc(supportTickets.createdAt));
   const result = tickets.map(t => ({
     ...t,
     createdAt: t.createdAt instanceof Date ? t.createdAt.toISOString() : String(t.createdAt),
@@ -71,9 +57,9 @@ router.put("/admin/tickets/:id/reply", adminOnly, async (req, res): Promise<void
   const { adminReply } = req.body ?? {};
   if (!adminReply) { res.status(400).json({ error: "adminReply is required" }); return; }
 
-  const [updated] = await db.update(supportTicketsTable)
+  const [updated] = await db.update(supportTickets)
     .set({ adminReply: String(adminReply), status: "resolved", updatedAt: new Date() })
-    .where(eq(supportTicketsTable.id, id))
+    .where(eq(supportTickets.id, id))
     .returning();
   if (!updated) { res.status(404).json({ error: "Ticket not found" }); return; }
   res.json({
