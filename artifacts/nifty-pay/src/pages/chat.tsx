@@ -30,12 +30,12 @@ import { Input } from '@/components/ui/input';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Dialog, DialogContent } from '@/components/ui/dialog';
 import { cn } from '@/lib/utils';
+import { API_BASE as API } from '@/lib/api';
 import {
   PaymentSheet, makePaymentAttachment, registerPayForRequestHandler,
   type PayRequestInfo,
 } from '@/components/payment-chat';
 
-const API = `${import.meta.env.BASE_URL}api`;
 
 // Module-level: survives React remounts so the active channel is restored
 // when the user navigates away and back.

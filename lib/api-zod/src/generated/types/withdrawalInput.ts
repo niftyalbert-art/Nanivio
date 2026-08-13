@@ -15,6 +15,7 @@ export interface WithdrawalInput {
   mobileNumber?: string;
   mobileNetwork?: string;
   bankName?: string;
+  iban?: string;
   accountNumber?: string;
   accountName?: string;
   note?: string;

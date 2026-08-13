@@ -251,7 +251,7 @@ export default function Countries() {
                       const fR = rateMap[calc.fromCurrency];
                       if (!fR) return '—';
                       const amtUsd = parseFloat(calc.amount) / fR;
-                      const feeUsd = amtUsd * (parseFloat(country.transferFee as string) / 100);
+                      const feeUsd = amtUsd * (country.transferFee / 100);
                       return feeUsd.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' USD';
                     })()}
                   </span>

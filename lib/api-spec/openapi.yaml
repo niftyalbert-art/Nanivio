@@ -646,6 +646,8 @@ components:
           type: string
         bankName:
           type: string
+        iban:
+          type: string
         accountNumber:
           type: string
         accountName:

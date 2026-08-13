@@ -13,9 +13,9 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { cn } from '@/lib/utils';
+import { API_BASE as API } from '@/lib/api';
 import { X, ShieldCheck, ArrowUpRight, HandCoins, CheckCircle2, XCircle, Clock, Lock, AlertTriangle } from 'lucide-react';
 
-const API = `${import.meta.env.BASE_URL}api`;
 
 function authHeaders(): Record<string, string> {
   const token = localStorage.getItem('nanivio_token') ?? sessionStorage.getItem('nanivio_token');

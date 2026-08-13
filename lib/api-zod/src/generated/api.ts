@@ -374,6 +374,7 @@ export const CreateWithdrawalBody = zod.object({
   "mobileNumber": zod.string().optional(),
   "mobileNetwork": zod.string().optional(),
   "bankName": zod.string().optional(),
+  "iban": zod.string().optional(),
   "accountNumber": zod.string().optional(),
   "accountName": zod.string().optional(),
   "note": zod.string().optional(),
