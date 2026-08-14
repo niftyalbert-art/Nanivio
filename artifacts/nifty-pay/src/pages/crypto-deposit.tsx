@@ -14,7 +14,7 @@ import {
   ArrowLeft, RefreshCw, Zap, ShieldCheck, Wallet, ExternalLink, Receipt
 } from 'lucide-react';
 
-const API = import.meta.env.BASE_URL.replace(/\/$/, '') + '/api';
+import { API_BASE as API } from '@/lib/api';
 
 // Reusable QR via free public API — no npm package needed
 function QRCode({ data, size = 200 }: { data: string; size?: number }) {

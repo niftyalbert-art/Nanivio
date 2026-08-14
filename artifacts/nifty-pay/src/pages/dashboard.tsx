@@ -8,7 +8,7 @@ import { ArrowUpRight, ArrowDownLeft, Plus, ChevronRight, ChevronDown } from 'lu
 import { Link } from 'wouter';
 import { formatDistanceToNow } from 'date-fns';
 
-const API_BASE = import.meta.env.BASE_URL.replace(/\/$/, '') + '/api';
+import { API_BASE } from '@/lib/api';
 const BALANCE_CURRENCY_KEY = 'nanivio_balance_currency';
 
 const DISPLAY_CURRENCIES = [

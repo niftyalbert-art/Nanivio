@@ -11,7 +11,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { useToast } from '@/hooks/use-toast';
 import { Bitcoin, Wallet, QrCode, Clock, CheckCircle2, XCircle, AlertTriangle, ChevronRight, ArrowLeft, Copy, RefreshCw } from 'lucide-react';
 
-const API = import.meta.env.BASE_URL.replace(/\/$/, '') + '/api';
+import { API_BASE as API } from '@/lib/api';
 
 // ── Network configuration (mirrors backend) ───────────────────────────────────
 const SUPPORTED_NETWORKS = [

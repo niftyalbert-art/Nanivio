@@ -8,7 +8,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { ShieldCheck, Clock, CheckCircle2, XCircle, Upload, AlertTriangle, FileText, Camera, RefreshCw, SwitchCamera, ImagePlus } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 
-const API = import.meta.env.BASE_URL.replace(/\/$/, '') + '/api';
+import { API_BASE as API } from '@/lib/api';
 
 type KycStatus = 'unverified' | 'pending' | 'verified' | 'rejected';
 

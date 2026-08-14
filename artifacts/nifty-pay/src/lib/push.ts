@@ -1,4 +1,4 @@
-const API = import.meta.env.BASE_URL.replace(/\/$/, '') + '/api';
+import { API_BASE as API } from '@/lib/api';
 
 function urlBase64ToUint8Array(base64String: string): Uint8Array {
   const padding = '='.repeat((4 - (base64String.length % 4)) % 4);

@@ -6,7 +6,7 @@ import { Label } from '@/components/ui/label';
 import { useAuth } from '@/contexts/auth';
 import { MailCheck, RefreshCw } from 'lucide-react';
 
-const API = import.meta.env.BASE_URL.replace(/\/$/, '') + '/api';
+import { API_BASE as API } from '@/lib/api';
 
 export default function VerifyEmail() {
   const [, setLocation] = useLocation();

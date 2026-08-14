@@ -19,7 +19,7 @@ import { useToast } from '@/hooks/use-toast';
 type TransferType = 'bank' | 'mobile_money';
 type Step = 'country' | 'type' | 'receiver' | 'amount' | 'review' | 'pin' | 'success';
 
-const API = import.meta.env.BASE_URL.replace(/\/$/, '') + '/api';
+import { API_BASE as API } from '@/lib/api';
 
 // Mobile money providers keyed by country code
 const MOBILE_MONEY_PROVIDERS: Record<string, { label: string; icon: string }[]> = {

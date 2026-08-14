@@ -22,7 +22,7 @@ import { formatDistanceToNow } from 'date-fns';
 import { useToast } from '@/hooks/use-toast';
 import { PinInput } from '@/components/pin-input';
 
-const API_BASE = import.meta.env.BASE_URL.replace(/\/$/, '') + '/api';
+import { API_BASE } from '@/lib/api';
 
 export default function Account() {
   const { toast } = useToast();

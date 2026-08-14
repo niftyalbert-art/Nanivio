@@ -12,7 +12,7 @@ import { CheckCircle2, XCircle, Clock, ArrowDownLeft, ArrowUpRight, MessageSquar
 import { formatDistanceToNow } from 'date-fns';
 import { useToast } from '@/hooks/use-toast';
 
-const API = import.meta.env.BASE_URL.replace(/\/$/, '') + '/api';
+import { API_BASE as API } from '@/lib/api';
 const ADMIN_JWT_KEY = 'nanivio_admin_jwt';
 
 const USERS_SECTION_KEY = 'nanivio_admin_users_key';

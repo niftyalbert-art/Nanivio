@@ -1,8 +1,7 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from 'react';
 import { StreamChat } from 'stream-chat';
 
-const BASE = import.meta.env.BASE_URL.replace(/\/$/, '');
-const API = `${BASE}/api`;
+import { API_BASE as API } from '@/lib/api';
 
 export interface StreamData {
   token: string;

@@ -6,7 +6,7 @@ import { Label } from '@/components/ui/label';
 import { CheckCircle2, ArrowLeft } from 'lucide-react';
 import { PinInput } from '@/components/pin-input';
 
-const API = import.meta.env.BASE_URL.replace(/\/$/, '') + '/api';
+import { API_BASE as API } from '@/lib/api';
 
 export default function ResetPassword() {
   const [, setLocation] = useLocation();

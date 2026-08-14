@@ -9,7 +9,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { Search, Clock, TrendingUp, ArrowLeftRight, ChevronDown, ChevronUp, Calculator } from 'lucide-react';
 import { groupByRegion } from '@/lib/regions';
 
-const API_BASE = import.meta.env.BASE_URL.replace(/\/$/, '') + '/api';
+import { API_BASE } from '@/lib/api';
 
 // ── Rate calculator state (shared across cards, resets when a different card opens) ──
 interface CalcState {

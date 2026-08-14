@@ -14,7 +14,7 @@ import {
   RefreshCw, ExternalLink, Bitcoin, Wallet
 } from 'lucide-react';
 
-const API = import.meta.env.BASE_URL.replace(/\/$/, '') + '/api';
+import { API_BASE as API } from '@/lib/api';
 
 // Reusable QR code image — uses the free, open-source qrserver.com API
 function QRCode({ data, size = 200 }: { data: string; size?: number }) {

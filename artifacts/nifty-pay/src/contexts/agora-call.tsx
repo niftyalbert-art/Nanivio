@@ -21,8 +21,7 @@ import { useStreamChat } from './stream-chat';
 import { createRingtone } from '@/lib/sounds';
 import { toast } from '@/hooks/use-toast';
 
-const BASE = import.meta.env.BASE_URL.replace(/\/$/, '');
-const API  = `${BASE}/api`;
+import { API_BASE as API } from '@/lib/api';
 
 AgoraRTC.setLogLevel(2); // warnings+errors only
 
