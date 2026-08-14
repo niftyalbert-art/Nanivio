@@ -5,8 +5,8 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useAuth } from '@/contexts/auth';
 import { PinInput } from '@/components/pin-input';
+import { API_BASE as API } from '@/lib/api';
 
-const API = import.meta.env.BASE_URL.replace(/\/$/, '') + '/api';
 
 export default function SignUp() {
   const [, setLocation] = useLocation();
