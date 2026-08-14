@@ -2599,7 +2599,8 @@ export default function Admin() {
   const [activeTab, setActiveTab] = useState('deposits');
   // reset-password flow
   const [view, setView] = useState<'login' | 'reset'>('login');
-  const [resetCurrent, setResetCurrent] = useState('');
+  const [resetUsername, setResetUsername] = useState('');
+  const [resetRecoveryKey, setResetRecoveryKey] = useState('');
   const [resetNew, setResetNew] = useState('');
   const [resetConfirm, setResetConfirm] = useState('');
   const [resetLoading, setResetLoading] = useState(false);
@@ -2675,27 +2676,75 @@ export default function Admin() {
   };
 
   const handleReset = async () => {
-    if (!resetCurrent) { toast({ title: 'Enter your current password', variant: 'destructive' }); return; }
-    if (!resetNew || resetNew.length < 8) { toast({ title: 'New password must be at least 8 characters', variant: 'destructive' }); return; }
-    if (resetNew !== resetConfirm) { toast({ title: 'Passwords do not match', variant: 'destructive' }); return; }
+    if (!resetUsername.trim()) {
+      toast({ title: 'Enter your admin username', variant: 'destructive' });
+      return;
+    }
+
+    if (!resetRecoveryKey.trim()) {
+      toast({ title: 'Enter your recovery key', variant: 'destructive' });
+      return;
+    }
+
+    if (!resetNew || resetNew.length < 8) {
+      toast({
+        title: 'New password must be at least 8 characters',
+        variant: 'destructive'
+      });
+      return;
+    }
+
+    if (resetNew !== resetConfirm) {
+      toast({ title: 'Passwords do not match', variant: 'destructive' });
+      return;
+    }
+
     setResetLoading(true);
+
     try {
-      const r = await fetch(`${API}/admin/change-password`, {
+      const r = await fetch(`${API}/admin/recover-password`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ currentPassword: resetCurrent, newPassword: resetNew }),
+        body: JSON.stringify({
+          username: resetUsername.trim(),
+          recoveryKey: resetRecoveryKey.trim(),
+          newPassword: resetNew,
+        }),
       });
+
       if (!r.ok) {
-        const { error } = await r.json().catch(() => ({ error: 'Failed' }));
-        toast({ title: error ?? 'Reset failed', variant: 'destructive' });
+        const { error } = await r.json().catch(() => ({
+          error: 'Password recovery failed'
+        }));
+
+        toast({
+          title: error ?? 'Password recovery failed',
+          variant: 'destructive'
+        });
         return;
       }
-      toast({ title: '✅ Password updated', description: 'You can now sign in with your new password.' });
+
+      toast({
+        title: '✅ Password reset successfully',
+        description: 'You can now sign in with your new password.'
+      });
+
       setView('login');
-      setResetCurrent(''); setResetNew(''); setResetConfirm('');
+      setUsername(resetUsername.trim());
+      setPin('');
+      setResetUsername('');
+      setResetRecoveryKey('');
+      setResetNew('');
+      setResetConfirm('');
     } catch {
-      toast({ title: 'Network error', description: 'Please try again.', variant: 'destructive' });
-    } finally { setResetLoading(false); }
+      toast({
+        title: 'Network error',
+        description: 'Please try again.',
+        variant: 'destructive'
+      });
+    } finally {
+      setResetLoading(false);
+    }
   };
 
   if (!authed) {
@@ -2718,7 +2767,7 @@ export default function Admin() {
             <CardHeader className="pb-2 pt-6 px-6">
               <div className="flex items-center gap-2 mb-1">
                 <button
-                  onClick={() => { setView('login'); setResetCurrent(''); setResetNew(''); setResetConfirm(''); }}
+                  onClick={() => { setView('login'); setResetUsername(''); setResetRecoveryKey(''); setResetNew(''); setResetConfirm(''); }}
                   className="text-muted-foreground hover:text-foreground transition-colors"
                   aria-label="Back to login"
                 >
@@ -2727,30 +2776,34 @@ export default function Admin() {
                 <CardTitle className="text-base font-bold">Reset Admin Password</CardTitle>
               </div>
               <CardDescription className="text-xs pl-6">
-                Enter your current password to verify identity, then set a new one.
+                Use your admin username and private recovery key to set a new password.
               </CardDescription>
             </CardHeader>
             <CardContent className="px-6 pb-6 space-y-4">
-              {/* Current password */}
+              {/* Admin username */}
               <div className="space-y-1.5">
-                <Label className="text-xs font-medium">Current Password</Label>
-                <div className="relative">
-                  <Input
-                    type={showResetCurrent ? 'text' : 'password'}
-                    placeholder="Your existing admin password"
-                    value={resetCurrent}
-                    onChange={e => setResetCurrent(e.target.value)}
-                    className="pr-10"
-                    autoComplete="current-password"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setShowResetCurrent(s => !s)}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
-                  >
-                    {showResetCurrent ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                  </button>
-                </div>
+                <Label className="text-xs font-medium">Admin Username</Label>
+                <Input
+                  placeholder="Nanivioadmin"
+                  value={resetUsername}
+                  onChange={e => setResetUsername(e.target.value)}
+                  autoComplete="username"
+                />
+              </div>
+
+              {/* Recovery key */}
+              <div className="space-y-1.5">
+                <Label className="text-xs font-medium">Recovery Key</Label>
+                <Input
+                  type="password"
+                  placeholder="Enter your private recovery key"
+                  value={resetRecoveryKey}
+                  onChange={e => setResetRecoveryKey(e.target.value)}
+                  autoComplete="off"
+                />
+                <p className="text-[11px] text-muted-foreground">
+                  This key is stored securely in the Nanivio server environment.
+                </p>
               </div>
 
               {/* New password */}
@@ -2807,10 +2860,16 @@ export default function Admin() {
               <Button
                 className="w-full font-semibold mt-1 gap-2"
                 onClick={handleReset}
-                disabled={resetLoading || !resetCurrent || resetNew.length < 8 || resetNew !== resetConfirm}
+                disabled={
+                  resetLoading ||
+                  !resetUsername.trim() ||
+                  !resetRecoveryKey.trim() ||
+                  resetNew.length < 8 ||
+                  resetNew !== resetConfirm
+                }
               >
                 <ShieldCheck className="w-4 h-4" />
-                {resetLoading ? 'Updating…' : 'Update Password'}
+                {resetLoading ? 'Resetting…' : 'Reset Password'}
               </Button>
 
               <p className="text-[11px] text-center text-muted-foreground leading-relaxed">

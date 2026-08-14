@@ -63,57 +63,159 @@ router.post("/admin/section-access/verify", adminOnly, (req, res): void => {
   res.status(403).json({ error: "Invalid access key" });
 });
 
-// ── Helper: verify the submitted password against DB hash or env-var fallback
+// ── Admin authentication ─────────────────────────────────────────────────────
+
+// Admin username is kept in Render environment variables.
+// Never hardcode production credentials in source control.
+const ADMIN_USERNAME_ENV = "ADMIN_USERNAME";
+const ADMIN_PASSWORD_ENV = "ADMIN_PASSWORD";
+const ADMIN_RECOVERY_KEY_ENV = "ADMIN_RECOVERY_KEY";
+
+function adminUsernameMatches(submitted: unknown): boolean {
+  const expected = process.env[ADMIN_USERNAME_ENV];
+  if (typeof submitted !== "string" || !expected) return false;
+
+  return submitted.trim().toLowerCase() === expected.trim().toLowerCase();
+}
+
+// Verify the submitted password against the bcrypt hash stored in settings.
+// Before a password has been changed, fall back to ADMIN_PASSWORD.
 async function verifyAdminPassword(submitted: string): Promise<boolean> {
-  // 1. Try the bcrypt hash stored in settings (set after first password change)
-  const [row] = await db.select().from(settingsTable).where(eq(settingsTable.key, "admin_password_hash"));
+  const [row] = await db
+    .select()
+    .from(settingsTable)
+    .where(eq(settingsTable.key, "admin_password_hash"));
+
   if (row?.value) {
     return bcrypt.compare(submitted, row.value);
   }
-  // 2. Fall back to the plain ADMIN_PASSWORD env var (original setup)
-  const envPass = process.env.ADMIN_PASSWORD;
+
+  const envPass = process.env[ADMIN_PASSWORD_ENV];
   return !!envPass && submitted === envPass;
 }
 
-// ── Admin login — issues a short-lived JWT (no static key in client code) ─
+// POST /admin/login — username + password → short-lived admin JWT
 router.post("/admin/login", async (req, res): Promise<void> => {
-  const { password } = req.body ?? {};
-  if (!password) {
-    res.status(400).json({ error: "Password required" });
+  const { username, password } = req.body ?? {};
+
+  if (!username || !password) {
+    res.status(400).json({ error: "Username and password are required" });
     return;
   }
+
+  if (!adminUsernameMatches(username)) {
+    res.status(401).json({ error: "Invalid credentials" });
+    return;
+  }
+
   const ok = await verifyAdminPassword(password);
+
   if (!ok) {
     res.status(401).json({ error: "Invalid credentials" });
     return;
   }
+
   const token = signAdminToken();
   res.json({ token });
 });
 
-// ── Admin change-password (also used as "forgot password" reset) ───────────
-// Caller must prove they know the CURRENT password (env var or stored hash).
-// On success, the new password is stored as a bcrypt hash in the settings table,
-// and all future logins use that hash instead of the env var.
-router.post("/admin/change-password", async (req, res): Promise<void> => {
-  const { currentPassword, newPassword } = req.body ?? {};
-  if (!currentPassword || !newPassword) {
-    res.status(400).json({ error: "currentPassword and newPassword are required" });
+// ── Admin change-password ───────────────────────────────────────────────────
+// Requires an authenticated admin JWT. This is the normal password-change
+// mechanism available from inside the admin panel.
+router.post("/admin/change-password", adminOnly, async (req, res): Promise<void> => {
+  const { newPassword } = req.body ?? {};
+
+  if (!newPassword) {
+    res.status(400).json({ error: "newPassword is required" });
     return;
   }
-  if (newPassword.length < 8) {
+
+  if (typeof newPassword !== "string" || newPassword.length < 8) {
     res.status(400).json({ error: "New password must be at least 8 characters" });
     return;
   }
-  const ok = await verifyAdminPassword(currentPassword);
-  if (!ok) {
-    res.status(401).json({ error: "Current password is incorrect" });
+
+  const hash = await bcrypt.hash(newPassword, 12);
+
+  await db
+    .insert(settingsTable)
+    .values({
+      key: "admin_password_hash",
+      value: hash,
+      updatedAt: new Date(),
+    })
+    .onConflictDoUpdate({
+      target: settingsTable.key,
+      set: {
+        value: hash,
+        updatedAt: new Date(),
+      },
+    });
+
+  res.json({ ok: true });
+});
+
+// ── Admin recovery-password reset ───────────────────────────────────────────
+// This endpoint is intentionally NOT protected by adminOnly.
+// Instead it requires:
+//   1. the configured admin username
+//   2. the private ADMIN_RECOVERY_KEY
+//   3. a new password
+//
+// The recovery key must exist only in Render environment variables.
+router.post("/admin/recover-password", async (req, res): Promise<void> => {
+  const { username, recoveryKey, newPassword } = req.body ?? {};
+
+  if (!username || !recoveryKey || !newPassword) {
+    res.status(400).json({
+      error: "Username, recovery key, and new password are required",
+    });
     return;
   }
+
+  if (!adminUsernameMatches(username)) {
+    res.status(401).json({ error: "Invalid recovery credentials" });
+    return;
+  }
+
+  if (typeof newPassword !== "string" || newPassword.length < 8) {
+    res.status(400).json({
+      error: "New password must be at least 8 characters",
+    });
+    return;
+  }
+
+  const expectedKey = process.env[ADMIN_RECOVERY_KEY_ENV];
+
+  if (!expectedKey) {
+    res.status(503).json({
+      error: "Admin recovery is not configured",
+    });
+    return;
+  }
+
+  if (!keysMatch(recoveryKey, expectedKey)) {
+    res.status(401).json({ error: "Invalid recovery credentials" });
+    return;
+  }
+
   const hash = await bcrypt.hash(newPassword, 12);
-  await db.insert(settingsTable)
-    .values({ key: "admin_password_hash", value: hash, updatedAt: new Date() })
-    .onConflictDoUpdate({ target: settingsTable.key, set: { value: hash, updatedAt: new Date() } });
+
+  await db
+    .insert(settingsTable)
+    .values({
+      key: "admin_password_hash",
+      value: hash,
+      updatedAt: new Date(),
+    })
+    .onConflictDoUpdate({
+      target: settingsTable.key,
+      set: {
+        value: hash,
+        updatedAt: new Date(),
+      },
+    });
+
   res.json({ ok: true });
 });
 
