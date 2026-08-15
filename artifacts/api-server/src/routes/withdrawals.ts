@@ -1,7 +1,7 @@
 import { Router, type IRouter } from "express";
 import { eq, and, desc, sql } from "drizzle-orm";
 import bcrypt from "bcryptjs";
-import { db, withdrawalsTable, walletsTable, usersTable } from "@workspace/db";
+import { db, withdrawalsTable, walletsTable, usersTable, settingsTable } from "@workspace/db";
 import { requireAuth } from "../middleware/auth";
 import { encryptNullable, decryptNullable } from "../lib/encryption";
 
@@ -30,6 +30,34 @@ router.get("/withdrawals", requireAuth, async (req, res): Promise<void> => {
 });
 
 router.post("/withdrawals", requireAuth, async (req, res): Promise<void> => {
+  // ── Master Money Transfers switch ─────────────────────────────────────────
+  const [moneyTransfersSetting] = await db
+    .select()
+    .from(settingsTable)
+    .where(eq(settingsTable.key, "money_transfers_enabled"));
+
+  if (moneyTransfersSetting?.value === "false") {
+    res.status(503).json({
+      error: "MONEY_TRANSFERS_DISABLED",
+      message: "Money transfers are temporarily unavailable. Please try again later.",
+    });
+    return;
+  }
+
+  // ── Admin-controlled Withdrawals switch ──────────────────────────────────
+  const [withdrawalSetting] = await db
+    .select()
+    .from(settingsTable)
+    .where(eq(settingsTable.key, "withdrawals_enabled"));
+
+  if (withdrawalSetting?.value === "false") {
+    res.status(503).json({
+      error: "WITHDRAWALS_DISABLED",
+      message: "Withdrawals are temporarily unavailable. Please try again later.",
+    });
+    return;
+  }
+
   const {
     walletId, amount, withdrawalType, recipientCountry,
     mobileNumber, mobileNetwork,

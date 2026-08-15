@@ -6,6 +6,14 @@ import { adminOnly } from "../middleware/auth";
 const router: IRouter = Router();
 
 const DEFAULT_SETTINGS: Record<string, string> = {
+  // Money-transfer feature controls
+  money_transfers_enabled: "true",
+  send_money_enabled: "true",
+  international_transfers_enabled: "true",
+  p2p_transfers_enabled: "true",
+  withdrawals_enabled: "true",
+  other_transfer_actions_enabled: "true",
+
   whatsapp_link: "https://wa.me/971501234567",
   telegram_link: "https://t.me/nanivio_support",
   send_fee_percent: "",        // used when fee_mode = "percent"; empty = per-currency fee

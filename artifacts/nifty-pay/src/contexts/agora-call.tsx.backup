@@ -63,7 +63,6 @@ export interface AgoraCallCtx {
   camOn: boolean;
   /** non-null while this user is the paying caller in a paid call */
   billing: CallBillingState | null;
-  getMicrophoneTrack: () => MediaStreamTrack | null;
   toggleMic:    () => Promise<void>;
   toggleCamera: () => Promise<void>;
   startCall:   (type: 'audio' | 'video', chatId: string, otherUserId: string, otherName: string, billing?: CallBillingRequest) => Promise<void>;
@@ -76,7 +75,6 @@ const Ctx = createContext<AgoraCallCtx>({
   ready: false, incomingCall: null, activeCall: null, callKind: 'video',
   remoteJoined: false, remoteVideoTrack: null, localVideoTrack: null,
   micOn: true, camOn: true, billing: null,
-  getMicrophoneTrack: () => null,
   toggleMic: async () => {}, toggleCamera: async () => {},
   startCall: async () => {}, acceptCall: async () => {},
   declineCall: () => {}, endCall: () => {},
@@ -482,10 +480,6 @@ export function AgoraCallProvider({ children }: { children: ReactNode }) {
   }, []);
 
   /* ── mic / camera toggles ── */
-  const getMicrophoneTrack = useCallback(() => {
-    return micTrackRef.current?.getMediaStreamTrack?.() ?? null;
-  }, []);
-
   const toggleMic = useCallback(async () => {
     const t = micTrackRef.current;
     if (!t) return;
@@ -577,7 +571,7 @@ export function AgoraCallProvider({ children }: { children: ReactNode }) {
     <Ctx.Provider value={{
       ready: !!chatClient, incomingCall, activeCall, callKind,
       remoteJoined, remoteVideoTrack, localVideoTrack, micOn, camOn, billing,
-      getMicrophoneTrack, toggleMic, toggleCamera, startCall, acceptCall, declineCall, endCall,
+      toggleMic, toggleCamera, startCall, acceptCall, declineCall, endCall,
     }}>
       {children}
     </Ctx.Provider>

@@ -21,6 +21,7 @@ timeoutMs = 20000
 
 [nix]
 channel = "stable-25_05"
+packages = ["nano", "psmisc"]
 
 [userenv]
 
@@ -30,3 +31,15 @@ STREAM_API_KEY = "ex433j6xbbbc"
 ENCRYPTION_KEY = "1a437e37188fba820a8507be2e2890a1ceb5d1ff58af8f62d8ab733414eb43b8"
 ADMIN_ENGAGEMENTS_ACCESS_KEY = "EK-9594E55C"
 ADMIN_USERS_ACCESS_KEY = "UK-C052E96E"
+
+[[ports]]
+localPort = 8080
+externalPort = 8080
+
+[[ports]]
+localPort = 8081
+externalPort = 8081
+
+[[ports]]
+localPort = 18638
+externalPort = 80

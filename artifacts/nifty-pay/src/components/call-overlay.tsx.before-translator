@@ -8,18 +8,9 @@
  */
 import { useEffect, useRef, useState } from 'react';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
-import {
-  PhoneCall,
-  PhoneOff,
-  Mic,
-  MicOff,
-  Video,
-  VideoOff,
-  Languages,
-} from 'lucide-react';
+import { PhoneCall, PhoneOff, Mic, MicOff, Video, VideoOff } from 'lucide-react';
 import { useAgoraCall } from '@/contexts/agora-call';
 import { useToast } from '@/hooks/use-toast';
-import { RealtimeTranslatorPanel } from '@/components/realtime-translator';
 
 /* ─── active call UI ─── */
 function CallUI() {
@@ -30,7 +21,6 @@ function CallUI() {
   const remoteRef = useRef<HTMLDivElement>(null);
   const localRef = useRef<HTMLDivElement>(null);
   const [seconds, setSeconds] = useState(0);
-  const [translatorOpen, setTranslatorOpen] = useState(false);
 
   /* play remote video into the full-screen container */
   useEffect(() => {
@@ -115,15 +105,6 @@ function CallUI() {
       {/* ── Controls — bottom center ── */}
       <div className="absolute inset-x-0 bottom-8 z-10 flex justify-center gap-5">
         <button
-          onClick={() => setTranslatorOpen(true)}
-          className="w-14 h-14 rounded-full bg-white/15 hover:bg-white/25 text-white flex items-center justify-center transition-colors"
-          aria-label="Open live translator"
-          title="Live Translator"
-        >
-          <Languages className="w-6 h-6" />
-        </button>
-
-        <button
           onClick={() => void toggleMic()}
           className={`w-14 h-14 rounded-full flex items-center justify-center transition-colors ${micOn ? 'bg-white/15 hover:bg-white/25 text-white' : 'bg-white text-black'}`}
           aria-label={micOn ? 'Mute microphone' : 'Unmute microphone'}
@@ -147,11 +128,6 @@ function CallUI() {
           <PhoneOff className="w-6 h-6 text-white" />
         </button>
       </div>
-
-      <RealtimeTranslatorPanel
-        open={translatorOpen}
-        onClose={() => setTranslatorOpen(false)}
-      />
     </div>
   );
 }

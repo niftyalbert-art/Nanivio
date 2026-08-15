@@ -168,6 +168,34 @@ router.get("/transactions", requireAuth, async (req, res): Promise<void> => {
 });
 
 router.post("/transactions", requireAuth, async (req, res): Promise<void> => {
+  // ── Master Money Transfers switch ─────────────────────────────────────────
+  const [moneyTransfersSetting] = await db
+    .select()
+    .from(settingsTable)
+    .where(eq(settingsTable.key, "money_transfers_enabled"));
+
+  if (moneyTransfersSetting?.value === "false") {
+    res.status(503).json({
+      error: "MONEY_TRANSFERS_DISABLED",
+      message: "Money transfers are temporarily unavailable. Please try again later.",
+    });
+    return;
+  }
+
+  // ── Admin-controlled Send Money switch ────────────────────────────────────
+  const [sendMoneySetting] = await db
+    .select()
+    .from(settingsTable)
+    .where(eq(settingsTable.key, "send_money_enabled"));
+
+  if (sendMoneySetting?.value === "false") {
+    res.status(503).json({
+      error: "SEND_MONEY_DISABLED",
+      message: "Send Money is temporarily unavailable. Please try again later.",
+    });
+    return;
+  }
+
   const body = CreateTransactionBody.safeParse(req.body);
   if (!body.success) {
     res.status(400).json({ error: body.error.message });
@@ -215,6 +243,23 @@ router.post("/transactions", requireAuth, async (req, res): Promise<void> => {
     .where(and(eq(walletsTable.id, fromWalletId), eq(walletsTable.userId, userId)));
   if (!wallet) {
     res.status(400).json({ error: "Source wallet not found" });
+    return;
+  }
+
+  // ── International Transfers admin switch ──────────────────────────────────
+  const [internationalSetting] = await db
+    .select()
+    .from(settingsTable)
+    .where(eq(settingsTable.key, "international_transfers_enabled"));
+
+  if (
+    internationalSetting?.value === "false" &&
+    wallet.currencyCode !== toCurrencyCode
+  ) {
+    res.status(503).json({
+      error: "INTERNATIONAL_TRANSFERS_DISABLED",
+      message: "International transfers are temporarily unavailable. Same-currency transfers are still available.",
+    });
     return;
   }
 

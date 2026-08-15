@@ -83,6 +83,33 @@ const TransferBody = z.object({
 });
 
 router.post("/p2p/transfers", requireAuth, async (req, res): Promise<void> => {
+  // ── Master Money Transfers switch ─────────────────────────────────────────
+  const [moneyTransfersSetting] = await db
+    .select()
+    .from(settingsTable)
+    .where(eq(settingsTable.key, "money_transfers_enabled"));
+
+  if (moneyTransfersSetting?.value === "false") {
+    res.status(503).json({
+      error: "MONEY_TRANSFERS_DISABLED",
+      message: "Money transfers are temporarily unavailable. Please try again later.",
+    });
+    return;
+  }
+
+  // ── Admin-controlled P2P Transfers switch ────────────────────────────────
+  const [p2pSetting] = await db
+    .select()
+    .from(settingsTable)
+    .where(eq(settingsTable.key, "p2p_transfers_enabled"));
+
+  if (p2pSetting?.value === "false") {
+    res.status(503).json({
+      error: "P2P_TRANSFERS_DISABLED",
+      message: "P2P transfers are temporarily unavailable. Please try again later.",
+    });
+    return;
+  }
   const parsed = TransferBody.safeParse(req.body);
   if (!parsed.success) { res.status(400).json({ error: parsed.error.message }); return; }
   const { toUserId, fromWalletId, note, pin, chatId, requestId } = parsed.data;

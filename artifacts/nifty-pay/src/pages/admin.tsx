@@ -1274,6 +1274,124 @@ function SettingsPanel() {
   return (
     <div className="space-y-5">
 
+      {/* Money Transfer Controls */}
+      <Card>
+        <CardHeader className="p-4 pb-2">
+          <CardTitle className="text-sm font-bold flex items-center gap-2">
+            <ArrowLeftRight className="w-4 h-4 text-primary" />
+            Money Transfer Controls
+          </CardTitle>
+          <CardDescription className="text-xs">
+            Control which financial-transfer features are available to users.
+            Communication features such as chat, calls and contacts are not affected.
+          </CardDescription>
+        </CardHeader>
+
+        <CardContent className="p-4 pt-2 space-y-2">
+
+          {[
+            {
+              key: 'money_transfers_enabled',
+              label: 'All Money Transfers',
+              description: 'Master switch — disables all money-transfer functions',
+            },
+            {
+              key: 'send_money_enabled',
+              label: 'Send Money',
+              description: 'Standard money transfers to recipients',
+            },
+            {
+              key: 'international_transfers_enabled',
+              label: 'International Transfers',
+              description: 'Cross-border/international transfer functionality',
+            },
+            {
+              key: 'p2p_transfers_enabled',
+              label: 'P2P Transfers',
+              description: 'Peer-to-peer transfers and transfer requests',
+            },
+            {
+              key: 'withdrawals_enabled',
+              label: 'Withdrawals',
+              description: "Withdraw money from the user's wallet",
+            },
+            {
+              key: 'other_transfer_actions_enabled',
+              label: 'Other Money-Transfer Actions',
+              description: 'Other financial-transfer operations',
+            },
+          ].map((item) => {
+            const enabled = val(item.key) !== 'false';
+
+            return (
+              <div
+                key={item.key}
+                className="flex items-center justify-between gap-3 rounded-xl border p-3"
+              >
+                <div className="min-w-0">
+                  <p className="text-xs font-semibold">
+                    {item.label}
+                  </p>
+                  <p className="text-[11px] text-muted-foreground">
+                    {item.description}
+                  </p>
+                </div>
+
+                <button
+                  type="button"
+                  disabled={saving === item.key}
+                  onClick={async () => {
+                    const nextValue = enabled ? 'false' : 'true';
+
+                    set(item.key, nextValue);
+                    setSaving(item.key);
+
+                    try {
+                      await apiFetch(
+                        `/admin/settings/${item.key}`,
+                        {
+                          method: 'PUT',
+                          body: JSON.stringify({ value: nextValue }),
+                        }
+                      );
+
+                      await refetch();
+
+                      toast({
+                        title: `${item.label} ${nextValue === 'true' ? 'enabled' : 'disabled'} ✓`,
+                      });
+                    } catch (e: any) {
+                      set(item.key, enabled ? 'true' : 'false');
+
+                      toast({
+                        title: 'Error',
+                        description: e.message,
+                        variant: 'destructive',
+                      });
+                    } finally {
+                      setSaving(null);
+                    }
+                  }}
+                  className={[
+                    'shrink-0 min-w-[58px] rounded-full px-3 py-1.5 text-[10px] font-bold transition-all',
+                    enabled
+                      ? 'bg-green-500/15 text-green-600 border border-green-500/30'
+                      : 'bg-red-500/15 text-red-600 border border-red-500/30',
+                  ].join(' ')}
+                >
+                  {saving === item.key
+                    ? 'SAVING…'
+                    : enabled
+                      ? 'ON'
+                      : 'OFF'}
+                </button>
+              </div>
+            );
+          })}
+
+        </CardContent>
+      </Card>
+
       {/* Pending PIN Resets */}
       <Card>
         <CardHeader className="p-4 pb-2">

@@ -218,6 +218,9 @@ importers:
       web-push:
         specifier: ^3.6.7
         version: 3.6.7
+      ws:
+        specifier: ^8.21.3
+        version: 8.21.3
       zod:
         specifier: 'catalog:'
         version: 3.25.76
@@ -243,6 +246,9 @@ importers:
       '@types/web-push':
         specifier: ^3.6.4
         version: 3.6.4
+      '@types/ws':
+        specifier: ^8.18.1
+        version: 8.18.1
       esbuild:
         specifier: 0.27.3
         version: 0.27.3
@@ -5046,8 +5052,8 @@ packages:
   wrappy@1.0.2:
     resolution: {integrity: sha512-l4Sp/DRseor9wL6EvV2+TuQn63dMkPjZ/sp9XkghTEbV9KlPS1xUsZ3u7/IQO4wxtcFB4bgpQPRcR3QCvezPcQ==}
 
-  ws@8.21.1:
-    resolution: {integrity: sha512-+0NTnW77fFN/DjQi6k/Sq/Yvk4Sgajw7urW8V+asjXnRgDs9gyGkdb7EzgfhA4goXsRIZKE28fzIXBHEzhuiWw==}
+  ws@8.21.3:
+    resolution: {integrity: sha512-201TZ/kPWxoPr/OKWjquZR1SWKXcvxdH+e1xrx89b3YbmzLMFCLfnaG1HFIgWzJOEWZ7MvpK++odZufgYR50Rw==}
     engines: {node: '>=10.0.0'}
     peerDependencies:
       bufferutil: ^4.0.1
@@ -8253,9 +8259,9 @@ snapshots:
 
   isexe@2.0.0: {}
 
-  isomorphic-ws@5.0.0(ws@8.21.1):
+  isomorphic-ws@5.0.0(ws@8.21.3):
     dependencies:
-      ws: 8.21.1
+      ws: 8.21.3
 
   jackspeak@4.2.3:
     dependencies:
@@ -9607,10 +9613,10 @@ snapshots:
       axios: 1.19.0
       base64-js: 1.5.1
       form-data: 4.0.6
-      isomorphic-ws: 5.0.0(ws@8.21.1)
+      isomorphic-ws: 5.0.0(ws@8.21.3)
       jsonwebtoken: 9.0.3
       linkifyjs: 4.3.3
-      ws: 8.21.1
+      ws: 8.21.3
     transitivePeerDependencies:
       - bufferutil
       - debug
@@ -10184,7 +10190,7 @@ snapshots:
 
   wrappy@1.0.2: {}
 
-  ws@8.21.1: {}
+  ws@8.21.3: {}
 
   xtend@4.0.2: {}
 

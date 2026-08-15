@@ -1,3 +1,5 @@
+import { createServer } from "http";
+import { attachTranslatorWebSocket } from "./routes/translator";
 import app from "./app";
 import { logger } from "./lib/logger";
 import { db, usersTable, pool } from "@workspace/db";
@@ -277,7 +279,11 @@ if (Number.isNaN(port) || port <= 0) {
   throw new Error(`Invalid PORT value: "${rawPort}"`);
 }
 
-app.listen(port, () => {
+const server = createServer(app);
+
+attachTranslatorWebSocket(server);
+
+server.listen(port, () => {
   logger.info({ port }, "Server listening");
 
   // Fire-and-forget async startup tasks
