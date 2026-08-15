@@ -36,6 +36,9 @@ export const usersTable = pgTable("users", {
   emailVerified: boolean("email_verified").notNull().default(false),
   emailVerificationCode: text("email_verification_code"),
   emailVerificationExpiresAt: timestamp("email_verification_expires_at", { withTimezone: true }),
+  // Live translation preferences
+  preferredLanguage: text("preferred_language").notNull().default("en"),
+  translationEnabled: boolean("translation_enabled").notNull().default(false),
 });
 
 export type User = typeof usersTable.$inferSelect;

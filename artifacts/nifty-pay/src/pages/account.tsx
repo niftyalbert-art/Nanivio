@@ -15,7 +15,7 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
-import { Copy, Check, ArrowDownLeft, ArrowUpLeft, MessageSquare, CheckCircle2, ExternalLink, Send, LogOut, ShieldCheck, ChevronDown, ChevronUp, Phone, Video, BadgeCheck, ChevronRight, TrendingUp, ArrowLeftRight, Camera, Banknote } from 'lucide-react';
+import { Copy, Check, ArrowDownLeft, ArrowUpLeft, MessageSquare, CheckCircle2, ExternalLink, Send, LogOut, ShieldCheck, ChevronDown, ChevronUp, Phone, Video, BadgeCheck, ChevronRight, TrendingUp, ArrowLeftRight, Camera, Banknote, Languages } from 'lucide-react';
 import { useLocation } from 'wouter';
 import { Switch } from '@/components/ui/switch';
 import { formatDistanceToNow } from 'date-fns';
@@ -131,6 +131,52 @@ export default function Account() {
       });
     },
     onError: (e: any) => toast({ title: 'Could not save', description: e.message, variant: 'destructive' }),
+  });
+
+  // Live translation preferences
+  const { data: translationSettings, isLoading: translationSettingsLoading } = useQuery<{
+    preferredLanguage: string;
+    translationEnabled: boolean;
+  }>({
+    queryKey: ['translation-settings'],
+    queryFn: () => fetch(`${API_BASE}/user/translation-settings`, {
+      headers: { Authorization: `Bearer ${token}` },
+    }).then(r => r.json()),
+    enabled: !!token,
+  });
+
+  const updateTranslationSettings = useMutation({
+    mutationFn: async (patch: {
+      preferredLanguage?: string;
+      translationEnabled?: boolean;
+    }) => {
+      const r = await fetch(`${API_BASE}/user/translation-settings`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify(patch),
+      });
+
+      const data = await r.json().catch(() => ({}));
+
+      if (!r.ok) {
+        throw new Error(data?.error ?? 'Failed to save translation setting');
+      }
+
+      return data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['translation-settings'] });
+    },
+    onError: (error: Error) => {
+      toast({
+        title: 'Could not save translation setting',
+        description: error.message,
+        variant: 'destructive',
+      });
+    },
   });
 
   const updateCallingSettings = useMutation({
@@ -403,6 +449,91 @@ export default function Account() {
               )}
             </div>
           )}
+        </CardContent>
+      </Card>
+
+      {/* ── Live Translation ───────────────────────────────────────── */}
+      <Card>
+        <CardContent className="p-0">
+          <div className="p-4 flex items-center gap-3">
+            <div className="w-9 h-9 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
+              <Languages className="w-4 h-4 text-primary" />
+            </div>
+            <div>
+              <p className="font-semibold text-sm">Live Translation</p>
+              <p className="text-xs text-muted-foreground">
+                Choose your preferred language for real-time voice translation
+              </p>
+            </div>
+          </div>
+
+          <div className="border-t border-border divide-y divide-border">
+            {translationSettingsLoading ? (
+              <div className="px-4 py-3">
+                <div className="h-9 bg-muted/50 rounded-lg animate-pulse" />
+              </div>
+            ) : (
+              <>
+                {/* Preferred language */}
+                <div className="flex items-center justify-between px-4 py-3 gap-4">
+                  <div className="min-w-0">
+                    <p className="text-sm font-medium">Preferred language</p>
+                    <p className="text-xs text-muted-foreground">
+                      The language you want to receive translations in
+                    </p>
+                  </div>
+
+                  <select
+                    value={translationSettings?.preferredLanguage ?? 'en'}
+                    disabled={updateTranslationSettings.isPending}
+                    onChange={(e) =>
+                      updateTranslationSettings.mutate({
+                        preferredLanguage: e.target.value,
+                      })
+                    }
+                    className="h-9 rounded-md border border-input bg-background px-3 text-sm shrink-0"
+                  >
+                    {[
+                      ['en', 'English'],
+                      ['fr', 'French'],
+                      ['es', 'Spanish'],
+                      ['ar', 'Arabic'],
+                      ['de', 'German'],
+                      ['it', 'Italian'],
+                      ['pt', 'Portuguese'],
+                      ['zh', 'Chinese'],
+                      ['ja', 'Japanese'],
+                      ['ko', 'Korean'],
+                    ].map(([value, label]) => (
+                      <option key={value} value={value}>
+                        {label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* Translation ON/OFF */}
+                <div className="flex items-center justify-between px-4 py-3 gap-4">
+                  <div className="min-w-0">
+                    <p className="text-sm font-medium">Live translation</p>
+                    <p className="text-xs text-muted-foreground">
+                      Automatically translate voices during supported calls
+                    </p>
+                  </div>
+
+                  <Switch
+                    checked={translationSettings?.translationEnabled ?? false}
+                    disabled={updateTranslationSettings.isPending}
+                    onCheckedChange={(enabled) =>
+                      updateTranslationSettings.mutate({
+                        translationEnabled: enabled,
+                      })
+                    }
+                  />
+                </div>
+              </>
+            )}
+          </div>
         </CardContent>
       </Card>
 

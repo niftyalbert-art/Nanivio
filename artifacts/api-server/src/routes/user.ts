@@ -84,6 +84,84 @@ router.get("/user/dashboard", requireAuth, async (req, res): Promise<void> => {
   res.json(GetDashboardSummaryResponse.parse(summary));
 });
 
+// GET /user/translation-settings — own live translation preferences
+router.get('/user/translation-settings', requireAuth, async (req, res): Promise<void> => {
+  try {
+    const [user] = await db
+      .select({
+        preferredLanguage: usersTable.preferredLanguage,
+        translationEnabled: usersTable.translationEnabled,
+      })
+      .from(usersTable)
+      .where(eq(usersTable.id, req.userId!))
+      .limit(1);
+
+    if (!user) {
+      res.status(404).json({ error: 'User not found' });
+      return;
+    }
+
+    res.json(user);
+  } catch (error) {
+    console.error('[translation-settings] GET failed:', error);
+    res.status(500).json({ error: 'Failed to load translation settings' });
+  }
+});
+
+// PATCH /user/translation-settings — update own live translation preferences
+router.patch('/user/translation-settings', requireAuth, async (req, res): Promise<void> => {
+  try {
+    const { preferredLanguage, translationEnabled } = req.body as {
+      preferredLanguage?: string;
+      translationEnabled?: boolean;
+    };
+
+    const allowedLanguages = [
+      'en', 'fr', 'es', 'ar', 'de', 'it', 'pt', 'zh', 'ja', 'ko',
+    ];
+
+    const patch: Partial<typeof usersTable.$inferInsert> = {};
+
+    if (typeof preferredLanguage === 'string') {
+      if (!allowedLanguages.includes(preferredLanguage)) {
+        res.status(400).json({ error: 'Unsupported language' });
+        return;
+      }
+      patch.preferredLanguage = preferredLanguage;
+    }
+
+    if (typeof translationEnabled === 'boolean') {
+      patch.translationEnabled = translationEnabled;
+    }
+
+    if (Object.keys(patch).length === 0) {
+      res.status(400).json({ error: 'No valid settings provided' });
+      return;
+    }
+
+    patch.updatedAt = new Date();
+
+    await db
+      .update(usersTable)
+      .set(patch)
+      .where(eq(usersTable.id, req.userId!));
+
+    const [updated] = await db
+      .select({
+        preferredLanguage: usersTable.preferredLanguage,
+        translationEnabled: usersTable.translationEnabled,
+      })
+      .from(usersTable)
+      .where(eq(usersTable.id, req.userId!))
+      .limit(1);
+
+    res.json(updated);
+  } catch (error) {
+    console.error('[translation-settings] PATCH failed:', error);
+    res.status(500).json({ error: 'Failed to save translation settings' });
+  }
+});
+
 // GET /user/calling-settings — own call preferences
 router.get('/user/calling-settings', requireAuth, async (req, res): Promise<void> => {
   try {

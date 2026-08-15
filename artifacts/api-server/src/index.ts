@@ -3,7 +3,7 @@ import { attachTranslatorWebSocket } from "./routes/translator";
 import app from "./app";
 import { logger } from "./lib/logger";
 import { db, usersTable, pool } from "@workspace/db";
-import { isNotNull } from "drizzle-orm";
+import { isNotNull, sql } from "drizzle-orm";
 import { StreamChat } from "stream-chat";
 import { startTronMonitor } from "./services/tron-monitor";
 
@@ -184,6 +184,20 @@ async function runEmailVerificationMigration() {
 }
 
 /** Idempotent migration: push_subscriptions table for call notifications. */
+/** Idempotent migration: live translation preferences. */
+async function runTranslationPreferencesMigration() {
+  try {
+    await db.execute(sql`
+      ALTER TABLE users
+        ADD COLUMN IF NOT EXISTS preferred_language TEXT NOT NULL DEFAULT 'en',
+        ADD COLUMN IF NOT EXISTS translation_enabled BOOLEAN NOT NULL DEFAULT FALSE;
+    `);
+    logger.info("Translation preferences schema migration complete");
+  } catch (err) {
+    logger.error({ err }, "Translation preferences migration FAILED");
+  }
+}
+
 async function runPushSchemaMigration() {
   try {
     await pool.query(`
@@ -296,6 +310,7 @@ server.listen(port, () => {
     await runWallpaperCatalogMigration();
     await runEmailVerificationMigration();
     await runFraudSchemaMigration();
+    await runTranslationPreferencesMigration();
     await runPushSchemaMigration();
     // Clear any legacy plain-text PINs (bcrypt hash is in passwordHash)
     clearLegacyPlainPins();
