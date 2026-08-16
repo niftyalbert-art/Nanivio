@@ -483,33 +483,20 @@ export default function Account() {
                     </p>
                   </div>
 
-                  <select
-                    value={translationSettings?.preferredLanguage ?? 'en'}
-                    disabled={updateTranslationSettings.isPending}
-                    onChange={(e) =>
-                      updateTranslationSettings.mutate({
-                        preferredLanguage: e.target.value,
-                      })
-                    }
-                    className="h-9 rounded-md border border-input bg-background px-3 text-sm shrink-0"
-                  >
-                    {[
-                      ['en', 'English'],
-                      ['fr', 'French'],
-                      ['es', 'Spanish'],
-                      ['ar', 'Arabic'],
-                      ['de', 'German'],
-                      ['it', 'Italian'],
-                      ['pt', 'Portuguese'],
-                      ['zh', 'Chinese'],
-                      ['ja', 'Japanese'],
-                      ['ko', 'Korean'],
-                    ].map(([value, label]) => (
-                      <option key={value} value={value}>
-                        {label}
-                      </option>
-                    ))}
-                  </select>
+                  <select className="h-9 rounded-md border border-input bg-background px-3 text-sm shrink-0">
+            <option value="ak-twi">Akan (Twi - Ghana)</option>
+            <option value="ee">Ewe (Ɛwɛgbe)</option>
+            <option value="ga">Ga (Gã)</option>
+            <option value="fat">Fante (Mfantse)</option>
+            <option value="ha">Hausa (هَوُسَ)</option>
+            <option value="sw">Swahili (Kenya/Uganda)</option>
+            <option value="en">English (US)</option>
+            <option value="fr">French (Français)</option>
+            <option value="es">Spanish (Español)</option>
+            <option value="ar">Arabic (العربية)</option>
+            <option value="zh">Chinese (Mandarin)</option>
+            <option value="de">German (Deutsch)</option>
+          </select>
                 </div>
 
                 {/* Translation ON/OFF */}
