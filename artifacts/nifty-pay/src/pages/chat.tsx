@@ -167,7 +167,7 @@ function ChannelItem({
           <span className="absolute bottom-0 right-0 w-3 h-3 rounded-full bg-emerald-500 border-2 border-background" />
         )}
         {unread > 0 && (
-          <span className="absolute -top-1 -right-1 w-5 h-5 bg-primary text-primary-foreground rounded-full text-[10px] font-bold flex items-center justify-center leading-none shadow-md shadow-primary/40">
+          <span className="absolute -top-1 -right-1 w-5 h-5 bg-[#2b83ff] text-white shadow-[0_4px_15px_rgba(43,131,255,0.15)] font-medium rounded-2xl rounded-tr-none px-4 py-2.5 rounded-full text-[10px] font-bold flex items-center justify-center leading-none shadow-md shadow-primary/40">
             {unread > 99 ? '99+' : unread}
           </span>
         )}
@@ -177,9 +177,9 @@ function ChannelItem({
           <p className={cn('text-sm truncate', unread ? 'font-bold text-foreground' : 'font-medium text-foreground/90')}>
             {title}
           </p>
-          {lastAt && <span className="text-[10px] text-muted-foreground shrink-0">{lastAt}</span>}
+          {lastAt && <span className="text-[10px] text-[#64748b] shrink-0">{lastAt}</span>}
         </div>
-        <p className={cn('text-xs truncate mt-0.5', unread ? 'text-foreground/70 font-medium' : 'text-muted-foreground')}>
+        <p className={cn('text-xs truncate mt-0.5', unread ? 'text-foreground/70 font-medium' : 'text-[#64748b]')}>
           {lastText}
         </p>
       </div>
@@ -232,7 +232,7 @@ function StreamEmojiPicker() {
         onClick={() => setOpen(o => !o)}
         className={cn(
           'w-9 h-9 flex items-center justify-center rounded-full text-lg transition-colors',
-          open ? 'bg-primary/15 text-primary' : 'text-muted-foreground hover:text-foreground hover:bg-muted/40',
+          open ? 'bg-primary/15 text-primary' : 'text-[#64748b] hover:text-foreground hover:bg-muted/40',
         )}
       >
         😊
@@ -389,11 +389,11 @@ function WallpaperSheet({
             <Paintbrush className="w-4 h-4 text-primary" />
             <p className="font-bold text-sm">Chat Wallpaper</p>
           </div>
-          <button onClick={onClose} className="text-muted-foreground hover:text-foreground">
+          <button onClick={onClose} className="text-[#64748b] hover:text-foreground">
             <X className="w-4 h-4" />
           </button>
         </div>
-        <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/70 -mb-2">Official Nanivio</p>
+        <p className="text-[10px] font-semibold uppercase tracking-widest text-[#64748b]/70 -mb-2">Official Nanivio</p>
         <div className="grid grid-cols-3 gap-2.5">
           {presets.filter(p => p.official).map(p => (
             <button
@@ -414,7 +414,7 @@ function WallpaperSheet({
             </button>
           ))}
         </div>
-        <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/70 -mb-2">Colors & Textures</p>
+        <p className="text-[10px] font-semibold uppercase tracking-widest text-[#64748b]/70 -mb-2">Colors & Textures</p>
         <div className="grid grid-cols-4 gap-2.5">
           {presets.filter(p => !p.official).map(p => (
             <button
@@ -440,7 +440,7 @@ function WallpaperSheet({
           disabled={busy}
           className={cn(
             'w-full flex items-center justify-center gap-2 h-11 rounded-xl border-2 border-dashed transition-colors text-sm font-semibold',
-            background === 'custom' ? 'border-primary/60 text-primary bg-primary/5' : 'border-white/15 text-muted-foreground hover:border-primary/40 hover:text-foreground',
+            background === 'custom' ? 'border-primary/60 text-primary bg-primary/5' : 'border-white/15 text-[#64748b] hover:border-primary/40 hover:text-foreground',
           )}
         >
           {busy
@@ -490,10 +490,10 @@ function InviteRequestBanner({
       </div>
       <div className="flex-1 min-w-0">
         <p className="font-bold text-sm truncate">{inviterName}</p>
-        <p className="text-xs text-muted-foreground">wants to chat with you</p>
+        <p className="text-xs text-[#64748b]">wants to chat with you</p>
       </div>
       <button onClick={() => onDecline(channel)} className="w-11 h-11 bg-muted hover:bg-muted/60 rounded-full flex items-center justify-center shrink-0 transition-colors" title="Decline">
-        <UserX className="w-4 h-4 text-muted-foreground" />
+        <UserX className="w-4 h-4 text-[#64748b]" />
       </button>
       <button onClick={() => onAccept(channel)} className="w-11 h-11 bg-emerald-500 hover:bg-emerald-600 rounded-full flex items-center justify-center shrink-0 transition-colors" title="Accept">
         <UserCheck className="w-4 h-4 text-white" />
@@ -754,9 +754,9 @@ function ChatInner({
           </div>
           <div className="flex-1 min-w-0">
             <p className="text-xs font-bold text-foreground truncate">{msgFlash.name}</p>
-            <p className="text-[11px] text-muted-foreground truncate">{msgFlash.text}</p>
+            <p className="text-[11px] text-[#64748b] truncate">{msgFlash.text}</p>
           </div>
-          <button onClick={() => setMsgFlash(null)} className="text-muted-foreground hover:text-foreground shrink-0">
+          <button onClick={() => setMsgFlash(null)} className="text-[#64748b] hover:text-foreground shrink-0">
             <X className="w-3.5 h-3.5" />
           </button>
         </div>
@@ -770,7 +770,7 @@ function ChatInner({
             <div className="flex items-center justify-between">
               <div>
                 <h1 className="text-lg font-bold">Messages</h1>
-                <p className="text-xs text-muted-foreground">Chats &amp; Groups</p>
+                <p className="text-xs text-[#64748b]">Chats &amp; Groups</p>
               </div>
               <Button size="sm" className="gap-1.5 h-8 text-xs" onClick={onNewChat}>
                 <Plus className="w-3.5 h-3.5" /> New Chat
@@ -778,7 +778,7 @@ function ChatInner({
             </div>
             {/* "Add user" search — finds people to add as contacts */}
             <div className="relative">
-              <UserPlus className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground pointer-events-none" />
+              <UserPlus className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-[#64748b] pointer-events-none" />
               <Input
                 className="pl-8 h-9 text-sm rounded-xl bg-muted/40 border-border/30 focus-visible:border-primary/40 focus-visible:ring-primary/10"
                 placeholder="Add user"
@@ -787,7 +787,7 @@ function ChatInner({
               />
               {addUserQuery && (
                 <button
-                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[#64748b] hover:text-foreground"
                   onClick={() => { setAddUserQuery(''); setAddUserResults([]); }}
                 >
                   <X className="w-3.5 h-3.5" />
@@ -820,7 +820,7 @@ function ChatInner({
                         className={cn(
                           'shrink-0 flex items-center gap-1 text-[11px] font-semibold px-2.5 py-1 rounded-lg transition-colors',
                           isContact
-                            ? 'bg-muted text-muted-foreground cursor-default'
+                            ? 'bg-muted text-[#64748b] cursor-default'
                             : 'bg-primary/15 text-primary hover:bg-primary/25 border border-primary/20',
                         )}
                       >
@@ -839,7 +839,7 @@ function ChatInner({
 
             {/* empty search state */}
             {addUserQuery.trim() && addUserResults.length === 0 && (
-              <p className="mt-1 text-center text-xs text-muted-foreground py-2">No users found</p>
+              <p className="mt-1 text-center text-xs text-[#64748b] py-2">No users found</p>
             )}
 
             {/* ── Contacts panel — premium card below search bar ── */}
@@ -865,13 +865,13 @@ function ChatInner({
                       <Users className="w-2.5 h-2.5 text-primary" />
                     </span>
                     <span className="text-[11px] font-semibold text-foreground/80 tracking-wide">Contacts</span>
-                    <span className="text-[10px] text-muted-foreground/60">
+                    <span className="text-[10px] text-[#64748b]/60">
                       {contacts.filter(c => contactPresence[c.streamUserId]).length} online
                     </span>
                   </span>
                   {contactsExpanded
-                    ? <ChevronUp className="w-3 h-3 text-muted-foreground/50" />
-                    : <ChevronDown className="w-3 h-3 text-muted-foreground/50" />}
+                    ? <ChevronUp className="w-3 h-3 text-[#64748b]/50" />
+                    : <ChevronDown className="w-3 h-3 text-[#64748b]/50" />}
                 </button>
 
                 {contactsExpanded && (
@@ -905,11 +905,11 @@ function ChatInner({
                             </div>
                             <div className="flex-1 min-w-0">
                               <p className="text-sm font-medium leading-tight truncate text-foreground/90">{c.name}</p>
-                              <p className="text-[10px] text-muted-foreground/70">{statusLabel}</p>
+                              <p className="text-[10px] text-[#64748b]/70">{statusLabel}</p>
                             </div>
                             <button
                               onClick={e => { e.stopPropagation(); onRemoveContact(c.streamUserId); }}
-                              className="p-1 rounded-full text-muted-foreground/30 hover:text-destructive/70 hover:bg-destructive/10 transition-colors shrink-0"
+                              className="p-1 rounded-full text-[#64748b]/30 hover:text-destructive/70 hover:bg-destructive/10 transition-colors shrink-0"
                               title="Remove"
                             >
                               <X className="w-3 h-3" />
@@ -949,14 +949,14 @@ function ChatInner({
                       </div>
                       <div className="flex-1 min-w-0">
                         <p className="text-sm font-semibold truncate">{chName}</p>
-                        <p className="text-[11px] text-muted-foreground">wants to chat with you</p>
+                        <p className="text-[11px] text-[#64748b]">wants to chat with you</p>
                       </div>
                       <button
                         onClick={() => declineInvite(ch)}
                         className="w-8 h-8 rounded-full bg-muted/60 hover:bg-muted flex items-center justify-center shrink-0 transition-colors"
                         title="Decline"
                       >
-                        <UserX className="w-3.5 h-3.5 text-muted-foreground" />
+                        <UserX className="w-3.5 h-3.5 text-[#64748b]" />
                       </button>
                       <button
                         onClick={() => acceptInvite(ch)}
@@ -968,7 +968,7 @@ function ChatInner({
                     </div>
                   );
                 })}
-                <p className="px-4 pt-2 pb-1 text-[10px] font-semibold tracking-widest text-muted-foreground uppercase">Messages</p>
+                <p className="px-4 pt-2 pb-1 text-[10px] font-semibold tracking-widest text-[#64748b] uppercase">Messages</p>
               </div>
             )}
 
@@ -987,7 +987,7 @@ function ChatInner({
                       </div>
                       <div>
                         <p className="font-semibold">No chats yet</p>
-                        <p className="text-sm text-muted-foreground mt-1">Search above to add contacts, then request a chat</p>
+                        <p className="text-sm text-[#64748b] mt-1">Search above to add contacts, then request a chat</p>
                       </div>
                     </div>
                   );
@@ -1031,7 +1031,7 @@ function ChatInner({
           <div className="flex items-center gap-2.5 px-3 py-2 border-b border-white/[0.06] shrink-0 bg-background/80 backdrop-blur-xl">
             <button
               onClick={() => (setActiveChannel as any)(undefined)}
-              className="w-9 h-9 rounded-full flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-white/5 transition-colors shrink-0"
+              className="w-9 h-9 rounded-full flex items-center justify-center text-[#64748b] hover:text-foreground hover:bg-white/5 transition-colors shrink-0"
               title="Back"
             >
               <ArrowLeft className="w-5 h-5" />
@@ -1056,7 +1056,7 @@ function ChatInner({
                   </div>
                   <div className="min-w-0">
                     <p className="text-sm font-bold truncate leading-tight">{title}</p>
-                    <p className={cn('text-[10px] leading-tight truncate', online ? 'text-emerald-400' : 'text-muted-foreground')}>
+                    <p className={cn('text-[10px] leading-tight truncate', online ? 'text-emerald-400' : 'text-[#64748b]')}>
                       {lastSeenLabel(other?.user)}
                     </p>
                   </div>
@@ -1067,7 +1067,7 @@ function ChatInner({
             <div className="flex items-center gap-0.5 shrink-0">
               <Button
                 size="icon" variant="ghost"
-                className="w-10 h-10 rounded-full text-muted-foreground hover:text-foreground hover:bg-primary/10"
+                className="w-10 h-10 rounded-full text-[#64748b] hover:text-foreground hover:bg-primary/10"
                 title="Chat wallpaper"
                 onClick={() => setShowWallpaper(true)}
               >
@@ -1075,7 +1075,7 @@ function ChatInner({
               </Button>
               <Button
                 size="icon" variant="ghost"
-                className="w-10 h-10 rounded-full text-muted-foreground hover:text-foreground hover:bg-primary/10"
+                className="w-10 h-10 rounded-full text-[#64748b] hover:text-foreground hover:bg-primary/10"
                 title="Audio call"
                 onClick={() => onStartCall('audio', activeChannel)}
               >
@@ -1083,7 +1083,7 @@ function ChatInner({
               </Button>
               <Button
                 size="icon" variant="ghost"
-                className="w-10 h-10 rounded-full text-muted-foreground hover:text-foreground hover:bg-primary/10"
+                className="w-10 h-10 rounded-full text-[#64748b] hover:text-foreground hover:bg-primary/10"
                 title="Video call"
                 onClick={() => onStartCall('video', activeChannel)}
               >
@@ -1114,9 +1114,9 @@ function ChatInner({
                   </div>
                   <div>
                     <p className="font-bold text-lg">{inviterName}</p>
-                    <p className="text-sm text-muted-foreground mt-1">wants to start a chat with you</p>
+                    <p className="text-sm text-[#64748b] mt-1">wants to start a chat with you</p>
                   </div>
-                  <p className="text-xs text-muted-foreground max-w-[260px]">
+                  <p className="text-xs text-[#64748b] max-w-[260px]">
                     Accept to begin messaging. If you decline, this request will be removed.
                   </p>
                   <div className="flex items-center gap-3">
@@ -1150,11 +1150,11 @@ function ChatInner({
                   </div>
                   <div>
                     <p className="font-bold text-base">Waiting for {inviteeName}</p>
-                    <p className="text-sm text-muted-foreground mt-1">
+                    <p className="text-sm text-[#64748b] mt-1">
                       Your chat request has been sent. You can start messaging once they accept.
                     </p>
                   </div>
-                  <p className="text-xs text-muted-foreground/70">
+                  <p className="text-xs text-[#64748b]/70">
                     {inviteeName} will see your request in their Messages tab.
                   </p>
                 </div>
@@ -1192,7 +1192,7 @@ function ChatInner({
                 <div className="relative shrink-0 w-full border-t border-white/[0.06] bg-background/70 backdrop-blur-xl">
                   <div className="flex items-center px-3 pt-2 pb-0.5">
                     <StreamEmojiPicker />
-                    <span className="ml-2 text-[11px] text-muted-foreground/50">emoji</span>
+                    <span className="ml-2 text-[11px] text-[#64748b]/50">emoji</span>
                     <button
                       type="button"
                       data-testid="chat-pay-btn"
@@ -1639,7 +1639,7 @@ function ChatConnected() {
                     {isGroup ? 'New Group' : 'New Message'}
                   </h2>
                 </div>
-                <p className="text-xs text-muted-foreground mt-0.5 ml-6">
+                <p className="text-xs text-[#64748b] mt-0.5 ml-6">
                   {isGroup ? 'Create a group conversation' : 'Start a private conversation'}
                 </p>
               </div>
@@ -1650,7 +1650,7 @@ function ChatConnected() {
                   onClick={() => setIsGroup(false)}
                   className={cn(
                     'flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg font-medium transition-all duration-200',
-                    !isGroup ? 'bg-primary text-black shadow shadow-primary/40' : 'text-muted-foreground hover:text-foreground',
+                    !isGroup ? 'bg-primary text-black shadow shadow-primary/40' : 'text-[#64748b] hover:text-foreground',
                   )}
                 >
                   <MessageSquare className="w-3 h-3" /> DM
@@ -1659,7 +1659,7 @@ function ChatConnected() {
                   onClick={() => setIsGroup(true)}
                   className={cn(
                     'flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg font-medium transition-all duration-200',
-                    isGroup ? 'bg-primary text-black shadow shadow-primary/40' : 'text-muted-foreground hover:text-foreground',
+                    isGroup ? 'bg-primary text-black shadow shadow-primary/40' : 'text-[#64748b] hover:text-foreground',
                   )}
                 >
                   <Users className="w-3 h-3" /> Group
@@ -1679,7 +1679,7 @@ function ChatConnected() {
 
             {/* search bar */}
             <div className="relative">
-              <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground pointer-events-none" />
+              <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-[#64748b] pointer-events-none" />
               <Input
                 className="pl-10 h-11 rounded-xl bg-black/30 border-white/10 text-sm focus-visible:border-primary/60 focus-visible:ring-1 focus-visible:ring-primary/20"
                 placeholder="Search by name or phone…"
@@ -1738,7 +1738,7 @@ function ChatConnected() {
 
                     <div className="flex-1 min-w-0">
                       <p className="font-semibold text-sm leading-tight">{u.name ?? u.id}</p>
-                      <p className="text-[11px] text-muted-foreground mt-0.5">
+                      <p className="text-[11px] text-[#64748b] mt-0.5">
                         {isGroup ? (sel ? '✓ Added to group' : 'Tap to add') : 'Tap to message'}
                       </p>
                     </div>
@@ -1756,17 +1756,17 @@ function ChatConnected() {
             ) : searchQuery.trim() ? (
               <div className="flex flex-col items-center justify-center py-10 gap-2 text-center px-4">
                 <div className="w-10 h-10 bg-muted/40 rounded-full flex items-center justify-center">
-                  <Search className="w-4 h-4 text-muted-foreground" />
+                  <Search className="w-4 h-4 text-[#64748b]" />
                 </div>
                 <p className="text-sm font-medium">No users found</p>
-                <p className="text-xs text-muted-foreground">Try a different name or phone number</p>
+                <p className="text-xs text-[#64748b]">Try a different name or phone number</p>
               </div>
             ) : (
               <div className="flex flex-col items-center justify-center py-10 gap-2 text-center px-4">
                 <div className="w-10 h-10 bg-primary/10 rounded-full flex items-center justify-center">
                   <Search className="w-4 h-4 text-primary/50" />
                 </div>
-                <p className="text-sm text-muted-foreground">Search for someone to connect with</p>
+                <p className="text-sm text-[#64748b]">Search for someone to connect with</p>
               </div>
             )}
           </div>
@@ -1836,7 +1836,7 @@ export default function ChatPage() {
         <div className="w-16 h-16 bg-primary/10 rounded-full flex items-center justify-center">
           <MessageSquare className="w-8 h-8 text-primary animate-pulse" />
         </div>
-        <p className="text-sm text-muted-foreground">Connecting to chat…</p>
+        <p className="text-sm text-[#64748b]">Connecting to chat…</p>
       </div>
     );
   }
@@ -1856,7 +1856,7 @@ export default function ChatPage() {
           </button>
           <button
             onClick={() => setNeedsPushOptIn(false)}
-            className="text-muted-foreground text-xs px-1"
+            className="text-[#64748b] text-xs px-1"
             aria-label="Dismiss"
           >
             ✕
