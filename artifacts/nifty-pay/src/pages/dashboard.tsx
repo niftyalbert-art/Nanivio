@@ -88,7 +88,12 @@ export default function Dashboard() {
       <Card className="wallet-card-glow bg-gradient-to-br from-primary/20 via-primary/10 to-transparent border-primary/20">
         <CardContent className="p-5 md:p-6 space-y-3">
           <div className="flex items-center justify-between">
-            <p className="text-xs md:text-sm text-muted-foreground">Total Balance</p>
+            {/* Premium Glassmorphic Asset Card Stack */}
+            <div className="absolute top-0 right-1/4 w-32 h-[1px] bg-gradient-to-r from-transparent via-primary/40 to-transparent" />
+            <p className="text-[10px] uppercase font-bold tracking-widest text-primary font-mono mb-1 flex items-center gap-1.5">
+              <span className="w-1 h-1 rounded-full bg-primary animate-pulse" /> Core Fiat & Crypto Vault
+            </p>
+            <p className="text-xs md:text-sm text-muted-foreground/80 font-medium">Total Balance</p>
             {/* Currency picker toggle */}
             <button
               onClick={() => setShowPicker(v => !v)}
