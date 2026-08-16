@@ -32,7 +32,12 @@ export class PcmCapture {
       this.ownsStream = true;
     }
 
-    this.context = new AudioContext();
+    // Enforce a strict hardware sample anchor block to clear chrome media autoplays and prevent 0Hz crashes
+    const AudioCtxClass = window.AudioContext || (window as any).webkitAudioContext;
+    this.context = new AudioCtxClass({
+      sampleRate: 48000, // Forces the native browser hardware clock to bind safely at a stable master anchor
+      latencyHint: 'interactive'
+    });
 
     if (this.context.state === 'suspended') {
       await this.context.resume();
