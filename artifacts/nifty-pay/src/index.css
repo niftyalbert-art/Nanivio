@@ -393,3 +393,14 @@
     pointer-events: none;
   }
 }
+
+/* Premium template layout helpers */
+.squircle-video-tile {
+  border-radius: 2rem;
+  overflow: hidden;
+  position: relative;
+  box-shadow: 0 4px 20px -2px rgba(0, 0, 0, 0.03);
+}
+.chat-sheet-bg {
+  background-color: #f8fafc;
+}
