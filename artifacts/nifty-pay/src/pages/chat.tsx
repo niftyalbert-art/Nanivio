@@ -735,7 +735,7 @@ function ChatInner({
     return () => clearTimeout(tid);
   }, [addUserQuery]);
 
-  const channelFilters = { type: 'messaging', members: { $in: [client?.userID || chatClient?.userID || ''] }, members: { $in: [streamData.userId] } };
+  const channelFilters = { type: 'messaging', members: { $in: [client?.userID || ''] } };
   // Secondary sort by created_at so brand-new channels (no messages yet) still appear at top
   const channelSort = [{ last_message_at: -1 }, { created_at: -1 }] as const;
   const channelOptions = { limit: 50, state: true, presence: true, watch: true, message_limit: 1 };
