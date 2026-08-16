@@ -34,8 +34,8 @@ export class RealtimeTranslator {
   private listeners = new Set<Listener>();
 
   private config: TranslatorConfig = {
-    sourceLanguage: 'auto',
-    targetLanguage: 'en',
+    sourceLanguage: 'en',
+    targetLanguage: 'ak-twi',
     enabled: true,
   };
 
