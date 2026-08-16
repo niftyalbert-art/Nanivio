@@ -35,7 +35,7 @@ interface TranslatorTokenPayload {
 const TRANSLATOR_TOKEN_TTL = "5m";
 
 router.get(
-  "/translator/health",
+  "/health",
   requireAuth,
   (_req: any, res): void => {
     res.json({
@@ -46,7 +46,7 @@ router.get(
 );
 
 router.get(
-  "/translator/session",
+  "/session",
   requireAuth,
   (req: any, res): void => {
     try {

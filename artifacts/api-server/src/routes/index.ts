@@ -53,6 +53,6 @@ router.use(agoraRouter);
 router.use(p2pRouter);
 router.use(escrowRouter);
 router.use(paidCallsRouter);
-router.use(translatorRouter);
+router.use('/translator', translatorRouter);
 
 export default router;
