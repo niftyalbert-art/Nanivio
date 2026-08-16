@@ -64,6 +64,9 @@ export interface AgoraCallCtx {
   /** non-null while this user is the paying caller in a paid call */
   billing: CallBillingState | null;
   getMicrophoneTrack: () => MediaStreamTrack | null;
+  publishTranslatedAudio: (track: MediaStreamTrack) => Promise<void>;
+  unpublishTranslatedAudio: () => Promise<void>;
+  setOriginalMicMuted: (muted: boolean) => Promise<void>;
   toggleMic:    () => Promise<void>;
   toggleCamera: () => Promise<void>;
   startCall:   (type: 'audio' | 'video', chatId: string, otherUserId: string, otherName: string, billing?: CallBillingRequest) => Promise<void>;
@@ -77,6 +80,9 @@ const Ctx = createContext<AgoraCallCtx>({
   remoteJoined: false, remoteVideoTrack: null, localVideoTrack: null,
   micOn: true, camOn: true, billing: null,
   getMicrophoneTrack: () => null,
+  publishTranslatedAudio: async () => {},
+  unpublishTranslatedAudio: async () => {},
+  setOriginalMicMuted: async () => {},
   toggleMic: async () => {}, toggleCamera: async () => {},
   startCall: async () => {}, acceptCall: async () => {},
   declineCall: () => {}, endCall: () => {},
@@ -122,6 +128,7 @@ export function AgoraCallProvider({ children }: { children: ReactNode }) {
   const micTrackRef = useRef<IMicrophoneAudioTrack | null>(null);
   const camTrackRef = useRef<ICameraVideoTrack | null>(null);
   const remoteAudioRef = useRef<IRemoteAudioTrack | null>(null);
+  const translatedAudioTrackRef = useRef<any>(null);
   const stopRingtoneRef = useRef<(() => void) | null>(null);
   const noAnswerTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   // Refs mirroring state for use inside event handlers
@@ -292,6 +299,8 @@ export function AgoraCallProvider({ children }: { children: ReactNode }) {
     camTrackRef.current = null;
     try { remoteAudioRef.current?.stop(); } catch {}
     remoteAudioRef.current = null;
+    try { translatedAudioTrackRef.current?.close(); } catch {}
+    translatedAudioTrackRef.current = null;
     setLocalVideoTrack(null);
     setRemoteVideoTrack(null);
     setRemoteJoined(false);
@@ -486,6 +495,34 @@ export function AgoraCallProvider({ children }: { children: ReactNode }) {
     return micTrackRef.current?.getMediaStreamTrack?.() ?? null;
   }, []);
 
+  const publishTranslatedAudio = useCallback(async (mediaStreamTrack: MediaStreamTrack) => {
+    const client = clientRef.current;
+    if (!client) return;
+    if (translatedAudioTrackRef.current) {
+      try { await client.unpublish(translatedAudioTrackRef.current); } catch {}
+      try { translatedAudioTrackRef.current.close(); } catch {}
+      translatedAudioTrackRef.current = null;
+    }
+    const track = AgoraRTC.createCustomAudioTrack({ mediaStreamTrack });
+    translatedAudioTrackRef.current = track;
+    await client.publish(track);
+  }, []);
+
+  const unpublishTranslatedAudio = useCallback(async () => {
+    const client = clientRef.current;
+    const track = translatedAudioTrackRef.current;
+    translatedAudioTrackRef.current = null;
+    if (!track) return;
+    try { if (client) await client.unpublish(track); } catch {}
+    try { track.close(); } catch {}
+  }, []);
+
+  const setOriginalMicMuted = useCallback(async (muted: boolean) => {
+    const t = micTrackRef.current as any;
+    if (!t?.setMuted) return;
+    try { await t.setMuted(muted); } catch {}
+  }, []);
+
   const toggleMic = useCallback(async () => {
     const t = micTrackRef.current;
     if (!t) return;
@@ -577,7 +614,8 @@ export function AgoraCallProvider({ children }: { children: ReactNode }) {
     <Ctx.Provider value={{
       ready: !!chatClient, incomingCall, activeCall, callKind,
       remoteJoined, remoteVideoTrack, localVideoTrack, micOn, camOn, billing,
-      getMicrophoneTrack, toggleMic, toggleCamera, startCall, acceptCall, declineCall, endCall,
+      getMicrophoneTrack, publishTranslatedAudio, unpublishTranslatedAudio, setOriginalMicMuted,
+      toggleMic, toggleCamera, startCall, acceptCall, declineCall, endCall,
     }}>
       {children}
     </Ctx.Provider>

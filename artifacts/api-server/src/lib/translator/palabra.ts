@@ -54,6 +54,7 @@ export class PalabraTranslator {
 
     await new Promise<void>((resolve, reject) => {
       let settled = false;
+      let readyTimer: ReturnType<typeof setTimeout> | null = null;
 
       const socket = new WebSocket(url, {
         handshakeTimeout: 15_000,
@@ -77,10 +78,12 @@ export class PalabraTranslator {
           this.sendTask();
           this.events.onStatus?.("translating");
 
-          if (!settled) {
-            settled = true;
-            resolve();
-          }
+          readyTimer = setTimeout(() => {
+            if (!settled) {
+              settled = true;
+              resolve();
+            }
+          }, 1200);
         } catch (error) {
           fail(
             error instanceof Error
@@ -106,6 +109,11 @@ export class PalabraTranslator {
           const message = JSON.parse(
             data.toString(),
           ) as PalabraMessage;
+          if (message.message_type === "current_task" && !settled) {
+            settled = true;
+            if (readyTimer) clearTimeout(readyTimer);
+            resolve();
+          }
 
           this.handleMessage(message);
         } catch (error) {
@@ -175,6 +183,8 @@ export class PalabraTranslator {
           target: {
             type: "ws",
             format: "pcm_s16le",
+            sample_rate: 24000,
+            channels: 1,
           },
         },
 
@@ -202,11 +212,11 @@ export class PalabraTranslator {
 
           translation_queue_configs: {
             global: {
-              desired_queue_level_ms: 5000,
-              max_queue_level_ms: 20000,
+              desired_queue_level_ms: 600,
+              max_queue_level_ms: 3000,
               auto_tempo: true,
-              min_tempo: 1.15,
-              max_tempo: 1.45,
+              min_tempo: 1.0,
+              max_tempo: 1.3,
             },
           },
 
