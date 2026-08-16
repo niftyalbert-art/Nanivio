@@ -75,7 +75,8 @@ export default function Login() {
             </div>
           )}
 
-          <div className="space-y-1.5">
+          <div className="space-y-1.5 relative border-b border-white/5 pb-4 mb-4"
+  ><div className="absolute top-0 left-1/4 w-1/2 h-[1px] bg-gradient-to-r from-transparent via-primary/50 to-transparent" />
             <Label htmlFor="email">Email</Label>
             <Input
               id="email"
