@@ -64,6 +64,7 @@ export interface AgoraCallCtx {
   /** non-null while this user is the paying caller in a paid call */
   billing: CallBillingState | null;
   getMicrophoneTrack: () => MediaStreamTrack | null;
+  getRemoteAudioTrack: () => any | null;
   publishTranslatedAudio: (track: MediaStreamTrack) => Promise<void>;
   unpublishTranslatedAudio: () => Promise<void>;
   setOriginalMicMuted: (muted: boolean) => Promise<void>;
@@ -80,6 +81,7 @@ const Ctx = createContext<AgoraCallCtx>({
   remoteJoined: false, remoteVideoTrack: null, localVideoTrack: null,
   micOn: true, camOn: true, billing: null,
   getMicrophoneTrack: () => null,
+  getRemoteAudioTrack: () => null,
   publishTranslatedAudio: async () => {},
   unpublishTranslatedAudio: async () => {},
   setOriginalMicMuted: async () => {},
@@ -491,6 +493,10 @@ export function AgoraCallProvider({ children }: { children: ReactNode }) {
   }, []);
 
   /* ── mic / camera toggles ── */
+  const getRemoteAudioTrack = useCallback(() => {
+    return remoteAudioRef.current ?? null;
+  }, []);
+
   const getMicrophoneTrack = useCallback(() => {
     return micTrackRef.current?.getMediaStreamTrack?.() ?? null;
   }, []);
@@ -614,7 +620,7 @@ export function AgoraCallProvider({ children }: { children: ReactNode }) {
     <Ctx.Provider value={{
       ready: !!chatClient, incomingCall, activeCall, callKind,
       remoteJoined, remoteVideoTrack, localVideoTrack, micOn, camOn, billing,
-      getMicrophoneTrack, publishTranslatedAudio, unpublishTranslatedAudio, setOriginalMicMuted,
+      getMicrophoneTrack, getRemoteAudioTrack, publishTranslatedAudio, unpublishTranslatedAudio, setOriginalMicMuted,
       toggleMic, toggleCamera, startCall, acceptCall, declineCall, endCall,
     }}>
       {children}

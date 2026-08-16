@@ -55,7 +55,7 @@ interface RealtimeTranslatorProps {
 }
 
 export function RealtimeTranslatorPanel({ open, onClose }: RealtimeTranslatorProps) {
-  const { getMicrophoneTrack, activeCall } = useAgoraCall();
+  const { getMicrophoneTrack, activeCall } = useAgoraCall() as any;
   const translatorRef = useRef<RealtimeTranslator | null>(null);
   const captureRef = useRef<PcmCapture | null>(null);
 
