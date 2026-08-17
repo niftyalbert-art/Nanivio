@@ -37,33 +37,21 @@ export function AppLayout({ children }: AppLayoutProps) {
 
   const [chatUnread, setChatUnread] = useState(false);
 
-  // Listen for chat requests (notification.invited) and new messages from the
-  // persistent client so the badge fires even when the user is NOT on /chat
+  // Listen only for real new messages.
+  // Nanivio does not use chat requests or invitation notifications.
   useEffect(() => {
     if (!chatClient || !streamData) return;
 
-    // On connect/reconnect — check for any pending chat requests right away
-    chatClient.queryChannels(
-      { invites: 'pending', type: 'messaging' } as any,
-      [],
-      { limit: 5 },
-    ).then((chs: any) => {
-      const list: any[] = Array.isArray(chs) ? chs : chs?.channels ?? [];
-      if (list.length > 0 && locationRef.current !== '/chat') setChatUnread(true);
-    }).catch(() => {});
-
-    const onInvited = () => {
-      if (locationRef.current !== '/chat') setChatUnread(true);
-    };
     const onMessage = (event: any) => {
       const fromOther = event.message?.user?.id !== streamData.userId;
-      if (fromOther && locationRef.current !== '/chat') setChatUnread(true);
+      if (fromOther && locationRef.current !== '/chat') {
+        setChatUnread(true);
+      }
     };
 
-    chatClient.on('notification.invited', onInvited);
     chatClient.on('message.new', onMessage);
+
     return () => {
-      chatClient.off('notification.invited', onInvited);
       chatClient.off('message.new', onMessage);
     };
   }, [chatClient, streamData]);

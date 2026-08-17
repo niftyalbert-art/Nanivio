@@ -43,7 +43,7 @@ let _lastChannelId:   string | null = null;
 let _lastChannelType: string        = 'messaging';
 
 interface StreamData { token: string; userId: string; userName: string; apiKey: string; }
-interface SUser { id: string; name?: string; }
+interface SUser { id: string; name?: string; nanivioNumber?: string; }
 interface ContactEntry { id: number; streamUserId: string; name: string; }
 
 /* ─── avatars ───
@@ -1399,17 +1399,54 @@ function ChatConnected() {
     void openDirectChat(user);
   }, [openDirectChat]);
 
-  /* search users */
+  /* search users — Chat starts only from an exact User NV number */
   useEffect(() => {
-    if (!showNewChat || !searchQuery.trim()) { setSearchResults([]); return; }
-    const tid = setTimeout(() => {
+    if (!showNewChat || !searchQuery.trim()) {
+      setSearchResults([]);
+      return;
+    }
+
+    const tid = setTimeout(async () => {
       const token = localStorage.getItem('nanivio_token');
-      fetch(`${API}/stream/users/search?q=${encodeURIComponent(searchQuery)}`, {
-        headers: { Authorization: `Bearer ${token}` },
-      })
-        .then(r => r.json())
-        .then(d => setSearchResults(d.users ?? []));
+      const q = searchQuery.trim().replace(/\s/g, '');
+
+      // Chat is NV-only: do not search by name or phone.
+      if (!/^0\d{9}$/.test(q)) {
+        setSearchResults([]);
+        return;
+      }
+
+      try {
+        const response = await fetch(
+          `${API}/stream/chat/${encodeURIComponent(q)}`,
+          {
+            headers: { Authorization: `Bearer ${token}` },
+          },
+        );
+
+        if (!response.ok) {
+          setSearchResults([]);
+          return;
+        }
+
+        const data = await response.json();
+
+        // A valid response must contain the target Stream user ID.
+        if (!data.userId) {
+          setSearchResults([]);
+          return;
+        }
+
+        setSearchResults([{
+          id: data.userId,
+          name: data.name,
+          nanivioNumber: q,
+        }]);
+      } catch {
+        setSearchResults([]);
+      }
     }, 300);
+
     return () => clearTimeout(tid);
   }, [searchQuery, showNewChat]);
 
@@ -1457,21 +1494,15 @@ function ChatConnected() {
         return;
       }
 
-      // Contacts skip the invitation step: once two users are in each other's
-      // contact list the chat opens directly, like any messaging app.
-      const allAreContacts = inviteeIds.every(id => contacts.some(c => c.streamUserId === id));
-
-      // Explicit channel ID avoids Stream's "≥2 members" rule for distinct channels
+      // Create the conversation directly. Nanivio does not use chat requests
+      // or invitations — once a user is selected, they are added immediately.
       const channelId = `ch-${streamData.userId}-${Date.now()}`;
       const ch = chatClient.channel('messaging', channelId, {
         ...(isGroup && groupName.trim() ? { name: groupName.trim() } : {}),
-        members: allAreContacts ? [streamData.userId, ...inviteeIds] : [streamData.userId],
+        members: [streamData.userId, ...inviteeIds],
       });
+
       await ch.create();
-      if (!allAreContacts) {
-        // Not saved contacts yet — they must accept before messaging starts
-        await ch.inviteMembers(inviteeIds);
-      }
       await ch.watch();
       closeNewChat();
       setActiveChannelRef.current?.(ch);
