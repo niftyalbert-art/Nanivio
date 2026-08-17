@@ -22,6 +22,11 @@ const router: IRouter = Router();
 const PIN_RE = /^\d{4}$/;
 const PHONE_RE = /^\+?[0-9]{7,15}$/;
 
+function generateNanivioNumber(): string {
+  return "0" + Math.floor(100000000 + Math.random() * 900000000).toString();
+}
+
+
 // POST /auth/signup
 router.post("/auth/signup", async (req, res): Promise<void> => {
   const { name, email, phone, pin } = req.body ?? {};
@@ -94,7 +99,20 @@ router.post("/auth/signup", async (req, res): Promise<void> => {
 
   const passwordHash = await bcrypt.hash(pin, 10);
 
+  let nanivioNumber = generateNanivioNumber();
+  for (let attempt = 0; attempt < 20; attempt++) {
+    const [numberExists] = await db
+      .select({ id: usersTable.id })
+      .from(usersTable)
+      .where(eq(usersTable.nanivioNumber, nanivioNumber));
+
+    if (!numberExists) break;
+
+    nanivioNumber = generateNanivioNumber();
+  }
+
   const [user] = await db.insert(usersTable).values({
+    nanivioNumber,
     name: String(name).trim(),
     email: normalizedEmail,
     phone: normalizedPhone,
@@ -125,7 +143,15 @@ router.post("/auth/signup", async (req, res): Promise<void> => {
   // return res.status(201).json({ requiresVerification: true, email: normalizedEmail, message: "Account created. Please check your email for a verification code.", ...(!result.sent && { devCode: result.fallbackCode }) });
 
   const token = signToken({ userId: user.id, email: user.email, name: user.name });
-  res.status(201).json({ token, user: { id: user.id, name: user.name, email: user.email } });
+  res.status(201).json({
+    token,
+    user: {
+      id: user.id,
+      name: user.name,
+      email: user.email,
+      nanivioNumber: user.nanivioNumber,
+    },
+  });
 });
 
 // POST /auth/verify-email

@@ -5,27 +5,35 @@ import { requireAuth } from "../middleware/auth";
 
 const router: IRouter = Router();
 
+const NANIVIO_NUMBER_RE = /^0\d{9}$/;
+
 // GET /contacts — list all saved contacts for the current user
 router.get("/contacts", requireAuth, async (req, res): Promise<void> => {
   try {
     const userId = req.userId!;
+
     const rows = await db
       .select({
         id: contactsTable.id,
         contactUserId: contactsTable.contactUserId,
-        name: usersTable.name,
+        nanivioNumber: usersTable.nanivioNumber,
+        accountName: usersTable.name,
+        contactName: contactsTable.contactName,
         createdAt: contactsTable.createdAt,
       })
       .from(contactsTable)
       .innerJoin(usersTable, eq(usersTable.id, contactsTable.contactUserId))
       .where(eq(contactsTable.userId, userId))
-      .orderBy(usersTable.name);
+      .orderBy(contactsTable.createdAt);
 
     res.json({
       contacts: rows.map((r) => ({
         id: r.id,
         streamUserId: String(r.contactUserId),
-        name: r.name,
+        name: r.contactName || r.accountName,
+        accountName: r.accountName,
+        nanivioNumber: r.nanivioNumber,
+        createdAt: r.createdAt,
       })),
     });
   } catch (e: any) {
@@ -33,52 +41,85 @@ router.get("/contacts", requireAuth, async (req, res): Promise<void> => {
   }
 });
 
-// POST /contacts — add a user to contacts
+// POST /contacts — save a Nanivio user using their User NV number
 router.post("/contacts", requireAuth, async (req, res): Promise<void> => {
   try {
     const userId = req.userId!;
-    const { contactUserId } = req.body ?? {};
+    const { nanivioNumber, contactName } = req.body ?? {};
 
-    if (!contactUserId) {
-      res.status(400).json({ error: "contactUserId is required" });
+    const normalizedNumber = String(nanivioNumber ?? "").replace(/\s/g, "");
+    const normalizedName = String(contactName ?? "").trim();
+
+    if (!NANIVIO_NUMBER_RE.test(normalizedNumber)) {
+      res.status(400).json({
+        error: "User NV must be exactly 10 digits and start with 0",
+      });
       return;
     }
 
-    const contactUserIdNum = parseInt(String(contactUserId), 10);
-    if (isNaN(contactUserIdNum)) {
-      res.status(400).json({ error: "Invalid contactUserId" });
-      return;
-    }
-    if (contactUserIdNum === userId) {
-      res.status(400).json({ error: "Cannot add yourself as a contact" });
+    if (!normalizedName || normalizedName.length < 1) {
+      res.status(400).json({
+        error: "Contact name is required",
+      });
       return;
     }
 
     const [contact] = await db
-      .select({ id: usersTable.id, name: usersTable.name })
+      .select({
+        id: usersTable.id,
+        name: usersTable.name,
+        nanivioNumber: usersTable.nanivioNumber,
+      })
       .from(usersTable)
-      .where(eq(usersTable.id, contactUserIdNum));
+      .where(eq(usersTable.nanivioNumber, normalizedNumber));
 
     if (!contact) {
-      res.status(404).json({ error: "User not found" });
+      res.status(404).json({
+        error: "No Nanivio user was found with that User NV number",
+      });
       return;
     }
 
-    await db
-      .insert(contactsTable)
-      .values({ userId, contactUserId: contactUserIdNum })
-      .onConflictDoNothing();
+    if (contact.id === userId) {
+      res.status(400).json({
+        error: "You cannot save your own User NV as a contact",
+      });
+      return;
+    }
 
-    res.json({
+    const [saved] = await db
+      .insert(contactsTable)
+      .values({
+        userId,
+        contactUserId: contact.id,
+        contactName: normalizedName,
+      })
+      .onConflictDoNothing()
+      .returning();
+
+    if (!saved) {
+      res.status(409).json({
+        error: "This user is already in your contacts",
+      });
+      return;
+    }
+
+    res.status(201).json({
       success: true,
-      contact: { streamUserId: String(contactUserIdNum), name: contact.name },
+      contact: {
+        id: saved.id,
+        streamUserId: String(contact.id),
+        name: normalizedName,
+        accountName: contact.name,
+        nanivioNumber: contact.nanivioNumber,
+      },
     });
   } catch (e: any) {
     res.status(500).json({ error: e.message });
   }
 });
 
-// DELETE /contacts/:contactUserId — remove a contact
+// DELETE /contacts/:contactUserId — remove a saved contact
 router.delete(
   "/contacts/:contactUserId",
   requireAuth,
@@ -86,10 +127,12 @@ router.delete(
     try {
       const userId = req.userId!;
       const contactUserIdNum = parseInt(String(req.params.contactUserId), 10);
+
       if (isNaN(contactUserIdNum)) {
-        res.status(400).json({ error: "Invalid contactUserId" });
+        res.status(400).json({ error: "Invalid contact" });
         return;
       }
+
       await db
         .delete(contactsTable)
         .where(
@@ -98,6 +141,7 @@ router.delete(
             eq(contactsTable.contactUserId, contactUserIdNum),
           ),
         );
+
       res.json({ success: true });
     } catch (e: any) {
       res.status(500).json({ error: e.message });

@@ -53,6 +53,110 @@ router.get('/stream/video-token', requireAuth, async (req, res): Promise<void> =
   }
 });
 
+// GET /stream/dial/:nanivioNumber — validate a User NV for direct calling
+// Deliberately returns NO name/profile/details.
+// It only tells the caller whether the number is valid, whether the user is active,
+// and the internal user ID needed to start the call.
+router.get('/stream/dial/:nanivioNumber', requireAuth, async (req, res): Promise<void> => {
+  try {
+    const nanivioNumber = String(req.params.nanivioNumber ?? '').replace(/\s/g, '');
+    const myUserId = req.userId!;
+
+    // User NV must be exactly 10 digits and start with 0.
+    if (!/^0\d{9}$/.test(nanivioNumber)) {
+      res.status(400).json({
+        error: 'Wrong User NV number',
+      });
+      return;
+    }
+
+    const [user] = await db
+      .select({
+        id: usersTable.id,
+        callsEnabled: usersTable.callsEnabled,
+        videoCallsEnabled: usersTable.videoCallsEnabled,
+      })
+      .from(usersTable)
+      .where(eq(usersTable.nanivioNumber, nanivioNumber));
+
+    if (!user || user.id === myUserId) {
+      res.status(404).json({
+        error: 'Wrong User NV number',
+      });
+      return;
+    }
+
+    if (!user.callsEnabled) {
+      res.status(403).json({
+        error: 'User is inactive',
+      });
+      return;
+    }
+
+    res.json({
+      active: true,
+      userId: user.id,
+      videoCallsEnabled: user.videoCallsEnabled,
+    });
+  } catch (e: any) {
+    res.status(500).json({
+      error: 'Could not check User NV number',
+    });
+  }
+});
+
+// GET /stream/chat/:nanivioNumber — validate a User NV for direct chat
+router.get('/stream/chat/:nanivioNumber', requireAuth, async (req, res): Promise<void> => {
+  try {
+    const nanivioNumber = String(req.params.nanivioNumber ?? '').replace(/\s/g, '');
+    const myUserId = req.userId!;
+
+    // User NV must be exactly 10 digits and start with 0.
+    if (!/^0\d{9}$/.test(nanivioNumber)) {
+      res.status(400).json({
+        error: 'Wrong User NV number',
+      });
+      return;
+    }
+
+    const [user] = await db
+      .select({
+        id: usersTable.id,
+        name: usersTable.name,
+        callsEnabled: usersTable.callsEnabled,
+      })
+      .from(usersTable)
+      .where(eq(usersTable.nanivioNumber, nanivioNumber));
+
+    // Invalid number or trying to chat with yourself
+    if (!user || user.id === myUserId) {
+      res.status(404).json({
+        error: 'Wrong User NV number',
+      });
+      return;
+    }
+
+    // Same availability concept used by direct calling
+    if (!user.callsEnabled) {
+      res.status(403).json({
+        error: 'User is inactive',
+      });
+      return;
+    }
+
+    res.json({
+      active: true,
+      userId: user.id,
+      name: user.name,
+    });
+  } catch (e: any) {
+    console.error('Chat NV lookup error:', e);
+    res.status(500).json({
+      error: 'Could not check User NV number',
+    });
+  }
+});
+
 // GET /stream/users/search?q= — find users by name or phone number
 router.get('/stream/users/search', requireAuth, async (req, res): Promise<void> => {
   try {
