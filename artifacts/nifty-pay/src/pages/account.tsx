@@ -328,9 +328,19 @@ export default function Account() {
               <p className="font-bold text-lg">{profile.name}</p>
               <p className="text-sm text-muted-foreground">{profile.email}</p>
               {profile.nanivioNumber && (
-                <p className="text-sm font-semibold text-primary mt-1">
-                  Nanivio Number: {profile.nanivioNumber}
-                </p>
+                <div className="mt-3 rounded-2xl bg-primary/10 border border-primary/20 px-3 py-2">
+                  <p className="text-[11px] uppercase tracking-wider text-muted-foreground">
+                    Nanivio Identity
+                  </p>
+
+                  <p className="text-lg font-bold text-primary">
+                    NV {profile.nanivioNumber}
+                  </p>
+
+                  <p className="text-xs text-muted-foreground">
+                    Use this number for chat and calls
+                  </p>
+                </div>
               )}
               <p className="text-xs text-muted-foreground mt-0.5">
                 Member since {profile.memberSince}
