@@ -23,6 +23,7 @@ router.get("/user/profile", requireAuth, async (req, res): Promise<void> => {
     email: user.email,
     avatarInitials: initials,
     memberSince: user.createdAt instanceof Date ? user.createdAt.toISOString().split("T")[0] : String(user.createdAt).split("T")[0],
+    nanivioNumber: user.nanivioNumber,
   };
   res.json(GetUserProfileResponse.parse(profile));
 });
