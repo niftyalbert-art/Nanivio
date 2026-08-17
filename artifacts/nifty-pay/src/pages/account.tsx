@@ -327,7 +327,14 @@ export default function Account() {
             <div>
               <p className="font-bold text-lg">{profile.name}</p>
               <p className="text-sm text-muted-foreground">{profile.email}</p>
-              <p className="text-xs text-muted-foreground mt-0.5">Member since {profile.memberSince}</p>
+              {profile.nanivioNumber && (
+                <p className="text-sm font-semibold text-primary mt-1">
+                  Nanivio Number: {profile.nanivioNumber}
+                </p>
+              )}
+              <p className="text-xs text-muted-foreground mt-0.5">
+                Member since {profile.memberSince}
+              </p>
             </div>
           </CardContent>
         </Card>

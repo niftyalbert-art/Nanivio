@@ -394,6 +394,9 @@ components:
           type: string
         memberSince:
           type: string
+        nanivioNumber:
+          type: string
+          nullable: true
 
     DashboardSummary:
       type: object
