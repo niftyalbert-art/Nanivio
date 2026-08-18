@@ -7,6 +7,8 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { useState, useEffect, useRef } from 'react';
 import { useStreamChat } from '@/contexts/stream-chat';
 import { CallOverlay } from '@/components/call-overlay';
+import CommunicationHub from '@/components/communication/CommunicationHub';
+import NewChatFlow from '@/components/communication/NewChatFlow';
 
 interface AppLayoutProps {
   children: React.ReactNode;
@@ -15,7 +17,7 @@ interface AppLayoutProps {
 const navigation = [
   { name: 'Home',     href: '/',             icon: Home },
   { name: 'Send',     href: '/send',         icon: Send },
-  { name: 'Communication', href: '/communication', icon: MessageCircle },
+  { name: 'Communication', href: '#communication', icon: MessageCircle },
   { name: 'Wallets',  href: '/wallets',      icon: Wallet },
   { name: 'Account',  href: '/account',      icon: User },
 ];
@@ -36,6 +38,10 @@ export function AppLayout({ children }: AppLayoutProps) {
   useEffect(() => { locationRef.current = location; }, [location]);
 
   const [chatUnread, setChatUnread] = useState(false);
+
+  const [showCommunicationHub, setShowCommunicationHub] = useState(false);
+  const [showNewChatFlow, setShowNewChatFlow] = useState(false);
+  const [communicationMode, setCommunicationMode] = useState<"chat" | "call">("chat");
 
   // Listen only for real new messages.
   // Nanivio does not use chat requests or invitation notifications.
@@ -152,9 +158,9 @@ export function AppLayout({ children }: AppLayoutProps) {
           /* ── Communication tab: premium raised FAB ── */
           if (item.href === '/communication') {
             return (
-              <Link
+              <button
                 key={item.name}
-                href={item.href}
+                onClick={() => setShowCommunicationHub(true)}
                 className="flex-1 flex flex-col items-center pb-2"
                 style={{ marginTop: '-18px' }}
               >
@@ -191,7 +197,7 @@ export function AppLayout({ children }: AppLayoutProps) {
                   </span>
                 </span>
                 {/* No label — icon speaks for itself */}
-              </Link>
+              </button>
             );
           }
 
@@ -211,6 +217,36 @@ export function AppLayout({ children }: AppLayoutProps) {
           );
         })}
       </nav>
+
+      <CommunicationHub
+        open={showCommunicationHub}
+        onClose={() => setShowCommunicationHub(false)}
+        onChat={() => {
+          setCommunicationMode("chat");
+          setShowCommunicationHub(false);
+          setShowNewChatFlow(true);
+        }}
+        onCall={() => {
+          setCommunicationMode("call");
+          setShowCommunicationHub(false);
+          setShowNewChatFlow(true);
+        }}
+      />
+
+      <NewChatFlow
+        open={showNewChatFlow}
+        mode={communicationMode}
+        onClose={() => setShowNewChatFlow(false)}
+        onStartChat={(user) => {
+          setShowNewChatFlow(false);
+          console.log("Start chat:", user);
+        }}
+        onStartCall={async (user) => {
+          setShowNewChatFlow(false);
+          console.log("Start call:", user);
+        }}
+      />
+
     </div>
   );
 }

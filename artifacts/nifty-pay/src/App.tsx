@@ -19,7 +19,6 @@ import Withdraw from '@/pages/withdraw';
 import Account from '@/pages/account';
 import KycPage from '@/pages/kyc';
 import Chat from '@/pages/chat';
-import Communication from '@/pages/communication';
 import CryptoPage from '@/pages/crypto';
 import CryptoPaymentPage from '@/pages/crypto-payment';
 import CryptoDepositPage from '@/pages/crypto-deposit';
@@ -81,7 +80,6 @@ function Router() {
             <Route path="/withdraw" component={Withdraw} />
             <Route path="/account" component={Account} />
             <Route path="/kyc" component={KycPage} />
-            <Route path="/communication" component={Communication} />
             <Route path="/chat" component={Chat} />
             <Route path="/crypto" component={CryptoPage} />
             <Route path="/crypto/:id" component={CryptoPaymentPage} />
