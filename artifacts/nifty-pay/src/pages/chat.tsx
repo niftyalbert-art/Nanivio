@@ -557,7 +557,7 @@ function ChatInner({
 
       if (match) {
         setActiveChannelRef.current?.(match);
-        return;
+        return match;
       }
 
       const channelId = `ch-${streamData.userId}-${Date.now()}`;
@@ -577,6 +577,7 @@ function ChatInner({
       await ch.watch();
 
       setActiveChannelRef.current?.(ch);
+      return ch;
 
     } catch (err: any) {
       console.error('Could not open chat', err);
@@ -1095,11 +1096,12 @@ function ChatConnected() {
   const agoraCall = useAgoraCall();
   const { toast } = useToast();
   const setActiveChannelRef = useRef<((ch: any) => void) | null>(null);
-  const openChatRef = useRef<((user: SUser) => void) | null>(null);
+  const openChatRef = useRef<((user: SUser) => Promise<StreamChannel | undefined>) | null>(null);
 
   const [addUserQuery, setAddUserQuery] = useState('');
   const [showCommunicationHub, setShowCommunicationHub] = useState(false);
   const [showNewChatFlow, setShowNewChatFlow] = useState(false);
+  const [communicationMode, setCommunicationMode] = useState<"chat" | "call">("chat");
 
   const [contacts, setContacts] = useState<any[]>([]);
   const [showAddContact, setShowAddContact] = useState(false);
@@ -1236,21 +1238,55 @@ function ChatConnected() {
         open={showCommunicationHub}
         onClose={() => setShowCommunicationHub(false)}
         onChat={() => {
+          setCommunicationMode("chat");
           setShowCommunicationHub(false);
           setShowNewChatFlow(true);
         }}
         onCall={() => {
+          setCommunicationMode("call");
           setShowCommunicationHub(false);
-          console.log("Open premium call flow");
+          setShowNewChatFlow(true);
         }}
       />
 
       <NewChatFlow
         open={showNewChatFlow}
+        mode={communicationMode}
         onClose={() => setShowNewChatFlow(false)}
         onStartChat={(user) => {
           setShowNewChatFlow(false);
           console.log("Start chat with:", user);
+        }}
+
+        onStartCall={async (user) => {
+          setShowNewChatFlow(false);
+
+          try {
+            const ch = await openChatRef.current?.(user);
+
+            if (!ch) {
+              toast({
+                title: "Call failed",
+                description: "Could not open conversation.",
+                variant: "destructive",
+              });
+              return;
+            }
+
+            await agoraCall.startCall(
+              "video",
+              String(ch.id),
+              user.id,
+              user.name ?? "Call"
+            );
+
+          } catch (e: any) {
+            toast({
+              title: "Call failed",
+              description: e?.message ?? String(e),
+              variant: "destructive",
+            });
+          }
         }}
       />
 

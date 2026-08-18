@@ -327,6 +327,12 @@ export default function Account() {
             <div>
               <p className="font-bold text-lg">{profile.name}</p>
               <p className="text-sm text-muted-foreground">{profile.email}</p>
+
+              {profile.nanivioNumber && (
+                <p className="text-sm font-semibold text-primary mt-1">
+                  NV {profile.nanivioNumber}
+                </p>
+              )}
               {profile.nanivioNumber && (
                 <div className="mt-3 rounded-2xl bg-primary/10 border border-primary/20 px-3 py-2">
                   <p className="text-[11px] uppercase tracking-wider text-muted-foreground">

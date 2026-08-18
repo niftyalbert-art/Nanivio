@@ -1,5 +1,5 @@
 import { Link, useLocation } from 'wouter';
-import { Home, Send, Receipt, Globe, Wallet, BarChart3, User, MessagesSquare } from 'lucide-react';
+import { Home, Send, Receipt, Globe, Wallet, BarChart3, User, MessageCircle } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useGetUserProfile } from '@workspace/api-client-react';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
@@ -15,7 +15,7 @@ interface AppLayoutProps {
 const navigation = [
   { name: 'Home',     href: '/',             icon: Home },
   { name: 'Send',     href: '/send',         icon: Send },
-  { name: 'Chat',     href: '/chat',         icon: MessagesSquare },
+  { name: 'Communication', href: '/communication', icon: MessageCircle },
   { name: 'Wallets',  href: '/wallets',      icon: Wallet },
   { name: 'Account',  href: '/account',      icon: User },
 ];
@@ -149,8 +149,8 @@ export function AppLayout({ children }: AppLayoutProps) {
           const isActive = location === item.href;
           const Icon = item.icon;
 
-          /* ── Chat tab: premium raised FAB ── */
-          if (item.href === '/chat') {
+          /* ── Communication tab: premium raised FAB ── */
+          if (item.href === '/communication') {
             return (
               <Link
                 key={item.name}

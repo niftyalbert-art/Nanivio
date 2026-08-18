@@ -15,6 +15,7 @@ export interface UserProfile {
   email: string;
   avatarInitials: string;
   memberSince: string;
+  nanivioNumber?: string;
 }
 
 export type TransactionStatus = typeof TransactionStatus[keyof typeof TransactionStatus];

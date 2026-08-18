@@ -12,4 +12,5 @@ export interface UserProfile {
   email: string;
   avatarInitials: string;
   memberSince: string;
+  nanivioNumber?: string;
 }

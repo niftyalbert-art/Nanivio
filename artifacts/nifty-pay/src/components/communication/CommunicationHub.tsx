@@ -1,4 +1,4 @@
-import { MessageSquare, Phone, Users, Star, X, Sparkles } from "lucide-react";
+import { MessageSquare, Phone, X, Sparkles } from "lucide-react";
 
 interface CommunicationHubProps {
   open: boolean;
@@ -17,87 +17,144 @@ export default function CommunicationHub({
   if (!open) return null;
 
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 backdrop-blur-xl">
-      <div className="w-[92%] max-w-lg rounded-[36px] border border-white/10 bg-gradient-to-br from-slate-950 via-black to-slate-900 p-6 shadow-2xl">
+    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 backdrop-blur-xl">
 
-        <div className="flex items-start justify-between mb-8">
-          <div>
-            <div className="flex items-center gap-2">
-              <Sparkles className="w-5 h-5 text-primary" />
-              <h1 className="text-2xl font-bold text-white">
-                Nanivio Connect
-              </h1>
+      <div className="
+        w-[92%]
+        max-w-md
+        rounded-[40px]
+        border border-white/10
+        bg-gradient-to-br from-slate-950 via-black to-slate-900
+        p-7
+        shadow-2xl
+      ">
+
+        <div className="flex items-center justify-between mb-8">
+
+          <div className="flex items-center gap-3">
+
+            <div className="
+              w-12 h-12
+              rounded-3xl
+              bg-gradient-to-br from-cyan-400/30 to-purple-500/30
+              flex items-center justify-center
+            ">
+              <Sparkles className="text-cyan-300 w-6 h-6" />
             </div>
 
-            <p className="text-sm text-white/50 mt-2">
-              Connect instantly with people around you
-            </p>
+            <div>
+              <h1 className="text-xl font-bold text-white">
+                Connect
+              </h1>
+
+              <p className="text-xs text-white/50">
+                Communication hub
+              </p>
+            </div>
+
           </div>
 
-          <button onClick={onClose}>
+
+          <button
+            onClick={onClose}
+            className="
+              w-10 h-10
+              rounded-full
+              bg-white/5
+              flex items-center justify-center
+            "
+          >
             <X className="text-white/60" />
           </button>
+
         </div>
 
 
-        <div className="space-y-4">
+        <div className="grid grid-cols-2 gap-5">
+
 
           <button
             onClick={onChat}
-            className="w-full rounded-3xl p-5 bg-white/5 border border-white/10 text-left hover:bg-primary/10 transition"
+            className="
+              h-48
+              rounded-[32px]
+              bg-white/[0.05]
+              border border-white/10
+              hover:bg-cyan-500/10
+              transition
+              flex
+              flex-col
+              items-center
+              justify-center
+              gap-4
+            "
           >
-            <MessageSquare className="text-primary mb-3" />
 
-            <h3 className="text-white font-bold text-lg">
-              Start Chat
-            </h3>
+            <div className="
+              w-20
+              h-20
+              rounded-full
+              bg-cyan-400/20
+              flex
+              items-center
+              justify-center
+              animate-pulse
+            ">
+              <MessageSquare className="w-10 h-10 text-cyan-300" />
+            </div>
 
-            <p className="text-white/50 text-sm">
-              Message any Nanivio user instantly
-            </p>
+
+            <span className="text-white font-semibold">
+              Message
+            </span>
+
           </button>
+
 
 
           <button
             onClick={onCall}
-            className="w-full rounded-3xl p-5 bg-white/5 border border-white/10 text-left hover:bg-primary/10 transition"
+            className="
+              h-48
+              rounded-[32px]
+              bg-white/[0.05]
+              border border-white/10
+              hover:bg-purple-500/10
+              transition
+              flex
+              flex-col
+              items-center
+              justify-center
+              gap-4
+            "
           >
-            <Phone className="text-primary mb-3" />
 
-            <h3 className="text-white font-bold text-lg">
-              Start Call
-            </h3>
+            <div className="
+              w-20
+              h-20
+              rounded-full
+              bg-purple-400/20
+              flex
+              items-center
+              justify-center
+              animate-pulse
+            ">
+              <Phone className="w-10 h-10 text-purple-300" />
+            </div>
 
-            <p className="text-white/50 text-sm">
-              Voice and video communication
-            </p>
+
+            <span className="text-white font-semibold">
+              Call
+            </span>
+
           </button>
 
 
-          <div className="grid grid-cols-2 gap-4">
-
-            <button className="rounded-3xl p-4 bg-white/5 border border-white/10 text-left">
-              <Users className="text-white/70 mb-2" />
-
-              <p className="text-white text-sm font-semibold">
-                Contacts
-              </p>
-            </button>
-
-
-            <button className="rounded-3xl p-4 bg-white/5 border border-white/10 text-left">
-              <Star className="text-white/70 mb-2" />
-
-              <p className="text-white text-sm font-semibold">
-                Favorites
-              </p>
-            </button>
-
-          </div>
-
         </div>
 
+
       </div>
+
     </div>
   );
 }

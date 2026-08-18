@@ -1,6 +1,6 @@
 
 import { useEffect, useState } from "react";
-import { Search, X, MessageCircle, UserRound } from "lucide-react";
+import { Search, X, MessageCircle, UserRound, Phone } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { API_BASE as API } from "@/lib/api";
@@ -8,13 +8,17 @@ import { API_BASE as API } from "@/lib/api";
 interface NewChatFlowProps {
   open: boolean;
   onClose: () => void;
+  mode: "chat" | "call";
   onStartChat: (user: any) => void;
+  onStartCall: (user: any) => void;
 }
 
 export default function NewChatFlow({
   open,
   onClose,
+  mode,
   onStartChat,
+  onStartCall,
 }: NewChatFlowProps) {
 
   const [number, setNumber] = useState("");
@@ -115,10 +119,23 @@ export default function NewChatFlow({
 
             <Button
               className="w-full mt-5"
-              onClick={() => onStartChat(user)}
+              onClick={() =>
+                mode === "call"
+                  ? onStartCall(user)
+                  : onStartChat(user)
+              }
             >
-              <MessageCircle className="mr-2"/>
-              Start Conversation
+              {mode === "call" ? (
+                <>
+                  <Phone className="mr-2" />
+                  Call
+                </>
+              ) : (
+                <>
+                  <MessageCircle className="mr-2"/>
+                  Start Conversation
+                </>
+              )}
             </Button>
 
           </div>
