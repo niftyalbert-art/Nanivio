@@ -24,7 +24,7 @@ export default function Communication() {
         </div>
 
         <button
-          onClick={() => navigate("/call")}
+          onClick={() => navigate("/chat")}
           className="w-full rounded-3xl p-6 bg-card border shadow-sm hover:shadow-xl transition-all"
         >
           <div className="flex items-center justify-between">
