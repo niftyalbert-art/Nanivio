@@ -35,6 +35,8 @@ import {
   PaymentSheet, makePaymentAttachment, registerPayForRequestHandler,
   type PayRequestInfo,
 } from '@/components/payment-chat';
+import CommunicationHub from '@/components/communication/CommunicationHub';
+import NewChatFlow from '@/components/communication/NewChatFlow';
 
 
 // Module-level: survives React remounts so the active channel is restored
@@ -44,7 +46,6 @@ let _lastChannelType: string        = 'messaging';
 
 interface StreamData { token: string; userId: string; userName: string; apiKey: string; }
 interface SUser { id: string; name?: string; nanivioNumber?: string; }
-interface ContactEntry { id: number; streamUserId: string; name: string; }
 
 /* ─── avatars ───
  * Stream stores user.image as a relative path like "avatars/12?v=169..."
@@ -507,25 +508,91 @@ function ChatInner({
   streamData,
   onStartCall,
   onNewChat,
+  onOpenCommunicationHub,
   setActiveChannelRef,
-  contacts,
-  contactPresence,
-  onAddContact,
-  onRemoveContact,
-  onRequestChat,
+  openChatRef,
 }: {
   streamData: StreamData;
   onStartCall: (type: 'audio' | 'video', ch: StreamChannel) => void;
   onNewChat: () => void;
+  onOpenCommunicationHub: () => void;
   setActiveChannelRef: React.MutableRefObject<((ch: StreamChannel | undefined) => void) | null>;
-  contacts: ContactEntry[];
-  contactPresence: Record<string, boolean>;
-  onAddContact: (user: SUser, opts?: { silent?: boolean }) => Promise<void>;
-  onRemoveContact: (streamUserId: string) => Promise<void>;
-  onRequestChat: (user: SUser) => void;
+  openChatRef: React.MutableRefObject<((user: SUser) => void) | null>;
 }) {
   const { client, channel: activeChannel, setActiveChannel } = useChatContext();
   const [tick, setTick] = useState(0);
+  const [contacts, setContacts] = useState<any[]>([]);
+  const [addUserQuery, setAddUserQuery] = useState('');
+
+
+  const [showAddContact, setShowAddContact] = useState(false);
+  const [contactNv, setContactNv] = useState('');
+  const [contactName, setContactName] = useState('');
+
+  const openDirectChat = useCallback(async (user: SUser) => {
+    if (!client) return;
+
+    try {
+      const raw = await client.queryChannels(
+        {
+          type: 'messaging',
+          members: { $in: [streamData.userId] },
+        },
+        [{ last_message_at: -1 }],
+        { limit: 50, state: true },
+      );
+
+      const list: StreamChannel[] = Array.isArray(raw)
+        ? raw
+        : (raw as any)?.channels ?? [];
+
+      const match = list.find(ch => {
+        const ids = Object.keys(ch.state.members ?? {});
+        return (
+          ids.length === 2 &&
+          ids.includes(user.id) &&
+          ids.includes(streamData.userId)
+        );
+      });
+
+      if (match) {
+        setActiveChannelRef.current?.(match);
+        return;
+      }
+
+      const channelId = `ch-${streamData.userId}-${Date.now()}`;
+
+      const ch = client.channel(
+        'messaging',
+        channelId,
+        {
+          members: [
+            streamData.userId,
+            user.id,
+          ],
+        },
+      );
+
+      await ch.create();
+      await ch.watch();
+
+      setActiveChannelRef.current?.(ch);
+
+    } catch (err: any) {
+      console.error('Could not open chat', err);
+    }
+  }, [
+    client,
+    streamData.userId,
+  ]);
+
+  useEffect(() => {
+    openChatRef.current = openDirectChat;
+  }, [openDirectChat]);
+
+
+
+
   const { background, setBackground, customUrl, loadCustomImage, presets } = useChatWallpaper();
   const [showWallpaper, setShowWallpaper] = useState(false);
   // In-chat payments
@@ -539,201 +606,64 @@ function ChatInner({
   // In-app flash: { name, text } shown for 3 s when a message arrives in a background channel
   const [msgFlash, setMsgFlash] = useState<{ name: string; text: string } | null>(null);
   const flashTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  // Pending chat invites — channels where the current user was invited but hasn't accepted yet
-  const [pendingInvites, setPendingInvites] = useState<StreamChannel[]>([]);
 
-  useEffect(() => {
-    setActiveChannelRef.current = setActiveChannel as any;
-  }, [setActiveChannel, setActiveChannelRef]);
+  const loadContacts = useCallback(async () => {
+    const token = localStorage.getItem('nanivio_token');
 
-  // Auto-save whichever channel is active (covers onSelect, startChat, acceptInvite, etc.)
-  useEffect(() => {
-    if (activeChannel) {
-      _lastChannelId   = (activeChannel as any).id   ?? null;
-      _lastChannelType = (activeChannel as any).type  ?? 'messaging';
-    }
-  }, [activeChannel]);
-
-  // On mount: fetch pending invites first.
-  // Invites take priority — only restore the previous channel if there are none.
-  // This prevents the channel restore from hiding the "Chat Requests" section
-  // when the user has an unread invite waiting for them.
-  useEffect(() => {
-    const restoreLastChannel = () => {
-      if (!_lastChannelId) return;
-      const ch = client.channel(_lastChannelType, _lastChannelId);
-      ch.watch().then(() => setActiveChannel(ch as any)).catch(() => {});
-    };
-
-    client.queryChannels(
-      { invite: 'pending', type: 'messaging' } as any,
-      [{ created_at: -1 }],
-      { limit: 20, watch: true, state: true },
-    ).then((chs: any) => {
-      const list: StreamChannel[] = Array.isArray(chs) ? chs : chs?.channels ?? [];
-      setPendingInvites(list);
-      // Only restore last channel when there are no pending invites to review
-      if (list.length === 0) restoreLastChannel();
-    }).catch(() => {
-      // If the invite query fails, still try to restore the last channel
-      restoreLastChannel();
+    const r = await fetch(`${API}/contacts`, {
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
     });
-  }, [client]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Listen for incoming invites and invite status changes
+    const d = await r.json();
+    setContacts(d.contacts ?? []);
+  }, []);
+
   useEffect(() => {
-    const onInvited = (event: any) => {
-      const cid = event.channel?.cid;
-      if (!cid) return;
-      // Watch the channel to get full state then add to pending list
-      client.queryChannels({ invite: 'pending', type: 'messaging' } as any, [], { limit: 1, watch: true, state: true })
-        .then(([ch]) => {
-          if (ch) {
-            setPendingInvites(prev => [ch, ...prev.filter(c => c.cid !== ch.cid)]);
-            // Browser notification for the invite
-            const inviterName = event.member?.user?.name ?? 'Someone';
-            if ('Notification' in window && Notification.permission === 'granted') {
-              try {
-                new Notification(inviterName, {
-                  body: 'wants to start a chat with you',
-                  icon: '/icons/icon-192.png',
-                  badge: '/icons/icon-192.png',
-                  tag: `invite-${cid}`,
-                  silent: false,
-                });
-              } catch { /* ignore */ }
-            }
-            playMessageNotification();
-            window.dispatchEvent(new CustomEvent('nanivio:unread', { detail: 1 }));
-          }
-        }).catch(() => {});
-    };
+    loadContacts();
+  }, [loadContacts]);
 
-    const onMemberUpdated = (event: any) => {
-      // Remove from pending if current user accepted or rejected
-      if (event.member?.user_id === streamData.userId) {
-        const accepted = !!(event.member as any)?.invite_accepted_at;
-        const rejected = !!(event.member as any)?.invite_rejected_at;
-        if (accepted || rejected) {
-          setPendingInvites(prev => prev.filter(c => c.cid !== event.cid));
-        }
-      }
-      setTick(t => t + 1); // refresh channel items so invite state re-renders
-    };
 
-    client.on('notification.invited', onInvited);
-    client.on('member.updated', onMemberUpdated);
-    return () => {
-      client.off('notification.invited', onInvited);
-      client.off('member.updated', onMemberUpdated);
-    };
-  }, [client, streamData.userId]);
+  const saveContact = async () => {
+    const token = localStorage.getItem('nanivio_token');
 
-  const acceptInvite = async (ch: StreamChannel) => {
-    try {
-      await ch.acceptInvite();
-      setPendingInvites(prev => prev.filter(c => c.cid !== ch.cid));
-      setActiveChannel(ch as any);
-      setTick(t => t + 1);
-      // Save the inviter as a contact — accepting once connects the two users
-      // permanently, so no future invitation round-trips are needed.
-      const inviter = (Object.values(ch.state?.members ?? {}) as any[])
-        .find(m => m.user_id !== streamData.userId && !m.invited);
-      if (inviter?.user_id && !contacts.some(c => c.streamUserId === inviter.user_id)) {
-        void onAddContact({ id: inviter.user_id, name: inviter.user?.name ?? inviter.user_id } as SUser, { silent: true });
-      }
-    } catch { /* ignore */ }
-  };
+    const response = await fetch(`${API}/contacts`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({
+        nanivioNumber: contactNv,
+        contactName,
+      }),
+    });
 
-  // Auto-accept invites from people already in my contacts — once two users
-  // have connected, no new permission round-trip is needed to chat again.
-  const autoAcceptingRef = useRef<Set<string>>(new Set());
-  useEffect(() => {
-    for (const ch of pendingInvites) {
-      const cid = ch.cid;
-      if (!cid || autoAcceptingRef.current.has(cid)) continue;
-      const inviter = (Object.values(ch.state?.members ?? {}) as any[])
-        .find(m => m.user_id !== streamData.userId && !m.invited);
-      if (inviter?.user_id && contacts.some(c => c.streamUserId === inviter.user_id)) {
-        autoAcceptingRef.current.add(cid);
-        ch.acceptInvite()
-          .then(() => {
-            setPendingInvites(prev => prev.filter(c => c.cid !== cid));
-            setTick(t => t + 1);
-          })
-          .catch(() => autoAcceptingRef.current.delete(cid));
-      }
+    if (response.ok) {
+      setContactNv('');
+      setContactName('');
+      setShowAddContact(false);
+      loadContacts();
     }
-  }, [pendingInvites, contacts, streamData.userId]);
-
-  const declineInvite = async (ch: StreamChannel) => {
-    try {
-      await ch.rejectInvite();
-      setPendingInvites(prev => prev.filter(c => c.cid !== ch.cid));
-    } catch { /* ignore */ }
   };
 
-  // New message: sound + browser notification + in-app flash
-  useEffect(() => {
-    const handler = (event: any) => {
-      const isFromOther = event.message?.user?.id !== streamData.userId;
-      if (isFromOther) {
-        playMessageNotification();
 
-        const senderName: string = event.message?.user?.name ?? 'New message';
-        const preview: string = event.message?.text
-          ?? (event.message?.attachments?.length ? '📎 Attachment' : 'Sent you a message');
+  const acceptInvite = async (ch: any) => {
+    try {
+      await ch.addMembers([streamData.userId]);
+      await ch.watch();
+      setActiveChannel(ch);
+    } catch {}
+  };
 
-        // Browser / PWA notification (works when app is backgrounded or screen is off)
-        if ('Notification' in window && Notification.permission === 'granted') {
-          try {
-            new Notification(senderName, {
-              body: preview.length > 80 ? preview.slice(0, 77) + '…' : preview,
-              icon: '/icons/icon-192.png',
-              badge: '/icons/icon-192.png',
-              tag: String(event.channel_id ?? ''),   // collapses dupes from same chat
-              silent: true,                           // we handle sound ourselves
-            });
-          } catch { /* Safari may block non-HTTPS contexts */ }
-        }
 
-        // In-app flash banner when the message is NOT in the currently open channel
-        if (event.channel_id !== (activeChannel as any)?.id) {
-          if (flashTimerRef.current) clearTimeout(flashTimerRef.current);
-          setMsgFlash({ name: senderName, text: preview.length > 50 ? preview.slice(0, 47) + '…' : preview });
-          flashTimerRef.current = setTimeout(() => setMsgFlash(null), 3500);
-        }
+  const declineInvite = async (ch: any) => {
+    try {
+      await ch.removeMembers([streamData.userId]);
+    } catch {}
+  };
 
-        // Update the chat FAB unread badge (listened to in app-layout.tsx)
-        const totalUnread = (client.user as any)?.total_unread_count ?? 1;
-        window.dispatchEvent(new CustomEvent('nanivio:unread', { detail: totalUnread }));
-      }
-      setTick(t => t + 1);
-    };
-    client.on('message.new', handler);
-    return () => {
-      client.off('message.new', handler);
-      if (flashTimerRef.current) clearTimeout(flashTimerRef.current);
-    };
-  }, [client, streamData.userId, activeChannel]);
-
-  // "Add user" search — queries Stream API, shows results with Add Contact / Chat buttons
-  const [addUserQuery, setAddUserQuery] = useState('');
-  const [addUserResults, setAddUserResults] = useState<SUser[]>([]);
-  const [addingId, setAddingId] = useState<string | null>(null); // contact being added (loading state)
-  const [expandedContactId, setExpandedContactId] = useState<string | null>(null);
-  const [contactsExpanded, setContactsExpanded] = useState(true);
-
-  useEffect(() => {
-    if (!addUserQuery.trim()) { setAddUserResults([]); return; }
-    const tid = setTimeout(() => {
-      const token = localStorage.getItem('nanivio_token');
-      fetch(`${API}/stream/users/search?q=${encodeURIComponent(addUserQuery)}`, {
-        headers: { Authorization: `Bearer ${token}` },
-      }).then(r => r.json()).then(d => setAddUserResults(d.users ?? [])).catch(() => {});
-    }, 300);
-    return () => clearTimeout(tid);
-  }, [addUserQuery]);
 
   const channelFilters = { type: 'messaging', members: { $in: [client?.userID || ''] } };
   // Secondary sort by created_at so brand-new channels (no messages yet) still appear at top
@@ -762,215 +692,132 @@ function ChatInner({
         </div>
       )}
 
+
+      <Dialog open={showAddContact} onOpenChange={setShowAddContact}>
+        <DialogContent className="max-w-sm rounded-2xl">
+          <div className="space-y-4">
+            <h2 className="text-lg font-bold">
+              Add Contact
+            </h2>
+
+            <Input
+              placeholder="User NV number (e.g. 0123456789)"
+              value={contactNv}
+              onChange={(e) => setContactNv(e.target.value)}
+            />
+
+            <Input
+              placeholder="Save name as..."
+              value={contactName}
+              onChange={(e) => setContactName(e.target.value)}
+            />
+
+            <Button
+              className="w-full"
+              disabled={
+                !/^0\d{9}$/.test(contactNv.trim()) ||
+                !contactName.trim()
+              }
+              onClick={saveContact}
+            >
+              Save Contact
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
       {!activeChannel ? (
         /* ── channel list ── */
         <div className="flex flex-col h-full">
-          {/* header */}
-          <div className="px-4 pt-3 pb-2 border-b border-border/40 shrink-0 space-y-2.5">
-            <div className="flex items-center justify-between">
-              <div>
-                <h1 className="text-lg font-bold">Messages</h1>
-                <p className="text-xs text-[#64748b]">Chats &amp; Groups</p>
+          {/* Nanivio Number Chat Entry */}
+          <div className="px-4 pt-5 pb-4 border-b border-border/40 space-y-5">
+
+            <div className="text-center">
+              <div className="mx-auto mb-3 w-14 h-14 rounded-3xl bg-primary/10 flex items-center justify-center">
+                <MessageSquare className="w-7 h-7 text-primary" />
               </div>
-              <Button size="sm" className="gap-1.5 h-8 text-xs" onClick={onNewChat}>
-                <Plus className="w-3.5 h-3.5" /> New Chat
-              </Button>
+
+              <h1 className="text-xl font-bold">
+                Chat
+              </h1>
+
+              <p className="text-xs text-muted-foreground mt-1">
+                Message any Nanivio Number instantly
+              </p>
             </div>
-            {/* "Add user" search — finds people to add as contacts */}
-            <div className="relative">
-              <UserPlus className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-[#64748b] pointer-events-none" />
+
+            <div className="space-y-3">
               <Input
-                className="pl-8 h-9 text-sm rounded-xl bg-muted/40 border-border/30 focus-visible:border-primary/40 focus-visible:ring-primary/10"
-                placeholder="Add user"
+                className="h-12 rounded-2xl text-center text-sm"
+                placeholder="Enter Nanivio Number"
                 value={addUserQuery}
-                onChange={e => setAddUserQuery(e.target.value)}
+                onChange={(e) => setAddUserQuery(e.target.value)}
               />
-              {addUserQuery && (
-                <button
-                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[#64748b] hover:text-foreground"
-                  onClick={() => { setAddUserQuery(''); setAddUserResults([]); }}
-                >
-                  <X className="w-3.5 h-3.5" />
-                </button>
-              )}
-            </div>
 
-            {/* Search results dropdown */}
-            {addUserResults.length > 0 && (
-              <div className="mt-1 rounded-xl border border-border/40 bg-card shadow-lg overflow-hidden">
-                {addUserResults.map(u => {
-                  const isContact = contacts.some(c => c.streamUserId === u.id);
-                  return (
-                    <div key={u.id} className="flex items-center gap-3 px-3 py-2.5 border-b border-border/20 last:border-0 hover:bg-muted/20 transition-colors">
-                      <Avatar className="w-8 h-8 shrink-0">
-                        <AvatarFallback className="text-[10px] bg-primary/20 text-primary font-bold">
-                          {(u.name ?? u.id).slice(0, 2).toUpperCase()}
-                        </AvatarFallback>
-                      </Avatar>
-                      <p className="flex-1 text-sm font-medium truncate">{u.name ?? u.id}</p>
-                      <button
-                        disabled={isContact || addingId === u.id}
-                        onClick={async () => {
-                          setAddingId(u.id);
-                          await onAddContact(u);
-                          setAddingId(null);
-                          setAddUserQuery('');
-                          setAddUserResults([]);
-                        }}
-                        className={cn(
-                          'shrink-0 flex items-center gap-1 text-[11px] font-semibold px-2.5 py-1 rounded-lg transition-colors',
-                          isContact
-                            ? 'bg-muted text-[#64748b] cursor-default'
-                            : 'bg-primary/15 text-primary hover:bg-primary/25 border border-primary/20',
-                        )}
-                      >
-                        {addingId === u.id ? (
-                          <span className="w-3 h-3 border border-primary/40 border-t-primary rounded-full animate-spin" />
-                        ) : (
-                          <UserPlus className="w-3 h-3" />
-                        )}
-                        {isContact ? 'Added' : 'Add'}
-                      </button>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-
-            {/* empty search state */}
-            {addUserQuery.trim() && addUserResults.length === 0 && (
-              <p className="mt-1 text-center text-xs text-[#64748b] py-2">No users found</p>
-            )}
-
-            {/* ── Contacts panel — premium card below search bar ── */}
-            {contacts.length > 0 && (
-              <div
-                className="mt-1 rounded-2xl overflow-hidden"
-                style={{
-                  background: 'linear-gradient(135deg, rgba(45,212,191,0.06) 0%, rgba(20,184,166,0.03) 100%)',
-                  border: '1px solid rgba(45,212,191,0.15)',
-                  boxShadow: '0 2px 16px rgba(0,0,0,0.25), inset 0 1px 0 rgba(255,255,255,0.04)',
+              <Button
+                className="w-full h-12 rounded-2xl font-semibold"
+                disabled={!/^0\d{9}$/.test(addUserQuery.trim())}
+                onClick={() => {
+                  onOpenCommunicationHub();
                 }}
               >
-                {/* header row */}
-                <button
-                  onClick={() => setContactsExpanded(e => !e)}
-                  className="w-full flex items-center justify-between px-3.5 py-2.5 hover:bg-white/[0.03] transition-colors"
-                >
-                  <span className="flex items-center gap-2">
-                    <span
-                      className="w-5 h-5 rounded-full flex items-center justify-center shrink-0"
-                      style={{ background: 'rgba(45,212,191,0.15)' }}
-                    >
-                      <Users className="w-2.5 h-2.5 text-primary" />
-                    </span>
-                    <span className="text-[11px] font-semibold text-foreground/80 tracking-wide">Contacts</span>
-                    <span className="text-[10px] text-[#64748b]/60">
-                      {contacts.filter(c => contactPresence[c.streamUserId]).length} online
-                    </span>
-                  </span>
-                  {contactsExpanded
-                    ? <ChevronUp className="w-3 h-3 text-[#64748b]/50" />
-                    : <ChevronDown className="w-3 h-3 text-[#64748b]/50" />}
-                </button>
+                Start Chat
+              </Button>
+            </div>
 
-                {contactsExpanded && (
-                  <div className="max-h-48 overflow-y-auto overscroll-contain divide-y divide-white/[0.04]">
-                    {contacts.map(c => {
-                      const online = contactPresence[c.streamUserId] ?? false;
-                      const busy   = contactPresence[`busy_${c.streamUserId}`] ?? false;
-                      const dotCls = busy ? 'bg-amber-400' : online ? 'bg-emerald-400' : 'bg-zinc-500';
-                      const statusLabel = busy ? 'Busy' : online ? 'Online' : 'Offline';
-                      const openChat = () => onRequestChat({ id: c.streamUserId, name: c.name });
-
-                      return (
-                        <div key={c.streamUserId}>
-                          <div
-                            role="button"
-                            tabIndex={0}
-                            onClick={openChat}
-                            onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openChat(); } }}
-                            className="w-full flex items-center gap-3 px-3.5 py-2.5 hover:bg-white/[0.04] active:bg-white/[0.06] transition-colors text-left cursor-pointer"
-                          >
-                            <div className="relative shrink-0">
-                              <Avatar className="w-8 h-8">
-                                <AvatarFallback
-                                  className="text-[10px] font-bold"
-                                  style={{ background: 'linear-gradient(135deg,rgba(45,212,191,0.25),rgba(20,184,166,0.12))', color: '#2dd4bf' }}
-                                >
-                                  {c.name.slice(0, 2).toUpperCase()}
-                                </AvatarFallback>
-                              </Avatar>
-                              <span className={`absolute bottom-0 right-0 w-2.5 h-2.5 rounded-full border-2 border-background ${dotCls}`} />
-                            </div>
-                            <div className="flex-1 min-w-0">
-                              <p className="text-sm font-medium leading-tight truncate text-foreground/90">{c.name}</p>
-                              <p className="text-[10px] text-[#64748b]/70">{statusLabel}</p>
-                            </div>
-                            <button
-                              onClick={e => { e.stopPropagation(); onRemoveContact(c.streamUserId); }}
-                              className="p-1 rounded-full text-[#64748b]/30 hover:text-destructive/70 hover:bg-destructive/10 transition-colors shrink-0"
-                              title="Remove"
-                            >
-                              <X className="w-3 h-3" />
-                            </button>
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
-              </div>
-            )}
           </div>
 
           <div className="flex-1 overflow-y-auto overscroll-contain pb-2">
 
-            {/* ── Pending chat requests — rendered from state, not from ChannelList.
-                 ChannelList uses members:$in which only returns full members; pending
-                 invitees are not full members, so they never appear in that array.
-                 pendingInvites is populated by queryChannels({invite:'pending'}) +
-                 notification.invited events, so it always has the right data. ── */}
-            {pendingInvites.length > 0 && (
-              <div>
-                <p className="px-4 pt-3 pb-1 text-[10px] font-semibold tracking-widest text-amber-400 uppercase">
-                  Chat Requests
-                </p>
-                {pendingInvites.map(ch => {
-                  const members = Object.values(ch.state.members ?? {}) as any[];
-                  // The inviter is any member who is not the current user
-                  const inviter = members.find((m: any) => m.user_id !== streamData.userId);
-                  const inviterName: string = inviter?.user?.name ?? 'Someone';
-                  const chName: string = (ch.data as any)?.name ?? inviterName;
-                  return (
-                    <div key={ch.cid} className="mx-2 mb-2 rounded-2xl border border-amber-500/20 bg-amber-500/5 p-3 flex items-center gap-3">
-                      <div className="w-10 h-10 rounded-full bg-amber-500/15 flex items-center justify-center shrink-0">
-                        <span className="text-sm font-bold text-amber-400">{inviterName.slice(0, 2).toUpperCase()}</span>
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm font-semibold truncate">{chName}</p>
-                        <p className="text-[11px] text-[#64748b]">wants to chat with you</p>
-                      </div>
-                      <button
-                        onClick={() => declineInvite(ch)}
-                        className="w-8 h-8 rounded-full bg-muted/60 hover:bg-muted flex items-center justify-center shrink-0 transition-colors"
-                        title="Decline"
-                      >
-                        <UserX className="w-3.5 h-3.5 text-[#64748b]" />
-                      </button>
-                      <button
-                        onClick={() => acceptInvite(ch)}
-                        className="w-8 h-8 rounded-full bg-emerald-500 hover:bg-emerald-600 flex items-center justify-center shrink-0 transition-colors"
-                        title="Accept"
-                      >
-                        <UserCheck className="w-3.5 h-3.5 text-white" />
-                      </button>
-                    </div>
-                  );
-                })}
-                <p className="px-4 pt-2 pb-1 text-[10px] font-semibold tracking-widest text-[#64748b] uppercase">Messages</p>
+            {/* Contacts */}
+            <div className="mx-3 mt-3 mb-2 rounded-2xl border border-white/10 bg-white/[0.03] overflow-hidden">
+              <div className="flex items-center justify-between px-3 py-3">
+                <div className="flex items-center gap-2">
+                  <Users className="w-4 h-4 text-primary" />
+                  <span className="text-sm font-semibold">Contacts</span>
+                </div>
+
+                <button
+                  onClick={() => setShowAddContact(true)}
+                  className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center hover:bg-primary/20"
+                  title="Add Contact"
+                >
+                  <UserPlus className="w-4 h-4 text-primary" />
+                </button>
               </div>
-            )}
+
+              {contacts.length === 0 ? (
+                <p className="px-3 pb-3 text-xs text-muted-foreground">
+                  No saved contacts
+                </p>
+              ) : (
+                contacts.map((c) => (
+                  <button
+                    key={c.id}
+                    className="w-full flex items-center gap-3 px-3 py-2 hover:bg-white/5 text-left"
+                    onClick={() =>
+                      openDirectChat({
+                        id: c.streamUserId,
+                        name: c.name,
+                      })
+                    }
+                  >
+                    <Avatar className="w-8 h-8">
+                      <AvatarFallback>
+                        {c.name?.slice(0,2).toUpperCase()}
+                      </AvatarFallback>
+                    </Avatar>
+
+                    <div className="flex-1">
+                      <p className="text-sm font-medium">{c.name}</p>
+                      <p className="text-xs text-muted-foreground">
+                        {c.nanivioNumber}
+                      </p>
+                    </div>
+                  </button>
+                ))
+              )}
+            </div>
 
             <ChannelList
               filters={channelFilters}
@@ -979,7 +826,7 @@ function ChatInner({
               setActiveChannelOnMount={false}
               renderChannels={(channels: StreamChannel[]) => {
                 // Show empty state only when there are no pending invites either
-                if (channels.length === 0 && pendingInvites.length === 0) {
+                if (channels.length === 0) {
                   return (
                     <div className="flex flex-col items-center justify-center py-16 gap-4 px-6 text-center">
                       <div className="w-16 h-16 bg-primary/10 rounded-full flex items-center justify-center">
@@ -1237,21 +1084,6 @@ function ChatInner({
         </Channel>
       )}
 
-      {/* ── Floating invite banners (one per pending invite, stacked) ── */}
-      {pendingInvites
-        .filter(ch => !(activeChannel && ch.cid === activeChannel.cid)) // don't double-show if channel is open
-        .slice(0, 2) // show at most 2 banners at a time
-        .map((ch, i) => (
-          <div key={ch.cid} style={{ transform: `translateY(${i * 88}px)` }}>
-            <InviteRequestBanner
-              channel={ch}
-              myUserId={streamData.userId}
-              onAccept={acceptInvite}
-              onDecline={declineInvite}
-            />
-          </div>
-        ))
-      }
     </div>
   );
 }
@@ -1263,264 +1095,19 @@ function ChatConnected() {
   const agoraCall = useAgoraCall();
   const { toast } = useToast();
   const setActiveChannelRef = useRef<((ch: any) => void) | null>(null);
+  const openChatRef = useRef<((user: SUser) => void) | null>(null);
 
-  // ── contacts list (persistent, stored in DB) ──
-  const [contacts, setContacts] = useState<ContactEntry[]>([]);
-  // contactPresence: streamUserId → online boolean (from Stream presence API)
-  const [contactPresence, setContactPresence] = useState<Record<string, boolean>>({});
+  const [addUserQuery, setAddUserQuery] = useState('');
+  const [showCommunicationHub, setShowCommunicationHub] = useState(false);
+  const [showNewChatFlow, setShowNewChatFlow] = useState(false);
 
-  // new-chat dialog
-  const [showNewChat, setShowNewChat] = useState(false);
-  const [isGroup, setIsGroup] = useState(false);
-  const [searchQuery, setSearchQuery] = useState('');
-  const [searchResults, setSearchResults] = useState<SUser[]>([]);
-  const [selectedUsers, setSelectedUsers] = useState<SUser[]>([]);
-  const [groupName, setGroupName] = useState('');
-  const [creating, setCreating] = useState(false);
+  const [contacts, setContacts] = useState<any[]>([]);
+  const [showAddContact, setShowAddContact] = useState(false);
+  const [contactNv, setContactNv] = useState('');
+  const [contactName, setContactName] = useState('');
 
-  /* request browser notification permission (delayed so it doesn't fire on first paint) */
-  useEffect(() => {
-    if ('Notification' in window && Notification.permission === 'default') {
-      const tid = setTimeout(() => Notification.requestPermission(), 2500);
-      return () => clearTimeout(tid);
-    }
-    return undefined;
-  }, []);
 
-  /* load contacts from DB + fetch presence from Stream */
-  useEffect(() => {
-    if (!chatClient) return;
-    const token = localStorage.getItem('nanivio_token');
-    fetch(`${API}/contacts`, { headers: { Authorization: `Bearer ${token}` } })
-      .then(r => r.json())
-      .then(async (d) => {
-        const list: ContactEntry[] = d.contacts ?? [];
-        setContacts(list);
-        if (list.length === 0) return;
-        // Query Stream for real-time presence data for all contacts
-        try {
-          const result = await chatClient.queryUsers(
-            { id: { $in: list.map(c => c.streamUserId) } },
-            {},
-            { presence: true },
-          );
-          const pm: Record<string, boolean> = {};
-          for (const u of result.users) pm[u.id] = (u as any).online ?? false;
-          setContactPresence(pm);
-        } catch { /* non-fatal */ }
-      })
-      .catch(() => {});
-  }, [chatClient]);
 
-  /* real-time presence updates for contacts */
-  useEffect(() => {
-    if (!chatClient) return;
-    const handler = (event: any) => {
-      const uid: string | undefined = event.user?.id;
-      if (uid) setContactPresence(prev => ({ ...prev, [uid]: event.user?.online ?? false }));
-    };
-    chatClient.on('user.presence.changed', handler);
-    return () => chatClient.off('user.presence.changed', handler);
-  }, [chatClient]);
-
-  /* add a user to the contacts list (silent: no toast — used for auto-saving) */
-  const addContact = useCallback(async (user: SUser, opts?: { silent?: boolean }) => {
-    const token = localStorage.getItem('nanivio_token');
-    try {
-      const r = await fetch(`${API}/contacts`, {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ contactUserId: user.id }),
-      });
-      const d = await r.json();
-      if (r.ok) {
-        const newEntry: ContactEntry = { id: d.contact?.id ?? Date.now(), streamUserId: user.id, name: user.name ?? user.id };
-        setContacts(prev => prev.some(c => c.streamUserId === user.id) ? prev : [...prev, newEntry]);
-        if (!opts?.silent) toast({ title: `${user.name ?? 'User'} added to contacts` });
-        // Fetch their presence
-        if (chatClient) {
-          chatClient.queryUsers({ id: { $in: [user.id] } }, {}, { presence: true })
-            .then(res => { const u = res.users[0]; if (u) setContactPresence(p => ({ ...p, [u.id]: (u as any).online ?? false })); })
-            .catch(() => {});
-        }
-      } else if (!opts?.silent) {
-        toast({ title: d.error ?? 'Could not add contact', variant: 'destructive' });
-      }
-    } catch {
-      if (!opts?.silent) toast({ title: 'Could not add contact', variant: 'destructive' });
-    }
-  }, [chatClient, toast]);
-
-  /* remove a contact from the list */
-  const removeContact = useCallback(async (streamUserId: string) => {
-    const token = localStorage.getItem('nanivio_token');
-    try {
-      await fetch(`${API}/contacts/${streamUserId}`, {
-        method: 'DELETE',
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      setContacts(prev => prev.filter(c => c.streamUserId !== streamUserId));
-    } catch { /* ignore */ }
-  }, []);
-
-  /* open a 1-to-1 chat in one tap — reuses an existing conversation when there
-     is one; saved contacts never go through the invitation round-trip again */
-  const openDirectChat = useCallback(async (user: SUser) => {
-    if (!chatClient) return;
-    try {
-      const raw = await chatClient.queryChannels(
-        { type: 'messaging', members: { $in: [streamData.userId] } },
-        [{ last_message_at: -1 }],
-        { limit: 50, state: true },
-      );
-      const list: StreamChannel[] = Array.isArray(raw) ? raw : (raw as any)?.channels ?? [];
-      const match = list.find(ch => {
-        const ids = Object.keys(ch.state.members ?? {});
-        return ids.length === 2 && ids.includes(user.id) && ids.includes(streamData.userId);
-      });
-      if (match) { setActiveChannelRef.current?.(match); return; }
-
-      const isContact = contacts.some(c => c.streamUserId === user.id);
-      const channelId = `ch-${streamData.userId}-${Date.now()}`;
-      const ch = chatClient.channel('messaging', channelId, {
-        members: isContact ? [streamData.userId, user.id] : [streamData.userId],
-      });
-      await ch.create();
-      if (!isContact) await ch.inviteMembers([user.id]);
-      await ch.watch();
-      setActiveChannelRef.current?.(ch);
-    } catch (err: any) {
-      toast({ title: 'Could not open chat', description: err?.message ?? 'Please try again', variant: 'destructive' });
-    }
-  }, [chatClient, contacts, streamData.userId, toast]);
-
-  /* clicking a saved contact opens the conversation immediately */
-  const requestChatWith = useCallback((user: SUser) => {
-    void openDirectChat(user);
-  }, [openDirectChat]);
-
-  /* search users — Chat starts only from an exact User NV number */
-  useEffect(() => {
-    if (!showNewChat || !searchQuery.trim()) {
-      setSearchResults([]);
-      return;
-    }
-
-    const tid = setTimeout(async () => {
-      const token = localStorage.getItem('nanivio_token');
-      const q = searchQuery.trim().replace(/\s/g, '');
-
-      // Chat is NV-only: do not search by name or phone.
-      if (!/^0\d{9}$/.test(q)) {
-        setSearchResults([]);
-        return;
-      }
-
-      try {
-        const response = await fetch(
-          `${API}/stream/chat/${encodeURIComponent(q)}`,
-          {
-            headers: { Authorization: `Bearer ${token}` },
-          },
-        );
-
-        if (!response.ok) {
-          setSearchResults([]);
-          return;
-        }
-
-        const data = await response.json();
-
-        // A valid response must contain the target Stream user ID.
-        if (!data.userId) {
-          setSearchResults([]);
-          return;
-        }
-
-        setSearchResults([{
-          id: data.userId,
-          name: data.name,
-          nanivioNumber: q,
-        }]);
-      } catch {
-        setSearchResults([]);
-      }
-    }, 300);
-
-    return () => clearTimeout(tid);
-  }, [searchQuery, showNewChat]);
-
-  const toggleUser = (u: SUser) =>
-    setSelectedUsers(prev => prev.some(x => x.id === u.id) ? prev.filter(x => x.id !== u.id) : [...prev, u]);
-
-  const startChat = async () => {
-    if (!chatClient || selectedUsers.length === 0) return;
-    setCreating(true);
-    try {
-      const inviteeIds = selectedUsers.map(u => u.id);
-
-      // Query channels *the current user* is a member of, then search for an
-      // existing match client-side.  Using the current user's own ID in the
-      // filter avoids Stream Chat's server-side security rejection that occurs
-      // when you filter by a third party's ID only.
-      const rawExisting = await chatClient.queryChannels(
-        { type: 'messaging', members: { $in: [streamData.userId] } },
-        [{ last_message_at: -1 }],
-        { limit: 50, state: true },
-      );
-      const existingList: StreamChannel[] = Array.isArray(rawExisting)
-        ? rawExisting
-        : (rawExisting as any)?.channels ?? [];
-
-      // For 1-to-1 chats find a channel that has exactly these two members
-      const match = !isGroup
-        ? existingList.find(ch => {
-            const memberIds = Object.keys(ch.state.members ?? {});
-            return (
-              memberIds.length === 2 &&
-              inviteeIds.every(id => memberIds.includes(id)) &&
-              memberIds.includes(streamData.userId)
-            );
-          })
-        : undefined;
-
-      if (match) {
-        closeNewChat();
-        setActiveChannelRef.current?.(match);
-        // Connected once — keep them as contacts so no future invitation is needed
-        if (!isGroup) selectedUsers
-          .filter(u => !contacts.some(c => c.streamUserId === u.id))
-          .forEach(u => void addContact(u, { silent: true }));
-        return;
-      }
-
-      // Create the conversation directly. Nanivio does not use chat requests
-      // or invitations — once a user is selected, they are added immediately.
-      const channelId = `ch-${streamData.userId}-${Date.now()}`;
-      const ch = chatClient.channel('messaging', channelId, {
-        ...(isGroup && groupName.trim() ? { name: groupName.trim() } : {}),
-        members: [streamData.userId, ...inviteeIds],
-      });
-
-      await ch.create();
-      await ch.watch();
-      closeNewChat();
-      setActiveChannelRef.current?.(ch);
-      // Auto-save chat partners as contacts — once connected, always connected
-      if (!isGroup) selectedUsers
-        .filter(u => !contacts.some(c => c.streamUserId === u.id))
-        .forEach(u => void addContact(u, { silent: true }));
-    } catch (err: any) {
-      console.error('startChat error:', err);
-      toast({
-        title: 'Could not create chat',
-        description: err?.message ?? 'Please try again',
-        variant: 'destructive',
-      });
-    } finally {
-      setCreating(false);
-    }
-  };
 
   const handleStartCall = useCallback(async (type: 'audio' | 'video', ch: StreamChannel) => {
     if (!agoraCall.ready) {
@@ -1609,10 +1196,7 @@ function ChatConnected() {
     }
   }, [agoraCall, streamData?.userId, toast]);
 
-  const closeNewChat = () => {
-    setShowNewChat(false);
-    setSelectedUsers([]); setSearchQuery(''); setGroupName(''); setIsGroup(false);
-  };
+
 
   return (
     /*
@@ -1639,197 +1223,37 @@ function ChatConnected() {
         }}
       >
         <ChatInner
+          onOpenCommunicationHub={() => setShowCommunicationHub(true)}
           streamData={streamData}
           onStartCall={handleStartCall}
-          onNewChat={() => setShowNewChat(true)}
+          onNewChat={() => setShowCommunicationHub(true)}
           setActiveChannelRef={setActiveChannelRef}
-          contacts={contacts}
-          contactPresence={contactPresence}
-          onAddContact={addContact}
-          onRemoveContact={removeContact}
-          onRequestChat={requestChatWith}
+          openChatRef={openChatRef}
         />
       </Chat>
 
-      {/* ── Premium New Chat / New Group dialog ── */}
-      <Dialog open={showNewChat} onOpenChange={(o) => { if (!o) closeNewChat(); }}>
-        <DialogContent className="max-w-sm p-0 gap-0 overflow-hidden border border-white/8 shadow-2xl shadow-black/60 rounded-2xl">
+      <CommunicationHub
+        open={showCommunicationHub}
+        onClose={() => setShowCommunicationHub(false)}
+        onChat={() => {
+          setShowCommunicationHub(false);
+          setShowNewChatFlow(true);
+        }}
+        onCall={() => {
+          setShowCommunicationHub(false);
+          console.log("Open premium call flow");
+        }}
+      />
 
-          {/* gradient header */}
-          <div className="relative px-5 pt-6 pb-4 overflow-hidden"
-            style={{ background: 'linear-gradient(135deg, rgba(45,212,191,0.12) 0%, rgba(20,184,166,0.06) 50%, transparent 100%)' }}>
-            {/* top shimmer line */}
-            <div className="absolute top-0 inset-x-0 h-px bg-gradient-to-r from-transparent via-primary/50 to-transparent" />
+      <NewChatFlow
+        open={showNewChatFlow}
+        onClose={() => setShowNewChatFlow(false)}
+        onStartChat={(user) => {
+          setShowNewChatFlow(false);
+          console.log("Start chat with:", user);
+        }}
+      />
 
-            {/* title + type toggle */}
-            <div className="flex items-start justify-between mb-5">
-              <div>
-                <div className="flex items-center gap-2">
-                  <Sparkles className="w-4 h-4 text-primary" />
-                  <h2 className="text-lg font-bold tracking-tight">
-                    {isGroup ? 'New Group' : 'New Message'}
-                  </h2>
-                </div>
-                <p className="text-xs text-[#64748b] mt-0.5 ml-6">
-                  {isGroup ? 'Create a group conversation' : 'Start a private conversation'}
-                </p>
-              </div>
-
-              {/* DM / Group pill toggle */}
-              <div className="flex items-center p-1 bg-black/30 rounded-xl gap-0.5 shrink-0 border border-white/8">
-                <button
-                  onClick={() => setIsGroup(false)}
-                  className={cn(
-                    'flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg font-medium transition-all duration-200',
-                    !isGroup ? 'bg-primary text-black shadow shadow-primary/40' : 'text-[#64748b] hover:text-foreground',
-                  )}
-                >
-                  <MessageSquare className="w-3 h-3" /> DM
-                </button>
-                <button
-                  onClick={() => setIsGroup(true)}
-                  className={cn(
-                    'flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg font-medium transition-all duration-200',
-                    isGroup ? 'bg-primary text-black shadow shadow-primary/40' : 'text-[#64748b] hover:text-foreground',
-                  )}
-                >
-                  <Users className="w-3 h-3" /> Group
-                </button>
-              </div>
-            </div>
-
-            {/* group name */}
-            {isGroup && (
-              <Input
-                placeholder="Group name…"
-                value={groupName}
-                onChange={e => setGroupName(e.target.value)}
-                className="mb-3 h-10 rounded-xl bg-black/30 border-white/10 text-sm focus-visible:border-primary/60 focus-visible:ring-primary/20"
-              />
-            )}
-
-            {/* search bar */}
-            <div className="relative">
-              <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-[#64748b] pointer-events-none" />
-              <Input
-                className="pl-10 h-11 rounded-xl bg-black/30 border-white/10 text-sm focus-visible:border-primary/60 focus-visible:ring-1 focus-visible:ring-primary/20"
-                placeholder="Enter Nanivio Number (NV) to call or chat…"
-                value={searchQuery}
-                onChange={e => setSearchQuery(e.target.value)}
-                autoFocus
-              />
-            </div>
-          </div>
-
-          {/* selected user chips */}
-          {selectedUsers.length > 0 && (
-            <div className="px-4 py-2.5 flex flex-wrap gap-2 border-y border-white/6 bg-primary/5">
-              {selectedUsers.map(u => (
-                <div key={u.id}
-                  className="flex items-center gap-1.5 bg-primary/15 border border-primary/25 text-primary px-2.5 py-1 rounded-full text-xs font-semibold"
-                >
-                  <span className="w-4 h-4 bg-primary/30 rounded-full flex items-center justify-center text-[8px] font-bold">
-                    {(u.name ?? u.id).slice(0, 1).toUpperCase()}
-                  </span>
-                  {u.name ?? u.id}
-                  <button onClick={() => toggleUser(u)} className="ml-0.5 hover:text-destructive transition-colors">
-                    <X className="w-3 h-3" />
-                  </button>
-                </div>
-              ))}
-            </div>
-          )}
-
-          {/* results list */}
-          <div className="max-h-56 overflow-y-auto overscroll-contain">
-            {searchResults.length > 0 ? (
-              searchResults.map(u => {
-                const sel = selectedUsers.some(x => x.id === u.id);
-                return (
-                  <button
-                    key={u.id}
-                    className={cn(
-                      'w-full flex items-center gap-3.5 px-4 py-3 transition-colors text-left border-b border-white/5 last:border-0',
-                      sel ? 'bg-primary/8' : 'hover:bg-white/4 active:bg-white/6',
-                    )}
-                    onClick={() => isGroup ? toggleUser(u) : setSelectedUsers([u])}
-                  >
-                    {/* avatar + online dot */}
-                    <div className="relative shrink-0">
-                      <Avatar className="w-11 h-11">
-                        <AvatarFallback
-                          className="font-bold text-sm"
-                          style={{ background: 'linear-gradient(135deg, rgba(45,212,191,0.3), rgba(20,184,166,0.15))', color: '#2dd4bf' }}
-                        >
-                          {(u.name ?? u.id).slice(0, 2).toUpperCase()}
-                        </AvatarFallback>
-                      </Avatar>
-                      <span className="absolute bottom-0 right-0 w-3 h-3 bg-emerald-400 rounded-full border-2 border-background ring-1 ring-emerald-400/30" />
-                    </div>
-
-                    <div className="flex-1 min-w-0">
-                      <p className="font-semibold text-sm leading-tight">{u.name ?? u.id}</p>
-                      <p className="text-[11px] text-[#64748b] mt-0.5">
-                        {isGroup ? (sel ? '✓ Added to group' : 'Tap to add') : 'Tap to message'}
-                      </p>
-                    </div>
-
-                    {/* checkbox */}
-                    <div className={cn(
-                      'w-6 h-6 rounded-full border-2 flex items-center justify-center transition-all duration-150 shrink-0',
-                      sel ? 'bg-primary border-primary shadow shadow-primary/40' : 'border-white/20',
-                    )}>
-                      {sel && <Check className="w-3.5 h-3.5 text-black" />}
-                    </div>
-                  </button>
-                );
-              })
-            ) : searchQuery.trim() ? (
-              <div className="flex flex-col items-center justify-center py-10 gap-2 text-center px-4">
-                <div className="w-10 h-10 bg-muted/40 rounded-full flex items-center justify-center">
-                  <Search className="w-4 h-4 text-[#64748b]" />
-                </div>
-                <p className="text-sm font-medium">No users found</p>
-                <p className="text-xs text-[#64748b]">Try a different name or phone number</p>
-              </div>
-            ) : (
-              <div className="flex flex-col items-center justify-center py-10 gap-2 text-center px-4">
-                <div className="w-10 h-10 bg-primary/10 rounded-full flex items-center justify-center">
-                  <Search className="w-4 h-4 text-primary/50" />
-                </div>
-                <p className="text-sm text-[#64748b]">Search for someone to connect with</p>
-              </div>
-            )}
-          </div>
-
-          {/* CTA */}
-          <div className="p-4 border-t border-white/6 bg-black/20">
-            <Button
-              className="w-full h-12 font-semibold rounded-xl text-sm text-black disabled:opacity-40 transition-all duration-200 active:scale-[0.98]"
-              style={{
-                background: selectedUsers.length > 0 && !(isGroup && !groupName.trim())
-                  ? 'linear-gradient(135deg, #2dd4bf, #14b8a6)'
-                  : undefined,
-                boxShadow: selectedUsers.length > 0 ? '0 4px 20px rgba(45,212,191,0.35)' : undefined,
-              }}
-              onClick={startChat}
-              disabled={selectedUsers.length === 0 || creating || (isGroup && !groupName.trim())}
-            >
-              {creating ? (
-                <span className="flex items-center gap-2">
-                  <span className="w-4 h-4 border-2 border-black/30 border-t-black rounded-full animate-spin" />
-                  Starting…
-                </span>
-              ) : isGroup ? (
-                `Create Group${selectedUsers.length > 0 ? ` · ${selectedUsers.length} member${selectedUsers.length !== 1 ? 's' : ''}` : ''}`
-              ) : (
-                'Send Chat Request'
-              )}
-            </Button>
-          </div>
-
-        </DialogContent>
-      </Dialog>
     </div>
   );
 }
@@ -1900,7 +1324,7 @@ export default function ChatPage() {
 }
 
 /** Small "per-minute rate" pill shown in the chat header when the other user
- *  has paid calls enabled, so contacts see the rate before pressing call. */
+ *  has paid calls enabled, so users see the rate before pressing call. */
 function PaidRateBadge({ userId }: { userId: string }) {
   const [rate, setRate] = useState<{ ratePerMinute: number; currency: string } | null>(null);
   useEffect(() => {
