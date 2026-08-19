@@ -17,7 +17,7 @@ interface AppLayoutProps {
 const navigation = [
   { name: 'Home',     href: '/',             icon: Home },
   { name: 'Send',     href: '/send',         icon: Send },
-  { name: 'Communication', href: '#communication', icon: MessageCircle },
+  { name: '', href: '#communication', icon: MessageCircle },
   { name: 'Wallets',  href: '/wallets',      icon: Wallet },
   { name: 'Account',  href: '/account',      icon: User },
 ];
@@ -156,12 +156,13 @@ export function AppLayout({ children }: AppLayoutProps) {
           const Icon = item.icon;
 
           /* ── Communication tab: premium raised FAB ── */
-          if (item.href === '/communication') {
+          if (item.href === '#communication') {
             return (
               <button
-                key={item.name}
+                key="communication-fab"
+                type="button"
                 onClick={() => setShowCommunicationHub(true)}
-                className="flex-1 flex flex-col items-center pb-2"
+                className="flex-1 flex flex-col items-center pb-2 relative z-[60] pointer-events-auto"
                 style={{ marginTop: '-18px' }}
               >
                 {/* Outer glow ring — only when active */}
