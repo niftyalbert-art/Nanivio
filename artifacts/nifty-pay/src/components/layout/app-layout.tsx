@@ -29,7 +29,7 @@ const sidebarExtra = [
 ];
 
 export function AppLayout({ children }: AppLayoutProps) {
-  const [location] = useLocation();
+  const [location, setLocation] = useLocation();
   const { data: profile, isLoading: profileLoading } = useGetUserProfile();
 
   // Persistent Stream client — drives real-time badge from ANY page
@@ -256,13 +256,13 @@ export function AppLayout({ children }: AppLayoutProps) {
         open={showNewChatFlow}
         mode={communicationMode}
         onClose={() => setShowNewChatFlow(false)}
-        onStartChat={(user) => {
+        onStartChat={() => {
           setShowNewChatFlow(false);
-          console.log("Start chat:", user);
+          setLocation('/chat');
         }}
-        onStartCall={async (user) => {
+        onStartCall={(user) => {
           setShowNewChatFlow(false);
-          console.log("Start call:", user);
+          setLocation(`/chat?call=${encodeURIComponent(user.nanivioNumber)}`);
         }}
       />
 
