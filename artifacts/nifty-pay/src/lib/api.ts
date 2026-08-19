@@ -1,1 +1,1 @@
-export const API_BASE = 'https://nanivio.onrender.com/api';
+export const API_BASE = 'https://nanivio-api.vercel.app/api';
