@@ -1,6 +1,7 @@
 import '@/styles/stream-theme.css';
 
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import { useLocation } from 'wouter';
 import {
   Chat, Channel, ChannelList, MessageList, MessageComposer,
   TypingIndicator, useChatContext, WithComponents,
@@ -528,6 +529,209 @@ function ChatInner({
   const [showAddContact, setShowAddContact] = useState(false);
   const [contactNv, setContactNv] = useState('');
   const [contactName, setContactName] = useState('');
+
+
+  const handleStartCall = useCallback(async (type: 'audio' | 'video', ch: StreamChannel) => {
+    if (!agoraCall.ready) {
+      toast({ title: 'Calls not ready', description: 'Please wait a moment and try again.', variant: 'destructive' });
+      return;
+    }
+    // Check the other user's calling preferences before dialling
+    const members = Object.values(ch.state?.members ?? {}) as any[];
+    const other = members.find((m: any) => m.user_id !== streamData?.userId);
+    if (other?.user_id) {
+      try {
+        const authToken = localStorage.getItem('nanivio_token');
+        const prefs = await fetch(`${API}/user/calling-settings/${other.user_id}`, {
+          headers: { Authorization: `Bearer ${authToken}` },
+        }).then(r => r.json());
+        if (!prefs.callsEnabled) {
+          toast({ title: 'Calls not allowed', description: `${other.user?.name ?? 'This user'} has disabled calls.`, variant: 'destructive' });
+          return;
+        }
+        if (type === 'video' && !prefs.videoCallsEnabled) {
+          toast({ title: 'Video calls not allowed', description: `${other.user?.name ?? 'This user'} has disabled video calls.`, variant: 'destructive' });
+          return;
+        }
+      } catch { /* allow the call if the preference check fails */ }
+    }
+    if (!other?.user_id) {
+      toast({ title: 'Call failed', description: 'Could not find the other person in this chat.', variant: 'destructive' });
+      return;
+    }
+    if (!ch.id) {
+      toast({ title: 'Call failed', description: 'This chat is not ready yet.', variant: 'destructive' });
+      return;
+    }
+    // Paid per-minute calls: if the other user is an expert with paid calls
+    // enabled, show the rate and require explicit confirmation before ringing.
+    let billing: { expertUserId: number; ratePerMinute: number; currency: string } | undefined;
+    try {
+      const authToken = localStorage.getItem('nanivio_token');
+      const r = await fetch(`${API}/paid-calls/rate/${other.user_id}`, {
+        headers: { Authorization: `Bearer ${authToken}` },
+      });
+      const d = await r.json().catch(() => ({}));
+      if (r.ok && d?.enabled) {
+        const name = other.user?.name ?? 'This user';
+        if ((d.affordableMinutes ?? 0) < 1) {
+          toast({
+            title: 'Insufficient balance',
+            description: `${name} charges ${d.ratePerMinute} ${d.currency}/min for calls. Top up your wallet to call them.`,
+            variant: 'destructive',
+          });
+          return;
+        }
+        const ok = window.confirm(
+          `${name} charges ${d.ratePerMinute} ${d.currency} per minute for calls.\n\n` +
+          `Your balance covers about ${d.affordableMinutes} minute${d.affordableMinutes === 1 ? '' : 's'}. ` +
+          `Billing starts when they answer and you'll be charged automatically when the call ends.\n\nStart the paid call?`,
+        );
+        if (!ok) return;
+        billing = { expertUserId: Number(other.user_id), ratePerMinute: d.ratePerMinute, currency: d.currency };
+      }
+    } catch {
+      // If the rate check itself fails we do NOT silently start what might be a
+      // paid call — surface it and stop.
+      toast({ title: 'Call failed', description: 'Could not check call pricing. Please try again.', variant: 'destructive' });
+      return;
+    }
+    try {
+      await agoraCall.startCall(type, String(ch.id), other.user_id, other.user?.name ?? 'Call', billing);
+      // Ring the callee's device(s) even if the app is closed
+      notifyCallPush(other.user_id, type).then((sent) => {
+        if (sent === 0) {
+          toast({
+            title: 'Ringing in-app only',
+            description: `${other.user?.name ?? 'This person'} hasn't enabled call notifications yet — they'll only see the call if the app is open.`,
+          });
+        }
+      });
+    } catch (e: any) {
+      const msg: string = e?.message ?? String(e);
+      const isRegion = msg.toLowerCase().includes('country') || msg.toLowerCase().includes('region') || msg.toLowerCase().includes('geo');
+      toast({
+        title: isRegion ? 'Not available in your region' : 'Call failed',
+        description: isRegion ? 'Video and audio calls are not supported in your country.' : msg,
+        variant: 'destructive',
+      });
+    }
+  }, [agoraCall, streamData?.userId, toast]);
+
+
+
+  return (
+    /*
+     * Mobile layout:  100dvh minus sticky header (56px) minus fixed bottom nav (56px).
+     * Using 100dvh (dynamic) means the box shrinks when the virtual keyboard opens,
+     * keeping the composer pinned just above the keyboard instead of hidden under it.
+     * Desktop: h-full works fine — no fixed nav, no sticky header offset.
+     */
+    <div className="flex flex-col overflow-hidden md:h-full h-[calc(100dvh-56px-56px)]">
+      {/* IncomingCallBanner and activeCall overlay are rendered inside AppLayout
+          (via CallOverlay) so they work from any page — not just /chat. */}
+
+      <Chat
+        client={chatClient!}
+        theme="str-chat__theme-dark"
+        customClasses={{
+          // Channel's outer container — keep the class so theme CSS vars apply,
+          // force column so header + messages stack vertically.
+          channel: 'str-chat__channel !flex !flex-col flex-1 min-h-0 overflow-hidden',
+          // ChannelInner wraps children in .str-chat__container which defaults to
+          // flex-direction:row — the real cause of the side-by-side layout bug.
+          // Override it to column here (CSS rule in stream-theme.css is the backup).
+          chatContainer: 'str-chat__container !flex !flex-col flex-1 min-h-0 overflow-hidden w-full',
+        }}
+      >
+        <ChatInner
+          onOpenCommunicationHub={() => setShowCommunicationHub(true)}
+          streamData={streamData}
+          onStartCall={handleStartCall}
+          onNewChat={() => setShowCommunicationHub(true)}
+          setActiveChannelRef={setActiveChannelRef}
+          openChatRef={openChatRef}
+        />
+      </Chat>
+
+      <CommunicationHub
+        open={showCommunicationHub}
+        onClose={() => setShowCommunicationHub(false)}
+        onChat={() => {
+          setCommunicationMode("chat");
+          setShowCommunicationHub(false);
+          setShowNewChatFlow(true);
+        }}
+        onCall={() => {
+          setCommunicationMode("call");
+          setShowCommunicationHub(false);
+          setShowNewChatFlow(true);
+        }}
+      />
+
+      <NewChatFlow
+        open={showNewChatFlow}
+        mode={communicationMode}
+        onClose={() => setShowNewChatFlow(false)}
+        onStartChat={(user) => {
+          setShowNewChatFlow(false);
+          console.log("Start chat with:", user);
+        }}
+
+        onStartCall={async (user) => {
+          setShowNewChatFlow(false);
+
+          try {
+            const ch = await openChatRef.current?.(user);
+
+            if (!ch) {
+              toast({
+                title: "Call failed",
+                description: "Could not open conversation.",
+                variant: "destructive",
+              });
+              return;
+            }
+
+            await agoraCall.startCall(
+              "video",
+              String(ch.id),
+              user.id,
+              user.name ?? "Call"
+            );
+
+          } catch (e: any) {
+            toast({
+              title: "Call failed",
+              description: e?.message ?? String(e),
+              variant: "destructive",
+            });
+          }
+        }}
+      />
+
+    </div>
+  );
+}
+
+/* ─── page entry — reads persistent client from StreamChatProvider ─── */
+export default function ChatPage() {
+  const { streamData, chatClient } = useStreamChat();
+  const [needsPushOptIn, setNeedsPushOptIn] = useState(false);
+
+  // Subscribe this device to incoming-call push notifications.
+  // On iOS the permission prompt only works from a user tap, so when
+  // permission is still 'default' after the automatic attempt we show
+  // an explicit "Enable" banner instead.
+  useEffect(() => {
+    if (!streamData) return;
+    void ensurePushSubscription().finally(() => {
+      if (typeof Notification !== 'undefined' && Notification.permission === 'default'
+          && 'serviceWorker' in navigator && 'PushManager' in window) {
+        setNeedsPushOptIn(true);
+      }
+    });
+  }, [streamData]);
 
   const openDirectChat = useCallback(async (user: SUser) => {
     if (!client) return;
@@ -1109,209 +1313,59 @@ function ChatConnected() {
   const [contactName, setContactName] = useState('');
 
 
-
-
-  const handleStartCall = useCallback(async (type: 'audio' | 'video', ch: StreamChannel) => {
-    if (!agoraCall.ready) {
-      toast({ title: 'Calls not ready', description: 'Please wait a moment and try again.', variant: 'destructive' });
-      return;
-    }
-    // Check the other user's calling preferences before dialling
-    const members = Object.values(ch.state?.members ?? {}) as any[];
-    const other = members.find((m: any) => m.user_id !== streamData?.userId);
-    if (other?.user_id) {
-      try {
-        const authToken = localStorage.getItem('nanivio_token');
-        const prefs = await fetch(`${API}/user/calling-settings/${other.user_id}`, {
-          headers: { Authorization: `Bearer ${authToken}` },
-        }).then(r => r.json());
-        if (!prefs.callsEnabled) {
-          toast({ title: 'Calls not allowed', description: `${other.user?.name ?? 'This user'} has disabled calls.`, variant: 'destructive' });
-          return;
-        }
-        if (type === 'video' && !prefs.videoCallsEnabled) {
-          toast({ title: 'Video calls not allowed', description: `${other.user?.name ?? 'This user'} has disabled video calls.`, variant: 'destructive' });
-          return;
-        }
-      } catch { /* allow the call if the preference check fails */ }
-    }
-    if (!other?.user_id) {
-      toast({ title: 'Call failed', description: 'Could not find the other person in this chat.', variant: 'destructive' });
-      return;
-    }
-    if (!ch.id) {
-      toast({ title: 'Call failed', description: 'This chat is not ready yet.', variant: 'destructive' });
-      return;
-    }
-    // Paid per-minute calls: if the other user is an expert with paid calls
-    // enabled, show the rate and require explicit confirmation before ringing.
-    let billing: { expertUserId: number; ratePerMinute: number; currency: string } | undefined;
-    try {
-      const authToken = localStorage.getItem('nanivio_token');
-      const r = await fetch(`${API}/paid-calls/rate/${other.user_id}`, {
-        headers: { Authorization: `Bearer ${authToken}` },
-      });
-      const d = await r.json().catch(() => ({}));
-      if (r.ok && d?.enabled) {
-        const name = other.user?.name ?? 'This user';
-        if ((d.affordableMinutes ?? 0) < 1) {
-          toast({
-            title: 'Insufficient balance',
-            description: `${name} charges ${d.ratePerMinute} ${d.currency}/min for calls. Top up your wallet to call them.`,
-            variant: 'destructive',
-          });
-          return;
-        }
-        const ok = window.confirm(
-          `${name} charges ${d.ratePerMinute} ${d.currency} per minute for calls.\n\n` +
-          `Your balance covers about ${d.affordableMinutes} minute${d.affordableMinutes === 1 ? '' : 's'}. ` +
-          `Billing starts when they answer and you'll be charged automatically when the call ends.\n\nStart the paid call?`,
-        );
-        if (!ok) return;
-        billing = { expertUserId: Number(other.user_id), ratePerMinute: d.ratePerMinute, currency: d.currency };
-      }
-    } catch {
-      // If the rate check itself fails we do NOT silently start what might be a
-      // paid call — surface it and stop.
-      toast({ title: 'Call failed', description: 'Could not check call pricing. Please try again.', variant: 'destructive' });
-      return;
-    }
-    try {
-      await agoraCall.startCall(type, String(ch.id), other.user_id, other.user?.name ?? 'Call', billing);
-      // Ring the callee's device(s) even if the app is closed
-      notifyCallPush(other.user_id, type).then((sent) => {
-        if (sent === 0) {
-          toast({
-            title: 'Ringing in-app only',
-            description: `${other.user?.name ?? 'This person'} hasn't enabled call notifications yet — they'll only see the call if the app is open.`,
-          });
-        }
-      });
-    } catch (e: any) {
-      const msg: string = e?.message ?? String(e);
-      const isRegion = msg.toLowerCase().includes('country') || msg.toLowerCase().includes('region') || msg.toLowerCase().includes('geo');
-      toast({
-        title: isRegion ? 'Not available in your region' : 'Call failed',
-        description: isRegion ? 'Video and audio calls are not supported in your country.' : msg,
-        variant: 'destructive',
-      });
-    }
-  }, [agoraCall, streamData?.userId, toast]);
-
-
-
-  return (
-    /*
-     * Mobile layout:  100dvh minus sticky header (56px) minus fixed bottom nav (56px).
-     * Using 100dvh (dynamic) means the box shrinks when the virtual keyboard opens,
-     * keeping the composer pinned just above the keyboard instead of hidden under it.
-     * Desktop: h-full works fine — no fixed nav, no sticky header offset.
-     */
-    <div className="flex flex-col overflow-hidden md:h-full h-[calc(100dvh-56px-56px)]">
-      {/* IncomingCallBanner and activeCall overlay are rendered inside AppLayout
-          (via CallOverlay) so they work from any page — not just /chat. */}
-
-      <Chat
-        client={chatClient!}
-        theme="str-chat__theme-dark"
-        customClasses={{
-          // Channel's outer container — keep the class so theme CSS vars apply,
-          // force column so header + messages stack vertically.
-          channel: 'str-chat__channel !flex !flex-col flex-1 min-h-0 overflow-hidden',
-          // ChannelInner wraps children in .str-chat__container which defaults to
-          // flex-direction:row — the real cause of the side-by-side layout bug.
-          // Override it to column here (CSS rule in stream-theme.css is the backup).
-          chatContainer: 'str-chat__container !flex !flex-col flex-1 min-h-0 overflow-hidden w-full',
-        }}
-      >
-        <ChatInner
-          onOpenCommunicationHub={() => setShowCommunicationHub(true)}
-          streamData={streamData}
-          onStartCall={handleStartCall}
-          onNewChat={() => setShowCommunicationHub(true)}
-          setActiveChannelRef={setActiveChannelRef}
-          openChatRef={openChatRef}
-        />
-      </Chat>
-
-      <CommunicationHub
-        open={showCommunicationHub}
-        onClose={() => setShowCommunicationHub(false)}
-        onChat={() => {
-          setCommunicationMode("chat");
-          setShowCommunicationHub(false);
-          setShowNewChatFlow(true);
-        }}
-        onCall={() => {
-          setCommunicationMode("call");
-          setShowCommunicationHub(false);
-          setShowNewChatFlow(true);
-        }}
-      />
-
-      <NewChatFlow
-        open={showNewChatFlow}
-        mode={communicationMode}
-        onClose={() => setShowNewChatFlow(false)}
-        onStartChat={(user) => {
-          setShowNewChatFlow(false);
-          console.log("Start chat with:", user);
-        }}
-
-        onStartCall={async (user) => {
-          setShowNewChatFlow(false);
-
-          try {
-            const ch = await openChatRef.current?.(user);
-
-            if (!ch) {
-              toast({
-                title: "Call failed",
-                description: "Could not open conversation.",
-                variant: "destructive",
-              });
-              return;
-            }
-
-            await agoraCall.startCall(
-              "video",
-              String(ch.id),
-              user.id,
-              user.name ?? "Call"
-            );
-
-          } catch (e: any) {
-            toast({
-              title: "Call failed",
-              description: e?.message ?? String(e),
-              variant: "destructive",
-            });
-          }
-        }}
-      />
-
-    </div>
-  );
-}
-
-/* ─── page entry — reads persistent client from StreamChatProvider ─── */
-export default function ChatPage() {
-  const { streamData, chatClient } = useStreamChat();
-  const [needsPushOptIn, setNeedsPushOptIn] = useState(false);
-
-  // Subscribe this device to incoming-call push notifications.
-  // On iOS the permission prompt only works from a user tap, so when
-  // permission is still 'default' after the automatic attempt we show
-  // an explicit "Enable" banner instead.
+  // Auto-start audio call when Vibe sends /chat?call=NV
   useEffect(() => {
-    if (!streamData) return;
-    void ensurePushSubscription().finally(() => {
-      if (typeof Notification !== 'undefined' && Notification.permission === 'default'
-          && 'serviceWorker' in navigator && 'PushManager' in window) {
-        setNeedsPushOptIn(true);
+    const params = new URLSearchParams(window.location.search);
+    const nv = params.get("call");
+
+    if (!nv || !openChatRef.current) return;
+
+    const startNvCall = async () => {
+      try {
+        const token = localStorage.getItem("nanivio_token");
+
+        const res = await fetch(
+          `${API}/stream/chat/${encodeURIComponent(nv)}`,
+          {
+            headers: {
+              Authorization: `Bearer ${token}`,
+            },
+          }
+        );
+
+        if (!res.ok) return;
+
+        const data = await res.json();
+
+        if (!data.userId) return;
+
+        const user = {
+          id: data.userId,
+          name: data.name,
+          nanivioNumber: nv,
+        };
+
+        const ch = await openChatRef.current?.(user);
+
+        if (!ch) return;
+
+        await handleStartCall("audio", ch);
+
+        window.history.replaceState({}, "", "/chat");
+
+      } catch (err) {
+        console.error("NV call failed:", err);
       }
-    });
-  }, [streamData]);
+    };
+
+    startNvCall();
+
+  }, []);
+
+
+
+
+
 
   const handleEnablePush = useCallback(() => {
     void ensurePushSubscription().finally(() => {
