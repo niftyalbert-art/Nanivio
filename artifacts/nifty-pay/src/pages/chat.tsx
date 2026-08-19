@@ -532,6 +532,8 @@ function ChatInner({
 
 
   const handleStartCall = useCallback(async (type: 'audio' | 'video', ch: StreamChannel) => {
+    // Every call begins as audio; video is a consented in-call upgrade.
+    const startType: 'audio' = 'audio';
     if (!agoraCall.ready) {
       toast({ title: 'Calls not ready', description: 'Please wait a moment and try again.', variant: 'destructive' });
       return;
@@ -549,7 +551,7 @@ function ChatInner({
           toast({ title: 'Calls not allowed', description: `${other.user?.name ?? 'This user'} has disabled calls.`, variant: 'destructive' });
           return;
         }
-        if (type === 'video' && !prefs.videoCallsEnabled) {
+        if (startType === 'video' && !prefs.videoCallsEnabled) {
           toast({ title: 'Video calls not allowed', description: `${other.user?.name ?? 'This user'} has disabled video calls.`, variant: 'destructive' });
           return;
         }
@@ -597,9 +599,9 @@ function ChatInner({
       return;
     }
     try {
-      await agoraCall.startCall(type, String(ch.id), other.user_id, other.user?.name ?? 'Call', billing);
+      await agoraCall.startCall(startType, String(ch.id), other.user_id, other.user?.name ?? 'Call', billing);
       // Ring the callee's device(s) even if the app is closed
-      notifyCallPush(other.user_id, type).then((sent) => {
+      notifyCallPush(other.user_id, startType).then((sent) => {
         if (sent === 0) {
           toast({
             title: 'Ringing in-app only',
@@ -694,7 +696,7 @@ function ChatInner({
             }
 
             await agoraCall.startCall(
-              "video",
+              "audio",
               String(ch.id),
               user.id,
               user.name ?? "Call"

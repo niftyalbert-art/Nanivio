@@ -11,7 +11,7 @@
  * for (or signal into) someone else's call.
  */
 import { Router, type IRouter } from "express";
-import { eq } from "drizzle-orm";
+import { eq, inArray } from "drizzle-orm";
 import { RtcTokenBuilder, RtcRole } from "agora-token";
 import { StreamChat } from "stream-chat";
 import { db, usersTable } from "@workspace/db";
@@ -19,7 +19,10 @@ import { requireAuth } from "../middleware/auth";
 
 const router: IRouter = Router();
 
-const SIGNAL_TYPES = new Set(["call_invite", "call_accept", "call_reject", "call_end", "call_cancel"]);
+const SIGNAL_TYPES = new Set([
+  "call_invite", "call_accept", "call_reject", "call_end", "call_cancel",
+  "video_upgrade_request", "video_upgrade_accept", "video_upgrade_reject",
+]);
 const CHAT_ID_RE = /^[a-zA-Z0-9!_-]{1,60}$/;
 const CHANNEL_RE = /^[a-zA-Z0-9_-]{1,64}$/;
 
@@ -88,6 +91,43 @@ router.get("/agora/token", requireAuth, async (req: any, res): Promise<void> => 
     res.json({ appId, token, uid, channel, expiresIn: expireSecs });
   } catch (err: any) {
     res.status(500).json({ error: err?.message ?? "Token generation failed" });
+  }
+});
+
+/* ── paired translation configuration for an active call ── */
+router.get("/agora/translation", requireAuth, async (req: any, res): Promise<void> => {
+  try {
+    const chatId = String(req.query.chatId ?? "");
+    const otherUserId = Number(req.query.otherUserId);
+    if (!CHAT_ID_RE.test(chatId) || !Number.isInteger(otherUserId) || otherUserId <= 0 || otherUserId === req.userId) {
+      res.status(400).json({ error: "Invalid translation request" });
+      return;
+    }
+    const members = await chatMembersIfMember(req.userId, chatId);
+    if (!members || !members.includes(String(otherUserId))) {
+      res.status(403).json({ error: "You can only translate calls with people you chat with" });
+      return;
+    }
+    const users = await db.select({
+      id: usersTable.id,
+      preferredLanguage: usersTable.preferredLanguage,
+      translationEnabled: usersTable.translationEnabled,
+    }).from(usersTable).where(inArray(usersTable.id, [req.userId, otherUserId]));
+    const self = users.find((user) => user.id === req.userId);
+    const other = users.find((user) => user.id === otherUserId);
+    if (!self || !other) {
+      res.status(404).json({ error: "Call participant not found" });
+      return;
+    }
+    // Translation is paired: both participants explicitly opt in, and each
+    // speaker is translated into the listener's saved preferred language.
+    res.json({
+      enabled: self.translationEnabled && other.translationEnabled,
+      targetLanguage: other.preferredLanguage,
+      listenerLanguage: self.preferredLanguage,
+    });
+  } catch (err: any) {
+    res.status(500).json({ error: err?.message ?? "Could not load translation settings" });
   }
 });
 

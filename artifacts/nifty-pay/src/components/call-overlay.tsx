@@ -25,7 +25,7 @@ import { RealtimeTranslatorPanel } from '@/components/realtime-translator';
 function CallUI() {
   const {
     activeCall, callKind, remoteJoined, remoteVideoTrack, localVideoTrack,
-    micOn, camOn, toggleMic, toggleCamera, endCall, billing,
+    micOn, camOn, toggleMic, toggleCamera, requestVideoUpgrade, endCall, billing,
   } = useAgoraCall();
   const remoteRef = useRef<HTMLDivElement>(null);
   const localRef = useRef<HTMLDivElement>(null);
@@ -130,6 +130,16 @@ function CallUI() {
         >
           {micOn ? <Mic className="w-6 h-6" /> : <MicOff className="w-6 h-6" />}
         </button>
+        {callKind === 'audio' && (
+          <button
+            onClick={() => void requestVideoUpgrade()}
+            className="w-14 h-14 rounded-full bg-white/15 hover:bg-white/25 text-white flex items-center justify-center transition-colors"
+            aria-label="Request video upgrade"
+            title="Request video"
+          >
+            <Video className="w-6 h-6" />
+          </button>
+        )}
         {callKind === 'video' && (
           <button
             onClick={() => void toggleCamera()}
@@ -158,7 +168,7 @@ function CallUI() {
 
 /* ─── exported overlay — always rendered inside AppLayout ─── */
 export function CallOverlay() {
-  const { incomingCall, activeCall, acceptCall, declineCall } = useAgoraCall();
+  const { incomingCall, activeCall, acceptCall, declineCall, videoUpgradeRequest, acceptVideoUpgrade, declineVideoUpgrade } = useAgoraCall();
   const { toast } = useToast();
 
   const callerName = incomingCall?.fromName ?? 'Someone';
@@ -225,6 +235,20 @@ export function CallOverlay() {
                   : <Video className="w-9 h-9 text-white" strokeWidth={2.5} />}
               </button>
               <span className="text-sm font-bold text-emerald-300">Accept</span>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {videoUpgradeRequest && activeCall && (
+        <div className="fixed inset-0 z-[210] flex items-center justify-center bg-black/60 px-6">
+          <div className="w-full max-w-sm rounded-3xl border border-white/10 bg-slate-950 p-6 text-center text-white shadow-2xl">
+            <Video className="mx-auto mb-3 h-8 w-8 text-emerald-400" />
+            <h2 className="text-xl font-bold">Switch to video?</h2>
+            <p className="mt-2 text-sm text-white/70">{videoUpgradeRequest.fromName} wants to turn on video. Your camera will only start if you accept.</p>
+            <div className="mt-6 flex gap-3">
+              <button onClick={declineVideoUpgrade} className="flex-1 rounded-xl bg-white/10 px-4 py-3 font-semibold hover:bg-white/15">Not now</button>
+              <button onClick={() => void acceptVideoUpgrade()} className="flex-1 rounded-xl bg-emerald-500 px-4 py-3 font-semibold hover:bg-emerald-600">Accept</button>
             </div>
           </div>
         </div>

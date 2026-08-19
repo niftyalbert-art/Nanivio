@@ -242,6 +242,42 @@ async function runFraudSchemaMigration() {
   }
 }
 
+/** Idempotent data migration: allocate unique NV numbers to legacy accounts. */
+async function backfillMissingNanivioNumbers() {
+  try {
+    const { rows } = await pool.query<{ id: number }>(
+      `SELECT id FROM users WHERE nanivio_number IS NULL OR nanivio_number = ''`,
+    );
+    let assigned = 0;
+    for (const { id } of rows) {
+      let updated = false;
+      for (let attempt = 0; attempt < 30 && !updated; attempt += 1) {
+        const number = `0${Math.floor(100000000 + Math.random() * 900000000)}`;
+        try {
+          const result = await pool.query(
+            `UPDATE users
+             SET nanivio_number = $1, updated_at = NOW()
+             WHERE id = $2 AND (nanivio_number IS NULL OR nanivio_number = '')`,
+            [number, id],
+          );
+          if (result.rowCount === 1) assigned += 1;
+          // A zero-row update means another startup worker already filled the
+          // number after this worker selected the legacy account.
+          updated = result.rowCount !== 0;
+        } catch (err: any) {
+          // A concurrent signup or another startup worker selected the same
+          // number. The database unique constraint remains the final guard.
+          if (err?.code !== '23505') throw err;
+        }
+      }
+      if (!updated) throw new Error(`Could not allocate an NV number for user ${id}`);
+    }
+    logger.info({ assigned }, "Nanivio number backfill complete");
+  } catch (err) {
+    logger.error({ err }, "Nanivio number backfill FAILED");
+  }
+}
+
 /** One-time migration: clear legacy plain-text PINs (passwordHash already holds the bcrypt hash). */
 async function clearLegacyPlainPins() {
   try {
@@ -312,6 +348,7 @@ server.listen(port, () => {
     await runFraudSchemaMigration();
     await runTranslationPreferencesMigration();
     await runPushSchemaMigration();
+    await backfillMissingNanivioNumbers();
     // Clear any legacy plain-text PINs (bcrypt hash is in passwordHash)
     clearLegacyPlainPins();
     // Sync all existing DB users into Stream so they're searchable
