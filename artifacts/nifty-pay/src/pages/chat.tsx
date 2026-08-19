@@ -683,39 +683,24 @@ function ChatInner({
         open={showNewChatFlow}
         mode={communicationMode}
         onClose={() => setShowNewChatFlow(false)}
-        onStartChat={(user) => {
-          setShowNewChatFlow(false);
-          console.log("Start chat with:", user);
+        onStartChat={async (user) => {
+          try {
+            const ch = await openChatRef.current?.(user);
+            if (!ch) throw new Error('Could not open conversation.');
+            setShowNewChatFlow(false);
+          } catch (e: any) {
+            toast({ title: 'Message failed', description: e?.message ?? String(e), variant: 'destructive' });
+          }
         }}
 
         onStartCall={async (user) => {
-          setShowNewChatFlow(false);
-
           try {
             const ch = await openChatRef.current?.(user);
-
-            if (!ch) {
-              toast({
-                title: "Call failed",
-                description: "Could not open conversation.",
-                variant: "destructive",
-              });
-              return;
-            }
-
-            await agoraCall.startCall(
-              "audio",
-              String(ch.id),
-              user.id,
-              user.name ?? "Call"
-            );
-
+            if (!ch) throw new Error('Could not open conversation.');
+            setShowNewChatFlow(false);
+            await startCallRef.current?.('audio', ch);
           } catch (e: any) {
-            toast({
-              title: "Call failed",
-              description: e?.message ?? String(e),
-              variant: "destructive",
-            });
+            toast({ title: 'Call failed', description: e?.message ?? String(e), variant: 'destructive' });
           }
         }}
       />
@@ -745,6 +730,7 @@ export default function ChatPage() {
 
   const openDirectChat = useCallback(async (user: SUser) => {
     if (!client) return;
+    const otherUserId = String(user.id);
 
     try {
       const raw = await client.queryChannels(
@@ -764,7 +750,7 @@ export default function ChatPage() {
         const ids = Object.keys(ch.state.members ?? {});
         return (
           ids.length === 2 &&
-          ids.includes(user.id) &&
+          ids.includes(otherUserId) &&
           ids.includes(streamData.userId)
         );
       });
@@ -782,7 +768,7 @@ export default function ChatPage() {
         {
           members: [
             streamData.userId,
-            user.id,
+            otherUserId,
           ],
         },
       );

@@ -343,16 +343,15 @@ export default function Account() {
                 />
               </label>
             </div>
-            <div className="min-w-0 space-y-1">
-              <p className="text-sm text-muted-foreground">Username</p>
-              <p className="font-bold text-lg truncate">{profile.name}</p>
-              <p className="text-sm text-muted-foreground mt-2">Vibe</p>
-              <p className="text-sm font-semibold text-primary">
-                NV. {profile.nanivioNumber ?? 'Not assigned'}
-              </p>
-              <p className="text-xs text-muted-foreground mt-2">
-                Date joined. {profile.memberSince}
-              </p>
+            <div className="min-w-0">
+              <p className="text-xs font-medium uppercase tracking-[0.14em] text-muted-foreground">Username</p>
+              <div className="mt-1 flex flex-wrap items-center gap-2">
+                <p className="max-w-full truncate text-lg font-extrabold tracking-tight">{profile.name}</p>
+                <span className="rounded-full border border-primary/25 bg-primary/10 px-2.5 py-1 font-mono text-xs font-bold text-primary">
+                  NV. {profile.nanivioNumber ?? 'Not assigned'}
+                </span>
+              </div>
+              <p className="mt-2 text-xs text-muted-foreground">Date joined. {profile.memberSince}</p>
             </div>
           </CardContent>
         </Card>
