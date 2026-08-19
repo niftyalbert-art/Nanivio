@@ -1,5 +1,5 @@
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { Search, X, MessageCircle, UserRound, Phone } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -24,6 +24,7 @@ export default function NewChatFlow({
   const [number, setNumber] = useState("");
   const [user, setUser] = useState<any>(null);
   const [loading, setLoading] = useState(false);
+  const callStartedRef = useRef(false);
 
   useEffect(() => {
     const q = number.trim();
@@ -56,11 +57,20 @@ export default function NewChatFlow({
         const data = await res.json();
 
         if (data.userId) {
-          setUser({
+          const foundUser = {
             id: data.userId,
             name: data.name,
             nanivioNumber: q,
-          });
+          };
+
+          setUser(foundUser);
+
+          // Phone-style flow:
+          // valid NV + call mode = immediately start ringing
+          if (mode === "call" && !callStartedRef.current) {
+            callStartedRef.current = true;
+            onStartCall(foundUser);
+          }
         }
 
       } finally {
@@ -71,10 +81,13 @@ export default function NewChatFlow({
 
     return () => clearTimeout(timer);
 
-  }, [number]);
+  }, [number, mode, onStartCall]);
 
 
-  if (!open) return null;
+  if (!open) {
+    callStartedRef.current = false;
+    return null;
+  }
 
   return (
     <div className="fixed inset-0 z-[110] flex items-center justify-center bg-black/80 backdrop-blur-xl">
