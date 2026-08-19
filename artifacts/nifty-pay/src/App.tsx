@@ -80,6 +80,8 @@ function Router() {
             <Route path="/withdraw" component={Withdraw} />
             <Route path="/account" component={Account} />
             <Route path="/kyc" component={KycPage} />
+            <Route path="/communication" component={Chat} />
+            <Route path="/call" component={Chat} />
             <Route path="/chat" component={Chat} />
             <Route path="/crypto" component={CryptoPage} />
             <Route path="/crypto/:id" component={CryptoPaymentPage} />
