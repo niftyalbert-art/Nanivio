@@ -88,6 +88,24 @@ export function AppLayout({ children }: AppLayoutProps) {
           {allSidebar.map((item) => {
             const isActive = location === item.href;
             const Icon = item.icon;
+
+            if (item.href === '#communication') {
+              return (
+                <button
+                  key="vibe-sidebar"
+                  type="button"
+                  onClick={() => setShowCommunicationHub(true)}
+                  className={cn(
+                    'flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium transition-colors w-full',
+                    'text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground'
+                  )}
+                >
+                  <Icon className="w-5 h-5 shrink-0" />
+                  Vibe
+                </button>
+              );
+            }
+
             return (
               <Link
                 key={item.name}
