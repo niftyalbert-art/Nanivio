@@ -523,6 +523,20 @@ function ChatInner({
   startCallRef: React.MutableRefObject<((type: 'audio' | 'video', ch: StreamChannel) => Promise<void>) | null>;
 }) {
   const { client, channel: activeChannel, setActiveChannel } = useChatContext();
+
+  // The outer NV lookup flow creates the channel; bind it to this Stream Chat
+  // provider so Message visibly opens it and Call has the active conversation.
+  useEffect(() => {
+    setActiveChannelRef.current = (channel) => {
+      if (!channel) return;
+      setActiveChannel(channel);
+      _lastChannelId = channel.id ?? null;
+      _lastChannelType = channel.type ?? 'messaging';
+      void channel.markRead?.();
+    };
+    return () => { setActiveChannelRef.current = null; };
+  }, [setActiveChannel, setActiveChannelRef]);
+
   const [tick, setTick] = useState(0);
   const [contacts, setContacts] = useState<any[]>([]);
   const [addUserQuery, setAddUserQuery] = useState('');
