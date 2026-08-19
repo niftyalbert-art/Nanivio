@@ -512,6 +512,7 @@ function ChatInner({
   onOpenCommunicationHub,
   setActiveChannelRef,
   openChatRef,
+  startCallRef,
 }: {
   streamData: StreamData;
   onStartCall: (type: 'audio' | 'video', ch: StreamChannel) => void;
@@ -519,6 +520,7 @@ function ChatInner({
   onOpenCommunicationHub: () => void;
   setActiveChannelRef: React.MutableRefObject<((ch: StreamChannel | undefined) => void) | null>;
   openChatRef: React.MutableRefObject<((user: SUser) => void) | null>;
+  startCallRef: React.MutableRefObject<((type: 'audio' | 'video', ch: StreamChannel) => Promise<void>) | null>;
 }) {
   const { client, channel: activeChannel, setActiveChannel } = useChatContext();
   const [tick, setTick] = useState(0);
@@ -620,6 +622,11 @@ function ChatInner({
     }
   }, [agoraCall, streamData?.userId, toast]);
 
+  useEffect(() => {
+    startCallRef.current = handleStartCall;
+    return () => { startCallRef.current = null; };
+  }, [handleStartCall, startCallRef]);
+
 
 
   return (
@@ -653,6 +660,7 @@ function ChatInner({
           onNewChat={() => setShowCommunicationHub(true)}
           setActiveChannelRef={setActiveChannelRef}
           openChatRef={openChatRef}
+          startCallRef={startCallRef}
         />
       </Chat>
 
@@ -1303,6 +1311,7 @@ function ChatConnected() {
   const { toast } = useToast();
   const setActiveChannelRef = useRef<((ch: any) => void) | null>(null);
   const openChatRef = useRef<((user: SUser) => Promise<StreamChannel | undefined>) | null>(null);
+  const startCallRef = useRef<((type: 'audio' | 'video', ch: StreamChannel) => Promise<void>) | null>(null);
 
   const [addUserQuery, setAddUserQuery] = useState('');
   const [showCommunicationHub, setShowCommunicationHub] = useState(false);
@@ -1320,9 +1329,10 @@ function ChatConnected() {
     const params = new URLSearchParams(window.location.search);
     const nv = params.get("call");
 
-    if (!nv || !openChatRef.current) return;
+    if (!nv) return;
 
     const startNvCall = async () => {
+      if (!openChatRef.current || !startCallRef.current) return;
       try {
         const token = localStorage.getItem("nanivio_token");
 
@@ -1351,7 +1361,7 @@ function ChatConnected() {
 
         if (!ch) return;
 
-        await handleStartCall("audio", ch);
+        await startCallRef.current?.("audio", ch);
 
         window.history.replaceState({}, "", "/chat");
 
@@ -1360,7 +1370,8 @@ function ChatConnected() {
       }
     };
 
-    startNvCall();
+    const timer = window.setTimeout(() => { void startNvCall(); }, 0);
+    return () => window.clearTimeout(timer);
 
   }, []);
 

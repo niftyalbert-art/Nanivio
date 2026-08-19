@@ -1,6 +1,6 @@
 import { Router, type IRouter } from "express";
 import { eq } from "drizzle-orm";
-import { db, walletsTable, transactionsTable, usersTable } from "@workspace/db";
+import { db, walletsTable, transactionsTable, usersTable, pool } from "@workspace/db";
 import { sql } from "drizzle-orm";
 import {
   GetUserProfileResponse,
@@ -10,11 +10,40 @@ import { requireAuth } from "../middleware/auth";
 
 const router: IRouter = Router();
 
+/** Assign an NV number during an authenticated read when a legacy account lacks one. */
+async function ensureNanivioNumber(userId: number): Promise<string | null> {
+  for (let attempt = 0; attempt < 30; attempt += 1) {
+    const number = `0${Math.floor(100000000 + Math.random() * 900000000)}`;
+    try {
+      const result = await pool.query<{ nanivio_number: string }>(
+        `UPDATE users
+         SET nanivio_number = $1, updated_at = NOW()
+         WHERE id = $2 AND (nanivio_number IS NULL OR nanivio_number = '')
+         RETURNING nanivio_number`,
+        [number, userId],
+      );
+      if (result.rows[0]?.nanivio_number) return result.rows[0].nanivio_number;
+      const existing = await pool.query<{ nanivio_number: string | null }>(
+        `SELECT nanivio_number FROM users WHERE id = $1`, [userId],
+      );
+      return existing.rows[0]?.nanivio_number ?? null;
+    } catch (err: any) {
+      // The database unique index rejects a rare random collision; retry only that case.
+      if (err?.code !== '23505') throw err;
+    }
+  }
+  throw new Error('Could not allocate a unique NV number');
+}
+
 router.get("/user/profile", requireAuth, async (req, res): Promise<void> => {
-  const [user] = await db.select().from(usersTable).where(eq(usersTable.id, req.userId!));
+  let [user] = await db.select().from(usersTable).where(eq(usersTable.id, req.userId!));
   if (!user) {
     res.status(404).json({ error: "User not found" });
     return;
+  }
+  if (!user.nanivioNumber) {
+    const nanivioNumber = await ensureNanivioNumber(user.id);
+    user = { ...user, nanivioNumber };
   }
   const initials = user.name.split(" ").map((p: string) => p[0] ?? "").join("").toUpperCase().slice(0, 2) || "U";
   const profile = {
