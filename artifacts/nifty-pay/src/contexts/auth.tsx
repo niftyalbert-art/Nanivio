@@ -1,7 +1,10 @@
 import { createContext, useContext, useState, useCallback, type ReactNode } from 'react';
-import { setAuthTokenGetter } from '@workspace/api-client-react';
+import { setAuthTokenGetter, setBaseUrl } from '@workspace/api-client-react';
+import { API_BASE } from '@/lib/api';
 
-// Initialize the API client's auth token getter once at module load
+// Generated API routes include their own /api prefix, while API_BASE includes it.
+// Configure the client once so profile, dashboard, and wallet queries reach Render.
+setBaseUrl(API_BASE.replace(/\/api$/, ''));
 setAuthTokenGetter(() => localStorage.getItem('nanivio_token'));
 
 const TOKEN_KEY = 'nanivio_token';
