@@ -727,6 +727,7 @@ function ChatInner({
 export default function ChatPage() {
   const { streamData, chatClient } = useStreamChat();
   const [needsPushOptIn, setNeedsPushOptIn] = useState(false);
+  const streamUserId = streamData?.userId ?? '';
 
   // Subscribe this device to incoming-call push notifications.
   // On iOS the permission prompt only works from a user tap, so when
@@ -750,7 +751,7 @@ export default function ChatPage() {
       const raw = await chatClient.queryChannels(
         {
           type: 'messaging',
-          members: { $in: [streamData.userId] },
+          members: { $in: [streamUserId] },
         },
         [{ last_message_at: -1 }],
         { limit: 50, state: true },
@@ -765,7 +766,7 @@ export default function ChatPage() {
         return (
           ids.length === 2 &&
           ids.includes(otherUserId) &&
-          ids.includes(streamData.userId)
+          ids.includes(streamUserId)
         );
       });
 
@@ -774,14 +775,14 @@ export default function ChatPage() {
         return match;
       }
 
-      const channelId = `ch-${streamData.userId}-${Date.now()}`;
+      const channelId = `ch-${streamUserId}-${Date.now()}`;
 
       const ch = chatClient.channel(
         'messaging',
         channelId,
         {
           members: [
-            streamData.userId,
+            streamUserId,
             otherUserId,
           ],
         },
@@ -799,7 +800,7 @@ export default function ChatPage() {
     }
   }, [
     chatClient,
-    streamData.userId,
+    streamUserId,
   ]);
 
   useEffect(() => {
@@ -814,7 +815,7 @@ export default function ChatPage() {
   // In-chat payments
   const [showPaySheet, setShowPaySheet] = useState(false);
   const [payRequestInfo, setPayRequestInfo] = useState<PayRequestInfo | null>(null);
-  const PaymentAttachment = useMemo(() => makePaymentAttachment(streamData.userId), [streamData.userId]);
+  const PaymentAttachment = useMemo(() => makePaymentAttachment(streamUserId), [streamUserId]);
   useEffect(() => {
     registerPayForRequestHandler((info) => { setPayRequestInfo(info); setShowPaySheet(true); });
     return () => registerPayForRequestHandler(null);
@@ -867,7 +868,7 @@ export default function ChatPage() {
 
   const acceptInvite = async (ch: any) => {
     try {
-      await ch.addMembers([streamData.userId]);
+      await ch.addMembers([streamUserId]);
       await ch.watch();
       setActiveChannel(ch);
     } catch {}
@@ -876,7 +877,7 @@ export default function ChatPage() {
 
   const declineInvite = async (ch: any) => {
     try {
-      await ch.removeMembers([streamData.userId]);
+      await ch.removeMembers([streamUserId]);
     } catch {}
   };
 
@@ -885,6 +886,17 @@ export default function ChatPage() {
   // Secondary sort by created_at so brand-new channels (no messages yet) still appear at top
   const channelSort = [{ last_message_at: -1 }, { created_at: -1 }] as const;
   const channelOptions = { limit: 50, state: true, presence: true, watch: true, message_limit: 1 };
+
+  if (!streamData || !chatClient) {
+    return (
+      <div className="flex flex-col items-center justify-center h-full min-h-[60vh] gap-4">
+        <div className="w-16 h-16 bg-primary/10 rounded-full flex items-center justify-center">
+          <MessageSquare className="w-8 h-8 text-primary animate-pulse" />
+        </div>
+        <p className="text-sm text-[#64748b]">Connecting to chat…</p>
+      </div>
+    );
+  }
 
   return (
     <div className="flex flex-col h-full overflow-hidden">
@@ -1063,7 +1075,7 @@ export default function ChatPage() {
                         key={ch.cid}
                         channel={ch}
                         active={ch.cid === (activeChannel as any)?.cid}
-                        myUserId={streamData.userId}
+                        myUserId={streamUserId}
                         tick={tick}
                         onSelect={() => {
                           setActiveChannel(ch);
@@ -1100,7 +1112,7 @@ export default function ChatPage() {
               <ArrowLeft className="w-5 h-5" />
             </button>
             {(() => {
-              const other = Object.values(activeChannel.state.members ?? {}).find((m: any) => m.user_id !== streamData.userId) as any;
+              const other = Object.values(activeChannel.state.members ?? {}).find((m: any) => m.user_id !== streamUserId) as any;
               const title = (activeChannel.data as any)?.name ?? other?.user?.name ?? 'Chat';
               const avatarSrc = streamAvatarUrl(other?.user);
               const online = !!other?.user?.online;
@@ -1157,18 +1169,18 @@ export default function ChatPage() {
 
           {/* ── invite state awareness ── */}
           {(() => {
-            const myMembership = (activeChannel.state.members ?? {})[streamData.userId] as any;
+            const myMembership = (activeChannel.state.members ?? {})[streamUserId] as any;
             const iAmInvited = myMembership?.invited && !myMembership?.invite_accepted_at && !myMembership?.invite_rejected_at;
 
             const allMembers = Object.values(activeChannel.state.members ?? {}) as any[];
             const pendingInvitees = allMembers.filter(m =>
-              m.user_id !== streamData.userId && m.invited && !m.invite_accepted_at && !m.invite_rejected_at
+              m.user_id !== streamUserId && m.invited && !m.invite_accepted_at && !m.invite_rejected_at
             );
             const isWaitingForAcceptance = !iAmInvited && pendingInvitees.length > 0;
 
             if (iAmInvited) {
               // ── User B: accept or decline the invitation ──
-              const inviterMember = allMembers.find(m => m.user_id !== streamData.userId && !m.invited);
+              const inviterMember = allMembers.find(m => m.user_id !== streamUserId && !m.invited);
               const inviterName: string = inviterMember?.user?.name ?? 'Someone';
               return (
                 <div className="flex flex-col flex-1 items-center justify-center gap-5 px-6 text-center">
@@ -1273,7 +1285,7 @@ export default function ChatPage() {
                   />
                 </div>
                 {(() => {
-                  const other = Object.values(activeChannel.state.members ?? {}).find((m: any) => m.user_id !== streamData.userId) as any;
+                  const other = Object.values(activeChannel.state.members ?? {}).find((m: any) => m.user_id !== streamUserId) as any;
                   return (
                     <PaymentSheet
                       open={showPaySheet}
