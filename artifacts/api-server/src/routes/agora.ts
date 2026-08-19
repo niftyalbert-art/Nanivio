@@ -19,7 +19,10 @@ import { requireAuth } from "../middleware/auth";
 
 const router: IRouter = Router();
 
-const SIGNAL_TYPES = new Set(["call_invite", "call_accept", "call_reject", "call_end", "call_cancel"]);
+const SIGNAL_TYPES = new Set([
+  "call_invite", "call_accept", "call_reject", "call_end", "call_cancel",
+  "video_upgrade_request", "video_upgrade_accept", "video_upgrade_reject",
+]);
 const CHAT_ID_RE = /^[a-zA-Z0-9!_-]{1,60}$/;
 const CHANNEL_RE = /^[a-zA-Z0-9_-]{1,64}$/;
 
