@@ -117,8 +117,11 @@ router.patch('/user/translation-settings', requireAuth, async (req, res): Promis
       translationEnabled?: boolean;
     };
 
+    // Keep this contract aligned with Account. The translation provider receives
+    // these BCP-47/ISO language tags as the listener's preferred language.
     const allowedLanguages = [
       'en', 'fr', 'es', 'ar', 'de', 'it', 'pt', 'zh', 'ja', 'ko',
+      'sw', 'lg', 'ak', 'fat', 'tw-Akuapem', 'ee', 'gaa', 'ha',
     ];
 
     const patch: Partial<typeof usersTable.$inferInsert> = {};

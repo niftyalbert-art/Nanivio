@@ -495,16 +495,32 @@ export default function Account() {
                     onChange={(event) => updateTranslationSettings.mutate({ preferredLanguage: event.target.value })}
                     className="h-9 rounded-md border border-input bg-background px-3 text-sm shrink-0"
                   >
-                    <option value="en">English (US)</option>
-                    <option value="fr">French (Français)</option>
-                    <option value="es">Spanish (Español)</option>
-                    <option value="ar">Arabic (العربية)</option>
-                    <option value="de">German (Deutsch)</option>
-                    <option value="it">Italian (Italiano)</option>
-                    <option value="pt">Portuguese (Português)</option>
-                    <option value="zh">Chinese (Mandarin)</option>
-                    <option value="ja">Japanese (日本語)</option>
-                    <option value="ko">Korean (한국어)</option>
+                    <optgroup label="East Africa">
+                      <option value="sw">Swahili (Kenya, Uganda, Tanzania)</option>
+                      <option value="lg">Luganda (Uganda)</option>
+                    </optgroup>
+                    <optgroup label="Ghana">
+                      <option value="ak">Twi / Akan (Ghana)</option>
+                      <option value="tw-Akuapem">Akuapem Twi (Ghana)</option>
+                      <option value="fat">Fante (Ghana)</option>
+                      <option value="ee">Ewe (Ghana)</option>
+                      <option value="gaa">Ga (Ghana)</option>
+                    </optgroup>
+                    <optgroup label="Other African languages">
+                      <option value="ha">Hausa</option>
+                    </optgroup>
+                    <optgroup label="Other languages">
+                      <option value="en">English (US)</option>
+                      <option value="fr">French (Français)</option>
+                      <option value="es">Spanish (Español)</option>
+                      <option value="ar">Arabic (العربية)</option>
+                      <option value="de">German (Deutsch)</option>
+                      <option value="it">Italian (Italiano)</option>
+                      <option value="pt">Portuguese (Português)</option>
+                      <option value="zh">Chinese (Mandarin)</option>
+                      <option value="ja">Japanese (日本語)</option>
+                      <option value="ko">Korean (한국어)</option>
+                    </optgroup>
                   </select>
                 </div>
 
