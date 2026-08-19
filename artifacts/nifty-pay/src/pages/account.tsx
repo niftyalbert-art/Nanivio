@@ -324,18 +324,15 @@ export default function Account() {
                 />
               </label>
             </div>
-            <div>
-              <p className="font-bold text-lg">{profile.name}</p>
-
-              {profile.nanivioNumber && (
-                <p className="text-sm font-semibold text-primary mt-1">
-                  NV: {profile.nanivioNumber}
-                </p>
-              )}
-
-              <p className="text-sm text-muted-foreground">{profile.email}</p>
-              <p className="text-xs text-muted-foreground mt-0.5">
-                Member since {profile.memberSince}
+            <div className="min-w-0 space-y-1">
+              <p className="text-sm text-muted-foreground">Username</p>
+              <p className="font-bold text-lg truncate">{profile.name}</p>
+              <p className="text-sm text-muted-foreground mt-2">Vibe</p>
+              <p className="text-sm font-semibold text-primary">
+                NV. {profile.nanivioNumber ?? 'Not assigned'}
+              </p>
+              <p className="text-xs text-muted-foreground mt-2">
+                Date joined. {profile.memberSince}
               </p>
             </div>
           </CardContent>
