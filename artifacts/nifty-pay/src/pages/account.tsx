@@ -2,7 +2,6 @@ import { useState, useEffect, useRef } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '@/contexts/auth';
 import {
-  useGetUserProfile,
   useGetPaymentMethods,
   useGetDeposits,
   useGetWithdrawals,
@@ -27,7 +26,23 @@ import { API_BASE } from '@/lib/api';
 export default function Account() {
   const { toast } = useToast();
   const { logout, token } = useAuth();
-  const { data: profile, isLoading: profileLoading } = useGetUserProfile();
+  const { data: profile, isLoading: profileLoading, error: profileError } = useQuery({
+    queryKey: ['render-user-profile', token],
+    enabled: !!token,
+    retry: false,
+    queryFn: async () => {
+      const response = await fetch(`${API_BASE}/user/profile?_=${Date.now()}`, {
+        headers: { Authorization: `Bearer ${token}` },
+        cache: 'no-store',
+      });
+      const body = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(body?.error ?? `Profile request failed (${response.status})`);
+      return body as {
+        id: number; name: string; email: string; avatarInitials: string;
+        memberSince: string; nanivioNumber: string | null;
+      };
+    },
+  });
   const { data: siteSettings } = useQuery({
     queryKey: ['site-settings'],
     queryFn: () => fetch(`${API_BASE}/settings`).then(r => r.json()) as Promise<{ whatsappLink: string; telegramLink: string; supportHours: string }>,
@@ -291,6 +306,10 @@ export default function Account() {
 
       {profileLoading ? (
         <Skeleton className="h-20" />
+      ) : profileError ? (
+        <Card className="border-destructive/40"><CardContent className="p-4 text-sm text-destructive">
+          Could not load your Account profile from Render: {(profileError as Error).message}
+        </CardContent></Card>
       ) : profile && (
         <Card>
           <CardContent className="p-4 flex items-center gap-4">
