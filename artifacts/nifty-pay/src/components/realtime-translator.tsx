@@ -1,18 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Languages, Mic, Square, X } from 'lucide-react';
+import { Languages, Square, X } from 'lucide-react';
 import { useAgoraCall } from '@/contexts/agora-call';
 import { API_BASE as API } from '@/lib/api';
 import { PcmCapture } from '@/lib/translator/pcm-capture';
 import { RealtimeTranslator, type TranslatorStatus } from '@/lib/translator/realtime-translator';
-
-const LANGUAGES = [
-  ['auto', 'Detect automatically'],
-  ['en', 'English'],
-  ['fr', 'French'],
-  ['es', 'Spanish'],
-  ['ar', 'Arabic'],
-  ['ak-twi', 'Twi'],
-] as const;
 
 function translatorSocketUrl(token: string) {
   const origin = API.replace(/\/api$/, '').replace(/^http/, 'ws');
@@ -22,11 +13,11 @@ function translatorSocketUrl(token: string) {
 /** Controls the existing Palabra speech-to-speech pipeline for the active Agora call. */
 export function RealtimeTranslatorPanel({ open, onClose }: { open: boolean; onClose: () => void }) {
   const {
-    activeCall, getMicrophoneTrack, publishTranslatedAudio, unpublishTranslatedAudio,
+    activeCall, remoteJoined, getMicrophoneTrack, publishTranslatedAudio, unpublishTranslatedAudio,
     setOriginalMicMuted,
   } = useAgoraCall();
-  const [sourceLanguage, setSourceLanguage] = useState('auto');
   const [targetLanguage, setTargetLanguage] = useState('en');
+  const [pairedEnabled, setPairedEnabled] = useState<boolean | null>(null);
   const [status, setStatus] = useState<TranslatorStatus>('idle');
   const [transcript, setTranscript] = useState('');
   const [translation, setTranslation] = useState('');
@@ -47,7 +38,7 @@ export function RealtimeTranslatorPanel({ open, onClose }: { open: boolean; onCl
     setStatus('idle');
   }, [setOriginalMicMuted, unpublishTranslatedAudio]);
 
-  const start = useCallback(async () => {
+  const start = useCallback(async (language = targetLanguage) => {
     if (!activeCall || translatorRef.current) return;
     const microphone = getMicrophoneTrack();
     if (!microphone) {
@@ -72,7 +63,7 @@ export function RealtimeTranslatorPanel({ open, onClose }: { open: boolean; onCl
       await publishTranslatedAudio(outputTrack);
       await setOriginalMicMuted(true);
 
-      const translator = new RealtimeTranslator({ sourceLanguage, targetLanguage, enabled: true });
+      const translator = new RealtimeTranslator({ sourceLanguage: 'auto', targetLanguage: language, enabled: true });
       translatorRef.current = translator;
       translator.on((event) => {
         if (event.type === 'status') setStatus((event.message as TranslatorStatus) ?? 'connected');
@@ -98,12 +89,42 @@ export function RealtimeTranslatorPanel({ open, onClose }: { open: boolean; onCl
       setError(caught?.message ?? 'Could not start translation');
       await stop();
     }
-  }, [activeCall, getMicrophoneTrack, publishTranslatedAudio, setOriginalMicMuted, sourceLanguage, stop, targetLanguage]);
+  }, [activeCall, getMicrophoneTrack, publishTranslatedAudio, setOriginalMicMuted, stop, targetLanguage]);
 
   useEffect(() => () => { void stop(); }, [stop]);
   useEffect(() => {
-    if (!activeCall) void stop();
-  }, [activeCall, stop]);
+    if (!activeCall || !remoteJoined) {
+      setPairedEnabled(null);
+      void stop();
+      return;
+    }
+    let cancelled = false;
+    const configurePairedInterpretation = async () => {
+      try {
+        const response = await fetch(`${API}/agora/translation?chatId=${encodeURIComponent(activeCall.chatId)}&otherUserId=${encodeURIComponent(activeCall.otherUserId)}`, {
+          headers: { Authorization: `Bearer ${localStorage.getItem('nanivio_token')}` },
+        });
+        const config = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(config.error ?? 'Could not load call translation preferences');
+        if (cancelled) return;
+        setPairedEnabled(!!config.enabled);
+        if (!config.enabled) {
+          await stop();
+          return;
+        }
+        setTargetLanguage(config.targetLanguage);
+        await start(config.targetLanguage);
+      } catch (caught: any) {
+        if (!cancelled) {
+          setPairedEnabled(false);
+          setError(caught?.message ?? 'Could not start paired interpretation');
+          await stop();
+        }
+      }
+    };
+    void configurePairedInterpretation();
+    return () => { cancelled = true; };
+  }, [activeCall?.channel, remoteJoined, start, stop]);
 
   if (!open) return null;
   const active = status !== 'idle';
@@ -115,16 +136,15 @@ export function RealtimeTranslatorPanel({ open, onClose }: { open: boolean; onCl
           <div className="flex items-center gap-2"><Languages className="h-5 w-5 text-emerald-400" /><h2 className="font-bold">Live voice translator</h2></div>
           <button onClick={onClose} aria-label="Close translator" className="rounded-full p-2 text-white/70 hover:bg-white/10"><X className="h-5 w-5" /></button>
         </div>
-        <p className="mt-2 text-sm text-white/60">Translated speech replaces your outgoing microphone audio while it is on.</p>
-        <div className="mt-4 grid grid-cols-2 gap-3">
-          <label className="text-xs text-white/60">Speak<select disabled={active} value={sourceLanguage} onChange={(e) => setSourceLanguage(e.target.value)} className="mt-1 w-full rounded-xl bg-white/10 p-2 text-sm text-white">{LANGUAGES.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
-          <label className="text-xs text-white/60">Translate to<select disabled={active} value={targetLanguage} onChange={(e) => setTargetLanguage(e.target.value)} className="mt-1 w-full rounded-xl bg-white/10 p-2 text-sm text-white">{LANGUAGES.filter(([value]) => value !== 'auto').map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
+        <p className="mt-2 text-sm text-white/60">When both people turn on Live Translation in Account, each voice is detected automatically and delivered in the other person's preferred language.</p>
+        <div className="mt-4 rounded-2xl bg-white/5 p-3 text-sm">
+          {pairedEnabled === null && <p className="text-white/60">Checking both participants’ preferences…</p>}
+          {pairedEnabled === false && <p className="text-amber-200">Both participants must enable Live Translation in Account to interpret this call.</p>}
+          {pairedEnabled && <p className="text-emerald-200">Live interpretation is on. The other participant hears you in their selected language.</p>}
         </div>
         {error && <p className="mt-3 text-sm text-red-300">{error}</p>}
         {(transcript || translation) && <div className="mt-4 space-y-2 rounded-2xl bg-white/5 p-3 text-sm"><p className="text-white/60">{transcript || 'Listening…'}</p><p className="font-medium text-emerald-200">{translation}</p></div>}
-        <button onClick={() => void (active ? stop() : start())} className={`mt-5 flex w-full items-center justify-center gap-2 rounded-xl px-4 py-3 font-bold ${active ? 'bg-red-500 hover:bg-red-600' : 'bg-emerald-500 hover:bg-emerald-600'}`}>
-          {active ? <><Square className="h-4 w-4" /> Stop translation</> : <><Mic className="h-4 w-4" /> Start translation</>}
-        </button>
+        {active && <button onClick={() => void stop()} className="mt-5 flex w-full items-center justify-center gap-2 rounded-xl bg-red-500 px-4 py-3 font-bold hover:bg-red-600"><Square className="h-4 w-4" /> Stop translation</button>}
       </section>
     </div>
   );
