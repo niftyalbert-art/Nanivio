@@ -1,12 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Languages, Square, X } from 'lucide-react';
 import { useAgoraCall } from '@/contexts/agora-call';
-import { API_BASE as API } from '@/lib/api';
+import { API_BASE as API, TRANSLATOR_API_BASE } from '@/lib/api';
 import { PcmCapture } from '@/lib/translator/pcm-capture';
 import { RealtimeTranslator, type TranslatorStatus } from '@/lib/translator/realtime-translator';
 
 function translatorSocketUrl(token: string) {
-  const origin = API.replace(/\/api$/, '').replace(/^http/, 'ws');
+  const origin = TRANSLATOR_API_BASE.replace(/\/api$/, '').replace(/^http/, 'ws');
   return `${origin}/api/translator/ws?token=${encodeURIComponent(token)}`;
 }
 
@@ -48,7 +48,7 @@ export function RealtimeTranslatorPanel({ open, onClose }: { open: boolean; onCl
     setError('');
     setStatus('connecting');
     try {
-      const tokenResponse = await fetch(`${API}/translator/session`, {
+      const tokenResponse = await fetch(`${TRANSLATOR_API_BASE}/translator/session`, {
         headers: { Authorization: `Bearer ${localStorage.getItem('nanivio_token')}` },
       });
       const tokenData = await tokenResponse.json().catch(() => ({}));
