@@ -729,11 +729,11 @@ export default function ChatPage() {
   }, [streamData]);
 
   const openDirectChat = useCallback(async (user: SUser) => {
-    if (!client) return;
+    if (!chatClient) throw new Error('Chat is still connecting. Please try again.');
     const otherUserId = String(user.id);
 
     try {
-      const raw = await client.queryChannels(
+      const raw = await chatClient.queryChannels(
         {
           type: 'messaging',
           members: { $in: [streamData.userId] },
@@ -762,7 +762,7 @@ export default function ChatPage() {
 
       const channelId = `ch-${streamData.userId}-${Date.now()}`;
 
-      const ch = client.channel(
+      const ch = chatClient.channel(
         'messaging',
         channelId,
         {
@@ -781,9 +781,10 @@ export default function ChatPage() {
 
     } catch (err: any) {
       console.error('Could not open chat', err);
+      throw new Error(err?.message ?? 'Could not open conversation.');
     }
   }, [
-    client,
+    chatClient,
     streamData.userId,
   ]);
 
