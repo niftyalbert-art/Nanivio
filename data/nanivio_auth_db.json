@@ -1,0 +1,29 @@
+{
+  "users": [
+    {
+      "id": "usr_admin_001",
+      "nvId": "0486000001",
+      "role": "ADMIN",
+      "adminSubRole": "SUPER_ADMIN",
+      "firstName": "Nanivio",
+      "lastName": "Super Admin",
+      "displayName": "Nanivio Admin",
+      "email": "admin@nanivio.com",
+      "phoneNumber": "+233244000000",
+      "country": "Ghana",
+      "callingCode": "+233",
+      "preferredLanguage": "en",
+      "avatar": "",
+      "accountStatus": "ACTIVE",
+      "verificationStatus": "VERIFIED",
+      "createdAt": 1787957607315,
+      "updatedAt": 1790549607315,
+      "lastLoginAt": 1790546007315,
+      "passwordSalt": "50889e96838589189076808a231cc3f9",
+      "passwordHash": "4f570359c8912c53654c6da5f3a97db077b12208f2a9145da3612419f031b7181181eac35c85a301cc5ed59ba382889e416784367b409e5e60ee534e7c578185",
+      "securityQuestion": "Where is Nanivio headquartered?"
+    }
+  ],
+  "expertApplications": [],
+  "businessApplications": []
+}

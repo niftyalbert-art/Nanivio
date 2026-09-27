@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" fill="none">
+  <rect width="512" height="512" rx="128" fill="#020617"/>
+  <circle cx="256" cy="256" r="180" fill="url(#emeraldGradient)" filter="drop-shadow(0px 8px 32px rgba(16,185,129,0.35))"/>
+  <circle cx="256" cy="256" r="130" fill="#064e3b"/>
+  <!-- Stylized Nanivio N Logo with globe/speech accents -->
+  <path d="M190 330V182H226L286 280V182H322V330H286L226 232V330H190Z" fill="#ffffff"/>
+  <circle cx="340" cy="182" r="14" fill="#10b981"/>
+  <defs>
+    <linearGradient id="emeraldGradient" x1="76" y1="76" x2="436" y2="436" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#10b981"/>
+      <stop offset="1" stop-color="#059669"/>
+    </linearGradient>
+  </defs>
+</svg>
