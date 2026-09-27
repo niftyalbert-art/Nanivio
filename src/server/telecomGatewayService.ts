@@ -2,7 +2,7 @@ import dotenv from 'dotenv';
 
 dotenv.config();
 
-export type TelecomProviderId = 'africastalking' | 'hubtel' | 'twilio' | 'infobip' | 'simulator';
+export type TelecomProviderId = 'twilio' | 'infobip' | 'simulator';
 
 export interface TelecomCarrierRoute {
   prefix: string;
@@ -43,14 +43,14 @@ export interface OutboundCallResult {
 
 // Carrier routing table covering Africa and Global destinations
 export const CARRIER_ROUTING_TABLE: TelecomCarrierRoute[] = [
-  // West & Central Africa (Primary: Africa's Talking / Hubtel)
+  // West & Central Africa
   {
     prefix: '+233',
     country: 'Ghana',
     countryCode: 'GH',
     flag: '🇬🇭',
-    primaryProvider: 'africastalking',
-    fallbackProvider: 'twilio',
+    primaryProvider: 'twilio',
+    fallbackProvider: 'simulator',
     supportedNetworks: ['MTN Ghana', 'Telecel Ghana (Vodafone)', 'AT (AirtelTigo)', 'Glo Mobile'],
     ratePerMinuteUSD: 0.05,
     ratePerMinuteGHS: 0.75,
@@ -62,8 +62,8 @@ export const CARRIER_ROUTING_TABLE: TelecomCarrierRoute[] = [
     country: 'Nigeria',
     countryCode: 'NG',
     flag: '🇳🇬',
-    primaryProvider: 'africastalking',
-    fallbackProvider: 'twilio',
+    primaryProvider: 'twilio',
+    fallbackProvider: 'simulator',
     supportedNetworks: ['MTN Nigeria', 'Airtel Nigeria', 'Glo', '9mobile'],
     ratePerMinuteUSD: 0.06,
     ratePerMinuteGHS: 0.90,
@@ -75,8 +75,8 @@ export const CARRIER_ROUTING_TABLE: TelecomCarrierRoute[] = [
     country: 'Kenya',
     countryCode: 'KE',
     flag: '🇰🇪',
-    primaryProvider: 'africastalking',
-    fallbackProvider: 'twilio',
+    primaryProvider: 'twilio',
+    fallbackProvider: 'simulator',
     supportedNetworks: ['Safaricom', 'Airtel Kenya', 'Telkom Kenya'],
     ratePerMinuteUSD: 0.05,
     ratePerMinuteGHS: 0.75,
@@ -88,7 +88,7 @@ export const CARRIER_ROUTING_TABLE: TelecomCarrierRoute[] = [
     country: "Côte d'Ivoire",
     countryCode: 'CI',
     flag: '🇨🇮',
-    primaryProvider: 'africastalking',
+    primaryProvider: 'twilio',
     fallbackProvider: 'infobip',
     supportedNetworks: ['Orange CI', 'MTN CI', 'Moov Africa'],
     ratePerMinuteUSD: 0.08,
@@ -101,7 +101,7 @@ export const CARRIER_ROUTING_TABLE: TelecomCarrierRoute[] = [
     country: 'Senegal',
     countryCode: 'SN',
     flag: '🇸🇳',
-    primaryProvider: 'africastalking',
+    primaryProvider: 'twilio',
     fallbackProvider: 'infobip',
     supportedNetworks: ['Orange Senegal', 'Free Senegal', 'Expresso'],
     ratePerMinuteUSD: 0.08,
@@ -114,8 +114,8 @@ export const CARRIER_ROUTING_TABLE: TelecomCarrierRoute[] = [
     country: 'South Africa',
     countryCode: 'ZA',
     flag: '🇿🇦',
-    primaryProvider: 'africastalking',
-    fallbackProvider: 'twilio',
+    primaryProvider: 'twilio',
+    fallbackProvider: 'simulator',
     supportedNetworks: ['Vodacom', 'MTN South Africa', 'Telkom', 'Cell C'],
     ratePerMinuteUSD: 0.04,
     ratePerMinuteGHS: 0.60,
@@ -127,8 +127,8 @@ export const CARRIER_ROUTING_TABLE: TelecomCarrierRoute[] = [
     country: 'Uganda',
     countryCode: 'UG',
     flag: '🇺🇬',
-    primaryProvider: 'africastalking',
-    fallbackProvider: 'twilio',
+    primaryProvider: 'twilio',
+    fallbackProvider: 'simulator',
     supportedNetworks: ['MTN Uganda', 'Airtel Uganda'],
     ratePerMinuteUSD: 0.06,
     ratePerMinuteGHS: 0.90,
@@ -140,8 +140,8 @@ export const CARRIER_ROUTING_TABLE: TelecomCarrierRoute[] = [
     country: 'Tanzania',
     countryCode: 'TZ',
     flag: '🇹🇿',
-    primaryProvider: 'africastalking',
-    fallbackProvider: 'twilio',
+    primaryProvider: 'twilio',
+    fallbackProvider: 'simulator',
     supportedNetworks: ['Vodacom Tanzania', 'Tigo', 'Airtel Tanzania', 'Halotel'],
     ratePerMinuteUSD: 0.07,
     ratePerMinuteGHS: 1.05,
@@ -313,13 +313,6 @@ class TelecomGatewayManager {
    * Inspect current credentials status across all providers
    */
   public getGatewayConfigStatus() {
-    const atApiKey = process.env.AFRICASTALKING_API_KEY || process.env.AT_API_KEY;
-    const atUsername = process.env.AFRICASTALKING_USERNAME || process.env.AT_USERNAME;
-    const atVirtualNumber = process.env.AFRICASTALKING_PHONE_NUMBER;
-
-    const hubtelClientId = process.env.HUBTEL_CLIENT_ID;
-    const hubtelClientSecret = process.env.HUBTEL_CLIENT_SECRET;
-
     const twilioAccountSid = process.env.TWILIO_ACCOUNT_SID;
     const twilioAuthToken = process.env.TWILIO_AUTH_TOKEN;
     const twilioPhoneNumber = process.env.TWILIO_PHONE_NUMBER;
@@ -328,27 +321,10 @@ class TelecomGatewayManager {
     const infobipBaseUrl = process.env.INFOBIP_BASE_URL;
 
     return {
-      africasTalking: {
-        id: 'africastalking' as TelecomProviderId,
-        name: "Africa's Talking Voice Gateway",
-        region: 'Africa (Direct MTN, Telecel, AirtelTigo, Safaricom Interconnects)',
-        isConfigured: !!(atApiKey && atUsername),
-        username: atUsername || 'sandbox',
-        virtualNumber: atVirtualNumber || '+233XXXXXXXXX',
-        protocol: 'SIP / Voice API',
-      },
-      hubtel: {
-        id: 'hubtel' as TelecomProviderId,
-        name: 'Hubtel Ghana Telecom Gateway',
-        region: 'Ghana National Direct SMS & Voice Switch',
-        isConfigured: !!(hubtelClientId && hubtelClientSecret),
-        clientId: hubtelClientId ? `${hubtelClientId.substring(0, 4)}...` : 'Not Set',
-        protocol: 'Direct Carrier API',
-      },
       twilio: {
         id: 'twilio' as TelecomProviderId,
         name: 'Twilio Global Telecom Backbone',
-        region: 'Global PSTN (180+ Countries, US, UK, Europe, Asia)',
+        region: 'Global PSTN (180+ Countries, US, UK, Europe, Africa, Asia)',
         isConfigured: !!(twilioAccountSid && twilioAuthToken),
         accountSid: twilioAccountSid ? `${twilioAccountSid.substring(0, 6)}...` : 'Not Set',
         callerId: twilioPhoneNumber || '+1XXXXXXXXXX',
@@ -357,7 +333,7 @@ class TelecomGatewayManager {
       infobip: {
         id: 'infobip' as TelecomProviderId,
         name: 'Infobip Global Enterprise Voice',
-        region: 'Global & Francophone Africa Interconnects',
+        region: 'Global & International Interconnects',
         isConfigured: !!(infobipApiKey && infobipBaseUrl),
         baseUrl: infobipBaseUrl || 'Not Set',
         protocol: 'Infobip Voice API',
@@ -382,15 +358,9 @@ class TelecomGatewayManager {
     let selectedProvider: TelecomProviderId = route.primaryProvider;
 
     // Check if primary provider is configured; if not, check fallback; if none, use simulator with live WebRTC
-    if (selectedProvider === 'africastalking' && !config.africasTalking.isConfigured) {
-      if (config.twilio.isConfigured) {
-        selectedProvider = 'twilio';
-      } else {
-        selectedProvider = 'simulator';
-      }
-    } else if (selectedProvider === 'twilio' && !config.twilio.isConfigured) {
-      if (config.africasTalking.isConfigured) {
-        selectedProvider = 'africastalking';
+    if (selectedProvider === 'twilio' && !config.twilio.isConfigured) {
+      if (config.infobip.isConfigured) {
+        selectedProvider = 'infobip';
       } else {
         selectedProvider = 'simulator';
       }

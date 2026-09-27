@@ -1170,7 +1170,7 @@ app.get("/api/fintech/rates", (_req, res) => {
 
 // ==========================================
 // MULTI-CARRIER TELECOM GATEWAY API
-// (Africa's Talking + Hubtel + Twilio + Infobip)
+// (Twilio + Infobip)
 // ==========================================
 
 // 1. Get Telecom Gateway Configuration & Provider Statuses
