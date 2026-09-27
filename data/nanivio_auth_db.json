@@ -16,11 +16,11 @@
       "avatar": "",
       "accountStatus": "ACTIVE",
       "verificationStatus": "VERIFIED",
-      "createdAt": 1787957607315,
-      "updatedAt": 1790549607315,
-      "lastLoginAt": 1790546007315,
-      "passwordSalt": "50889e96838589189076808a231cc3f9",
-      "passwordHash": "4f570359c8912c53654c6da5f3a97db077b12208f2a9145da3612419f031b7181181eac35c85a301cc5ed59ba382889e416784367b409e5e60ee534e7c578185",
+      "createdAt": 1787957644595,
+      "updatedAt": 1790549644595,
+      "lastLoginAt": 1790546044595,
+      "passwordSalt": "5d3910c17363bdb39573ffdc39064ec3",
+      "passwordHash": "02a913c589b312a5115c54d12bb1da364bccf02a3ffa79553e3ef3aeef58c26c2fbc52a2910996c4dbad5476a5fdeb932313d8bf6964fdd6aac6e7c4d851cefd",
       "securityQuestion": "Where is Nanivio headquartered?"
     }
   ],
