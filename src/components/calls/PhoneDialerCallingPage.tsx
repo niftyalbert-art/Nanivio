@@ -42,7 +42,14 @@ const KEYPAD_KEYS: DialerKey[] = [
 ];
 
 export const PhoneDialerCallingPage: React.FC = () => {
-  const { start1on1Call, contacts, setActiveTab, startDirectChatByNvId, startDirectChatWithUser } = useNanivio();
+  const {
+    start1on1Call,
+    contacts,
+    setActiveTab,
+    startDirectChatByNvId,
+    startDirectChatWithUser,
+    setActiveConversationId,
+  } = useNanivio();
   const [dialedNumber, setDialedNumber] = useState('');
   const [matchedContact, setMatchedContact] = useState<Participant | null>(null);
   const [isDialing, setIsDialing] = useState(false);
@@ -156,7 +163,12 @@ export const PhoneDialerCallingPage: React.FC = () => {
     setIsDialing(true);
     try {
       const res = await startDirectChatByNvId(clean);
-      if (!res.success) {
+      if (res.success) {
+        if (res.conversationId) {
+          setActiveConversationId(res.conversationId);
+        }
+        setActiveTab('chat');
+      } else {
         playErrorBuzzer();
         setWrongNumberPrompt({
           isOpen: true,

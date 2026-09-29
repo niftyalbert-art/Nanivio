@@ -47,6 +47,7 @@ export const CommunicationSpaceView: React.FC = () => {
     start1on1Call,
     startGroupCall,
     startDirectChatWithUser,
+    setActiveConversationId,
     contacts,
     experts,
     myLanguage,
@@ -735,71 +736,110 @@ export const CommunicationSpaceView: React.FC = () => {
             </div>
           ) : (
             <div className="space-y-2.5">
-              {callLogs.map((log) => (
-                <div
-                  key={log.id}
-                  className="p-4 rounded-2xl bg-slate-950/80 border border-slate-800/80 flex flex-col sm:flex-row sm:items-center justify-between gap-3 hover:border-slate-700 transition-all"
-                >
-                  <div className="flex items-center gap-3">
-                    <div
-                      className={`w-10 h-10 rounded-2xl flex items-center justify-center ${
-                        log.direction === 'missed'
-                          ? 'bg-rose-500/20 text-rose-400'
-                          : log.type === 'video'
-                          ? 'bg-cyan-500/20 text-cyan-400'
-                          : 'bg-emerald-500/20 text-emerald-400'
-                      }`}
-                    >
-                      {log.type === 'video' ? <Video className="w-5 h-5" /> : <PhoneCall className="w-5 h-5" />}
+              {callLogs.map((log) => {
+                const displayName = log.participantName || 'Nanivio User';
+                const displayNv = log.participantNvId
+                  ? log.participantNvId.startsWith('NV')
+                    ? log.participantNvId
+                    : `NV ${log.participantNvId}`
+                  : 'Direct';
+                const isMissed = log.direction === 'missed';
+                const isVideo = log.callType === 'video';
+
+                const targetParticipant: Participant = {
+                  id: log.participantId || `usr_${log.participantNvId || Date.now()}`,
+                  nvId: log.participantNvId,
+                  name: displayName,
+                  avatar: log.participantAvatar || '',
+                  initials: displayName.slice(0, 2).toUpperCase(),
+                  myLanguage: 'en',
+                  role: 'user',
+                };
+
+                return (
+                  <div
+                    key={log.id}
+                    className={`p-4 rounded-2xl bg-slate-950/80 border flex flex-col sm:flex-row sm:items-center justify-between gap-3 transition-all ${
+                      isMissed
+                        ? 'border-rose-500/30 hover:border-rose-500/50 bg-rose-950/10'
+                        : 'border-slate-800/80 hover:border-slate-700'
+                    }`}
+                  >
+                    <div className="flex items-center gap-3">
+                      <div
+                        className={`w-11 h-11 rounded-2xl flex items-center justify-center shrink-0 ${
+                          isMissed
+                            ? 'bg-rose-500/20 text-rose-400 border border-rose-500/30'
+                            : isVideo
+                            ? 'bg-cyan-500/20 text-cyan-400 border border-cyan-500/30'
+                            : 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
+                        }`}
+                      >
+                        {isVideo ? <Video className="w-5 h-5" /> : <PhoneCall className="w-5 h-5" />}
+                      </div>
+
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs sm:text-sm font-bold text-white">{displayName}</span>
+                          <span
+                            className={`text-[10px] font-mono font-bold px-2 py-0.5 rounded-full ${
+                              isMissed
+                                ? 'bg-rose-500/20 text-rose-400 border border-rose-500/30'
+                                : 'bg-slate-800 text-slate-300'
+                            }`}
+                          >
+                            {log.direction.toUpperCase()}
+                          </span>
+                        </div>
+                        <div className="text-[11px] text-slate-400 font-mono mt-0.5">
+                          Line: <span className="text-emerald-400 font-semibold">{displayNv}</span> •{' '}
+                          {new Date(log.timestamp).toLocaleDateString()} at{' '}
+                          {new Date(log.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                        </div>
+                      </div>
                     </div>
 
-                    <div>
-                      <div className="flex items-center gap-2">
-                        <span className="text-xs font-bold text-white">{log.peerName}</span>
-                        <span
-                          className={`text-[10px] font-mono px-2 py-0.5 rounded-full ${
-                            log.direction === 'missed'
-                              ? 'bg-rose-500/20 text-rose-400'
-                              : 'bg-slate-800 text-slate-400'
-                          }`}
-                        >
-                          {log.direction.toUpperCase()}
-                        </span>
-                      </div>
-                      <div className="text-[11px] text-slate-400 font-mono">
-                        Line: {log.peerNanivioNumber ? `NV ${log.peerNanivioNumber}` : 'Direct'} •{' '}
-                        {new Date(log.timestamp).toLocaleTimeString()}
-                      </div>
+                    <div className="flex items-center gap-2 shrink-0 flex-wrap">
+                      {/* Audio Call Back */}
+                      <button
+                        type="button"
+                        onClick={() => start1on1Call(targetParticipant, 'audio', true)}
+                        className="px-3 py-1.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 text-xs font-bold transition-all flex items-center gap-1.5 shadow-sm shadow-emerald-500/20 cursor-pointer"
+                        title="Return Audio Call"
+                      >
+                        <Phone className="w-3.5 h-3.5" />
+                        <span>Call</span>
+                      </button>
+
+                      {/* Video Call Back */}
+                      <button
+                        type="button"
+                        onClick={() => start1on1Call(targetParticipant, 'video', true)}
+                        className="px-3 py-1.5 rounded-xl bg-cyan-500/20 hover:bg-cyan-500/30 text-cyan-300 border border-cyan-500/30 text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer"
+                        title="Return Video Call"
+                      >
+                        <Video className="w-3.5 h-3.5" />
+                        <span>Video</span>
+                      </button>
+
+                      {/* Chat / Respond Back */}
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const convId = startDirectChatWithUser(targetParticipant);
+                          if (convId) setActiveConversationId(convId);
+                          setActiveTab('chat');
+                        }}
+                        className="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 hover:border-emerald-500/50 text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer"
+                        title="Respond back with direct chat message"
+                      >
+                        <MessageSquare className="w-3.5 h-3.5 text-emerald-400" />
+                        <span>Chat</span>
+                      </button>
                     </div>
                   </div>
-
-                  <div className="flex items-center gap-4 text-xs font-mono">
-                    <div className="text-right">
-                      <div className="text-slate-300 font-bold">{log.durationSeconds}s</div>
-                      <div className="text-[10px] text-emerald-400 font-bold">
-                        {log.langpretationUnitsUsed || 1} min quota
-                      </div>
-                    </div>
-
-                    <button
-                      onClick={() => {
-                        const participant: Participant = {
-                          id: `usr_${log.peerNanivioNumber}`,
-                          name: log.peerName,
-                          avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80',
-                          initials: log.peerName.slice(0, 2).toUpperCase(),
-                          myLanguage: 'en',
-                          role: 'user',
-                        };
-                        start1on1Call(participant, log.type, true);
-                      }}
-                      className="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-bold transition-all cursor-pointer"
-                    >
-                      Call Back
-                    </button>
-                  </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </div>

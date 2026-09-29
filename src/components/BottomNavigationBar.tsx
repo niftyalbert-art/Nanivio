@@ -184,7 +184,7 @@ export const BottomNavigationBar: React.FC = () => {
                 key={item.id}
                 id={`nav-tab-${item.id}`}
                 onClick={() => handleTabClick(item.id)}
-                className={`shrink-0 group flex flex-col sm:flex-row items-center justify-center gap-1 sm:gap-2 px-2 sm:px-3.5 py-1.5 sm:py-2 rounded-2xl text-[10px] sm:text-xs font-bold transition-all border min-w-[48px] sm:min-w-0 min-h-[46px] snap-center active:scale-95 touch-manipulation cursor-pointer select-none ${
+                className={`shrink-0 group flex flex-col sm:flex-row items-center justify-center gap-1 sm:gap-2 px-2.5 sm:px-3.5 py-1.5 sm:py-2 rounded-2xl text-[12px] sm:text-[13px] font-bold transition-all border min-w-[52px] sm:min-w-0 min-h-[48px] snap-center active:scale-95 touch-manipulation cursor-pointer select-none ${
                   isActive
                     ? `${item.activeClass} border scale-105 sm:scale-100`
                     : 'border-transparent text-slate-400 hover:text-slate-200 hover:bg-slate-800/60'
@@ -194,7 +194,7 @@ export const BottomNavigationBar: React.FC = () => {
                 <div className="relative shrink-0 flex items-center justify-center">
                   {Icon && (
                     <Icon
-                      className={`w-4 h-4 sm:w-4 sm:h-4 shrink-0 transition-transform ${
+                      className={`w-5 h-5 shrink-0 transition-transform ${
                         isActive ? item.iconClass : 'text-slate-400 group-hover:text-slate-200'
                       }`}
                     />
@@ -207,13 +207,11 @@ export const BottomNavigationBar: React.FC = () => {
                       </span>
                     )}
                     {item.indicator === 'green' && (
-                      <span className="absolute -top-0.5 -right-0.5 inline-flex rounded-full h-2 w-2 bg-emerald-400 ring-2 ring-[#070d18] shadow-sm shadow-emerald-400/80"></span>
+                      <span className="absolute -top-0.5 -right-0.5 inline-flex rounded-full h-2.5 w-2.5 bg-emerald-400 ring-2 ring-[#070d18] shadow-sm shadow-emerald-400/80"></span>
                     )}
                     {item.indicator === 'red' && (
-                      <span className="absolute -top-1 -right-1 flex items-center justify-center h-2.5 w-2.5 rounded-full bg-rose-500 ring-2 ring-[#070d18] shadow-sm shadow-rose-500/80">
-                        {item.indicatorCount && item.indicatorCount > 0 && (
-                          <span className="text-[7px] text-white font-bold">{item.indicatorCount > 9 ? '9+' : item.indicatorCount}</span>
-                        )}
+                      <span className="absolute -top-1.5 -right-1.5 flex items-center justify-center min-w-4 h-4 px-1 rounded-full bg-rose-500 ring-2 ring-[#070d18] shadow-sm shadow-rose-500/80 text-[10px] text-white font-bold">
+                        {item.indicatorCount && item.indicatorCount > 0 ? (item.indicatorCount > 9 ? '9+' : item.indicatorCount) : '!'}
                       </span>
                     )}
                   </div>

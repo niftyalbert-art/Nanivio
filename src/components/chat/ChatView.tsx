@@ -159,16 +159,18 @@ export const ChatView: React.FC = () => {
         setActiveConversationId(conversations[0].id);
       }
     }
-  }, [conversations.length, activeConversationId, setActiveConversationId]);
+  }, [conversations, activeConversationId, setActiveConversationId]);
 
-  // When user selects a new conversation, reset menus and search
+  // When user selects a conversation or on load, open mobile chat thread
   const prevActiveIdRef = useRef<string | null>(null);
   useEffect(() => {
-    if (activeConversationId && prevActiveIdRef.current !== null && prevActiveIdRef.current !== activeConversationId) {
-      setShowMobileChatThread(true);
-      setIsHeaderMenuOpen(false);
-      setIsSearchInChatOpen(false);
-      setChatSearchQuery('');
+    if (activeConversationId) {
+      if (prevActiveIdRef.current !== activeConversationId) {
+        setShowMobileChatThread(true);
+        setIsHeaderMenuOpen(false);
+        setIsSearchInChatOpen(false);
+        setChatSearchQuery('');
+      }
     }
     prevActiveIdRef.current = activeConversationId;
   }, [activeConversationId]);
@@ -224,6 +226,14 @@ export const ChatView: React.FC = () => {
     try {
       const result = await startDirectChatByNvId(cleanNum);
       if (result.success) {
+        if (result.conversationId) {
+          setActiveConversationId(result.conversationId);
+        }
+        setActiveTab('conversations');
+        setShowMobileChatThread(true);
+        setIsHeaderMenuOpen(false);
+        setIsSearchInChatOpen(false);
+        setChatSearchQuery('');
         setDirectNvInput('');
         setIsQuickNvBarOpen(false);
       } else {
@@ -262,15 +272,15 @@ export const ChatView: React.FC = () => {
   return (
     <div className="max-w-7xl mx-auto flex flex-col gap-3 p-2 sm:p-4">
       {/* Top Protocol & View Switcher + New Direct Chat Trigger */}
-      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between bg-[#0c1424] border border-slate-800 rounded-2xl p-2.5 shadow-sm gap-3">
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between bg-[#0c1424] border border-slate-800 rounded-2xl p-3 shadow-sm gap-3">
         <div className="flex items-center gap-2 flex-wrap">
           <button
             id="tab-btn-direct-chat"
             onClick={() => setActiveTab('conversations')}
-            className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-2 ${
+            className={`px-4 py-2 rounded-xl text-sm font-bold transition-all flex items-center gap-2 cursor-pointer ${
               activeTab === 'conversations'
                 ? 'bg-emerald-500 text-slate-950 shadow'
-                : 'text-slate-400 hover:text-white hover:bg-slate-800'
+                : 'text-slate-300 hover:text-white hover:bg-slate-800'
             }`}
           >
             <MessageSquare className="w-4 h-4" />
@@ -280,17 +290,14 @@ export const ChatView: React.FC = () => {
           <button
             id="tab-btn-stream-chat"
             onClick={() => setActiveTab('stream_channels')}
-            className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-2 ${
+            className={`px-4 py-2 rounded-xl text-sm font-bold transition-all flex items-center gap-2 cursor-pointer ${
               activeTab === 'stream_channels'
                 ? 'bg-purple-600 text-white shadow'
-                : 'text-slate-400 hover:text-purple-300 hover:bg-slate-800'
+                : 'text-slate-300 hover:text-purple-300 hover:bg-slate-800'
             }`}
           >
             <Layers className="w-4 h-4 text-purple-400" />
-            <span>Stream Chat Interface</span>
-            <span className="px-1.5 py-0.2 rounded-full bg-purple-950 text-[10px] border border-purple-500/30 text-purple-300 font-mono">
-              GetStream API
-            </span>
+            <span>Community Channels</span>
           </button>
         </div>
 
@@ -299,18 +306,18 @@ export const ChatView: React.FC = () => {
           <button
             id="btn-open-contacts-tab"
             onClick={() => setNavTab('contacts')}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-900 hover:bg-slate-800 border border-slate-800 text-xs text-slate-300 hover:text-emerald-400 font-medium transition-colors"
+            className="flex items-center gap-2 px-3.5 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 border border-slate-800 text-sm text-slate-200 hover:text-emerald-400 font-medium transition-colors cursor-pointer"
           >
-            <Users className="w-3.5 h-3.5 text-emerald-400" />
+            <Users className="w-4 h-4 text-emerald-400" />
             <span>Contacts ({contacts.length})</span>
           </button>
 
           <button
             id="btn-toggle-nv-chat-bar"
             onClick={() => setIsQuickNvBarOpen((prev) => !prev)}
-            className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/30 text-xs font-bold text-emerald-300 transition-all hover:scale-105"
+            className="flex items-center gap-2 px-4 py-2 rounded-xl bg-emerald-500/15 hover:bg-emerald-500/25 border border-emerald-500/40 text-sm font-bold text-emerald-300 transition-all hover:scale-105 cursor-pointer"
           >
-            <Hash className="w-3.5 h-3.5 text-emerald-400" />
+            <Hash className="w-4 h-4 text-emerald-400" />
             <span>Chat by NV Number</span>
           </button>
         </div>
@@ -318,30 +325,30 @@ export const ChatView: React.FC = () => {
 
       {/* Dedicated Nanivio Number Direct Chat Entry Card */}
       {isQuickNvBarOpen && (
-        <div className="bg-gradient-to-r from-[#0d1b2a] via-[#0b1626] to-[#091322] border border-emerald-500/30 rounded-2xl p-4 shadow-xl space-y-3 animate-in fade-in slide-in-from-top-2 duration-200">
+        <div className="bg-gradient-to-r from-[#0d1b2a] via-[#0b1626] to-[#091322] border border-emerald-500/30 rounded-2xl p-5 shadow-xl space-y-3.5 animate-in fade-in slide-in-from-top-2 duration-200">
           <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <div className="w-7 h-7 rounded-lg bg-emerald-500/20 text-emerald-400 flex items-center justify-center font-mono text-xs font-bold">
+            <div className="flex items-center gap-2.5">
+              <div className="w-8 h-8 rounded-lg bg-emerald-500/20 text-emerald-400 flex items-center justify-center font-mono text-sm font-bold">
                 NV
               </div>
               <div>
-                <h3 className="text-xs font-bold text-white">Direct Chat by Nanivio Number</h3>
-                <p className="text-[11px] text-slate-400">
+                <h3 className="text-sm sm:text-base font-bold text-white">Direct Chat by Nanivio Number</h3>
+                <p className="text-xs sm:text-sm text-slate-300">
                   Enter recipient's Nanivio number to start an instant translated direct conversation
                 </p>
               </div>
             </div>
             <button
               onClick={() => setIsQuickNvBarOpen(false)}
-              className="text-slate-500 hover:text-slate-300 text-xs"
+              className="text-slate-400 hover:text-slate-200 text-sm px-2 py-1 rounded cursor-pointer"
             >
               ✕ Close
             </button>
           </div>
 
-          <form onSubmit={handleStartDirectChat} className="flex flex-col sm:flex-row gap-2">
+          <form onSubmit={handleStartDirectChat} className="flex flex-col sm:flex-row gap-2.5">
             <div className="relative flex-1">
-              <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-xs font-mono font-bold text-emerald-400">
+              <span className="absolute left-4 top-1/2 -translate-y-1/2 text-sm font-mono font-bold text-emerald-400">
                 NV-
               </span>
               <input
@@ -350,7 +357,7 @@ export const ChatView: React.FC = () => {
                 placeholder="0486482190 (e.g. 0486...)"
                 value={directNvInput}
                 onChange={(e) => setDirectNvInput(e.target.value)}
-                className="w-full bg-slate-950 border border-slate-700/80 rounded-xl pl-12 pr-4 py-2.5 text-xs text-white font-mono tracking-wider placeholder-slate-600 focus:outline-none focus:border-emerald-500"
+                className="w-full bg-slate-950 border border-slate-700/80 rounded-xl pl-14 pr-4 py-3 text-sm sm:text-base text-white font-mono tracking-wider placeholder-slate-500 focus:outline-none focus:border-emerald-500"
               />
             </div>
 
@@ -358,13 +365,13 @@ export const ChatView: React.FC = () => {
               type="submit"
               id="btn-submit-nv-chat"
               disabled={isLookingUpNv || !directNvInput.trim()}
-              className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-500 text-slate-950 font-bold text-xs hover:scale-105 transition-all disabled:opacity-50 flex items-center justify-center gap-2 shadow-lg shadow-emerald-500/20"
+              className="px-6 py-3 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-500 text-slate-950 font-bold text-sm hover:scale-105 transition-all disabled:opacity-50 flex items-center justify-center gap-2 shadow-lg shadow-emerald-500/20 cursor-pointer"
             >
               {isLookingUpNv ? (
                 <span className="animate-pulse">Checking...</span>
               ) : (
                 <>
-                  <MessageSquare className="w-3.5 h-3.5" />
+                  <MessageSquare className="w-4 h-4" />
                   <span>Start Chat</span>
                 </>
               )}
@@ -373,14 +380,14 @@ export const ChatView: React.FC = () => {
 
           {/* Quick chip suggestions from saved contacts */}
           {contacts.length > 0 && (
-            <div className="pt-2 border-t border-slate-800/80 flex items-center gap-1.5 overflow-x-auto text-[11px]">
-              <span className="text-slate-500 shrink-0 font-medium">Quick saved:</span>
+            <div className="pt-2 border-t border-slate-800/80 flex items-center gap-2 overflow-x-auto text-xs sm:text-sm">
+              <span className="text-slate-400 shrink-0 font-medium">Quick saved:</span>
               {contacts.slice(0, 5).map((c) => (
                 <button
                   key={c.id}
                   type="button"
                   onClick={() => setDirectNvInput(c.nvId)}
-                  className="px-2.5 py-1 rounded-lg bg-slate-900 hover:bg-slate-800 border border-slate-800 text-slate-300 hover:text-emerald-300 font-mono transition-colors whitespace-nowrap"
+                  className="px-3 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 border border-slate-800 text-slate-200 hover:text-emerald-300 font-mono text-xs transition-colors whitespace-nowrap cursor-pointer"
                 >
                   {c.name} ({c.nvId.slice(-4)})
                 </button>
@@ -532,27 +539,27 @@ export const ChatView: React.FC = () => {
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center justify-between mb-1">
                           <div className="flex items-center gap-1.5 min-w-0">
-                            <h3 className="text-xs font-bold text-white truncate max-w-[140px]">{conv.title}</h3>
+                            <h3 className="text-[16px] sm:text-[16.5px] font-semibold text-white truncate max-w-[170px]">{conv.title}</h3>
                             {conv.isMuted && (
-                              <BellOff className="w-3 h-3 text-slate-500 shrink-0" title="Muted" />
+                              <BellOff className="w-3.5 h-3.5 text-slate-500 shrink-0" title="Muted" />
                             )}
                           </div>
                           {conv.lastMessageTime && (
-                            <span className="text-[10px] text-slate-400 font-mono">
+                            <span className="text-[12px] text-slate-400 font-mono">
                               {new Date(conv.lastMessageTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                             </span>
                           )}
                         </div>
 
-                        <p className="text-xs text-slate-400 truncate">{conv.lastMessage || 'No messages yet'}</p>
+                        <p className="text-[14px] sm:text-[14.5px] text-slate-300 truncate mt-0.5">{conv.lastMessage || 'No messages yet'}</p>
 
                         <div className="mt-1.5 flex items-center gap-1.5">
                           {conv.isGroup ? (
-                            <span className="px-1.5 py-0.2 rounded bg-slate-800 text-[10px] text-slate-300">
+                            <span className="px-2 py-0.5 rounded bg-slate-800 text-[12px] text-slate-300 font-medium">
                               {conv.participants.length} members
                             </span>
                           ) : (
-                            <span className="text-[10px] text-emerald-400 font-mono">
+                            <span className="text-[12px] text-emerald-400 font-mono font-medium">
                               Speaks: {pLang?.name || otherP?.myLanguage}
                             </span>
                           )}
@@ -560,7 +567,7 @@ export const ChatView: React.FC = () => {
                       </div>
 
                       {conv.unreadCount > 0 && (
-                        <span className="w-5 h-5 rounded-full bg-emerald-500 text-slate-950 font-bold text-[10px] flex items-center justify-center shrink-0">
+                        <span className="min-w-5 h-5 px-1 rounded-full bg-emerald-500 text-slate-950 font-bold text-[11.5px] flex items-center justify-center shrink-0">
                           {conv.unreadCount}
                         </span>
                       )}
@@ -656,32 +663,32 @@ export const ChatView: React.FC = () => {
                         onClick={() => {
                           if (activeConv.isGroup) setIsGroupDetailsOpen(true);
                         }}
-                        className={`text-xs sm:text-sm font-bold text-white truncate ${
+                        className={`text-[16px] sm:text-[17.5px] font-semibold text-white truncate ${
                           activeConv.isGroup ? 'cursor-pointer hover:text-emerald-400 transition-colors' : ''
                         }`}
                       >
                         {activeConv.title}
                       </h2>
                       {activeConv.isGroup && (
-                        <span className="px-1.5 py-0.5 rounded bg-emerald-500/10 text-emerald-400 text-[10px] font-mono border border-emerald-500/20 shrink-0">
+                        <span className="px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-400 text-[12px] font-mono border border-emerald-500/20 shrink-0">
                           {activeConv.participants.length} members
                         </span>
                       )}
                       {activeConv.isExpertChat && (
-                        <span className="px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300 text-[10px] font-bold border border-amber-500/30 shrink-0">
+                        <span className="px-2 py-0.5 rounded bg-amber-500/20 text-amber-300 text-[12px] font-bold border border-amber-500/30 shrink-0">
                           Expert
                         </span>
                       )}
                     </div>
                     <div className="flex items-center gap-1.5 text-xs text-slate-400 truncate">
                       {userSettings?.privacy?.onlineStatus !== false && (
-                        <span className="text-emerald-400 flex items-center gap-1 shrink-0 text-[11px]">
-                          <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
+                        <span className="text-emerald-400 flex items-center gap-1 shrink-0 text-[13px] font-medium">
+                          <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
                           Online
                         </span>
                       )}
                       <span>•</span>
-                      <span className="text-[10px] sm:text-[11px] text-slate-300 truncate">
+                      <span className="text-[12.5px] text-slate-300 truncate">
                         Language: <strong className="text-white">{myLangInfo.name}</strong>
                       </span>
                     </div>
@@ -911,20 +918,20 @@ export const ChatView: React.FC = () => {
                       <div className={`max-w-md ${isMe ? 'items-end' : 'items-start'} flex flex-col relative`}>
                         {!isMe && (
                           <div className="flex items-center gap-1.5 mb-1 px-1">
-                            <span className="text-[11px] font-bold text-slate-300">{msg.senderName}</span>
+                            <span className="text-[13.5px] font-bold text-emerald-400">{msg.senderName}</span>
                             {senderLangObj && (
-                              <span className="text-[10px] text-emerald-400 font-mono">({senderLangObj.name})</span>
+                              <span className="text-[12px] text-emerald-300/80 font-mono">({senderLangObj.name})</span>
                             )}
                           </div>
                         )}
 
                         {/* Quoted reply bubble if this message was a reply */}
                         {msg.replyTo && (
-                          <div className="mb-1.5 p-2 rounded-xl bg-slate-900/90 border-l-2 border-emerald-400 text-xs text-slate-300 max-w-full">
-                            <span className="font-bold text-emerald-400 text-[10px] block truncate">
+                          <div className="mb-1.5 p-2.5 rounded-xl bg-slate-900/90 border-l-2 border-emerald-400 text-xs text-slate-300 max-w-full">
+                            <span className="font-bold text-emerald-400 text-[12.5px] block truncate">
                               {msg.replyTo.senderName}
                             </span>
-                            <span className="text-slate-400 text-[11px] truncate block">
+                            <span className="text-slate-300 text-[13.5px] truncate block mt-0.5">
                               {msg.replyTo.text}
                             </span>
                           </div>
@@ -1042,8 +1049,8 @@ export const ChatView: React.FC = () => {
                                 : 'bg-slate-900 text-slate-100 border-slate-700 rounded-tl-none'
                             }`}
                           >
-                            {/* Display translated text in receiver's language */}
-                            <p className="text-xs sm:text-sm leading-relaxed">
+                            {/* Display translated text in receiver's language — WhatsApp size */}
+                            <p className="text-[15.5px] sm:text-[16px] leading-[22px] tracking-normal font-normal">
                               {!isMe && msg.translatedText && !showOriginal
                                 ? msg.translatedText
                                 : msg.text}
@@ -1051,9 +1058,9 @@ export const ChatView: React.FC = () => {
 
                             {/* Translation indicator and toggle */}
                             {!isMe && msg.translatedText && (
-                              <div className="pt-1 border-t border-slate-700/60 flex items-center justify-between text-[10px] text-emerald-300 font-mono">
+                              <div className="pt-1 border-t border-slate-700/60 flex items-center justify-between text-[11.5px] text-emerald-300 font-mono">
                                 <span className="flex items-center gap-1">
-                                  <Sparkles className="w-3 h-3" />
+                                  <Sparkles className="w-3.5 h-3.5" />
                                   Translated to {myLangInfo.name}
                                 </span>
                                 <button
@@ -1173,7 +1180,7 @@ export const ChatView: React.FC = () => {
                         )}
 
                         {/* Time & Read Receipts */}
-                        <div className="flex items-center gap-1 mt-1 px-1 text-[10px] text-slate-500 font-mono">
+                        <div className="flex items-center gap-1.5 mt-1 px-1 text-[11.5px] text-slate-400 font-mono">
                           <span>
                             {new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                           </span>
@@ -1233,74 +1240,87 @@ export const ChatView: React.FC = () => {
                     onSend={handleVoiceSend}
                   />
                 ) : (
-                  <form onSubmit={handleSend} className="flex items-center gap-2">
-                    {/* Media Attachment Trigger */}
-                    <button
-                      type="button"
-                      id="btn-chat-attach-media"
-                      onClick={() => setIsMediaModalOpen(true)}
-                      className="p-3 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-emerald-400 border border-slate-700 hover:border-emerald-500/50 transition-colors shrink-0"
-                      title="Attach photo, video or document (15MB free limit)"
-                    >
-                      <Paperclip className="w-5 h-5" />
-                    </button>
-
-                    {/* Instant Live Camera Trigger (Photo / Video with Free Limits) */}
-                    <button
-                      type="button"
-                      id="btn-chat-live-camera"
-                      onClick={() => setIsLiveCameraOpen(true)}
-                      className="p-3 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-emerald-400 border border-slate-700 hover:border-emerald-500/50 transition-colors shrink-0"
-                      title="Take Live Instant Photo or Record Video"
-                    >
-                      <Camera className="w-5 h-5" />
-                    </button>
-
-                    <div className="relative flex-1 flex items-center">
-                      <input
-                        type="text"
-                        placeholder={`Type a message (Speaks in ${myLangInfo.name})...`}
-                        value={inputMsg}
-                        onChange={(e) => setInputMsg(e.target.value)}
-                        className="w-full bg-slate-950 border border-slate-700 rounded-xl pl-4 pr-11 py-3 text-xs sm:text-sm text-white placeholder-slate-500 focus:outline-none focus:border-emerald-500"
-                      />
-
-                      {/* Modern Chat Emoji Trigger */}
+                  <form onSubmit={handleSend} className="flex items-end gap-2 p-1">
+                    {/* WhatsApp-Style Unified Rounded Input Bubble */}
+                    <div className="relative flex-1 flex items-center bg-slate-950/90 border border-slate-700/80 focus-within:border-emerald-500 rounded-3xl px-3 py-1.5 transition-all shadow-inner">
+                      {/* Left: Emoji Trigger Button */}
                       <button
                         type="button"
                         id="btn-chat-toggle-emoji"
                         onClick={() => setIsEmojiPickerOpen((prev) => !prev)}
-                        className={`absolute right-2.5 p-1.5 rounded-lg transition-all ${
+                        className={`p-2 rounded-full transition-all shrink-0 cursor-pointer ${
                           isEmojiPickerOpen
-                            ? 'text-amber-400 bg-amber-500/10'
-                            : 'text-slate-400 hover:text-amber-400 hover:bg-slate-800'
+                            ? 'text-amber-400 bg-amber-500/15'
+                            : 'text-slate-400 hover:text-amber-400 hover:bg-slate-800/80'
                         }`}
-                        title="Unique modern chat emoji & reactions"
+                        title="Emoji & Reactions"
                       >
-                        <Smile className="w-5 h-5" />
+                        <Smile className="w-5 h-5 sm:w-6 sm:h-6" />
+                      </button>
+
+                      {/* Roomy WhatsApp-Sized Input / Auto-growing Textarea */}
+                      <textarea
+                        rows={1}
+                        placeholder={`Type a message (speaks in ${myLangInfo.name})...`}
+                        value={inputMsg}
+                        onChange={(e) => {
+                          setInputMsg(e.target.value);
+                          e.target.style.height = 'auto';
+                          e.target.style.height = `${Math.min(e.target.scrollHeight, 130)}px`;
+                        }}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter' && !e.shiftKey) {
+                            e.preventDefault();
+                            handleSend();
+                          }
+                        }}
+                        className="flex-1 bg-transparent border-0 text-[15px] sm:text-base text-white placeholder-slate-400 focus:outline-none px-2.5 py-2 resize-none max-h-32 min-h-[38px] leading-relaxed"
+                      />
+
+                      {/* Right: Media Attachment Trigger */}
+                      <button
+                        type="button"
+                        id="btn-chat-attach-media"
+                        onClick={() => setIsMediaModalOpen(true)}
+                        className="p-2 rounded-full text-slate-400 hover:text-emerald-400 hover:bg-slate-800/80 transition-colors shrink-0 cursor-pointer"
+                        title="Attach photo, video or document (15MB limit)"
+                      >
+                        <Paperclip className="w-5 h-5 -rotate-45" />
+                      </button>
+
+                      {/* Right: Instant Live Camera Trigger */}
+                      <button
+                        type="button"
+                        id="btn-chat-live-camera"
+                        onClick={() => setIsLiveCameraOpen(true)}
+                        className="p-2 rounded-full text-slate-400 hover:text-emerald-400 hover:bg-slate-800/80 transition-colors shrink-0 cursor-pointer"
+                        title="Take Instant Live Photo or Video"
+                      >
+                        <Camera className="w-5 h-5" />
                       </button>
                     </div>
 
-                    {/* Voice Note Trigger Button */}
-                    <button
-                      type="button"
-                      id="btn-chat-record-voice"
-                      onClick={() => setIsRecordingVoice(true)}
-                      className="p-3 rounded-xl bg-slate-800 hover:bg-slate-700 text-emerald-400 border border-slate-700 hover:border-emerald-500 transition-colors shrink-0"
-                      title="Record Voice Note with Langpretation"
-                    >
-                      <Mic className="w-5 h-5" />
-                    </button>
-
-                    {/* Send Text Message Button */}
-                    <button
-                      type="submit"
-                      id="btn-chat-send-msg"
-                      disabled={!inputMsg.trim()}
-                      className="p-3 rounded-xl bg-emerald-500 hover:bg-emerald-400 disabled:opacity-40 text-slate-950 font-bold transition-all shrink-0 hover:scale-105"
-                    >
-                      <Send className="w-5 h-5" />
-                    </button>
+                    {/* WhatsApp-Style Circular Action Button (Send or Mic) */}
+                    {inputMsg.trim() ? (
+                      <button
+                        type="submit"
+                        id="btn-chat-send-msg"
+                        className="w-12 h-12 rounded-full bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold transition-all shrink-0 hover:scale-105 flex items-center justify-center shadow-lg shadow-emerald-500/30 cursor-pointer"
+                        title="Send Message"
+                      >
+                        <Send className="w-5 h-5 ml-0.5" />
+                      </button>
+                    ) : (
+                      <button
+                        type="button"
+                        id="btn-chat-record-voice"
+                        onClick={() => setIsRecordingVoice(true)}
+                        className="w-12 h-12 rounded-full bg-emerald-500 hover:bg-emerald-400 text-slate-950 transition-all shrink-0 hover:scale-105 flex items-center justify-center shadow-lg shadow-emerald-500/30 cursor-pointer"
+                        title="Record Voice Note with Langpretation"
+                      >
+                        <Mic className="w-5 h-5" />
+                      </button>
+                    )}
                   </form>
                 )}
               </div>

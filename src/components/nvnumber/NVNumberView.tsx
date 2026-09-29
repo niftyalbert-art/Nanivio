@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Fingerprint,
   Search,
@@ -10,32 +10,61 @@ import {
   Share2,
   QrCode,
   Globe,
-  UserCheck,
   ShieldCheck,
   Sparkles,
-  ArrowRight,
-  Info,
+  Download,
+  AlertCircle,
 } from 'lucide-react';
+import QRCode from 'qrcode';
 import { useNanivio } from '../../context/NanivioContext';
 import { LangpretationIcon } from '../common/LangpretationIcon';
+import { lookupNanivioUser, normalizeNanivioNumber } from '../../utils/userLookup';
+import { Participant } from '../../types';
 
 export const NVNumberView: React.FC = () => {
   const {
     currentUser,
     authUser,
-    contacts,
     start1on1Call,
-    setActiveConversationId,
-    setActiveTab,
+    startDirectChatWithUser,
   } = useNanivio();
 
   const [copied, setCopied] = useState(false);
+  const [linkCopied, setLinkCopied] = useState(false);
   const [showQr, setShowQr] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
-  const [searchResult, setSearchResult] = useState<any | null>(null);
+  const [searchResult, setSearchResult] = useState<Participant | null>(null);
+  const [isSearching, setIsSearching] = useState(false);
   const [hasSearched, setHasSearched] = useState(false);
+  const [searchError, setSearchError] = useState<string | null>(null);
+  const [qrDataUrl, setQrDataUrl] = useState<string>('');
 
-  const myNvNumber = authUser?.nvId || currentUser.nvId || currentUser.nanivioNumber || '0244123456';
+  const myNvNumber = authUser?.nvId || currentUser.nvId || currentUser.nanivioNumber || '0486482190';
+  const qrTargetUrl = `https://nanivio.tech/nv/${encodeURIComponent(myNvNumber)}`;
+
+  // Generate live vector/high-res QR code locally without any third-party external dependencies
+  useEffect(() => {
+    let isMounted = true;
+    QRCode.toDataURL(qrTargetUrl, {
+      width: 360,
+      margin: 2,
+      color: {
+        dark: '#030712',
+        light: '#ffffff',
+      },
+      errorCorrectionLevel: 'H',
+    })
+      .then((url) => {
+        if (isMounted) setQrDataUrl(url);
+      })
+      .catch((err) => {
+        console.error('Failed to generate live QR code:', err);
+      });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [qrTargetUrl]);
 
   const handleCopy = () => {
     navigator.clipboard.writeText(myNvNumber);
@@ -43,37 +72,33 @@ export const NVNumberView: React.FC = () => {
     setTimeout(() => setCopied(false), 2000);
   };
 
-  const handleSearch = (e: React.FormEvent) => {
+  const handleCopyLink = () => {
+    navigator.clipboard.writeText(qrTargetUrl);
+    setLinkCopied(true);
+    setTimeout(() => setLinkCopied(false), 2500);
+  };
+
+  const handleSearch = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!searchQuery.trim()) return;
+    const clean = searchQuery.trim();
+    if (!clean) return;
 
     setHasSearched(true);
-    const q = searchQuery.trim().toLowerCase();
+    setIsSearching(true);
+    setSearchError(null);
+    setSearchResult(null);
 
-    // Look in contacts or simulate registered directory lookup
-    const found = contacts.find(
-      (c) =>
-        (c.nanivioNumber && c.nanivioNumber.toLowerCase().includes(q)) ||
-        (c.nvId && c.nvId.toLowerCase().includes(q)) ||
-        c.name.toLowerCase().includes(q) ||
-        (c.username && c.username.toLowerCase().includes(q))
-    );
-
-    if (found) {
-      setSearchResult(found);
-    } else {
-      // Create valid Nanivio Global Directory lookup entry
-      setSearchResult({
-        id: `nv_lookup_${Date.now()}`,
-        name: searchQuery.startsWith('NV-') ? `Nanivio Global Member` : `Global Subscriber`,
-        nanivioNumber: searchQuery.startsWith('NV-') ? searchQuery : `NV-${searchQuery.slice(-6)}`,
-        avatar: 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=150&auto=format&fit=crop&q=80',
-        initials: 'NV',
-        myLanguage: 'en',
-        country: 'International',
-        isOnline: true,
-        statusMessage: 'Ready to communicate on Nanivio',
-      });
+    try {
+      const user = await lookupNanivioUser(clean);
+      if (user) {
+        setSearchResult(user);
+      } else {
+        setSearchError(`Nanivio number "${clean}" could not be found in the live directory.`);
+      }
+    } catch (err) {
+      setSearchError('Error looking up number. Please verify connectivity and try again.');
+    } finally {
+      setIsSearching(false);
     }
   };
 
@@ -146,17 +171,59 @@ export const NVNumberView: React.FC = () => {
           </div>
         </div>
 
-        {/* QR Code Expansion */}
+        {/* Live Authenticated Dynamic QR Code Expansion */}
         {showQr && (
-          <div className="p-6 rounded-2xl bg-slate-950/80 border border-slate-800 flex flex-col items-center justify-center space-y-3 animate-in fade-in duration-200">
-            <div className="p-4 bg-white rounded-2xl shadow-xl">
-              <div className="w-40 h-40 flex items-center justify-center border-4 border-slate-950 font-mono text-xs text-slate-900 text-center font-bold">
-                [ QR CODE ]<br />{myNvNumber}<br />nanivio.com/nv/{myNvNumber}
-              </div>
+          <div className="p-6 rounded-2xl bg-slate-950/90 border border-emerald-500/30 flex flex-col items-center justify-center space-y-4 animate-in fade-in duration-200">
+            <div className="p-3 bg-white rounded-2xl shadow-2xl border-2 border-emerald-400/40 flex items-center justify-center">
+              {qrDataUrl ? (
+                <img
+                  src={qrDataUrl}
+                  alt={`Live QR Code for NV Number ${myNvNumber}`}
+                  className="w-52 h-52 sm:w-60 sm:h-60 object-contain rounded-lg"
+                />
+              ) : (
+                <div className="w-52 h-52 flex items-center justify-center text-slate-600 font-mono text-xs">
+                  Generating Live QR...
+                </div>
+              )}
             </div>
-            <p className="text-xs text-slate-400 text-center">
-              Scan with any mobile camera to open direct Nanivio communication link.
-            </p>
+            <div className="text-center space-y-1">
+              <div className="font-mono text-sm font-bold text-emerald-400">
+                NV {myNvNumber}
+              </div>
+              <p className="text-xs text-slate-300 max-w-sm">
+                Scan with any mobile camera to open direct live communication and profile connection.
+              </p>
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={handleCopyLink}
+                className="px-3.5 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-slate-200 text-xs font-medium border border-slate-700 hover:border-emerald-500 transition-colors flex items-center gap-1.5 cursor-pointer"
+              >
+                {linkCopied ? (
+                  <>
+                    <Check className="w-3.5 h-3.5 text-emerald-400" />
+                    <span className="text-emerald-300">Link Copied!</span>
+                  </>
+                ) : (
+                  <>
+                    <Share2 className="w-3.5 h-3.5 text-emerald-400" />
+                    <span>Copy Profile Link</span>
+                  </>
+                )}
+              </button>
+              {qrDataUrl && (
+                <a
+                  href={qrDataUrl}
+                  download={`nanivio_qr_${myNvNumber}.png`}
+                  className="px-3.5 py-2 rounded-xl bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 text-xs font-medium border border-emerald-500/30 transition-colors flex items-center gap-1.5 cursor-pointer"
+                >
+                  <Download className="w-3.5 h-3.5" />
+                  <span>Download Live QR</span>
+                </a>
+              )}
+            </div>
           </div>
         )}
 
@@ -195,15 +262,22 @@ export const NVNumberView: React.FC = () => {
             type="text"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="Enter NV Number (e.g. 0244123456 or NV-984-210)"
+            placeholder="Enter NV Number (e.g. 0486482190 or NV-0486XXXXXX)"
             className="w-full bg-slate-950 border border-slate-700/80 rounded-2xl py-3.5 px-4 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-emerald-500 transition-all font-mono"
           />
           <button
             type="submit"
-            className="w-full sm:w-auto px-6 py-3.5 rounded-2xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-sm transition-all shadow-md shadow-emerald-500/20 flex items-center justify-center gap-2 cursor-pointer shrink-0"
+            disabled={isSearching || !searchQuery.trim()}
+            className="w-full sm:w-auto px-6 py-3.5 rounded-2xl bg-emerald-500 hover:bg-emerald-400 disabled:opacity-50 text-slate-950 font-bold text-sm transition-all shadow-md shadow-emerald-500/20 flex items-center justify-center gap-2 cursor-pointer shrink-0"
           >
-            <Search className="w-4 h-4" />
-            <span>Find &amp; Connect</span>
+            {isSearching ? (
+              <span className="animate-pulse">Searching...</span>
+            ) : (
+              <>
+                <Search className="w-4 h-4" />
+                <span>Find &amp; Connect</span>
+              </>
+            )}
           </button>
         </form>
 
@@ -211,12 +285,18 @@ export const NVNumberView: React.FC = () => {
         {hasSearched && searchResult && (
           <div className="p-5 rounded-2xl bg-slate-950/80 border border-emerald-500/40 flex flex-col sm:flex-row sm:items-center justify-between gap-5 animate-in fade-in duration-200">
             <div className="flex items-center gap-4">
-              <div className="w-14 h-14 rounded-2xl overflow-hidden border border-slate-700 shrink-0">
-                <img
-                  src={searchResult.avatar}
-                  alt={searchResult.name}
-                  className="w-full h-full object-cover"
-                />
+              <div className="w-14 h-14 rounded-2xl overflow-hidden border border-slate-700 bg-slate-800 flex items-center justify-center shrink-0">
+                {searchResult.avatar ? (
+                  <img
+                    src={searchResult.avatar}
+                    alt={searchResult.name}
+                    className="w-full h-full object-cover"
+                  />
+                ) : (
+                  <span className="text-base font-bold text-emerald-400 font-mono">
+                    {searchResult.initials || 'NV'}
+                  </span>
+                )}
               </div>
               <div className="space-y-1">
                 <div className="flex items-center gap-2">
@@ -226,15 +306,16 @@ export const NVNumberView: React.FC = () => {
                   </span>
                 </div>
                 <div className="text-xs font-mono text-emerald-400">
-                  {searchResult.nanivioNumber || searchResult.nvId}
+                  {searchResult.nvId ? `NV ${searchResult.nvId}` : 'Nanivio Subscriber'}
                 </div>
-                <p className="text-xs text-slate-400">{searchResult.statusMessage || 'Available on Nanivio'}</p>
+                <p className="text-xs text-slate-400">{searchResult.country || 'Global Network'}</p>
               </div>
             </div>
 
             {/* Communication Action Triggers */}
-            <div className="flex items-center gap-2 shrink-0">
+            <div className="flex items-center gap-2 shrink-0 flex-wrap">
               <button
+                type="button"
                 onClick={() => start1on1Call(searchResult, 'audio')}
                 className="px-4 py-2.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-xs transition-all flex items-center gap-1.5 shadow-md shadow-emerald-500/20 cursor-pointer"
                 title="Start Audio Call"
@@ -243,6 +324,7 @@ export const NVNumberView: React.FC = () => {
                 <span>Audio Call</span>
               </button>
               <button
+                type="button"
                 onClick={() => start1on1Call(searchResult, 'video')}
                 className="px-4 py-2.5 rounded-xl bg-teal-500 hover:bg-teal-400 text-slate-950 font-bold text-xs transition-all flex items-center gap-1.5 shadow-md shadow-teal-500/20 cursor-pointer"
                 title="Start Video Call"
@@ -251,17 +333,24 @@ export const NVNumberView: React.FC = () => {
                 <span>Video Call</span>
               </button>
               <button
+                type="button"
                 onClick={() => {
-                  setActiveConversationId(searchResult.id);
-                  setActiveTab('chat');
+                  startDirectChatWithUser(searchResult);
                 }}
                 className="px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold text-xs transition-all flex items-center gap-1.5 border border-slate-700 cursor-pointer"
                 title="Open Chat"
               >
-                <MessageSquare className="w-4 h-4" />
+                <MessageSquare className="w-4 h-4 text-emerald-400" />
                 <span>Open Chat</span>
               </button>
             </div>
+          </div>
+        )}
+
+        {hasSearched && !searchResult && !isSearching && searchError && (
+          <div className="p-4 rounded-2xl bg-slate-950/80 border border-slate-800 flex items-center gap-3 text-slate-400 text-xs">
+            <AlertCircle className="w-4 h-4 text-amber-400 shrink-0" />
+            <span>{searchError}</span>
           </div>
         )}
       </div>

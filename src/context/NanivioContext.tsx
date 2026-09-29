@@ -45,7 +45,7 @@ import {
   INITIAL_SECURITY_SESSIONS,
   getOrCreateGuestNvId,
 } from '../data/mockData';
-import { lookupNanivioUser } from '../utils/userLookup';
+import { lookupNanivioUser, normalizeNanivioNumber } from '../utils/userLookup';
 import { agoraClient, AgoraTelemetryStats } from '../lib/agoraClient';
 import { streamClient, StreamClientState } from '../lib/streamClient';
 import { realtimeClient, IncomingCallEvent, RealtimeUser } from '../lib/realtimeClient';
@@ -1200,7 +1200,24 @@ export const NanivioProvider: React.FC<{ children: React.ReactNode }> = ({ child
       playCallEndedTone();
       agoraClient.leaveChannel();
       setActiveCall(null);
-      setIncomingCall(null);
+      setIncomingCall((currIncoming) => {
+        if (currIncoming) {
+          const logItem: CallLogRecord = {
+            id: `call_log_${Date.now()}`,
+            participantId: currIncoming.caller.id,
+            participantNvId: currIncoming.caller.nvId,
+            participantName: currIncoming.caller.name,
+            participantAvatar: currIncoming.caller.avatar,
+            callType: currIncoming.callType === 'video' ? 'video' : 'audio',
+            direction: 'missed',
+            timestamp: Date.now(),
+            durationSeconds: 0,
+            hasLangpretation: globalLangpretationEnabled,
+          };
+          setCallLogs((prev) => [logItem, ...prev.slice(0, 49)]);
+        }
+        return null;
+      });
       if (data?.endedBy === 'SYSTEM_BILLING_ENGINE') {
         setInCallNotice({
           type: 'exhausted',
@@ -2895,8 +2912,43 @@ export const NanivioProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
   // Start direct chat with a participant
   const startDirectChatWithUser = (participant: Participant): string => {
+    const cleanOtherNv = participant.nvId ? normalizeNanivioNumber(participant.nvId) : '';
+    const cleanMyNv = currentUser.nvId ? normalizeNanivioNumber(currentUser.nvId) : '';
+    const isSelf = (participant.id && participant.id === currentUser.id) || (cleanOtherNv && cleanMyNv && cleanOtherNv === cleanMyNv);
+
+    if (isSelf) {
+      const selfConvId = `conv_self_${currentUser.id}`;
+      const existingSelf = conversations.find(c => c.id === selfConvId);
+      if (existingSelf) {
+        setActiveConversationId(existingSelf.id);
+        setActiveTab('chat');
+        return existingSelf.id;
+      }
+      const selfConv: Conversation = {
+        id: selfConvId,
+        isGroup: false,
+        title: `${currentUser.name} (You / Personal Notes)`,
+        avatar: currentUser.avatar || '',
+        participants: [currentUser],
+        lastMessage: 'Personal notes and saved messages',
+        lastMessageTime: Date.now(),
+        unreadCount: 0,
+      };
+      setConversations(prev => [selfConv, ...prev]);
+      setMessages(prev => ({
+        ...prev,
+        [selfConvId]: []
+      }));
+      setActiveConversationId(selfConvId);
+      setActiveTab('chat');
+      return selfConvId;
+    }
+
     const existing = conversations.find(
-      c => !c.isGroup && c.participants.some(p => p.id === participant.id || (p.nvId && participant.nvId && p.nvId === participant.nvId))
+      c => !c.isGroup && c.participants.some(p => 
+        (p.id && participant.id && p.id === participant.id) ||
+        (p.nvId && cleanOtherNv && normalizeNanivioNumber(p.nvId) === cleanOtherNv)
+      )
     );
     if (existing) {
       setActiveConversationId(existing.id);

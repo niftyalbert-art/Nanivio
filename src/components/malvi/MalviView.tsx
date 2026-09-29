@@ -125,6 +125,7 @@ const SUGGESTION_TOPICS = [
 
 export const MalviView: React.FC = () => {
   const {
+    currentUser,
     myLanguage,
     appLanguage,
     speakingLanguage,
@@ -207,10 +208,32 @@ export const MalviView: React.FC = () => {
     : {
         wallets: [],
         recentTransactions: [],
-        currentPlan: { name: 'Individual Premium', tier: 'individual_premium', minutesRemaining: 180, minutesQuota: 200, monthlyPriceGHS: 120, monthlyPriceUSD: 10 },
+        currentPlan: currentPlan
+          ? {
+              name: currentPlan.name,
+              tier: currentPlan.tier,
+              minutesRemaining: currentPlan.langpretationMinutesRemaining || 0,
+              minutesQuota: currentPlan.langpretationMinutesQuota || 0,
+              monthlyPriceGHS: currentPlan.monthlyPriceGHS,
+              monthlyPriceUSD: currentPlan.monthlyPriceUSD,
+            }
+          : {
+              name: 'Unsubscribed',
+              tier: 'free',
+              minutesRemaining: 0,
+              minutesQuota: 0,
+              monthlyPriceGHS: 0,
+              monthlyPriceUSD: 0,
+            },
         recentConversations: [],
         verifiedExperts: [],
-        currentUser: { id: 'usr_me', name: 'Kwame Asante', myLanguage: 'ak', myLanguageName: 'Twi', role: 'user' },
+        currentUser: {
+          id: currentUser.id,
+          name: currentUser.name,
+          myLanguage: myLanguage,
+          myLanguageName: currentLangObj.name,
+          role: currentUser.role,
+        },
         activeView: 'malvi',
         timestamp: Date.now(),
       };

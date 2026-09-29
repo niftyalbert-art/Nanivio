@@ -9,6 +9,8 @@ export function normalizeNanivioNumber(raw: string): string {
     cleaned = cleaned.slice(4).split('@')[0];
   }
 
+  const isPlus = cleaned.startsWith('+');
+
   // Remove NV- or NV prefix if present
   if (cleaned.toUpperCase().startsWith('NV-')) {
     cleaned = cleaned.substring(3);
@@ -18,6 +20,16 @@ export function normalizeNanivioNumber(raw: string): string {
 
   // Remove all non-alphanumeric characters (spaces, dashes, parens)
   cleaned = cleaned.replace(/[^0-9a-zA-Z]/g, '');
+
+  // If user entered 6 digits (the suffix part of a Nanivio number), auto-prepend standard 0486 prefix
+  if (cleaned.length === 6 && /^\d{6}$/.test(cleaned)) {
+    cleaned = '0486' + cleaned;
+  }
+
+  if (isPlus && !cleaned.startsWith('0486')) {
+    return '+' + cleaned;
+  }
+
   return cleaned;
 }
 

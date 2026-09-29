@@ -2,6 +2,7 @@ import React from 'react';
 import { PhoneMissed, PhoneCall, Video, X, Clock, UserCheck, MessageSquare } from 'lucide-react';
 import { useNanivio } from '../../context/NanivioContext';
 import { Participant } from '../../types';
+import { lookupNanivioUser } from '../../utils/userLookup';
 
 interface MissedCallsModalProps {
   isOpen: boolean;
@@ -9,11 +10,60 @@ interface MissedCallsModalProps {
 }
 
 export const MissedCallsModal: React.FC<MissedCallsModalProps> = ({ isOpen, onClose }) => {
-  const { callLogs, start1on1Call, startDirectChatWithUser, clearCallLogs } = useNanivio();
+  const {
+    callLogs,
+    start1on1Call,
+    startDirectChatWithUser,
+    setActiveConversationId,
+    setActiveTab,
+    clearCallLogs,
+  } = useNanivio();
 
   if (!isOpen) return null;
 
   const missedLogs = callLogs.filter((l) => l.direction === 'missed');
+
+  const handleReturnCall = async (log: any, callType: 'audio' | 'video') => {
+    onClose();
+    let targetParticipant: Participant | null = null;
+    if (log.participantNvId) {
+      targetParticipant = await lookupNanivioUser(log.participantNvId);
+    }
+    if (!targetParticipant) {
+      targetParticipant = {
+        id: log.participantId || `caller_${Date.now()}`,
+        nvId: log.participantNvId,
+        name: log.participantName || 'Nanivio Contact',
+        avatar: log.participantAvatar || '',
+        initials: (log.participantName || 'NV').slice(0, 2).toUpperCase(),
+        myLanguage: 'en',
+        role: 'user',
+      };
+    }
+    start1on1Call(targetParticipant, callType, true);
+  };
+
+  const handleChatBack = async (log: any) => {
+    onClose();
+    let targetParticipant: Participant | null = null;
+    if (log.participantNvId) {
+      targetParticipant = await lookupNanivioUser(log.participantNvId);
+    }
+    if (!targetParticipant) {
+      targetParticipant = {
+        id: log.participantId || `caller_${Date.now()}`,
+        nvId: log.participantNvId,
+        name: log.participantName || 'Nanivio Contact',
+        avatar: log.participantAvatar || '',
+        initials: (log.participantName || 'NV').slice(0, 2).toUpperCase(),
+        myLanguage: 'en',
+        role: 'user',
+      };
+    }
+    const convId = startDirectChatWithUser(targetParticipant);
+    setActiveConversationId(convId);
+    setActiveTab('chat');
+  };
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-200">
@@ -58,7 +108,7 @@ export const MissedCallsModal: React.FC<MissedCallsModalProps> = ({ isOpen, onCl
                 ? log.participantNvId.startsWith('NV ')
                   ? log.participantNvId
                   : `NV ${log.participantNvId}`
-                : 'NV 0486482190';
+                : 'NV Line';
 
               return (
                 <div
@@ -97,46 +147,31 @@ export const MissedCallsModal: React.FC<MissedCallsModalProps> = ({ isOpen, onCl
                     </div>
                   </div>
 
-                  {/* Actions: Audio Call Back, Video Call Back, Direct Chat */}
-                  <div className="flex items-center gap-2 pt-1 border-t border-slate-900">
+                  {/* Actions: Audio Call Back, Video Call Back, Direct Chat Back */}
+                  <div className="flex items-center gap-2 pt-1 border-t border-slate-900 flex-wrap">
                     <button
-                      onClick={() => {
-                        const participant: Participant = {
-                          id: log.participantId || `caller_${Date.now()}`,
-                          nvId: log.participantNvId,
-                          name: log.participantName,
-                          avatar: log.participantAvatar,
-                          initials: log.participantName.slice(0, 2).toUpperCase(),
-                          myLanguage: 'en',
-                          role: 'user',
-                        };
-                        onClose();
-                        start1on1Call(participant, 'audio', true);
-                      }}
+                      onClick={() => handleReturnCall(log, 'audio')}
                       className="flex-1 py-2 px-3 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-slate-950 font-bold text-xs flex items-center justify-center gap-1.5 transition-all shadow-md cursor-pointer"
                     >
                       <PhoneCall className="w-3.5 h-3.5" />
-                      <span>Audio Call Back</span>
+                      <span>Audio Call</span>
                     </button>
 
                     <button
-                      onClick={() => {
-                        const participant: Participant = {
-                          id: log.participantId || `caller_${Date.now()}`,
-                          nvId: log.participantNvId,
-                          name: log.participantName,
-                          avatar: log.participantAvatar,
-                          initials: log.participantName.slice(0, 2).toUpperCase(),
-                          myLanguage: 'en',
-                          role: 'user',
-                        };
-                        onClose();
-                        start1on1Call(participant, 'video', true);
-                      }}
+                      onClick={() => handleReturnCall(log, 'video')}
                       className="flex-1 py-2 px-3 rounded-xl bg-cyan-500/20 hover:bg-cyan-500/30 text-cyan-300 font-bold text-xs flex items-center justify-center gap-1.5 transition-all border border-cyan-500/30 cursor-pointer"
                     >
                       <Video className="w-3.5 h-3.5" />
-                      <span>Video Call</span>
+                      <span>Video</span>
+                    </button>
+
+                    <button
+                      onClick={() => handleChatBack(log)}
+                      className="py-2 px-3 rounded-xl bg-slate-800 hover:bg-slate-750 text-slate-200 border border-slate-700 hover:border-emerald-500/50 font-bold text-xs flex items-center justify-center gap-1.5 transition-all cursor-pointer"
+                      title="Send message to caller"
+                    >
+                      <MessageSquare className="w-3.5 h-3.5 text-emerald-400" />
+                      <span>Chat</span>
                     </button>
                   </div>
                 </div>
@@ -149,7 +184,7 @@ export const MissedCallsModal: React.FC<MissedCallsModalProps> = ({ isOpen, onCl
         {missedLogs.length > 0 && (
           <div className="pt-2 border-t border-slate-800/80 flex items-center justify-between text-xs">
             <span className="text-slate-500 font-mono text-[11px]">
-              Tap call back to initiate instant encrypted connection
+              Tap call back or chat to respond immediately
             </span>
             <button
               onClick={() => {

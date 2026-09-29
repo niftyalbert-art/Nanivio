@@ -255,40 +255,28 @@ export const StreamChatInterface: React.FC<StreamChatInterfaceProps> = () => {
       {/* LEFT: Stream Channels Navigation */}
       {/* ------------------------------------------------------------- */}
       <div className="w-full md:w-80 bg-[#0c1424] border-r border-slate-800 flex flex-col shrink-0">
-        {/* Stream Brand & Status Header */}
+        {/* Brand & Status Header */}
         <div className="p-4 border-b border-slate-800 space-y-3">
           <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <div className="w-7 h-7 rounded-lg bg-gradient-to-tr from-purple-600 to-indigo-500 flex items-center justify-center text-white font-black text-xs shadow-md">
-                S
+            <div className="flex items-center gap-2.5">
+              <div className="w-8 h-8 rounded-xl bg-gradient-to-tr from-purple-600 to-indigo-500 flex items-center justify-center text-white font-black text-xs shadow-md">
+                <Users className="w-4 h-4 text-white" />
               </div>
               <div>
-                <h3 className="text-sm font-bold text-white leading-none">Stream Chat</h3>
-                <span className="text-[10px] text-slate-400 font-mono">GetStream Protocol API</span>
+                <h3 className="text-sm font-bold text-white leading-none">Community Channels</h3>
+                <span className="text-[11px] text-slate-400">Live Multi-User Spaces</span>
               </div>
             </div>
-
-            <button
-              onClick={() => {
-                setShowInspector(!showInspector);
-                if (!showInspector) streamClient.fetchLogs().then(setLogs);
-              }}
-              className="p-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 border border-slate-700 text-slate-300 hover:text-white transition-all text-xs flex items-center gap-1"
-              title="Toggle GetStream API Developer Inspector"
-            >
-              <Activity className="w-3.5 h-3.5 text-purple-400" />
-              <span className="text-[10px] font-mono hidden sm:inline">SDK Stats</span>
-            </button>
           </div>
 
           {/* Connection Status Pill */}
           <div className="flex items-center justify-between px-3 py-1.5 rounded-xl bg-slate-950 border border-slate-800 text-xs">
             <div className="flex items-center gap-2">
               <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-              <span className="text-slate-300 font-mono text-[11px]">Stream Client:</span>
-              <span className="text-emerald-400 font-bold font-mono text-[11px]">{streamState.status}</span>
+              <span className="text-slate-300 font-mono text-[11px]">Channels Network:</span>
+              <span className="text-emerald-400 font-bold font-mono text-[11px]">Connected</span>
             </div>
-            <span className="text-[10px] text-slate-500 font-mono">HS256 JWT</span>
+            <span className="text-[10px] text-slate-500 font-mono">Live Sync</span>
           </div>
         </div>
 
@@ -300,7 +288,7 @@ export const StreamChatInterface: React.FC<StreamChatInterfaceProps> = () => {
           <button
             onClick={() => setIsCreatingChannel(!isCreatingChannel)}
             className="p-1 rounded-md bg-slate-800 hover:bg-purple-600/30 text-slate-300 hover:text-purple-300 border border-slate-700 transition-colors"
-            title="Create new Stream channel"
+            title="Create new channel"
           >
             <Plus className="w-3.5 h-3.5" />
           </button>
@@ -310,7 +298,7 @@ export const StreamChatInterface: React.FC<StreamChatInterfaceProps> = () => {
         {isCreatingChannel && (
           <form onSubmit={handleCreateChannel} className="p-3 bg-slate-950 border-b border-slate-800 space-y-2">
             <div className="text-[11px] font-bold text-white flex items-center justify-between">
-              <span>New Stream Channel</span>
+              <span>New Community Channel</span>
               <button type="button" onClick={() => setIsCreatingChannel(false)} className="text-slate-400 hover:text-white">
                 <X className="w-3.5 h-3.5" />
               </button>
@@ -351,21 +339,21 @@ export const StreamChatInterface: React.FC<StreamChatInterfaceProps> = () => {
                 </div>
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center justify-between">
-                    <h4 className="text-xs font-bold text-white truncate">{chan.name}</h4>
+                    <h4 className="text-[15.5px] font-semibold text-white truncate">{chan.name}</h4>
                     {chan.lastMessageAt && (
-                      <span className="text-[10px] text-slate-500 font-mono">
+                      <span className="text-[12px] text-slate-400 font-mono">
                         {new Date(chan.lastMessageAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                       </span>
                     )}
                   </div>
-                  <p className="text-[11px] text-slate-400 truncate mt-0.5">
+                  <p className="text-[14px] text-slate-300 truncate mt-0.5">
                     {chan.lastMessage || 'No messages yet'}
                   </p>
                   <div className="flex items-center gap-2 mt-1">
-                    <span className="text-[10px] font-mono text-purple-400">
+                    <span className="text-[12px] font-mono text-purple-300">
                       {chan.members.length} members
                     </span>
-                    <span className="text-[10px] text-emerald-400 font-mono flex items-center gap-1">
+                    <span className="text-[12px] text-emerald-400 font-mono flex items-center gap-1">
                       <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
                       Live Stream
                     </span>
@@ -389,9 +377,9 @@ export const StreamChatInterface: React.FC<StreamChatInterfaceProps> = () => {
             </div>
             <div>
               <div className="flex items-center gap-2">
-                <h3 className="text-sm font-bold text-white">{currentChannel?.name || 'Channel'}</h3>
-                <span className="px-2 py-0.2 rounded-full bg-purple-500/20 text-purple-300 border border-purple-500/30 text-[10px] font-mono">
-                  GetStream Channel
+                <h3 className="text-sm sm:text-base font-bold text-white">{currentChannel?.name || 'Channel'}</h3>
+                <span className="px-2 py-0.5 rounded-full bg-purple-500/20 text-purple-300 border border-purple-500/30 text-[10px] font-mono">
+                  Live Channel
                 </span>
               </div>
               <p className="text-[11px] text-slate-400 flex items-center gap-1.5">
@@ -402,7 +390,7 @@ export const StreamChatInterface: React.FC<StreamChatInterfaceProps> = () => {
             </div>
           </div>
 
-          {/* Action buttons: Agora Call triggers & SDK toggle */}
+          {/* Action buttons: Agora Call triggers */}
           <div className="flex items-center gap-2">
             <button
               onClick={() => {
@@ -420,7 +408,7 @@ export const StreamChatInterface: React.FC<StreamChatInterfaceProps> = () => {
                   );
                 }
               }}
-              className="p-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-emerald-400 border border-slate-700 hover:border-emerald-500/50 transition-all shadow-sm"
+              className="p-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-emerald-400 border border-slate-700 hover:border-emerald-500/50 transition-all shadow-sm cursor-pointer"
               title="Launch HD Audio Call"
             >
               <Phone className="w-4 h-4" />
@@ -442,7 +430,7 @@ export const StreamChatInterface: React.FC<StreamChatInterfaceProps> = () => {
                   );
                 }
               }}
-              className="p-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-emerald-400 border border-slate-700 hover:border-emerald-500/50 transition-all shadow-sm"
+              className="p-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-emerald-400 border border-slate-700 hover:border-emerald-500/50 transition-all shadow-sm cursor-pointer"
               title="Launch HD Video Call"
             >
               <Video className="w-4 h-4" />
@@ -452,11 +440,11 @@ export const StreamChatInterface: React.FC<StreamChatInterfaceProps> = () => {
 
         {/* Main Messages Scroll Stream */}
         <div className="flex-1 overflow-y-auto p-4 space-y-4">
-          {/* Stream System Welcome Pill */}
+          {/* Welcome Pill */}
           <div className="mx-auto max-w-md bg-purple-950/40 border border-purple-500/30 rounded-xl p-2.5 text-center text-xs text-purple-200 flex items-center justify-center gap-2">
             <Sparkles className="w-4 h-4 text-purple-400 shrink-0" />
             <span>
-              Connected to GetStream Channel. Real-time Langpretation translates cross-language dialogues seamlessly.
+              Connected to Channel. Real-time Langpretation translates cross-language dialogues seamlessly.
             </span>
           </div>
 
@@ -487,10 +475,10 @@ export const StreamChatInterface: React.FC<StreamChatInterfaceProps> = () => {
 
                 <div className={`max-w-md flex flex-col ${isMe ? 'items-end' : 'items-start'}`}>
                   {/* Sender Name & Flag */}
-                  <div className="flex items-center gap-1.5 mb-1 px-1 text-[11px]">
-                    <span className="font-bold text-slate-300">{msg.userName}</span>
+                  <div className="flex items-center gap-1.5 mb-1 px-1 text-[13.5px]">
+                    <span className="font-bold text-purple-300">{msg.userName}</span>
                     {senderLangObj && (
-                      <span className="text-[10px] text-purple-400 font-mono">
+                      <span className="text-[12px] text-purple-400 font-mono">
                         ({senderLangObj.name})
                       </span>
                     )}
@@ -515,15 +503,15 @@ export const StreamChatInterface: React.FC<StreamChatInterfaceProps> = () => {
                             <FileText className="w-4 h-4 text-purple-300 shrink-0" />
                             <div className="flex-1 min-w-0">
                               <span className="block truncate font-bold">{att.name || 'Document'}</span>
-                              <span className="text-[10px] text-slate-400">{att.size || 'Attachment'}</span>
+                              <span className="text-[12px] text-slate-400">{att.size || 'Attachment'}</span>
                             </div>
                           </div>
                         ))}
                       </div>
                     )}
 
-                    {/* Text content with Langpretation Translation */}
-                    <p className="text-xs sm:text-sm leading-relaxed">
+                    {/* Text content with Langpretation Translation — WhatsApp size */}
+                    <p className="text-[15.5px] sm:text-[16px] leading-[22px] tracking-normal font-normal">
                       {!isMe && msg.translatedText && !showOriginal
                         ? msg.translatedText
                         : msg.text}
@@ -531,9 +519,9 @@ export const StreamChatInterface: React.FC<StreamChatInterfaceProps> = () => {
 
                     {/* Translation Pill & Switcher */}
                     {!isMe && msg.translatedText && (
-                      <div className="pt-1.5 border-t border-slate-700/60 flex items-center justify-between text-[10px] text-purple-300 font-mono">
+                      <div className="pt-1.5 border-t border-slate-700/60 flex items-center justify-between text-[11.5px] text-purple-300 font-mono">
                         <span className="flex items-center gap-1">
-                          <Sparkles className="w-3 h-3 text-purple-400" />
+                          <Sparkles className="w-3.5 h-3.5 text-purple-400" />
                           Langpretation in {myLangInfo.name}
                         </span>
                         <button
@@ -564,7 +552,7 @@ export const StreamChatInterface: React.FC<StreamChatInterfaceProps> = () => {
                             <button
                               key={type}
                               onClick={() => handleToggleReaction(msg.id, type)}
-                              className="px-1.5 py-0.5 rounded-full bg-slate-800 border border-slate-700 text-[10px] flex items-center gap-1 hover:border-purple-500 text-slate-300"
+                              className="px-2 py-0.5 rounded-full bg-slate-800 border border-slate-700 text-[11.5px] flex items-center gap-1 hover:border-purple-500 text-slate-300"
                             >
                               <span>{rx?.icon || '👍'}</span>
                               <span className="font-bold font-mono">{count}</span>
@@ -588,7 +576,7 @@ export const StreamChatInterface: React.FC<StreamChatInterfaceProps> = () => {
                       ))}
                     </div>
 
-                    <span className="text-[10px] text-slate-500 font-mono">
+                    <span className="text-[11.5px] text-slate-400 font-mono">
                       {new Date(msg.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                     </span>
                     {isMe && <CheckCheck className="w-3.5 h-3.5 text-purple-400" />}
@@ -624,126 +612,37 @@ export const StreamChatInterface: React.FC<StreamChatInterfaceProps> = () => {
               type="button"
               onClick={() => {
                 setAttachmentSimulation({
-                  name: 'Cocoa_Shipping_Bill_of_Lading.pdf',
+                  name: 'Document_Attachment.pdf',
                   type: 'file',
-                  url: 'https://example.com/docs/cocoa_shipping.pdf',
+                  url: 'https://example.com/docs/file.pdf',
                 });
               }}
-              className="p-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-slate-400 hover:text-purple-300 border border-slate-700 transition-colors"
-              title="Attach Contract / Invoice"
+              className="p-3 rounded-2xl bg-slate-900 hover:bg-slate-800 text-slate-400 hover:text-purple-300 border border-slate-700 transition-colors cursor-pointer"
+              title="Attach Document"
             >
-              <Paperclip className="w-4 h-4" />
+              <Paperclip className="w-5 h-5 -rotate-45" />
             </button>
 
-            {/* Main Text Input */}
+            {/* Roomy Main Text Input */}
             <input
               type="text"
-              placeholder={`Send message to GetStream Channel (Speaks in ${myLangInfo.name})...`}
+              placeholder={`Message #${currentChannel?.name || 'channel'} (speaks in ${myLangInfo.name})...`}
               value={inputText}
               onChange={(e) => setInputText(e.target.value)}
-              className="flex-1 bg-slate-950 border border-slate-700 rounded-xl px-4 py-2.5 text-xs sm:text-sm text-white placeholder-slate-500 focus:outline-none focus:border-purple-500"
+              className="flex-1 bg-slate-950 border border-slate-700 rounded-2xl px-4 py-3 text-[15px] sm:text-base text-white placeholder-slate-500 focus:outline-none focus:border-purple-500"
             />
 
             {/* Send Button */}
             <button
               type="submit"
               disabled={(!inputText.trim() && !attachmentSimulation) || isSending}
-              className="p-2.5 rounded-xl bg-purple-600 hover:bg-purple-500 disabled:opacity-40 text-white font-bold transition-all shadow-md hover:scale-105 flex items-center justify-center shrink-0"
+              className="w-12 h-12 rounded-2xl bg-purple-600 hover:bg-purple-500 disabled:opacity-40 text-white font-bold transition-all shadow-md hover:scale-105 flex items-center justify-center shrink-0 cursor-pointer"
             >
-              <Send className="w-4 h-4" />
+              <Send className="w-5 h-5" />
             </button>
           </form>
         </div>
       </div>
-
-      {/* ------------------------------------------------------------- */}
-      {/* RIGHT: Developer & Stream API Telemetry Inspector Drawer */}
-      {/* ------------------------------------------------------------- */}
-      {showInspector && (
-        <div className="w-full md:w-80 bg-[#070d17] border-l border-slate-800 flex flex-col shrink-0 text-xs font-mono p-4 space-y-4 overflow-y-auto">
-          <div className="flex items-center justify-between border-b border-slate-800 pb-2">
-            <div className="flex items-center gap-2 text-white font-bold">
-              <Server className="w-4 h-4 text-purple-400" />
-              <span>GetStream SDK Console</span>
-            </div>
-            <button
-              onClick={() => setShowInspector(false)}
-              className="text-slate-400 hover:text-white"
-            >
-              ✕
-            </button>
-          </div>
-
-          {/* User Token Details */}
-          <div className="bg-slate-950 p-3 rounded-xl border border-slate-800 space-y-2">
-            <div className="flex items-center justify-between text-[11px]">
-              <span className="text-slate-400">Authenticated User</span>
-              <span className="text-white font-bold">{currentUser.name}</span>
-            </div>
-            <div className="flex items-center justify-between text-[11px]">
-              <span className="text-slate-400">User ID</span>
-              <span className="text-purple-300">{currentUser.id}</span>
-            </div>
-            <div className="text-[10px] text-slate-400 pt-1 border-t border-slate-800">
-              <span className="block text-slate-500 mb-1">JWT User Token (HS256):</span>
-              <div className="p-1.5 bg-slate-900 rounded-lg text-emerald-400 truncate select-all">
-                {streamState.userToken || 'jwt_stream_token_sample'}
-              </div>
-            </div>
-          </div>
-
-          {/* Live Webhook & Event Log Stream */}
-          <div className="space-y-2">
-            <div className="flex items-center justify-between">
-              <span className="text-[11px] font-bold text-slate-300">Live Webhook Events</span>
-              <button
-                onClick={() => streamClient.fetchLogs().then(setLogs)}
-                className="text-[10px] text-purple-400 hover:underline flex items-center gap-1"
-              >
-                <RefreshCw className="w-3 h-3" /> Refresh
-              </button>
-            </div>
-
-            <div className="space-y-1.5 max-h-64 overflow-y-auto">
-              {logs.length === 0 ? (
-                <div className="p-3 text-center text-slate-500 text-[11px] bg-slate-950 rounded-xl border border-slate-800">
-                  No webhook events recorded yet
-                </div>
-              ) : (
-                logs.map((log) => (
-                  <div
-                    key={log.id}
-                    className="p-2 bg-slate-950/80 border border-slate-800/80 rounded-lg text-[10px] space-y-1"
-                  >
-                    <div className="flex items-center justify-between">
-                      <span className="text-purple-300 font-bold">{log.type}</span>
-                      <span className="text-slate-500">
-                        {new Date(log.timestamp).toLocaleTimeString([], { second: '2-digit' })}
-                      </span>
-                    </div>
-                    {log.channelId && (
-                      <div className="text-slate-400">
-                        channel: <span className="text-slate-200">{log.channelId}</span>
-                      </div>
-                    )}
-                  </div>
-                ))
-              )}
-            </div>
-          </div>
-
-          {/* Engine capabilities info */}
-          <div className="p-3 bg-purple-950/20 border border-purple-500/20 rounded-xl text-[10px] text-purple-300 space-y-1">
-            <div className="font-bold text-white flex items-center gap-1.5">
-              <ShieldCheck className="w-3.5 h-3.5 text-purple-400" />
-              <span>Full-Stack Stream Architecture</span>
-            </div>
-            <p className="text-slate-400 leading-relaxed">
-              Tokens generated server-side using cryptographic HMAC signatures, keeping Stream secrets protected.
-            </p>
-          </div>
-        </div>
-      )}
     </div>
   );
 };

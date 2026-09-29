@@ -1,8 +1,16 @@
 @import "tailwindcss";
 
 @layer base {
-  html, body {
-    font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+  html {
+    font-size: 16px;
+    -webkit-text-size-adjust: 100%;
+    text-size-adjust: 100%;
+  }
+
+  body {
+    font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+    font-size: 15.5px; /* WhatsApp exact body baseline */
+    line-height: 1.5;
     background-color: #070d18;
     color: #f8fafc;
     width: 100%;
@@ -10,6 +18,8 @@
     overflow-x: hidden;
     touch-action: pan-y;
     -webkit-overflow-scrolling: touch;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
   }
 
   #root {
@@ -17,7 +27,54 @@
     max-width: 100vw;
     overflow-x: hidden;
     min-height: 100vh;
+    font-size: 15.5px;
   }
+}
+
+/* WhatsApp Typography Scale Normalization */
+/* Elevate micro-fonts to WhatsApp-standard readability */
+[class*="text-[7px]"],
+[class*="text-[8px]"],
+[class*="text-[9px]"] {
+  font-size: 11px !important;
+}
+
+[class*="text-[10px]"] {
+  font-size: 12px !important;
+}
+
+[class*="text-[11px]"] {
+  font-size: 13px !important;
+}
+
+/* Make sure text-xs is readable like WhatsApp secondary metadata (13px) */
+.text-xs {
+  font-size: 0.8125rem !important; /* 13px */
+  line-height: 1.25rem !important;
+}
+
+/* text-sm matches WhatsApp standard subheaders and preview lines (14.5px) */
+.text-sm {
+  font-size: 0.90625rem !important; /* 14.5px */
+  line-height: 1.375rem !important;
+}
+
+/* text-base matches WhatsApp primary content and titles (16px) */
+.text-base {
+  font-size: 1rem !important; /* 16px */
+  line-height: 1.5rem !important;
+}
+
+/* WhatsApp message bubbles & chat text */
+.whatsapp-msg-text {
+  font-size: 15.5px;
+  line-height: 1.45;
+  letter-spacing: -0.01em;
+}
+
+/* WhatsApp inputs & textareas standard size */
+input, textarea, select {
+  font-size: 15.5px;
 }
 
 /* Hide scrollbar utility for sleek horizontal tab bars */
