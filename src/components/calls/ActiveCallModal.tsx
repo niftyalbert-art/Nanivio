@@ -511,10 +511,16 @@ export const ActiveCallModal: React.FC = () => {
             <div className="text-left hidden sm:block">
               <div className="text-[9px] uppercase tracking-wider text-slate-400 font-bold flex items-center gap-1">
                 <span>Langpretation</span>
-                {activeCall.langpretationEnabled && langpretationMeter && (
-                  <span className="font-mono text-emerald-400 font-bold">
-                    • {langpretationMeter.remainingAllowance.toFixed(1)}m left
-                  </span>
+                {activeCall.langpretationEnabled && (
+                  adminFeatures?.callMinutesWarningApproved && langpretationMeter ? (
+                    <span className="font-mono text-emerald-400 font-bold">
+                      • {langpretationMeter.remainingAllowance.toFixed(1)}m left
+                    </span>
+                  ) : (
+                    <span className="font-mono text-emerald-400 font-bold">
+                      • FREE HD
+                    </span>
+                  )
                 )}
               </div>
               <div className="text-xs font-semibold text-white">

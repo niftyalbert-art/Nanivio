@@ -4,6 +4,8 @@
  * WebRTC / Agora injection so the remote participant hears translated speech.
  */
 
+import { PcmUtils } from './pcm';
+
 export interface SynthesizedAudioPayload {
   audioBase64?: string; // base64 encoded PCM or WAV
   audioBuffer?: AudioBuffer;
@@ -114,6 +116,30 @@ export class NanivioTtsAudioGenerator {
     return {
       stream: destination.stream,
       sourceNode,
+    };
+  }
+
+  /**
+   * Generates a playable WAV Blob and Object URL from text synthesis for voice notes.
+   */
+  public static async generatePlayableWavBlob(
+    text: string,
+    language: string
+  ): Promise<{ blob: Blob; url: string; durationSec: number }> {
+    const audioBuffer = await this.generateSpokenAudioBuffer(text, language);
+    if (!audioBuffer) {
+      // Fallback 1-second empty audio blob
+      const dummy = new Float32Array(16000);
+      const blob = PcmUtils.float32ToWavBlob(dummy, 16000);
+      return { blob, url: URL.createObjectURL(blob), durationSec: 1 };
+    }
+
+    const blob = PcmUtils.audioBufferToWavBlob(audioBuffer);
+    const url = URL.createObjectURL(blob);
+    return {
+      blob,
+      url,
+      durationSec: Math.max(1, Math.round(audioBuffer.duration)),
     };
   }
 }

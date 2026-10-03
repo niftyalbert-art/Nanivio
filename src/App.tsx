@@ -6,6 +6,7 @@ import { NanivioAuthScreen } from './components/auth/NanivioAuthScreen';
 import { Navbar } from './components/Navbar';
 import { BottomNavigationBar } from './components/BottomNavigationBar';
 import { LanguageSelectorModal } from './components/LanguageSelectorModal';
+import { NewUserInstallPrompt } from './components/common/NewUserInstallPrompt';
 import { ActiveCallModal } from './components/calls/ActiveCallModal';
 import { IncomingCallBanner } from './components/calls/IncomingCallBanner';
 import { ChatToastNotification } from './components/chat/ChatToastNotification';
@@ -69,6 +70,7 @@ const MainLayout: React.FC = () => {
       <ChatToastNotification />
       <ActiveCallModal />
       <LanguageSelectorModal />
+      <NewUserInstallPrompt />
     </div>
   );
 };
@@ -117,7 +119,12 @@ const AppOrchestrator: React.FC = () => {
 
   // Phase 3: Nanivio Authentication & Identity Entry
   if (!isAuthenticated) {
-    return <NanivioAuthScreen onSuccess={() => setIsAuthModalOpen(false)} />;
+    return (
+      <>
+        <NanivioAuthScreen onSuccess={() => setIsAuthModalOpen(false)} />
+        <NewUserInstallPrompt />
+      </>
+    );
   }
 
   // Phase 3: Main Nanivio Application (with modal support for switching identities)

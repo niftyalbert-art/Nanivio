@@ -36,6 +36,7 @@ import { AdminAuditTrail } from './AdminAuditTrail';
 import { AdminPaymentGatewaysManager } from './AdminPaymentGatewaysManager';
 import { AdminRideHailingMapsManager } from './AdminRideHailingMapsManager';
 import { AdminFeatureLauncher } from './AdminFeatureLauncher';
+import { AdminLangpretationManager } from './AdminLangpretationManager';
 
 export const AdminControlCenter: React.FC = () => {
   const {
@@ -55,7 +56,7 @@ export const AdminControlCenter: React.FC = () => {
     adminUsersList,
   } = useNanivio();
 
-  const [adminSubTab, setAdminSubTab] = useState<'launcher' | 'rides-maps' | 'users' | 'experts' | 'businesses' | 'drivers' | 'gateways' | 'audit' | 'switches'>('launcher');
+  const [adminSubTab, setAdminSubTab] = useState<'launcher' | 'langpretation' | 'rides-maps' | 'users' | 'experts' | 'businesses' | 'drivers' | 'gateways' | 'audit' | 'switches'>('launcher');
   const [adminKeyInput, setAdminKeyInput] = useState('');
   const [keyError, setKeyError] = useState('');
   const [savedSuccess, setSavedSuccess] = useState(false);
@@ -242,6 +243,24 @@ export const AdminControlCenter: React.FC = () => {
         </button>
 
         <button
+          id="tab-admin-langpretation"
+          onClick={() => setAdminSubTab('langpretation')}
+          className={`px-4 py-2.5 rounded-2xl text-xs font-bold flex items-center gap-2 transition-all shrink-0 cursor-pointer ${
+            adminSubTab === 'langpretation'
+              ? 'bg-gradient-to-r from-emerald-500 to-teal-500 text-slate-950 shadow-md shadow-emerald-500/20 font-black'
+              : 'bg-slate-900/80 text-slate-400 hover:text-white border border-slate-800 hover:border-slate-700'
+          }`}
+        >
+          <Globe className="w-4 h-4 text-emerald-400" />
+          <span>18-Language Langpretation</span>
+          <span className={`px-2 py-0.5 rounded-full text-[10px] font-mono font-bold ${
+            adminSubTab === 'langpretation' ? 'bg-slate-950 text-emerald-300' : 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
+          }`}>
+            18 / 18
+          </span>
+        </button>
+
+        <button
           id="tab-admin-rides-maps"
           onClick={() => setAdminSubTab('rides-maps')}
           className={`px-4 py-2.5 rounded-2xl text-xs font-bold flex items-center gap-2 transition-all shrink-0 cursor-pointer ${
@@ -373,6 +392,7 @@ export const AdminControlCenter: React.FC = () => {
 
       {/* Sub-tab Views */}
       {adminSubTab === 'launcher' && <AdminFeatureLauncher />}
+      {adminSubTab === 'langpretation' && <AdminLangpretationManager />}
       {adminSubTab === 'rides-maps' && <AdminRideHailingMapsManager />}
       {adminSubTab === 'users' && <AdminUserDirectory />}
       {adminSubTab === 'experts' && <AdminExpertQueue />}
@@ -712,6 +732,18 @@ export const AdminControlCenter: React.FC = () => {
               label: 'Free Audio & Video Calls (All Users)',
               desc: 'Default: ON. When ON, calling panel displays Free Audio/Video Calls with no minute deductions. When OFF, users see monthly subscription & minutes quota.',
               danger: false,
+            },
+            {
+              key: 'callMinutesWarningApproved',
+              label: 'In-Call Minutes Running Warnings',
+              desc: 'Admin authorization for in-call running minutes warnings and countdown alerts. When OFF (default), calling is free without running warnings.',
+              danger: false,
+            },
+            {
+              key: 'nanivioRideEnabled',
+              label: 'Nanivio Ride Service (Master Switch)',
+              desc: 'Controls consumer ride bookings, vehicle hailing, live route radar, and driver trip matching',
+              danger: true,
             },
             {
               key: 'audioCallsEnabled',

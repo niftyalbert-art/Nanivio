@@ -46,6 +46,7 @@ import {
   Camera,
   Smile,
   SmilePlus,
+  Volume2,
 } from 'lucide-react';
 import { useNanivio } from '../../context/NanivioContext';
 import { SUPPORTED_LANGUAGES, ChatMessage, Conversation, SavedContact } from '../../types';
@@ -111,6 +112,8 @@ export const ChatView: React.FC = () => {
   const [isRecordingVoice, setIsRecordingVoice] = useState(false);
   const [showOriginalMap, setShowOriginalMap] = useState<Record<string, boolean>>({});
   const [playingVoiceId, setPlayingVoiceId] = useState<string | null>(null);
+  const [playingVoiceTrack, setPlayingVoiceTrack] = useState<Record<string, 'translated' | 'original'>>({});
+  const audioPlayerRef = useRef<HTMLAudioElement | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [showMobileChatThread, setShowMobileChatThread] = useState(false);
 
@@ -188,9 +191,72 @@ export const ChatView: React.FC = () => {
     await sendMessage(text);
   };
 
-  const handleVoiceSend = async (duration: number, transcript: string) => {
+  const handleVoiceSend = async (payload: any) => {
     setIsRecordingVoice(false);
-    await sendVoiceNote(duration, transcript);
+    if (payload && typeof payload === 'object' && payload.duration) {
+      await sendVoiceNote(
+        payload.duration,
+        payload.transcript,
+        payload.audioBlobUrl,
+        payload.isLangpretation,
+        payload.translatedAudioUrl,
+        payload.translatedTranscript,
+        payload.targetLang
+      );
+    } else {
+      await sendVoiceNote(payload || 3, 'Voice note');
+    }
+  };
+
+  const handleTogglePlayVoice = (msg: ChatMessage) => {
+    if (!msg.voiceNote) return;
+
+    if (playingVoiceId === msg.id) {
+      if (audioPlayerRef.current) {
+        audioPlayerRef.current.pause();
+        audioPlayerRef.current = null;
+      }
+      setPlayingVoiceId(null);
+      return;
+    }
+
+    if (audioPlayerRef.current) {
+      audioPlayerRef.current.pause();
+      audioPlayerRef.current = null;
+    }
+
+    const currentTrack = playingVoiceTrack[msg.id] || (msg.voiceNote.hasLangpretation && msg.voiceNote.translatedAudioUrl ? 'translated' : 'original');
+    const audioUrl = currentTrack === 'translated'
+      ? (msg.voiceNote.translatedAudioUrl || msg.voiceNote.audioBlobUrl)
+      : (msg.voiceNote.audioBlobUrl || msg.voiceNote.translatedAudioUrl);
+
+    if (audioUrl) {
+      try {
+        const audio = new Audio(audioUrl);
+        audioPlayerRef.current = audio;
+        setPlayingVoiceId(msg.id);
+
+        audio.onended = () => {
+          setPlayingVoiceId(null);
+          audioPlayerRef.current = null;
+        };
+        audio.onerror = () => {
+          setPlayingVoiceId(null);
+          audioPlayerRef.current = null;
+        };
+
+        audio.play().catch(() => {
+          setPlayingVoiceId(null);
+        });
+      } catch (err) {
+        console.warn('Audio playback error:', err);
+        setPlayingVoiceId(null);
+      }
+    } else {
+      // Visual fallback if audio URL is absent
+      setPlayingVoiceId(msg.id);
+      setTimeout(() => setPlayingVoiceId(null), (msg.voiceNote.duration || 3) * 1000);
+    }
   };
 
   const handleSendMedia = async (media: {
@@ -940,20 +1006,56 @@ export const ChatView: React.FC = () => {
                         {/* Voice Note Bubble */}
                         {msg.isVoiceNote && msg.voiceNote ? (
                           <div
-                            className={`rounded-2xl p-3.5 border shadow-md space-y-2.5 ${
+                            className={`rounded-2xl p-3.5 border shadow-md space-y-2.5 max-w-sm sm:max-w-md ${
                               isMe
-                                ? 'bg-emerald-950/80 border-emerald-500/50 text-white'
-                                : 'bg-slate-900 border-slate-700 text-slate-100'
+                                ? 'bg-gradient-to-br from-emerald-950/90 to-slate-900 border-emerald-500/50 text-white'
+                                : 'bg-gradient-to-br from-slate-900 to-[#0c1424] border-slate-700 text-slate-100'
                             }`}
                           >
+                            {/* Track Selector for Langpretation Voice Notes */}
+                            {msg.voiceNote.hasLangpretation && msg.voiceNote.translatedAudioUrl && (
+                              <div className="flex items-center justify-between pb-1.5 border-b border-white/10 text-[10px] font-mono">
+                                <span className="flex items-center gap-1 text-emerald-400 font-bold">
+                                  <Sparkles className="w-3 h-3" />
+                                  <span>Langpretation Audio</span>
+                                </span>
+                                <div className="flex items-center gap-1 bg-black/40 p-0.5 rounded-lg border border-white/10">
+                                  <button
+                                    onClick={() => setPlayingVoiceTrack((prev) => ({ ...prev, [msg.id]: 'translated' }))}
+                                    className={`px-2 py-0.5 rounded text-[9.5px] font-bold transition-all cursor-pointer ${
+                                      (playingVoiceTrack[msg.id] || 'translated') === 'translated'
+                                        ? 'bg-emerald-500 text-slate-950 font-extrabold shadow'
+                                        : 'text-slate-400 hover:text-white'
+                                    }`}
+                                  >
+                                    Translated
+                                  </button>
+                                  <button
+                                    onClick={() => setPlayingVoiceTrack((prev) => ({ ...prev, [msg.id]: 'original' }))}
+                                    className={`px-2 py-0.5 rounded text-[9.5px] font-bold transition-all cursor-pointer ${
+                                      playingVoiceTrack[msg.id] === 'original'
+                                        ? 'bg-slate-700 text-white font-extrabold shadow'
+                                        : 'text-slate-400 hover:text-white'
+                                    }`}
+                                  >
+                                    Original
+                                  </button>
+                                </div>
+                              </div>
+                            )}
+
+                            {/* Player Bar */}
                             <div className="flex items-center gap-3">
                               <button
-                                onClick={() =>
-                                  setPlayingVoiceId(playingVoiceId === msg.id ? null : msg.id)
-                                }
-                                className="w-9 h-9 rounded-full bg-emerald-500 text-slate-950 flex items-center justify-center hover:scale-105 transition-transform shrink-0"
+                                onClick={() => handleTogglePlayVoice(msg)}
+                                className="w-10 h-10 rounded-full bg-emerald-500 hover:bg-emerald-400 text-slate-950 flex items-center justify-center hover:scale-105 transition-transform shrink-0 shadow-lg shadow-emerald-500/30 cursor-pointer"
+                                title={playingVoiceId === msg.id ? 'Pause Voice Note' : 'Play Voice Note'}
                               >
-                                {playingVoiceId === msg.id ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4 ml-0.5" />}
+                                {playingVoiceId === msg.id ? (
+                                  <Pause className="w-4 h-4 fill-slate-950" />
+                                ) : (
+                                  <Play className="w-4 h-4 ml-0.5 fill-slate-950" />
+                                )}
                               </button>
 
                               <div className="flex-1 space-y-1">
@@ -963,25 +1065,52 @@ export const ChatView: React.FC = () => {
                                       key={i}
                                       style={{ height: `${h}%` }}
                                       className={`w-1 rounded-full transition-all ${
-                                        playingVoiceId === msg.id ? 'bg-emerald-400' : 'bg-slate-500'
+                                        playingVoiceId === msg.id
+                                          ? 'bg-emerald-400 animate-pulse'
+                                          : 'bg-slate-600'
                                       }`}
                                     />
                                   ))}
                                 </div>
                                 <div className="flex justify-between text-[10px] font-mono text-slate-400">
-                                  <span>0:0{msg.voiceNote.duration}</span>
-                                  <span>Langpretation Voice</span>
+                                  <span>0:{(msg.voiceNote.duration || 3).toString().padStart(2, '0')}</span>
+                                  <span className="flex items-center gap-1">
+                                    <Volume2 className="w-3 h-3 text-emerald-400" />
+                                    <span>
+                                      {msg.voiceNote.hasLangpretation
+                                        ? `Langpretation (${(playingVoiceTrack[msg.id] || 'translated').toUpperCase()})`
+                                        : 'Normal Voice Note'}
+                                    </span>
+                                  </span>
                                 </div>
                               </div>
                             </div>
 
-                            {/* Receiver-language transcript */}
-                            <div className="bg-slate-950/80 rounded-xl p-2 text-xs border border-emerald-500/30 text-emerald-200">
-                              <div className="text-[9px] uppercase font-mono text-emerald-400 font-bold mb-0.5">
-                                Transcript in {myLangInfo.name}:
+                            {/* Transcript Area */}
+                            {msg.voiceNote.hasLangpretation && msg.voiceNote.translatedTranscript ? (
+                              <div className="bg-slate-950/90 rounded-xl p-2.5 text-xs border border-emerald-500/30 text-emerald-200 space-y-1">
+                                <div className="flex items-center justify-between text-[9.5px] uppercase font-mono text-emerald-400 font-bold">
+                                  <span>Translated to {myLangInfo.name}:</span>
+                                  <span className="text-slate-500">{msg.voiceNote.provider || 'Khaya / Palabra'}</span>
+                                </div>
+                                <p className="text-[13px] leading-relaxed text-white">
+                                  "{msg.voiceNote.translatedTranscript}"
+                                </p>
+                                {msg.voiceNote.transcript && (
+                                  <details className="text-[11px] text-slate-400 pt-1 border-t border-slate-800">
+                                    <summary className="cursor-pointer hover:text-slate-200">
+                                      View original transcription
+                                    </summary>
+                                    <p className="mt-1 text-slate-300 italic">"{msg.voiceNote.transcript}"</p>
+                                  </details>
+                                )}
                               </div>
-                              <p>"{msg.voiceNote.translatedTranscript || msg.voiceNote.transcript}"</p>
-                            </div>
+                            ) : msg.voiceNote.transcript ? (
+                              <div className="bg-slate-950/80 rounded-xl p-2 text-xs border border-slate-800 text-slate-300">
+                                <span className="text-[9.5px] font-mono text-slate-500 block">Transcription:</span>
+                                <p className="text-[12.5px] mt-0.5">"{msg.voiceNote.transcript}"</p>
+                              </div>
+                            ) : null}
                           </div>
                         ) : msg.mediaType === 'image' && msg.mediaUrl ? (
                           /* Photo Attachment Bubble */

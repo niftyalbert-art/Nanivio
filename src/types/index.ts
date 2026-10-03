@@ -89,10 +89,14 @@ export interface VoiceNoteData {
   id: string;
   duration: number; // in seconds
   audioBlobUrl?: string;
+  translatedAudioUrl?: string;
   waveform: number[];
   transcript?: string;
   translatedTranscript?: string; // in receiver's language
   hasLangpretation: boolean;
+  sourceLang?: string;
+  targetLang?: string;
+  provider?: string;
 }
 
 export interface ChatMessage {
@@ -276,6 +280,7 @@ export interface FinancialTransaction {
 
 export interface AdminFeatureSwitches {
   freeCallsForAllUsers: boolean; // Master toggle: When ON, calls are free for all users worldwide. When OFF, metered by subscription/minute quota.
+  callMinutesWarningApproved?: boolean; // When true, admin permits in-call minutes running notifications. When false (default), normal audio and video calling is 100% free with no warnings.
   audioCallsEnabled: boolean;
   videoCallsEnabled: boolean;
   liveAdsEnabled: boolean;
@@ -293,6 +298,7 @@ export interface AdminFeatureSwitches {
   maintenanceMode: boolean;
   allowPaidAdCollapse: boolean;
   // Ride-Hailing, Google Maps & Driver Fleet Operations
+  nanivioRideEnabled?: boolean; // Master toggle to switch on/off Nanivio Ride
   nanivioDriveEnabled?: boolean; // Master toggle to switch on/off entire Nanivio Drive (Rides, Rentals, Driver Cockpit, Fleet Dispatch)
   rideHailingEnabled?: boolean;
   googleMapsSdkEnabled?: boolean;

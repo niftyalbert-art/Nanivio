@@ -41,6 +41,22 @@ export const AdminFeatureLauncher: React.FC = () => {
 
   const featureDeck = [
     {
+      id: 'nanivio-ride-master',
+      title: 'Nanivio Ride Service (Master On/Off)',
+      description: 'Master administrative switch to toggle Nanivio Ride bookings, vehicle hailing, live route radar, and driver trip matching.',
+      icon: Car,
+      color: 'from-indigo-700 via-purple-800 to-slate-900',
+      badge: 'RIDE MASTER ACCESS',
+      switchKey: 'nanivioRideEnabled',
+      isEnabled: adminFeatures.nanivioRideEnabled !== false,
+      tabTarget: 'ride',
+      primaryActionLabel: 'Launch Ride Console',
+      testAction: () => {
+        setActiveTab('ride');
+        showToast('Opened Nanivio Ride');
+      },
+    },
+    {
       id: 'nanivio-drive-master',
       title: 'Entire Nanivio Drive Fleet (Master Control)',
       description: 'Master platform kill-switch for all vehicle booking, Uba car rentals, live Accra driver dispatch radar, and partner cockpits.',

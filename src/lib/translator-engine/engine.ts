@@ -1,4 +1,4 @@
-import { LanguageRouter, RouteDecision, Language18MatrixItem } from './routing/language-router';
+import { LanguageRouter, RouteDecision, Language18MatrixItem, LangpretationMode, CompleteRoutePlan } from './routing/language-router';
 import { PivotRouter } from './routing/pivot-router';
 import { TranslationCache } from './cache/translation-cache';
 import { LatencyMetricsTracker, QualityMetricsReport } from './metrics/latency';
@@ -49,6 +49,13 @@ export class NanivioTranslatorEngine {
       NanivioTranslatorEngine.instance = new NanivioTranslatorEngine();
     }
     return NanivioTranslatorEngine.instance;
+  }
+
+  /**
+   * Capability-based provider router for Call, Video, Voice-Note, Text
+   */
+  public route(sourceLang: string, targetLang: string, mode: LangpretationMode = 'CALL'): CompleteRoutePlan {
+    return this.router.route(sourceLang, targetLang, mode);
   }
 
   // ==========================================================================

@@ -19,6 +19,7 @@ import {
   ChevronDown,
   Layers,
   X,
+  Tv,
 } from 'lucide-react';
 import { useNanivio } from '../../context/NanivioContext';
 import { LangpretationIcon } from '../common/LangpretationIcon';
@@ -30,6 +31,7 @@ import {
   REGIONAL_ZONES,
 } from '../../utils/geoMatchingAlgorithm';
 import { authClient } from '../../lib/authClient';
+import { LiveServices4KVideoHub } from '../services/LiveServices4KVideoHub';
 import type { ExpertApplication, BusinessApplication } from '../../types/auth';
 
 export const VerifiedServicesLocationSection: React.FC = () => {
@@ -47,6 +49,7 @@ export const VerifiedServicesLocationSection: React.FC = () => {
   const [isLoading, setIsLoading] = useState<boolean>(true);
 
   // Filter States
+  const [sectionViewMode, setSectionViewMode] = useState<'4k_live' | 'directory'>('4k_live');
   const [filterType, setFilterType] = useState<'all' | 'expert' | 'business'>('all');
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
   const [searchQuery, setSearchQuery] = useState<string>('');
@@ -176,7 +179,7 @@ export const VerifiedServicesLocationSection: React.FC = () => {
   };
 
   return (
-    <section className="space-y-5" aria-label="Verified Professionals and Businesses">
+    <section id="frontpage-services-section" className="space-y-5" aria-label="Verified Professionals and Businesses">
       {/* Header & Location Detection Indicator */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-slate-800/80 pb-4">
         <div>
@@ -185,29 +188,69 @@ export const VerifiedServicesLocationSection: React.FC = () => {
               <Sparkles className="w-5 h-5" />
             </span>
             <h2 className="text-xl font-bold text-white tracking-tight">
-              Connect with Verified Professionals &amp; Businesses
+              Nanivio Services &amp; 4K Live Broadcast
             </h2>
           </div>
           <p className="text-xs sm:text-sm text-slate-400 mt-1 max-w-2xl">
-            Live directory of verified doctors, legal arbitrators, and cross-border commercial enterprises. Connected dynamically to your region with instant Langpretation.
+            Live 4K interactive broadcasts, verified business advertisements, and directory of certified cross-border experts with real-time Langpretation.
           </p>
         </div>
 
-        {/* Dynamic Location Detection Status Badge */}
-        <div className="flex items-center gap-2.5 px-3.5 py-2 rounded-2xl bg-slate-900/90 border border-slate-700/80 text-xs shadow-inner">
-          <div className="flex items-center gap-1.5 text-emerald-400 font-semibold">
-            <MapPin className="w-4 h-4 animate-bounce" />
-            <span>{activeUserProfile.country}</span>
-          </div>
-          <span className="text-slate-600">•</span>
-          <span className="text-slate-300 font-medium">
-            {activeUserProfile.detectedZone.name}
-          </span>
-          <span className="px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 text-[10px] font-bold border border-emerald-500/40">
-            Live Geo-Ranked
-          </span>
+        {/* Section View Switcher Pills */}
+        <div className="flex items-center gap-2 bg-[#091222] p-1.5 rounded-2xl border border-slate-800 shadow-md">
+          <button
+            onClick={() => setSectionViewMode('4k_live')}
+            className={`px-3.5 py-1.5 rounded-xl text-xs font-black flex items-center gap-2 transition-all cursor-pointer ${
+              sectionViewMode === '4k_live'
+                ? 'bg-gradient-to-r from-rose-600 via-amber-500 to-emerald-500 text-slate-950 shadow-md shadow-amber-500/20'
+                : 'text-amber-300 hover:text-white hover:bg-slate-900'
+            }`}
+          >
+            <span className="w-2 h-2 rounded-full bg-rose-500 animate-ping" />
+            <Tv className="w-4 h-4 text-amber-400" />
+            <span>4K Live &amp; Ads</span>
+            <span className="text-[9px] px-1.5 py-0.2 rounded-full bg-slate-950/40 text-amber-200 font-bold">
+              4K UHD
+            </span>
+          </button>
+
+          <button
+            onClick={() => setSectionViewMode('directory')}
+            className={`px-3.5 py-1.5 rounded-xl text-xs font-black flex items-center gap-1.5 transition-all cursor-pointer ${
+              sectionViewMode === 'directory'
+                ? 'bg-emerald-500 text-slate-950 shadow-md shadow-emerald-500/20'
+                : 'text-slate-300 hover:text-white hover:bg-slate-900'
+            }`}
+          >
+            <Layers className="w-4 h-4" />
+            <span>Verified Directory</span>
+            <span className="text-[9px] px-1.5 py-0.2 rounded-full bg-slate-950/40 text-slate-300 font-bold">
+              {matchedResults.length}
+            </span>
+          </button>
         </div>
       </div>
+
+      {sectionViewMode === '4k_live' ? (
+        <LiveServices4KVideoHub />
+      ) : (
+        <>
+          {/* Dynamic Location Detection Status Badge */}
+          <div className="flex items-center justify-between gap-3 p-3 rounded-2xl bg-slate-900/90 border border-slate-800">
+            <div className="flex items-center gap-2.5 text-xs">
+              <div className="flex items-center gap-1.5 text-emerald-400 font-semibold">
+                <MapPin className="w-4 h-4 animate-bounce" />
+                <span>{activeUserProfile.country}</span>
+              </div>
+              <span className="text-slate-600">•</span>
+              <span className="text-slate-300 font-medium">
+                {activeUserProfile.detectedZone.name}
+              </span>
+            </div>
+            <span className="px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 text-[10px] font-bold border border-emerald-500/40">
+              Live Geo-Ranked
+            </span>
+          </div>
 
       {/* Control Bar: Region Override, Search, Filter Pills */}
       <div className="space-y-3 bg-slate-900/60 p-4 rounded-2xl border border-slate-800">
@@ -623,6 +666,8 @@ export const VerifiedServicesLocationSection: React.FC = () => {
             </div>
           </div>
         </div>
+      )}
+        </>
       )}
     </section>
   );

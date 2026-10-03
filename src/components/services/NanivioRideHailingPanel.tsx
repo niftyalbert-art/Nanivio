@@ -27,6 +27,7 @@ import {
 import { NanivioDriver, RideTierOption, RideServiceTier } from '../../types/drive';
 import { RIDE_TIER_OPTIONS, POPULAR_LOCATIONS } from '../../data/driveMockData';
 import { RidePaymentReceiptModal, RideReceiptData } from './RidePaymentReceiptModal';
+import { useNanivio } from '../../context/NanivioContext';
 
 interface NanivioRideHailingPanelProps {
   drivers: NanivioDriver[];
@@ -61,6 +62,9 @@ export const NanivioRideHailingPanel: React.FC<NanivioRideHailingPanelProps> = (
   onCallDriver,
   onSwitchToDriverCockpit,
 }) => {
+  const { adminFeatures, updateAdminFeature, isAdmin } = useNanivio();
+  const isRideEnabled = adminFeatures?.nanivioRideEnabled !== false && adminFeatures?.nanivioDriveEnabled !== false;
+
   const [paymentMethod, setPaymentMethod] = useState<'wallet' | 'momo' | 'cash'>('wallet');
   const [isSearching, setIsSearching] = useState(false);
   const [searchCountdown, setSearchCountdown] = useState(6);
@@ -146,6 +150,10 @@ export const NanivioRideHailingPanel: React.FC<NanivioRideHailingPanelProps> = (
   }, [isSearching, drivers]);
 
   const handleRequestRide = () => {
+    if (!isRideEnabled) {
+      alert('Nanivio Ride service is currently switched OFF by administrator.');
+      return;
+    }
     if (!destinationLocation) {
       alert('Please select a destination to request a Nanivio Ride.');
       return;
@@ -221,7 +229,7 @@ export const NanivioRideHailingPanel: React.FC<NanivioRideHailingPanelProps> = (
   return (
     <div className="p-4 sm:p-5 rounded-3xl bg-slate-950/90 border border-slate-800 shadow-xl space-y-4">
       {/* Header */}
-      <div className="flex items-center justify-between pb-3 border-b border-slate-800/80">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-3 border-b border-slate-800/80">
         <div className="flex items-center gap-2">
           <div className="w-8 h-8 rounded-xl bg-gradient-to-tr from-emerald-500 to-teal-400 flex items-center justify-center text-slate-950 shadow-md shadow-emerald-500/20">
             <Car className="w-4 h-4 font-bold" />
@@ -232,11 +240,62 @@ export const NanivioRideHailingPanel: React.FC<NanivioRideHailingPanelProps> = (
           </div>
         </div>
 
-        <span className="text-[11px] px-2.5 py-1 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 font-semibold flex items-center gap-1.5">
-          <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-          <span>{drivers.length} Drivers Online</span>
-        </span>
+        <div className="flex items-center gap-2">
+          {isAdmin && (
+            <button
+              onClick={() => updateAdminFeature('nanivioRideEnabled', !isRideEnabled)}
+              className={`px-3 py-1 rounded-xl text-xs font-bold border transition-all cursor-pointer flex items-center gap-1.5 shadow-sm ${
+                isRideEnabled
+                  ? 'bg-rose-500/20 hover:bg-rose-500/30 text-rose-300 border-rose-500/40'
+                  : 'bg-emerald-500 hover:bg-emerald-400 text-slate-950 border-emerald-400 font-extrabold shadow-md'
+              }`}
+              title={isRideEnabled ? 'Admin: Switch Nanivio Ride OFF' : 'Admin: Switch Nanivio Ride ON'}
+            >
+              <span className={`w-2 h-2 rounded-full ${isRideEnabled ? 'bg-emerald-400 animate-pulse' : 'bg-rose-500'}`} />
+              <span>Admin: Ride {isRideEnabled ? 'ON' : 'OFF'}</span>
+            </button>
+          )}
+
+          <span className={`text-[11px] px-2.5 py-1 rounded-full border font-semibold flex items-center gap-1.5 ${
+            isRideEnabled
+              ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30'
+              : 'bg-rose-500/20 text-rose-300 border-rose-500/30'
+          }`}>
+            <span className={`w-2 h-2 rounded-full ${isRideEnabled ? 'bg-emerald-400 animate-pulse' : 'bg-rose-500'}`} />
+            <span>{isRideEnabled ? `${drivers.length} Drivers Online` : 'Ride Service OFF'}</span>
+          </span>
+        </div>
       </div>
+
+      {/* Admin Ride OFF Notice Banner */}
+      {!isRideEnabled && (
+        <div className="p-3.5 rounded-2xl bg-rose-950/80 border border-rose-500/50 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs shadow-lg">
+          <div className="flex items-center gap-2.5">
+            <div className="w-8 h-8 rounded-xl bg-rose-500/20 text-rose-400 flex items-center justify-center shrink-0">
+              <Car className="w-4 h-4" />
+            </div>
+            <div>
+              <div className="font-bold text-white flex items-center gap-1.5">
+                <span>Nanivio Ride is Currently OFF</span>
+                <span className="px-1.5 py-0.2 rounded bg-rose-500/20 text-rose-300 text-[9px] font-mono font-bold">
+                  ADMIN SUSPENDED
+                </span>
+              </div>
+              <p className="text-rose-200/80 text-[11px] mt-0.5">
+                Ride bookings and fleet dispatch are temporarily disabled by the platform administrator.
+              </p>
+            </div>
+          </div>
+          {isAdmin && (
+            <button
+              onClick={() => updateAdminFeature('nanivioRideEnabled', true)}
+              className="px-3 py-1.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-xs shrink-0 cursor-pointer shadow"
+            >
+              Turn Ride ON
+            </button>
+          )}
+        </div>
+      )}
 
       {/* ACTIVE TRIP IN PROGRESS STATE (INTERACTIVE LIFECYCLE) */}
       {activeTrip && (
@@ -708,13 +767,20 @@ export const NanivioRideHailingPanel: React.FC<NanivioRideHailingPanelProps> = (
           {/* Request Button */}
           <button
             onClick={handleRequestRide}
-            className="w-full py-3 rounded-2xl bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-slate-950 font-extrabold text-xs flex items-center justify-center gap-2 cursor-pointer shadow-lg shadow-emerald-500/20 transition-all active:scale-[0.99]"
+            disabled={!isRideEnabled}
+            className={`w-full py-3 rounded-2xl font-extrabold text-xs flex items-center justify-center gap-2 shadow-lg transition-all active:scale-[0.99] ${
+              isRideEnabled
+                ? 'bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-slate-950 shadow-emerald-500/20 cursor-pointer'
+                : 'bg-slate-800 text-slate-500 border border-slate-700 cursor-not-allowed'
+            }`}
           >
             <Car className="w-4 h-4" />
             <span>
-              Request {currentTierInfo.title} · GH₵ {calculateFare(currentTierInfo)}
+              {isRideEnabled
+                ? `Request ${currentTierInfo.title} · GH₵ ${calculateFare(currentTierInfo)}`
+                : 'Nanivio Ride Offline (Admin OFF)'}
             </span>
-            <ArrowRight className="w-4 h-4" />
+            {isRideEnabled && <ArrowRight className="w-4 h-4" />}
           </button>
         </div>
       )}

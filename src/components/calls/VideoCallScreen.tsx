@@ -20,7 +20,6 @@ import {
   Check,
   Send,
   X,
-  GripHorizontal,
   Radio,
   Sparkles,
   Play,
@@ -30,7 +29,6 @@ import { useNanivio } from '../../context/NanivioContext';
 import { SUPPORTED_LANGUAGES } from '../../types';
 import { LangpretationIcon } from '../common/LangpretationIcon';
 import { NanivioLogo } from '../common/NanivioLogo';
-import { SmartLiveServicesStrip } from './SmartLiveServicesStrip';
 import { LiveCallVideoStage } from './LiveCallVideoStage';
 import { speechService } from '../../services/speechService';
 import { NanivioTranslatorEngine } from '../../lib/translator-engine/engine';
@@ -57,6 +55,7 @@ export const VideoCallScreen: React.FC<VideoCallScreenProps> = ({ onEndCall }) =
     wallets,
     simulateSpeakerUtterance,
     langpretationMeter,
+    adminFeatures,
   } = useNanivio();
 
   // Participant resolution
@@ -80,7 +79,6 @@ export const VideoCallScreen: React.FC<VideoCallScreenProps> = ({ onEndCall }) =
   const [isSpeakerOn, setIsSpeakerOn] = useState(true);
   const [isPiPSwapped, setIsPiPSwapped] = useState(false);
   const [showLanguagePicker, setShowLanguagePicker] = useState(false);
-  const [isServicesDrawerCollapsed, setIsServicesDrawerCollapsed] = useState(true);
   const [langpretationStage, setLangpretationStage] = useState<'listening' | 'interpreting' | 'speaking'>('listening');
   const [activeTab, setActiveTab] = useState<'chats' | 'calls' | 'tap_pad' | 'contacts' | 'more'>('calls');
   const [waveHeights, setWaveHeights] = useState<number[]>([30, 50, 75, 40, 60, 85, 55, 45, 70, 50, 80, 35]);
@@ -97,11 +95,6 @@ export const VideoCallScreen: React.FC<VideoCallScreenProps> = ({ onEndCall }) =
   const [autoVocalize, setAutoVocalize] = useState<boolean>(true);
   const [showQuickPhrases, setShowQuickPhrases] = useState<boolean>(false);
   const [speechStatus, setSpeechStatus] = useState<string>('');
-
-  // Drag-to-collapse / expand state for bottom services & ads drawer
-  const [isDraggingDrawer, setIsDraggingDrawer] = useState(false);
-  const dragStartYRef = useRef<number>(0);
-  const drawerRef = useRef<HTMLDivElement | null>(null);
 
   // Stop STT / TTS on unmount
   useEffect(() => {
@@ -214,32 +207,6 @@ export const VideoCallScreen: React.FC<VideoCallScreenProps> = ({ onEndCall }) =
     return () => {
       clearInterval(waveInterval);
     };
-  }, []);
-
-  // Pointer drag gestures for the bottom services sheet
-  const handleDragStart = useCallback((e: React.PointerEvent) => {
-    setIsDraggingDrawer(true);
-    dragStartYRef.current = e.clientY;
-    (e.target as HTMLElement).setPointerCapture?.(e.pointerId);
-  }, []);
-
-  const handleDragMove = useCallback((e: React.PointerEvent) => {
-    if (!isDraggingDrawer) return;
-    const deltaY = e.clientY - dragStartYRef.current;
-    if (deltaY < -40 && isServicesDrawerCollapsed) {
-      setIsServicesDrawerCollapsed(false);
-      setIsDraggingDrawer(false);
-    } else if (deltaY > 40 && !isServicesDrawerCollapsed) {
-      setIsServicesDrawerCollapsed(true);
-      setIsDraggingDrawer(false);
-    }
-  }, [isDraggingDrawer, isServicesDrawerCollapsed]);
-
-  const handleDragEnd = useCallback((e: React.PointerEvent) => {
-    setIsDraggingDrawer(false);
-    try {
-      (e.target as HTMLElement).releasePointerCapture?.(e.pointerId);
-    } catch (_) {}
   }, []);
 
   // Format call duration
@@ -361,8 +328,8 @@ export const VideoCallScreen: React.FC<VideoCallScreenProps> = ({ onEndCall }) =
           </div>
         </div>
 
-        {/* Section 14, 15, 16: Subtle In-Call Langpretation & Service Value Notice Banner */}
-        {inCallNotice && (
+        {/* In-Call Langpretation Notice Banner (Only shown if admin approved call minute warnings) */}
+        {inCallNotice && adminFeatures?.callMinutesWarningApproved && (
           <div className="absolute top-16 inset-x-4 z-30 max-w-md mx-auto pointer-events-auto">
             <div
               className={`p-3 rounded-2xl backdrop-blur-xl border shadow-2xl flex items-center justify-between gap-3 text-xs ${
@@ -493,50 +460,14 @@ export const VideoCallScreen: React.FC<VideoCallScreenProps> = ({ onEndCall }) =
                 <span className="text-[10px] sm:text-[11px] text-rose-400 font-bold">End Call</span>
               </div>
             </div>
-
-            {/* Smart Live Services Drawer Chevron Toggle & Drag Indicator */}
-            <button
-              onClick={() => setIsServicesDrawerCollapsed(!isServicesDrawerCollapsed)}
-              className="mt-2 flex items-center gap-1 px-3 py-1 rounded-full bg-black/60 border border-slate-700 text-emerald-400 hover:text-emerald-300 text-[11px] font-mono transition-colors shadow-lg"
-              title={isServicesDrawerCollapsed ? 'Pull up live services and ads' : 'Collapse services drawer'}
-            >
-              <GripHorizontal className="w-4 h-4 text-emerald-400" />
-              <span>{isServicesDrawerCollapsed ? 'Live Services & Ads ▲' : 'Hide Services ▼'}</span>
-            </button>
           </div>
         </div>
 
         {/* ============================================================= */}
-        {/* 4. DRAGGABLE & COLLAPSIBLE BOTTOM DRAWER (SERVICES & ADS) */}
+        {/* 4. LANGPRETATION LIVE SUBTITLE & SPEECH-TO-SPEECH BAR */}
         {/* ============================================================= */}
-        <div
-          ref={drawerRef}
-          className="relative z-30 transition-all duration-300 bg-[#070b14]/95 border-t border-slate-800 backdrop-blur-xl shadow-2xl flex flex-col"
-        >
-          {/* Drag Handle Bar */}
-          <div
-            onPointerDown={handleDragStart}
-            onPointerMove={handleDragMove}
-            onPointerUp={handleDragEnd}
-            onPointerCancel={handleDragEnd}
-            className="w-full py-1.5 flex items-center justify-center cursor-grab active:cursor-grabbing hover:bg-white/5 transition-colors touch-none"
-            title="Drag up or down to expand/collapse live services and ads"
-          >
-            <div className="w-12 h-1.5 bg-slate-600 rounded-full shadow-inner" />
-          </div>
-
-          {/* Smart Live Services Strip Content */}
-          <SmartLiveServicesStrip
-            isCollapsed={isServicesDrawerCollapsed}
-            onToggleCollapse={() => setIsServicesDrawerCollapsed(!isServicesDrawerCollapsed)}
-            activeLanguagePair={`${hostLang.name} ⇄ ${remoteLang.name}`}
-          />
-
-          {/* ============================================================= */}
-          {/* 5. LANGPRETATION LIVE SUBTITLE & SPEECH-TO-SPEECH BAR */}
-          {/* ============================================================= */}
-          <div className="px-3.5 sm:px-6 py-2 bg-[#070b14] border-t border-slate-800/80">
-            <div className="rounded-2xl bg-[#0b1322] border border-[#1a273f] p-3 shadow-xl space-y-2">
+        <div className="relative z-30 px-3.5 sm:px-6 py-2 bg-[#070b14]/95 border-t border-slate-800/80 backdrop-blur-md">
+          <div className="rounded-2xl bg-[#0b1322] border border-[#1a273f] p-3 shadow-xl space-y-2">
               {/* Top Indicator Line */}
               <div className="flex items-center justify-between">
                 {/* Left: Langpretation Status + Stage */}
@@ -725,7 +656,6 @@ export const VideoCallScreen: React.FC<VideoCallScreenProps> = ({ onEndCall }) =
               </div>
             </div>
           </div>
-        </div>
 
         {/* IN-CALL LIVE CHAT OVERLAY (WHEN TAB CHATS SELECTED) */}
         {activeTab === 'chats' && (

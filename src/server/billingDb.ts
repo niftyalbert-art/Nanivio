@@ -80,6 +80,8 @@ export class BillingDatabase {
     targetLang: string;
     timestamp: number;
     sessionId?: string;
+    provider?: string;
+    costEstimateUsd?: number;
   }> = [];
 
   // Malvi Business Collaboration Sessions
@@ -2008,6 +2010,8 @@ export class BillingDatabase {
     sourceLang: string;
     targetLang: string;
     sessionId?: string;
+    provider?: string;
+    costEstimateUsd?: number;
   }): {
     success: boolean;
     remainingAllowance: number;
@@ -2016,9 +2020,10 @@ export class BillingDatabase {
     deductedFromBalance: number;
     meter: LangpretationMeterData;
   } {
-    const { userId, channel, minutes, sourceLang, targetLang, sessionId } = data;
+    const { userId, channel, minutes, sourceLang, targetLang, sessionId, provider = 'palabra', costEstimateUsd } = data;
     const now = Date.now();
     const safeMinutes = Math.max(0.1, Number(minutes.toFixed(2)));
+    const calculatedCost = costEstimateUsd !== undefined ? costEstimateUsd : Number((safeMinutes * 0.01).toFixed(4));
 
     // 1. Log to production usage table
     this.langpretationUsageLogs.unshift({
@@ -2030,6 +2035,8 @@ export class BillingDatabase {
       targetLang,
       timestamp: now,
       sessionId,
+      provider,
+      costEstimateUsd: calculatedCost,
     });
 
     // 2. Authoritative quota deduction

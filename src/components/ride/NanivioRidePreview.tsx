@@ -25,7 +25,8 @@ import { locationService } from '../../services/locationService';
 import type { NanivioDriver, RideServiceTier, NearbyLivePlace } from '../../types/drive';
 
 export const NanivioRidePreview: React.FC = () => {
-  const { setActiveTab, billingSummary, start1on1Call } = useNanivio();
+  const { setActiveTab, billingSummary, start1on1Call, adminFeatures, updateAdminFeature, isAdmin } = useNanivio();
+  const isRideEnabled = adminFeatures?.nanivioRideEnabled !== false && adminFeatures?.nanivioDriveEnabled !== false;
   const [activeSubTab, setActiveSubTab] = useState<'dispatch' | 'architecture'>('dispatch');
 
   // Location & Map State
@@ -123,6 +124,36 @@ export const NanivioRidePreview: React.FC = () => {
 
   return (
     <div className="max-w-7xl mx-auto p-4 sm:p-6 lg:p-8 space-y-6 w-full max-w-full overflow-x-hidden">
+      {/* Admin Ride OFF Notice if toggled off */}
+      {!isRideEnabled && (
+        <div className="p-4 rounded-2xl bg-rose-950/80 border border-rose-500/50 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-xl">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-rose-500/20 border border-rose-500/30 flex items-center justify-center text-rose-400 shrink-0">
+              <Car className="w-5 h-5" />
+            </div>
+            <div>
+              <div className="text-sm font-bold text-white flex items-center gap-2">
+                <span>Nanivio Ride is Currently OFF</span>
+                <span className="px-2 py-0.5 rounded-full bg-rose-500/20 text-rose-300 text-[10px] font-mono font-bold">
+                  ADMIN SUSPENDED
+                </span>
+              </div>
+              <p className="text-xs text-rose-200/80 mt-0.5">
+                Ride bookings and fleet hailing have been switched OFF by the administrator.
+              </p>
+            </div>
+          </div>
+          {isAdmin && (
+            <button
+              onClick={() => updateAdminFeature('nanivioRideEnabled', true)}
+              className="px-4 py-2 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 text-xs font-bold transition-all shadow-md shrink-0 cursor-pointer"
+            >
+              Turn Nanivio Ride ON
+            </button>
+          )}
+        </div>
+      )}
+
       {/* Top Banner Header */}
       <div className="bg-gradient-to-br from-[#0c1424] via-[#080d19] to-[#040812] border border-indigo-500/30 rounded-3xl p-6 sm:p-8 shadow-2xl space-y-5 relative overflow-hidden">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-5">

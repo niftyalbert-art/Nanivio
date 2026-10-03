@@ -3,7 +3,32 @@ import { KhayaMtProvider } from '../mt/khaya';
 import { SunbirdMtProvider } from '../mt/sunbird';
 import { PalabraMtProvider } from '../mt/palabra';
 import { NllbMtProvider } from '../mt/nllb';
-import { NANIVIO_18_LANGUAGES, AUTHORITATIVE_18_LANG_CODES } from '../matrix/universal18Matrix';
+import {
+  NANIVIO_18_LANGUAGES,
+  AUTHORITATIVE_18_LANG_CODES,
+  CapabilityLevel,
+  RealtimeStrategy,
+  getLanguageCapability,
+} from '../matrix/universal18Matrix';
+
+export type LangpretationMode = 'CALL' | 'VIDEO_CALL' | 'VOICE_NOTE' | 'TEXT' | 'LIVE_TRANSLATION';
+
+export interface CompleteRoutePlan {
+  sourceLang: string;
+  targetLang: string;
+  mode: LangpretationMode;
+  capabilityStatus: CapabilityLevel;
+  asrProvider: string;
+  mtProvider: string;
+  ttsProvider: string;
+  realtimeStrategy: RealtimeStrategy;
+  fallbackProvider: string;
+  requiresPivot: boolean;
+  pivotLanguage?: string;
+  canExecuteRealtimeAudio: boolean;
+  canExecuteVoiceNote: boolean;
+  estimatedLatencyMs: number;
+}
 
 export interface RouteDecision {
   providerId: 'khaya' | 'sunbird' | 'palabra' | 'nllb';
@@ -45,6 +70,106 @@ export class LanguageRouter {
 
   // 4. Global Trade & International Languages -> Palabra Realtime MT
   private internationalLanguages = new Set(['en', 'fr', 'es', 'ar', 'de', 'it', 'pt', 'zh', 'ja', 'ko']);
+
+  /**
+   * Capability-based router determining STT, MT, TTS, strategy, and fallbacks
+   */
+  public route(sourceLang: string, targetLang: string, mode: LangpretationMode): CompleteRoutePlan {
+    const srcCap = getLanguageCapability(sourceLang);
+    const tgtCap = getLanguageCapability(targetLang);
+
+    // If source === target, direct passthrough
+    if (sourceLang === targetLang) {
+      return {
+        sourceLang,
+        targetLang,
+        mode,
+        capabilityStatus: 'FULL',
+        asrProvider: srcCap.asrProvider,
+        mtProvider: 'DIRECT_PASSTHROUGH',
+        ttsProvider: tgtCap.ttsProvider,
+        realtimeStrategy: 'STREAMING_FULL_DUPLEX',
+        fallbackProvider: 'NONE',
+        requiresPivot: false,
+        canExecuteRealtimeAudio: true,
+        canExecuteVoiceNote: true,
+        estimatedLatencyMs: 5,
+      };
+    }
+
+    // Determine joint capability
+    let jointStatus: CapabilityLevel = 'FULL';
+    if (!srcCap.active || !tgtCap.active) {
+      jointStatus = 'UNAVAILABLE';
+    } else if (srcCap.capability === 'PARTIAL' || tgtCap.capability === 'PARTIAL') {
+      jointStatus = 'PARTIAL';
+    }
+
+    const isGhanaianPair = this.ghanaianLanguages.has(sourceLang) || this.ghanaianLanguages.has(targetLang);
+    const isEastAfricanPair = this.eastAfricanLanguages.has(sourceLang) || this.eastAfricanLanguages.has(targetLang);
+    const isWestAfricanPair = this.westAfricanLanguages.has(sourceLang) || this.westAfricanLanguages.has(targetLang);
+
+    let asrProvider = srcCap.asrProvider;
+    let mtProvider = 'Palabra Realtime MT';
+    let ttsProvider = tgtCap.ttsProvider;
+    let fallbackProvider = 'Meta NLLB-200 / Google Cloud Fallback';
+    let requiresPivot = false;
+    let pivotLanguage: string | undefined;
+    let latency = 550;
+
+    if (isGhanaianPair) {
+      mtProvider = 'Khaya AI (Ghana NLP Engine)';
+      fallbackProvider = 'Meta NLLB-200 / Palabra Pivot';
+      const isCross = (this.ghanaianLanguages.has(sourceLang) && targetLang !== 'en') ||
+                      (this.ghanaianLanguages.has(targetLang) && sourceLang !== 'en');
+      if (isCross && !this.ghanaianLanguages.has(targetLang)) {
+        requiresPivot = true;
+        pivotLanguage = 'en';
+        latency = 1100;
+      } else {
+        latency = 750;
+      }
+    } else if (isEastAfricanPair) {
+      mtProvider = 'Sunbird AI (Makerere University)';
+      fallbackProvider = 'Google Cloud / Meta NLLB';
+      const isCross = (this.eastAfricanLanguages.has(sourceLang) && targetLang !== 'en') ||
+                      (this.eastAfricanLanguages.has(targetLang) && sourceLang !== 'en');
+      if (isCross) {
+        requiresPivot = true;
+        pivotLanguage = 'en';
+        latency = 1150;
+      } else {
+        latency = 780;
+      }
+    } else if (isWestAfricanPair) {
+      mtProvider = 'Khaya AI / Meta NLLB-200';
+      fallbackProvider = 'Palabra Pivot / Google Cloud';
+      latency = 820;
+    }
+
+    // Determine realtime strategy based on mode and language characteristics
+    let strategy: RealtimeStrategy = 'STREAMING_FULL_DUPLEX';
+    if (jointStatus === 'PARTIAL' || isGhanaianPair || isEastAfricanPair || isWestAfricanPair) {
+      strategy = (mode === 'CALL' || mode === 'VIDEO_CALL') ? 'VAD_CHUNKED_TURN' : 'PIPELINE_STT_MT_TTS';
+    }
+
+    return {
+      sourceLang,
+      targetLang,
+      mode,
+      capabilityStatus: jointStatus,
+      asrProvider,
+      mtProvider,
+      ttsProvider,
+      realtimeStrategy: strategy,
+      fallbackProvider,
+      requiresPivot,
+      pivotLanguage,
+      canExecuteRealtimeAudio: jointStatus === 'FULL' || jointStatus === 'PARTIAL',
+      canExecuteVoiceNote: true,
+      estimatedLatencyMs: latency,
+    };
+  }
 
   public resolveRoute(sourceLang: string, targetLang: string): RouteDecision {
     if (sourceLang === targetLang) {

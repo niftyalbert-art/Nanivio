@@ -29,6 +29,7 @@ import {
   NavigationTab,
 } from '../types';
 import { NanivioTranslatorEngine } from '../lib/translator-engine/engine';
+import { NanivioTtsAudioGenerator } from '../lib/translator-engine/audio/ttsAudioGenerator';
 import {
   CURRENT_USER,
   CONTACT_PARTICIPANTS,
@@ -189,7 +190,15 @@ interface NanivioContextType {
   chatNotificationToast: ChatNotificationToast | null;
   dismissChatNotificationToast: () => void;
   sendMessage: (text: string) => Promise<void>;
-  sendVoiceNote: (duration: number, transcript: string) => Promise<void>;
+  sendVoiceNote: (
+    duration: number,
+    transcript: string,
+    audioBlobUrl?: string,
+    isLangpretation?: boolean,
+    translatedAudioUrl?: string,
+    translatedTranscript?: string,
+    targetLang?: string
+  ) => Promise<void>;
   sendMediaMessage: (media: {
     type: 'image' | 'video' | 'document';
     url: string;
@@ -1218,7 +1227,7 @@ export const NanivioProvider: React.FC<{ children: React.ReactNode }> = ({ child
         }
         return null;
       });
-      if (data?.endedBy === 'SYSTEM_BILLING_ENGINE') {
+      if (data?.endedBy === 'SYSTEM_BILLING_ENGINE' && adminFeatures.callMinutesWarningApproved) {
         setInCallNotice({
           type: 'exhausted',
           message: data.reason || 'Call terminated by server: Service Value exhausted.',
@@ -1344,6 +1353,7 @@ export const NanivioProvider: React.FC<{ children: React.ReactNode }> = ({ child
   // Admin Controls
   const [adminFeatures, setAdminFeatures] = useState<AdminFeatureSwitches>({
     freeCallsForAllUsers: true, // Default: Free audio and video calls for all users
+    callMinutesWarningApproved: false, // Default: Free calling with zero minutes warnings unless explicitly approved by admin
     audioCallsEnabled: true,
     videoCallsEnabled: true,
     liveAdsEnabled: true,
@@ -1360,6 +1370,7 @@ export const NanivioProvider: React.FC<{ children: React.ReactNode }> = ({ child
     commFintechEnabled: true,
     maintenanceMode: false,
     allowPaidAdCollapse: true,
+    nanivioRideEnabled: true,
     nanivioDriveEnabled: true,
     rideHailingEnabled: true,
     googleMapsSdkEnabled: true,
@@ -1700,7 +1711,14 @@ export const NanivioProvider: React.FC<{ children: React.ReactNode }> = ({ child
   }, [setTranslationLanguage]);
 
   const updateAdminFeature = async (key: keyof AdminFeatureSwitches, value: boolean) => {
-    const updated = { ...adminFeatures, [key]: value };
+    let updated = { ...adminFeatures, [key]: value };
+    if (key === 'nanivioRideEnabled') {
+      updated.nanivioDriveEnabled = value;
+      updated.rideHailingEnabled = value;
+    } else if (key === 'nanivioDriveEnabled') {
+      updated.nanivioRideEnabled = value;
+      updated.rideHailingEnabled = value;
+    }
     setAdminFeatures(updated);
     try {
       await fetch('/api/admin/features/update', {
@@ -2042,9 +2060,11 @@ export const NanivioProvider: React.FC<{ children: React.ReactNode }> = ({ child
       callTimerRef.current = null;
     }
     playCallEndedTone();
+    agoraClient.restoreOriginalAudioTrack();
     agoraClient.leaveChannel();
 
     if (activeCall) {
+      NanivioTranslatorEngine.getInstance().removeCallSession(activeCall.id);
       // Server-authoritative ledger finalization (only for calls that connected or initialized a billing session)
       if (activeCall.status === 'connected' || (activeUsageSession && activeUsageSession.sessionId === activeCall.id)) {
         completeBillingSession(activeCall.id).catch(() => {});
@@ -2139,6 +2159,9 @@ export const NanivioProvider: React.FC<{ children: React.ReactNode }> = ({ child
     setActiveCall(prev => {
       if (!prev) return null;
       const newState = !prev.langpretationEnabled;
+      if (!newState) {
+        agoraClient.restoreOriginalAudioTrack();
+      }
       return {
         ...prev,
         langpretationEnabled: newState,
@@ -2208,8 +2231,8 @@ export const NanivioProvider: React.FC<{ children: React.ReactNode }> = ({ child
                   localStorage.setItem('nanivio_current_plan_rem', String(updatedRem));
                 } catch (_) {}
 
-                // Section 14: 80% usage threshold subtle notification (20% remaining)
-                if (updatedRem === Math.round(quota * 0.2) && updatedRem > 0) {
+                // Section 14: 80% usage threshold subtle notification (only if admin approved minute warnings)
+                if (adminFeatures.callMinutesWarningApproved && updatedRem === Math.round(quota * 0.2) && updatedRem > 0) {
                   setInCallNotice({
                     type: 'warning',
                     message: `80% of your Langpretation time used (${updatedRem} min remaining).`,
@@ -2217,8 +2240,8 @@ export const NanivioProvider: React.FC<{ children: React.ReactNode }> = ({ child
                   });
                 }
 
-                // Section 15: Value Fallback when subscription reaches 0
-                if (updatedRem === 0) {
+                // Section 15: Value Fallback when subscription reaches 0 (only if admin approved minute warnings)
+                if (adminFeatures.callMinutesWarningApproved && updatedRem === 0) {
                   setInCallNotice({
                     type: 'fallback',
                     message: 'Your subscription time has been used. Nanivio Service Value is now being used.',
@@ -2231,11 +2254,11 @@ export const NanivioProvider: React.FC<{ children: React.ReactNode }> = ({ child
                   langpretationMinutesRemaining: updatedRem,
                 };
               } else {
-                // Subscription time exhausted: Fallback to Nanivio Service Value
+                // Subscription time exhausted: Fallback to Nanivio Service Value (only if admin approved minute warnings)
                 const curBalance =
                   billingSummary?.communicationAccount?.balance ??
                   (wallets?.find((w) => w.currency === 'GHS')?.amount ?? 0.0);
-                if (curBalance <= 0) {
+                if (adminFeatures.callMinutesWarningApproved && curBalance <= 0) {
                   setInCallNotice({
                     type: 'exhausted',
                     message: 'Your Nanivio Service Value is exhausted. Increase Value or upgrade your subscription to continue.',
@@ -2268,7 +2291,7 @@ export const NanivioProvider: React.FC<{ children: React.ReactNode }> = ({ child
                     }));
                   }
 
-                  if (serverSession.shouldTerminate) {
+                  if (serverSession.shouldTerminate && adminFeatures.callMinutesWarningApproved) {
                     setInCallNotice({
                       type: 'exhausted',
                       message: serverSession.exhaustionMessage || 'Service Value exhausted. Grace period ended. Call terminated.',
@@ -2277,7 +2300,7 @@ export const NanivioProvider: React.FC<{ children: React.ReactNode }> = ({ child
                     setTimeout(() => {
                       endCall();
                     }, 1200);
-                  } else if (serverSession.exhaustionNoticeType && serverSession.exhaustionMessage) {
+                  } else if (serverSession.exhaustionNoticeType && serverSession.exhaustionMessage && adminFeatures.callMinutesWarningApproved) {
                     setInCallNotice({
                       type: serverSession.exhaustionNoticeType,
                       message: serverSession.exhaustionMessage,
@@ -2847,27 +2870,43 @@ export const NanivioProvider: React.FC<{ children: React.ReactNode }> = ({ child
     } : c));
   }, []);
 
-  const sendVoiceNote = async (duration: number, transcript: string) => {
+  const sendVoiceNote = async (
+    duration: number,
+    transcript: string,
+    audioBlobUrl?: string,
+    isLangpretation?: boolean,
+    translatedAudioUrl?: string,
+    translatedTranscriptParam?: string,
+    targetLangParam?: string
+  ) => {
     const activeConv = conversations.find(c => c.id === activeConversationId);
     if (!activeConv) return;
 
-    let translatedTranscript = transcript;
-    let voiceNoteProvider = 'none';
-    let voiceNoteLatency = 0;
-    if (globalLangpretationEnabled) {
+    const otherParticipant = activeConv.participants.find(p => p.id !== currentUser.id);
+    const resolvedTargetLang = targetLangParam || (otherParticipant ? otherParticipant.myLanguage : 'en');
+    const shouldLangpretate = isLangpretation !== undefined ? isLangpretation : globalLangpretationEnabled;
+
+    let finalTranslatedTranscript = translatedTranscriptParam || transcript;
+    let finalTranslatedAudioUrl = translatedAudioUrl;
+    let voiceNoteProvider = 'direct-passthrough';
+
+    if (shouldLangpretate) {
       try {
-        const otherParticipant = activeConv.participants.find(p => p.id !== currentUser.id);
-        const targetLang = otherParticipant ? otherParticipant.myLanguage : 'en';
-        // Execute translation via central NanivioTranslatorEngine with cache, routing & fallback (Palabra, Khaya, Sunbird, NLLB)
-        const engine = NanivioTranslatorEngine.getInstance();
-        const mtResult = await engine.translateText(transcript, myLanguage, targetLang);
-        if (mtResult && mtResult.translatedText) {
-          translatedTranscript = mtResult.translatedText;
-          voiceNoteProvider = mtResult.provider;
-          voiceNoteLatency = mtResult.latencyMs;
-          const minsUsed = Number((duration / 60).toFixed(2)) || 0.1;
-          recordLangpretationUsage('VOICE_NOTE', minsUsed, myLanguage, targetLang).catch(() => {});
+        if (!translatedTranscriptParam) {
+          const engine = NanivioTranslatorEngine.getInstance();
+          const mtResult = await engine.translateText(transcript, myLanguage, resolvedTargetLang);
+          if (mtResult && mtResult.translatedText) {
+            finalTranslatedTranscript = mtResult.translatedText;
+            voiceNoteProvider = mtResult.provider;
+          }
         }
+        if (!finalTranslatedAudioUrl && finalTranslatedTranscript) {
+          const synth = await NanivioTtsAudioGenerator.generatePlayableWavBlob(finalTranslatedTranscript, resolvedTargetLang);
+          finalTranslatedAudioUrl = synth.url;
+        }
+
+        const minsUsed = Number((duration / 60).toFixed(2)) || 0.1;
+        recordLangpretationUsage('VOICE_NOTE', minsUsed, myLanguage, resolvedTargetLang).catch(() => {});
       } catch (err) {
         console.warn('Voice note translation failed:', err);
       }
@@ -2876,10 +2915,15 @@ export const NanivioProvider: React.FC<{ children: React.ReactNode }> = ({ child
     const voiceNoteData: VoiceNoteData = {
       id: `vn_${Date.now()}`,
       duration,
+      audioBlobUrl,
+      translatedAudioUrl: shouldLangpretate ? finalTranslatedAudioUrl : undefined,
       waveform: [15, 30, 45, 60, 85, 70, 95, 80, 60, 40, 55, 75, 90, 65, 35, 20],
       transcript,
-      translatedTranscript,
-      hasLangpretation: globalLangpretationEnabled,
+      translatedTranscript: shouldLangpretate ? finalTranslatedTranscript : undefined,
+      hasLangpretation: shouldLangpretate,
+      sourceLang: myLanguage,
+      targetLang: resolvedTargetLang,
+      provider: voiceNoteProvider,
     };
 
     const newMsg: ChatMessage = {
@@ -2888,7 +2932,9 @@ export const NanivioProvider: React.FC<{ children: React.ReactNode }> = ({ child
       senderName: currentUser.name,
       senderAvatar: currentUser.avatar,
       senderLang: myLanguage,
-      text: `🎤 Voice note (${duration}s)`,
+      text: shouldLangpretate
+        ? `🌐 Langpretation Voice Note (${duration}s)`
+        : `🎤 Voice note (${duration}s)`,
       timestamp: Date.now(),
       isVoiceNote: true,
       voiceNote: voiceNoteData,
@@ -2902,7 +2948,9 @@ export const NanivioProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
     setConversations(prev => prev.map(c => c.id === activeConversationId ? {
       ...c,
-      lastMessage: `🎤 Voice note (${duration}s)`,
+      lastMessage: shouldLangpretate
+        ? `🌐 Langpretation Voice Note (${duration}s)`
+        : `🎤 Voice note (${duration}s)`,
       lastMessageTime: Date.now(),
     } : c));
 

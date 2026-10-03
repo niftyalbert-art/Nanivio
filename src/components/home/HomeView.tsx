@@ -17,6 +17,7 @@ import {
   CreditCard,
   Sparkles,
   Gauge,
+  Tv,
 } from 'lucide-react';
 import { useNanivio } from '../../context/NanivioContext';
 import { lookupNanivioUser } from '../../utils/userLookup';
@@ -316,7 +317,7 @@ export const HomeView: React.FC = () => {
       {/* ------------------------------------------------------------- */}
       {/* QUICK LAUNCH BAR: Start Communication Instantly */}
       {/* ------------------------------------------------------------- */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4">
         <button
           onClick={() => setActiveTab('calls')}
           className="p-5 rounded-2xl bg-slate-900/90 border border-slate-800 hover:border-emerald-500/60 transition-all text-left space-y-3 group cursor-pointer shadow-lg hover:bg-slate-850"
@@ -359,6 +360,32 @@ export const HomeView: React.FC = () => {
               Chat &amp; Voice Notes
             </h3>
             <p className="text-xs text-slate-400 mt-0.5">Instant messaging &amp; auto-translating voice notes</p>
+          </div>
+        </button>
+
+        <button
+          onClick={() => {
+            const el = document.getElementById('frontpage-services-section');
+            if (el) {
+              el.scrollIntoView({ behavior: 'smooth' });
+            } else {
+              setActiveTab('services');
+            }
+          }}
+          className="p-5 rounded-2xl bg-slate-900/90 border border-amber-500/30 hover:border-amber-400/70 transition-all text-left space-y-3 group cursor-pointer shadow-lg hover:bg-slate-850"
+        >
+          <div className="w-12 h-12 rounded-xl bg-amber-500/20 border border-amber-500/40 flex items-center justify-center text-amber-400 group-hover:scale-105 transition-transform relative">
+            <Tv className="w-6 h-6" />
+            <span className="absolute -top-1 -right-1 w-2.5 h-2.5 rounded-full bg-rose-500 animate-ping" />
+          </div>
+          <div>
+            <h3 className="text-sm font-bold text-white group-hover:text-amber-300 transition-colors flex items-center gap-1.5">
+              <span>Services &amp; 4K Live</span>
+              <span className="px-1.5 py-0.2 rounded bg-rose-500/20 text-rose-400 text-[9px] font-bold border border-rose-500/40">
+                4K
+              </span>
+            </h3>
+            <p className="text-xs text-slate-400 mt-0.5">Live 4K broadcast, business ads &amp; directory</p>
           </div>
         </button>
 

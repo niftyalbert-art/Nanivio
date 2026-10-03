@@ -555,7 +555,7 @@ export function setupRealtimeServer(httpServer: HttpServer) {
                   const targetName = LANGUAGE_NAMES[destLang] || destLang;
                   const prompt = `You are a real-time voice translation engine for Nanivio Langpretation. Translate this spoken utterance into ${targetName}. Provide ONLY the final translated sentence with no commentary:\n\n"${text}"`;
                   const result = await ai.models.generateContent({
-                    model: 'gemini-3.7-flash',
+                    model: 'gemini-3.8-flash',
                     contents: prompt,
                   });
                   if (result.text) translatedText = result.text.trim().replace(/^"|"$/g, '');
@@ -609,7 +609,7 @@ export function setupRealtimeServer(httpServer: HttpServer) {
                   const targetName = LANGUAGE_NAMES[targetLang] || targetLang;
                   const prompt = `Translate this chat message into ${targetName}. Output ONLY the direct translation:\n\n"${text}"`;
                   const result = await ai.models.generateContent({
-                    model: 'gemini-3.7-flash',
+                    model: 'gemini-3.8-flash',
                     contents: prompt,
                   });
                   if (result.text) translatedText = result.text.trim().replace(/^"|"$/g, '');

@@ -27,9 +27,11 @@ import {
   Store,
   ShoppingCart,
   Hotel,
+  Tv,
 } from 'lucide-react';
 import { useNanivio } from '../../context/NanivioContext';
 import { LiveAdsBanner } from './LiveAdsBanner';
+import { LiveServices4KVideoHub } from './LiveServices4KVideoHub';
 import { ExpertProfileModal } from './ExpertProfileModal';
 import { ExpertProvider, SUPPORTED_LANGUAGES } from '../../types';
 import { NanivioDriver, NearbyLivePlace, NearbyServiceType, RideServiceTier } from '../../types/drive';
@@ -62,9 +64,9 @@ export const ServicesView: React.FC = () => {
 
   const isDriver = currentUser?.role === 'driver' || authUser?.role === 'DRIVER';
 
-  // Top Section Mode - Defaults to 'driver_portal' for driver accounts, or 'categories' for normal users
-  const [activeMainMode, setActiveMainMode] = useState<'categories' | 'map_services' | 'driver_portal' | 'experts'>(() =>
-    isDriver ? 'driver_portal' : 'categories'
+  // Top Section Mode - Defaults to 'driver_portal' for driver accounts, or 'live_services_4k' for normal users
+  const [activeMainMode, setActiveMainMode] = useState<'live_services_4k' | 'categories' | 'map_services' | 'driver_portal' | 'experts'>(() =>
+    isDriver ? 'driver_portal' : 'live_services_4k'
   );
 
   // Automatically switch to driver_portal when a driver logs in
@@ -302,6 +304,22 @@ export const ServicesView: React.FC = () => {
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-2.5 rounded-2xl bg-[#091120] border border-slate-800 shadow-lg">
         <div className="flex items-center gap-2 overflow-x-auto pb-1 sm:pb-0 scrollbar-none touch-pan-x">
           <button
+            onClick={() => setActiveMainMode('live_services_4k')}
+            className={`px-4 py-2 rounded-xl text-xs font-black flex items-center gap-2 transition-all cursor-pointer whitespace-nowrap ${
+              activeMainMode === 'live_services_4k'
+                ? 'bg-gradient-to-r from-rose-600 via-amber-500 to-emerald-500 text-slate-950 shadow-md shadow-amber-500/20'
+                : 'text-amber-300 hover:text-white hover:bg-slate-900 border border-amber-500/30'
+            }`}
+          >
+            <span className="w-2 h-2 rounded-full bg-rose-500 animate-ping" />
+            <Tv className="w-4 h-4 text-amber-400" />
+            <span>4K Live Service &amp; Ads</span>
+            <span className="text-[9px] px-1.5 py-0.2 rounded-full bg-slate-950/40 text-amber-200 font-bold border border-amber-500/30">
+              4K UHD
+            </span>
+          </button>
+
+          <button
             onClick={() => setActiveMainMode('categories')}
             className={`px-4 py-2 rounded-xl text-xs font-black flex items-center gap-2 transition-all cursor-pointer whitespace-nowrap ${
               activeMainMode === 'categories'
@@ -380,6 +398,13 @@ export const ServicesView: React.FC = () => {
           )}
         </div>
       </div>
+
+      {/* ================================================================= */}
+      {/* MODE 4K: 4K ULTRA HD LIVE SERVICES & BUSINESS ADS SCREEN */}
+      {/* ================================================================= */}
+      {activeMainMode === 'live_services_4k' && (
+        <LiveServices4KVideoHub />
+      )}
 
       {/* ================================================================= */}
       {/* MODE 0: LANDING PAGE - SERVICE CATEGORIES HUB (THE REQUESTED VIEW) */}
