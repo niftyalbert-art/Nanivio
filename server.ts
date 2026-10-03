@@ -2,7 +2,6 @@ import express from "express";
 import http from "http";
 import path from "path";
 import crypto from "crypto";
-import { createServer as createViteServer } from "vite";
 import { GoogleGenAI } from "@google/genai";
 import dotenv from "dotenv";
 import {
@@ -4510,19 +4509,27 @@ async function startServer() {
   // Initialize Real-time WebSockets & Calling Signaling Server
   setupRealtimeServer(httpServer);
 
-  // Vite middleware for development
-  if (process.env.NODE_ENV !== "production") {
-    const vite = await createViteServer({
-      server: { middlewareMode: true },
-      appType: "spa",
-    });
-    app.use(vite.middlewares);
-  } else {
+  // Determine production environment:
+  // - Explicit NODE_ENV=production
+  // - Running from dist bundle (e.g. node dist/server.cjs on Render)
+  const isProduction =
+    process.env.NODE_ENV === "production" ||
+    (typeof __filename !== "undefined" && (__filename.includes("dist") || __filename.endsWith(".cjs")));
+
+  if (isProduction) {
     const distPath = path.join(process.cwd(), "dist");
     app.use(express.static(distPath));
     app.get("*", (_req, res) => {
       res.sendFile(path.join(distPath, "index.html"));
     });
+  } else {
+    // Dynamic import of Vite only in development to prevent bundling/runtime errors in production
+    const { createServer: createViteServer } = await import("vite");
+    const vite = await createViteServer({
+      server: { middlewareMode: true },
+      appType: "spa",
+    });
+    app.use(vite.middlewares);
   }
 
   httpServer.listen(PORT, "0.0.0.0", () => {

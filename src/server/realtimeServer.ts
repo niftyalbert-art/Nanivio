@@ -211,6 +211,10 @@ export function broadcastStreamReaction(channelId: string, message: StreamChatMe
 export function setupRealtimeServer(httpServer: HttpServer) {
   const wss = new WebSocketServer({ server: httpServer, path: '/ws' });
 
+  wss.on('error', (err) => {
+    console.warn('[Realtime WSS Warning]', err?.message || err);
+  });
+
   wss.on('connection', (socket: WebSocket) => {
     allSockets.add(socket);
     let currentUser: ConnectedUser | null = null;
