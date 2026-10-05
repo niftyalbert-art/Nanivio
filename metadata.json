@@ -1,0 +1,12 @@
+{
+  "name": "Nanivio",
+  "description": "Global communication, real-time multilingual interpretation (Langpretation), smart calling, telemedicine & expert directory, and universal billing platform by Nanivio.",
+  "requestFramePermissions": [
+    "camera",
+    "microphone",
+    "geolocation"
+  ],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
