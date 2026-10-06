@@ -1,8 +1,8 @@
-import express from "express";
+﻿import express from "express";
 import http from "http";
 import path from "path";
 import crypto from "crypto";
-import { GoogleGenAI } from "@google/genai";
+import { GoogleGenAI, FunctionDeclaration, Type } from "@google/genai";
 import dotenv from "dotenv";
 import {
   setupRealtimeServer,
@@ -1520,7 +1520,7 @@ app.get("/api/langpretation/usage-summary", requireAdmin, async (_req, res) => {
     const rows:any[] = data || [];
     const totalMinutes = rows.reduce((sum,r)=>sum+Number(r.audio_seconds||0),0)/60;
     const pairCounts:Record<string,number> = {}; const providerCounts:Record<string,number> = {};
-    for (const r of rows) { const pair=`${r.source_language||"?"} → ${r.target_language||"?"}`; pairCounts[pair]=(pairCounts[pair]||0)+1; const pr=r.provider||"unknown"; providerCounts[pr]=(providerCounts[pr]||0)+1; }
+    for (const r of rows) { const pair=`${r.source_language||"?"} â†’ ${r.target_language||"?"}`; pairCounts[pair]=(pairCounts[pair]||0)+1; const pr=r.provider||"unknown"; providerCounts[pr]=(providerCounts[pr]||0)+1; }
     return res.json({success:true,totalMinutes:Number(totalMinutes.toFixed(2)),totalEvents:rows.length,topLanguagePairs:Object.entries(pairCounts).map(([pair,count])=>({pair,count})),providerBreakdown:providerCounts,recentLogs:rows.slice(0,20)});
   } catch (err:any) { return res.status(502).json({success:false,error:err.message||"Unable to load persistent usage telemetry"}); }
 });
@@ -1870,7 +1870,7 @@ app.get("/api/billing/summary", requireAuthenticatedUser, async (req, res) => {
     const [communication,fintech,subscription,malviSub,malviCredit,credit,meter,recentTransactions,invoices] = await Promise.all([
       getPersistentWallets(userId,'COMMUNICATION'), getPersistentWallets(userId,'FINTECH'), getPersistentSubscription(userId), getPersistentMalviSubscription(userId), getMalviCreditAccount(userId), getPersistentCreditAccount(userId), getPersistentUsageMeter(userId), getPersistentTransactions(userId,15), getPersistentInvoices(userId,15)
     ]);
-    const symbol=(c:string)=>({GHS:'GH₵',USD:'$',EUR:'€',GBP:'£',NGN:'₦',KES:'KSh',UGX:'USh',TZS:'TSh',XOF:'CFA',XAF:'FCFA'} as any)[c]||c;
+    const symbol=(c:string)=>({GHS:'GHâ‚µ',USD:'$',EUR:'â‚¬',GBP:'Â£',NGN:'â‚¦',KES:'KSh',UGX:'USh',TZS:'TSh',XOF:'CFA',XAF:'FCFA'} as any)[c]||c;
     const map=(rows:any[])=>rows.map(w=>({currency:w.currency,available:Number(w.available||0),reserved:Number(w.reserved||0),promotional:Number(w.promotional||0),symbol:symbol(w.currency)}));
     const wallets=map(communication);
     res.json({success:true,userId,accounts:{communicationAccount:{wallets,activeSubscription:subscription},fintechAccount:{wallets:map(fintech),activeSubscription:null}},subscription,malviSubscription:malviSub,malviCredit:malviCredit,langpretationMeter:{minutesUsed:meter.minutesUsed,recent:meter.recent},wallets,recentTransactions,promotionalCredits:[],activeUsageSessionsCount:0,emergencyControls:{globalBillingFreeze:false,maintenanceMode:false,disableNewCharges:false}});
@@ -1879,7 +1879,7 @@ app.get("/api/billing/summary", requireAuthenticatedUser, async (req, res) => {
 
 // 1B. Get Strictly Separated User Financial Accounts (Communication + Fintech)
 app.get("/api/billing/accounts", requireAuthenticatedUser, async (req, res) => {
-  try { const userId=authenticatedUserId(req); if(!normalizedBillingEnabled()) return res.status(503).json({success:false,error:"Persistent billing database is required."}); const [communication,fintech]=await Promise.all([getPersistentWallets(userId,'COMMUNICATION'),getPersistentWallets(userId,'FINTECH')]); const symbol=(c:string)=>({GHS:'GH₵',USD:'$',EUR:'€',GBP:'£',NGN:'₦',KES:'KSh',UGX:'USh',TZS:'TSh',XOF:'CFA',XAF:'FCFA'} as any)[c]||c; const map=(r:any[])=>r.map(w=>({currency:w.currency,available:Number(w.available||0),reserved:Number(w.reserved||0),promotional:Number(w.promotional||0),symbol:symbol(w.currency)})); res.json({success:true,accounts:{communicationAccount:{wallets:map(communication)},fintechAccount:{wallets:map(fintech)}}}); } catch(error:any){res.status(502).json({success:false,error:error.message});}
+  try { const userId=authenticatedUserId(req); if(!normalizedBillingEnabled()) return res.status(503).json({success:false,error:"Persistent billing database is required."}); const [communication,fintech]=await Promise.all([getPersistentWallets(userId,'COMMUNICATION'),getPersistentWallets(userId,'FINTECH')]); const symbol=(c:string)=>({GHS:'GHâ‚µ',USD:'$',EUR:'â‚¬',GBP:'Â£',NGN:'â‚¦',KES:'KSh',UGX:'USh',TZS:'TSh',XOF:'CFA',XAF:'FCFA'} as any)[c]||c; const map=(r:any[])=>r.map(w=>({currency:w.currency,available:Number(w.available||0),reserved:Number(w.reserved||0),promotional:Number(w.promotional||0),symbol:symbol(w.currency)})); res.json({success:true,accounts:{communicationAccount:{wallets:map(communication)},fintechAccount:{wallets:map(fintech)}}}); } catch(error:any){res.status(502).json({success:false,error:error.message});}
 });
 
 // 1C. Atomic Internal Transfer: Fintech Balance -> Communication Balance
@@ -2455,7 +2455,7 @@ app.post("/api/malvi/business/collaborate", requireAuthenticatedUser, async (req
     }
     {
       try {
-        const teamIdeasContext = ideas.map((i: any) => `• ${i.author}: "${i.text}"`).join("\n");
+        const teamIdeasContext = ideas.map((i: any) => `â€¢ ${i.author}: "${i.text}"`).join("\n");
         const prompt = `You are Malvi Business, an elite AI participant and strategy co-pilot joining an online collaborative business session with a live company/team.
 Topic: ${topic}
 Objective: ${objective}
@@ -3196,7 +3196,7 @@ app.delete("/api/contacts/:id", (req, res) => {
 });
 
 // ==========================================
-// MALVI — HUMAN-LIKE AI ASSISTANT API
+// MALVI â€” HUMAN-LIKE AI ASSISTANT API
 // ==========================================
 
 // Server-side audit log for administrative and high-consequence operations
@@ -3348,7 +3348,7 @@ app.post("/api/malvi/chat", requireAuthenticatedUser, async (req, res) => {
       activeChannels: getActiveAgoraChannels().length,
       activeStreamChannels: activeStreamChannels.length,
       langpretationEnabled: adminFeatureSwitches.langpretationEnabled,
-      langpretationRates: `${adminPricingEngine.langpretationPerMinuteRateUSD} USD/min (GH₵ ${adminPricingEngine.langpretationPerMinuteRateGHS}/min)`,
+      langpretationRates: `${adminPricingEngine.langpretationPerMinuteRateUSD} USD/min (GHâ‚µ ${adminPricingEngine.langpretationPerMinuteRateGHS}/min)`,
       verifiedExpertsCount: (await persistentAuth.listApplications("EXPERT","VERIFIED")).length,
       currentPage,
       isAdmin,
@@ -3359,41 +3359,41 @@ app.post("/api/malvi/chat", requireAuthenticatedUser, async (req, res) => {
     
     if (Array.isArray(memory.wallets) && memory.wallets.length > 0) {
       const walletStr = memory.wallets.map((w: any) => `${w.currency}: ${w.symbol}${Number(w.amount).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`).join(", ");
-      memorySummaryLines.push(`• MULTI-CURRENCY WALLETS (MoneyView): ${walletStr}`);
+      memorySummaryLines.push(`â€¢ MULTI-CURRENCY WALLETS (MoneyView): ${walletStr}`);
     }
 
     if (Array.isArray(memory.recentTransactions) && memory.recentTransactions.length > 0) {
       const txStr = memory.recentTransactions.slice(0, 5).map((t: any) => `[${t.timeAgo || 'recent'}] ${t.title} (${t.currency} ${t.amount}) - Status: ${t.status}`).join(" | ");
-      memorySummaryLines.push(`• RECENT TRANSACTIONS (MoneyView): ${txStr}`);
+      memorySummaryLines.push(`â€¢ RECENT TRANSACTIONS (MoneyView): ${txStr}`);
     }
 
     if (memory.currentPlan) {
-      memorySummaryLines.push(`• SUBSCRIPTION & MINUTES (Billing): Plan: ${memory.currentPlan.name} (${memory.currentPlan.tier}), Remaining Langpretation: ${memory.currentPlan.minutesRemaining} mins of ${memory.currentPlan.minutesQuota} mins quota.`);
+      memorySummaryLines.push(`â€¢ SUBSCRIPTION & MINUTES (Billing): Plan: ${memory.currentPlan.name} (${memory.currentPlan.tier}), Remaining Langpretation: ${memory.currentPlan.minutesRemaining} mins of ${memory.currentPlan.minutesQuota} mins quota.`);
     }
 
     if (Array.isArray(memory.recentConversations) && memory.recentConversations.length > 0) {
       const convStr = memory.recentConversations.map((c: any) => `"${c.title}" (${c.isGroup ? 'Group' : '1-on-1'}${c.unreadCount > 0 ? `, ${c.unreadCount} unread` : ''}${c.lastMessage ? `: "${c.lastMessage}"` : ''})`).join("; ");
-      memorySummaryLines.push(`• CHAT INBOX & THREADS (ChatView): ${convStr}`);
+      memorySummaryLines.push(`â€¢ CHAT INBOX & THREADS (ChatView): ${convStr}`);
     }
 
     if (memory.activeConversation && Array.isArray(memory.activeConversation.messages) && memory.activeConversation.messages.length > 0) {
       const msgStr = memory.activeConversation.messages.slice(-5).map((m: any) => `${m.senderName}: "${m.text}"${m.translatedText ? ` [Langpretated: "${m.translatedText}"]` : ''}${m.isVoiceNote ? ' (Voice note)' : ''}`).join(" -> ");
-      memorySummaryLines.push(`• ACTIVE CHAT TRANSCRIPT ("${memory.activeConversation.title}"): ${msgStr}`);
+      memorySummaryLines.push(`â€¢ ACTIVE CHAT TRANSCRIPT ("${memory.activeConversation.title}"): ${msgStr}`);
     }
 
     if (memory.activeCall && memory.activeCall.status === 'connected') {
-      memorySummaryLines.push(`• ACTIVE LIVE CALL (CallsView): With ${memory.activeCall.participants?.join(', ') || memory.activeCall.hostName}, Duration: ${memory.activeCall.durationFormatted || memory.activeCall.durationSeconds + 's'}, Langpretation: ${memory.activeCall.langpretationState}, Billed: ${memory.activeCall.billedMinutes} min`);
+      memorySummaryLines.push(`â€¢ ACTIVE LIVE CALL (CallsView): With ${memory.activeCall.participants?.join(', ') || memory.activeCall.hostName}, Duration: ${memory.activeCall.durationFormatted || memory.activeCall.durationSeconds + 's'}, Langpretation: ${memory.activeCall.langpretationState}, Billed: ${memory.activeCall.billedMinutes} min`);
     } else {
-      memorySummaryLines.push(`• ACTIVE LIVE CALL: No call currently connected.`);
+      memorySummaryLines.push(`â€¢ ACTIVE LIVE CALL: No call currently connected.`);
     }
 
     if (Array.isArray(memory.verifiedExperts) && memory.verifiedExperts.length > 0) {
-      const expStr = memory.verifiedExperts.map((e: any) => `${e.name} (${e.category}, ${e.isOnline ? 'Online' : 'Offline'}, GH₵ ${e.ratePerMinGHS}/min / $${e.ratePerMinUSD}/min)`).join(", ");
-      memorySummaryLines.push(`• VERIFIED EXPERTS & DOCTORS (ServicesView): ${expStr}`);
+      const expStr = memory.verifiedExperts.map((e: any) => `${e.name} (${e.category}, ${e.isOnline ? 'Online' : 'Offline'}, GHâ‚µ ${e.ratePerMinGHS}/min / $${e.ratePerMinUSD}/min)`).join(", ");
+      memorySummaryLines.push(`â€¢ VERIFIED EXPERTS & DOCTORS (ServicesView): ${expStr}`);
     }
 
     if (memory.currentUser) {
-      memorySummaryLines.push(`• USER IDENTITY: ${memory.currentUser.name}, App Language: ${targetLangName}, Speaking: ${speakingLanguage}, Translating: ${translationLanguage}`);
+      memorySummaryLines.push(`â€¢ USER IDENTITY: ${memory.currentUser.name}, App Language: ${targetLangName}, Speaking: ${speakingLanguage}, Translating: ${translationLanguage}`);
     }
 
     const contextualMemoryPromptBlock = memorySummaryLines.length > 0
@@ -3411,7 +3411,7 @@ NANIVIO TECH. GH. & THE FOUNDER / VISIONARY
    - Full Name: Mr. Albert Kwabena Atta Panyi
    - Popularly known as: Mr. Nifty
    - Title: Founder and Visionary of Nanivio Tech. Gh.
-   - His Vision: To build technology without borders — connecting people, businesses, professionals, financial opportunities, and cultures through intelligent technology.
+   - His Vision: To build technology without borders â€” connecting people, businesses, professionals, financial opportunities, and cultures through intelligent technology.
    - DIRECTIVE: When users ask "Who created Nanivio?", "Who founded Nanivio?", or "Who is Mr. Nifty?", respond accurately and respectfully:
      "Nanivio is being developed by Nanivio Tech. Gh., founded by Mr. Albert Kwabena Atta Panyi, popularly known as Mr. Nifty."
    - Never invent false personal biographical details or claim to speak privately for Mr. Nifty; explain his official vision for Nanivio.
@@ -3426,42 +3426,42 @@ NANIVIO TECH. GH. & THE FOUNDER / VISIONARY
 
 3. ECOSYSTEM SCOPE (NEVER PORTRAY NANIVIO AS MERELY A CHAT OR CALLING APP):
    - Nanivio is a comprehensive digital ecosystem spanning:
-     • Connected Communication: 1-on-1 and multilateral group voice/video calls, messaging, universal 10-digit Nanivio IDs (0486XXXXXX).
-     • Language & Translation: Scalable Langpretation separating App Language, Speaking Language, and Translation Language across dozens of African and international languages.
-     • Nanivio Business: Direct customer communication, discovery, and catalogs for restaurants, groceries, automotive, real estate, health, and local/African enterprises.
-     • Nanivio Experts: Verified doctors, lawyers, accountants, consultants, engineers, and educators available for instant consultations with live Langpretation.
-     • Nanivio Fintech: Multi-currency wallets (GHS, USD, EUR, NGN), mobile money integrations, and planned compliant cross-border financial services.
-     • Malvi AI: You, the intelligent assistant and navigation layer across the whole ecosystem.
+     â€¢ Connected Communication: 1-on-1 and multilateral group voice/video calls, messaging, universal 10-digit Nanivio IDs (0486XXXXXX).
+     â€¢ Language & Translation: Scalable Langpretation separating App Language, Speaking Language, and Translation Language across dozens of African and international languages.
+     â€¢ Nanivio Business: Direct customer communication, discovery, and catalogs for restaurants, groceries, automotive, real estate, health, and local/African enterprises.
+     â€¢ Nanivio Experts: Verified doctors, lawyers, accountants, consultants, engineers, and educators available for instant consultations with live Langpretation.
+     â€¢ Nanivio Fintech: Multi-currency wallets (GHS, USD, EUR, NGN), mobile money integrations, and planned compliant cross-border financial services.
+     â€¢ Malvi AI: You, the intelligent assistant and navigation layer across the whole ecosystem.
 
 ==================================================
 MALVI'S FOUR KNOWLEDGE LAYERS
 ==================================================
-LAYER 1 — NANIVIO (The full digital ecosystem: communication, business, experts, fintech, translation).
-LAYER 2 — NANIVIO TECH. GH. (The Ghanaian & global technology enterprise).
-LAYER 3 — THE FOUNDER (Mr. Albert Kwabena Atta Panyi, popularly known as Mr. Nifty).
-LAYER 4 — REAL USER ASSISTANCE (Helping users navigate views, initiate calls, discover businesses, consult experts, configure languages, and manage their wallets safely).
+LAYER 1 â€” NANIVIO (The full digital ecosystem: communication, business, experts, fintech, translation).
+LAYER 2 â€” NANIVIO TECH. GH. (The Ghanaian & global technology enterprise).
+LAYER 3 â€” THE FOUNDER (Mr. Albert Kwabena Atta Panyi, popularly known as Mr. Nifty).
+LAYER 4 â€” REAL USER ASSISTANCE (Helping users navigate views, initiate calls, discover businesses, consult experts, configure languages, and manage their wallets safely).
 
 ==================================================
 CURRENT FEATURES VS. FUTURE / PLANNED FEATURES
 ==================================================
 You MUST strictly distinguish between what is currently operational and what is planned for future releases.
 - CURRENTLY OPERATIONAL ONLY WHEN THE REQUIRED PROVIDER AND DATABASE CREDENTIALS ARE CONFIGURED:
-  • 1-on-1 and group voice/video calls through Agora RTC
-  • Persistent messaging through GetStream Chat
-  • Langpretation text translation and provider-backed chunked speech translation where the selected language route is available
-  • Verified expert/business discovery from persisted Nanivio records
-  • Nanivio wallet, credit and billing operations through the persistent ledger
-  • Multi-language UI and separate speaking/translation language controls
+  â€¢ 1-on-1 and group voice/video calls through Agora RTC
+  â€¢ Persistent messaging through GetStream Chat
+  â€¢ Langpretation text translation and provider-backed chunked speech translation where the selected language route is available
+  â€¢ Verified expert/business discovery from persisted Nanivio records
+  â€¢ Nanivio wallet, credit and billing operations through the persistent ledger
+  â€¢ Multi-language UI and separate speaking/translation language controls
 - UNAVAILABLE / PLANNED UNTIL A VERIFIED PROVIDER IS CONNECTED:
-  • Automated mobile-money settlement
-  • Automated ride dispatch/fleet operations
-  • Unsupported Langpretation language pairs
+  â€¢ Automated mobile-money settlement
+  â€¢ Automated ride dispatch/fleet operations
+  â€¢ Unsupported Langpretation language pairs
 - FUTURE / PLANNED CAPABILITIES:
-  • Low-bandwidth satellite calling relays for remote areas
-  • Offline on-device neural voice translation
-  • Automated restaurant table booking and fulfillment dispatch API
-  • Fully licensed cross-border banking rails and debit cards
-  • Enterprise contract escrow signing
+  â€¢ Low-bandwidth satellite calling relays for remote areas
+  â€¢ Offline on-device neural voice translation
+  â€¢ Automated restaurant table booking and fulfillment dispatch API
+  â€¢ Fully licensed cross-border banking rails and debit cards
+  â€¢ Enterprise contract escrow signing
 RULE: Use phrases like "Nanivio currently supports...", "Nanivio is developing...", "This capability is planned for a future release..." Never falsely claim a planned feature exists today.
 
 ==================================================
@@ -3551,14 +3551,14 @@ RESPONSE SCHEMA (Return strictly JSON):
       // Gemini is Malvi's reasoning/controller layer. Tool calls are deliberately
       // restricted to safe navigation/configuration proposals; money movement and
       // admin changes still require Nanivio backend authorization/confirmation.
-      const malviToolDeclarations = [
+      const malviToolDeclarations: FunctionDeclaration[] = [
         {
           name: "navigate_nanivio",
           description: "Prepare a navigation action inside Nanivio. Never perform financial or admin operations.",
           parameters: {
-            type: "OBJECT",
+            type: Type.OBJECT,
             properties: {
-              target: { type: "STRING", enum: ["chat", "calls", "malvi", "services", "money", "account", "admin"] },
+              target: { type: Type.STRING, enum: ["chat", "calls", "malvi", "services", "money", "account", "admin"] },
             },
             required: ["target"],
           },
@@ -3567,8 +3567,8 @@ RESPONSE SCHEMA (Return strictly JSON):
           name: "configure_langpretation",
           description: "Prepare a Langpretation enable/disable action. This does not bypass billing or provider availability.",
           parameters: {
-            type: "OBJECT",
-            properties: { enable: { type: "BOOLEAN" }, sourceLang: { type: "STRING" }, targetLang: { type: "STRING" } },
+            type: Type.OBJECT,
+            properties: { enable: { type: Type.BOOLEAN }, sourceLang: { type: Type.STRING }, targetLang: { type: Type.STRING } },
             required: ["enable"],
           },
         },
@@ -3576,16 +3576,16 @@ RESPONSE SCHEMA (Return strictly JSON):
           name: "find_expert",
           description: "Prepare a request to find a Nanivio expert/service provider.",
           parameters: {
-            type: "OBJECT",
-            properties: { category: { type: "STRING" }, expertName: { type: "STRING" } },
+            type: Type.OBJECT,
+            properties: { category: { type: Type.STRING }, expertName: { type: Type.STRING } },
           },
         },
         {
           name: "propose_transfer",
           description: "Create a transfer proposal only. Never move money. The user must explicitly confirm and the real payment rail must authorize settlement.",
           parameters: {
-            type: "OBJECT",
-            properties: { recipient: { type: "STRING" }, amount: { type: "NUMBER" }, currency: { type: "STRING" }, channel: { type: "STRING" } },
+            type: Type.OBJECT,
+            properties: { recipient: { type: Type.STRING }, amount: { type: Type.NUMBER }, currency: { type: Type.STRING }, channel: { type: Type.STRING } },
             required: ["recipient", "amount", "currency"],
           },
         },
@@ -3593,8 +3593,8 @@ RESPONSE SCHEMA (Return strictly JSON):
           name: "request_admin_control",
           description: "Prepare an admin-control proposal. Only an authenticated Nanivio administrator can execute it; Gemini never grants itself admin authority.",
           parameters: {
-            type: "OBJECT",
-            properties: { featureKey: { type: "STRING" }, featureValue: { type: "BOOLEAN" }, pricingKey: { type: "STRING" }, pricingValue: { type: "NUMBER" } },
+            type: Type.OBJECT,
+            properties: { featureKey: { type: Type.STRING }, featureValue: { type: Type.BOOLEAN }, pricingKey: { type: Type.STRING }, pricingValue: { type: Type.NUMBER } },
           },
         },
       ];
@@ -3735,7 +3735,7 @@ app.post("/api/services/rental/book", (req, res) => {
 
 async function startServer() {
   if (!isPersistentBillingConfigured()) {
-    throw new Error("DATABASE_URL is required. Nanivio will not start with in-memory financial state.");
+    throw new Error("SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY are required. Nanivio will not start with in-memory financial state.");
   }
   await hydrateBillingDatabase(billingDb);
 
@@ -3780,3 +3780,8 @@ async function startServer() {
 }
 
 startServer();
+
+
+
+
+

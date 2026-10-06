@@ -66,6 +66,7 @@ export function generateAgoraRtcToken(options: AgoraTokenOptions): {
     channelName,
     agoraUid,
     role,
+    expireDuration,
     privilegeExpiredTs
   );
 
@@ -128,3 +129,4 @@ export function removeAgoraParticipant(channelName: string, uid: string | number
 export function getActiveAgoraChannels(): AgoraChannelSession[] {
   return Array.from(activeAgoraChannels.values());
 }
+

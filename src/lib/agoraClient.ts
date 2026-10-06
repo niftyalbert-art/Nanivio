@@ -64,7 +64,7 @@ class NanivioAgoraClient {
 
   constructor() {
     if (typeof window !== 'undefined') {
-      AgoraRTC.on('exception', (e) => console.warn('[Agora]', e));
+      
     }
   }
 
@@ -231,3 +231,5 @@ class NanivioAgoraClient {
 
 export const agoraClient = new NanivioAgoraClient();
 export default agoraClient;
+
+
