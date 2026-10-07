@@ -177,9 +177,9 @@ export const AccountView: React.FC = () => {
       {/* ------------------------------------------------------------- */}
       {/* SECTION 1: GLOBAL NV IDENTITY & PROFILE CARD */}
       {/* ------------------------------------------------------------- */}
-      <div className="bg-gradient-to-r from-[#0c182c] via-[#091526] to-[#070d18] border border-emerald-500/30 rounded-3xl p-6 sm:p-8 shadow-2xl space-y-6">
-        <div className="flex flex-col lg:flex-row items-start lg:items-center justify-between gap-6">
-          <div className="flex items-center gap-4">
+      <div className="bg-gradient-to-r from-[#0c182c] via-[#091526] to-[#070d18] border border-emerald-500/30 rounded-3xl p-4 sm:p-6 lg:p-8 shadow-2xl space-y-5">
+        <div className="flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-5 lg:gap-6 min-w-0">
+          <div className="flex items-start gap-3 sm:gap-4 min-w-0 w-full lg:w-auto">
             <div className="relative">
               <div className="w-20 h-20 rounded-2xl overflow-hidden border-2 border-emerald-500/60 shadow-2xl bg-gradient-to-br from-emerald-950 via-slate-900 to-slate-950 flex items-center justify-center">
                 {currentUser.avatar ? (
@@ -200,26 +200,27 @@ export const AccountView: React.FC = () => {
               </span>
             </div>
 
-            <div className="space-y-1">
-              <div className="flex flex-wrap items-center gap-2">
-                <h2 className="text-xl sm:text-2xl font-extrabold text-white tracking-tight">{currentUser.name}</h2>
-                <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold border uppercase tracking-wider bg-emerald-500/20 text-emerald-300 border-emerald-500/40">
+            <div className="space-y-1 min-w-0 flex-1">
+              <div className="flex flex-col gap-2 min-w-0">
+                <div className="flex flex-wrap items-center gap-2 min-w-0">
+                  <h2 className="text-lg sm:text-2xl font-extrabold text-white tracking-tight break-words">{currentUser.name}</h2>
+                  <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold border uppercase tracking-wider bg-emerald-500/20 text-emerald-300 border-emerald-500/40">
                   {role === 'ADMIN' ? 'Administrator' : 'Global Member'}
                 </span>
-                <span className="px-2 py-0.5 rounded-full text-[10px] font-bold flex items-center gap-1 border bg-emerald-950/80 text-emerald-300 border-emerald-500/50">
+                  <span className="px-2 py-0.5 rounded-full text-[10px] font-bold flex items-center gap-1 border bg-emerald-950/80 text-emerald-300 border-emerald-500/50">
                   <CheckCircle2 className="w-3 h-3 text-emerald-400" />
                   <span>{verificationStatus}</span>
                 </span>
               </div>
 
-              <p className="text-xs text-slate-400">
+              <p className="text-xs text-slate-400 break-words">
                 {currentUser.email} • {currentUser.phoneNumber || '+233 24 412 3456'}
               </p>
 
-              <div className="flex flex-wrap items-center gap-2 pt-2 text-xs">
-                <div className="inline-flex items-center gap-2 px-3 py-1 rounded-xl bg-slate-900 border border-emerald-500/40 text-xs shadow-inner">
+              <div className="flex flex-col sm:flex-row sm:flex-wrap items-stretch sm:items-center gap-2 pt-2 text-xs min-w-0">
+                <div className="flex items-center gap-2 px-3 py-2 rounded-xl bg-slate-900 border border-emerald-500/40 text-xs shadow-inner w-full sm:w-auto min-w-0">
                   <Globe className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
-                  <span className="text-[11px] text-slate-400 font-medium">Interface:</span>
+                  <span className="text-[11px] text-slate-400 font-medium shrink-0">Interface:</span>
                   <select
                     id="select-account-interface-language"
                     value={appLanguage || 'en'}
@@ -228,7 +229,7 @@ export const AccountView: React.FC = () => {
                       setAppLanguage(newCode);
                       setMyLanguage(newCode as any);
                     }}
-                    className="bg-transparent text-emerald-300 font-bold text-xs border-none outline-none cursor-pointer pr-1"
+                    className="bg-transparent text-emerald-300 font-bold text-xs border-none outline-none cursor-pointer pr-1 min-w-0 flex-1 sm:flex-none max-w-full"
                   >
                     {getAllLanguages()
                       .filter((l) => l.ui)
@@ -242,17 +243,18 @@ export const AccountView: React.FC = () => {
 
                 <button
                   onClick={() => setIsLanguageModalOpen(true)}
-                  className="text-xs text-emerald-400 hover:text-emerald-300 underline font-semibold px-1 cursor-pointer"
+                  className="text-xs text-emerald-400 hover:text-emerald-300 underline font-semibold px-1 cursor-pointer text-left sm:text-center shrink-0"
                 >
                   Configure Languages
                 </button>
               </div>
             </div>
+            </div>
           </div>
 
           {/* NV Number Card */}
-          <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
-            <div className="bg-slate-950/90 border border-emerald-500/40 rounded-2xl p-3.5 px-4 shadow-lg flex items-center justify-between gap-4">
+          <div className="flex flex-col items-stretch gap-3 w-full lg:w-auto">
+            <div className="bg-slate-950/90 border border-emerald-500/40 rounded-2xl p-3.5 px-4 shadow-lg flex items-center justify-between gap-3 w-full min-w-0 lg:w-auto">
               <div className="space-y-0.5">
                 <div className="text-[10px] text-slate-400 font-mono flex items-center gap-1">
                   <Fingerprint className="w-3 h-3 text-emerald-400" />
@@ -272,7 +274,7 @@ export const AccountView: React.FC = () => {
               </button>
             </div>
 
-            <div className="flex flex-wrap items-center gap-2">
+            <div className="grid grid-cols-2 sm:flex sm:flex-wrap items-stretch gap-2 w-full lg:w-auto">
               <PWAInstallButton compact={false} />
               <button
                 onClick={() => setIsEditProfileModalOpen(true)}
@@ -304,12 +306,12 @@ export const AccountView: React.FC = () => {
       {/* ------------------------------------------------------------- */}
       <div className="bg-slate-900/90 border border-slate-800 rounded-3xl p-6 sm:p-8 space-y-6 shadow-xl">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-          <div className="space-y-1">
+          <div className="space-y-1 min-w-0 flex-1">
             <div className="flex items-center gap-2">
               <LangpretationIcon size={20} />
               <h2 className="text-xl font-bold text-white">Live Langpretation Meter Reading</h2>
             </div>
-            <p className="text-xs text-slate-400">
+            <p className="text-xs text-slate-400 break-words">
               Live communication consumption &amp; included monthly Langpretation allowance meter.
             </p>
           </div>
@@ -394,12 +396,12 @@ export const AccountView: React.FC = () => {
       {/* ------------------------------------------------------------- */}
       <div className="bg-slate-900/90 border border-slate-800 rounded-3xl p-6 sm:p-8 space-y-6 shadow-xl">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-          <div className="space-y-1">
+          <div className="space-y-1 min-w-0 flex-1">
             <div className="flex items-center gap-2">
               <Zap className="w-5 h-5 text-emerald-400" />
               <h2 className="text-xl font-bold text-white">Nanivio credit</h2>
             </div>
-            <p className="text-xs text-slate-400">
+            <p className="text-xs text-slate-400 break-words">
               Your available value for consuming Nanivio communication services, Langpretation fallback, and expert consultations.
             </p>
           </div>
@@ -464,12 +466,12 @@ export const AccountView: React.FC = () => {
       {/* ------------------------------------------------------------- */}
       <div className="bg-slate-900/90 border border-slate-800 rounded-3xl p-6 sm:p-8 space-y-6 shadow-xl">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-          <div className="space-y-1">
+          <div className="space-y-1 min-w-0 flex-1">
             <div className="flex items-center gap-2">
               <Crown className="w-5 h-5 text-amber-400" />
               <h2 className="text-xl font-bold text-white">Communication Subscription</h2>
             </div>
-            <p className="text-xs text-slate-400">
+            <p className="text-xs text-slate-400 break-words">
               Monthly communication plans with included Langpretation minutes and zero carrier roaming fees.
             </p>
           </div>
@@ -606,7 +608,7 @@ export const AccountView: React.FC = () => {
               </button>
             </div>
 
-            <p className="text-xs text-slate-400">
+            <p className="text-xs text-slate-400 break-words">
               Select or enter the amount you wish to add to your Nanivio credit for communication and Langpretation.
             </p>
 
@@ -672,7 +674,7 @@ export const AccountView: React.FC = () => {
               </button>
             </div>
 
-            <p className="text-xs text-slate-400">
+            <p className="text-xs text-slate-400 break-words">
               Transfer Nanivio credit directly to any registered Nanivio user using their NV Number.
             </p>
 
@@ -729,3 +731,7 @@ export const AccountView: React.FC = () => {
     </div>
   );
 };
+
+
+
+

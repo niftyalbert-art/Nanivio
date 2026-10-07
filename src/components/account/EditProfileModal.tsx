@@ -188,8 +188,8 @@ export const EditProfileModal: React.FC<EditProfileModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 bg-black/80 backdrop-blur-sm animate-in fade-in duration-200">
-      <div className="bg-[#0b1424] border border-slate-700/80 rounded-3xl w-full max-w-lg shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-3 bg-black/80 backdrop-blur-sm animate-in fade-in duration-200 overflow-hidden">
+      <div className="bg-[#0b1424] border border-slate-700/80 rounded-3xl w-full max-w-lg shadow-2xl overflow-hidden flex flex-col h-[calc(100dvh-1rem)] max-h-[90vh] min-h-0">
         {/* Header */}
         <div className="p-4 sm:p-5 border-b border-slate-800 flex items-center justify-between bg-slate-900/60">
           <div className="flex items-center gap-2.5">
@@ -218,7 +218,7 @@ export const EditProfileModal: React.FC<EditProfileModalProps> = ({
             <p className="text-xs text-slate-300">Your changes have been saved to the Nanivio directory.</p>
           </div>
         ) : (
-          <form onSubmit={handleSave} className="p-4 sm:p-5 space-y-4 overflow-y-auto flex-1">
+          <form onSubmit={handleSave} className="p-3 sm:p-5 space-y-4 overflow-y-auto overflow-x-hidden flex-1 min-h-0">
             {/* Live Avatar & Photo Picker */}
             <div className="bg-slate-900/40 border border-slate-800 rounded-2xl p-4 space-y-3">
               <div className="flex flex-col sm:flex-row items-center gap-4">
@@ -397,7 +397,7 @@ export const EditProfileModal: React.FC<EditProfileModalProps> = ({
               {/* Who can see online status */}
               <div className="space-y-1 bg-slate-900/30 border border-slate-800/80 rounded-2xl p-3">
                 <label className="text-xs text-slate-300 font-medium">Who can see when I am Online:</label>
-                <div className="grid grid-cols-3 gap-2 pt-1">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 pt-1">
                   {(['everyone', 'contacts', 'nobody'] as const).map((opt) => (
                     <button
                       key={opt}
@@ -418,7 +418,7 @@ export const EditProfileModal: React.FC<EditProfileModalProps> = ({
               {/* Who can see profile photo */}
               <div className="space-y-1 bg-slate-900/30 border border-slate-800/80 rounded-2xl p-3">
                 <label className="text-xs text-slate-300 font-medium">Who can see my Profile Photo:</label>
-                <div className="grid grid-cols-3 gap-2 pt-1">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 pt-1">
                   {(['everyone', 'contacts', 'nobody'] as const).map((opt) => (
                     <button
                       key={opt}
@@ -439,7 +439,7 @@ export const EditProfileModal: React.FC<EditProfileModalProps> = ({
               {/* Who can see last seen */}
               <div className="space-y-1 bg-slate-900/30 border border-slate-800/80 rounded-2xl p-3">
                 <label className="text-xs text-slate-300 font-medium">Who can see my Last Seen:</label>
-                <div className="grid grid-cols-3 gap-2 pt-1">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 pt-1">
                   {(['everyone', 'contacts', 'nobody'] as const).map((opt) => (
                     <button
                       key={opt}
@@ -459,7 +459,7 @@ export const EditProfileModal: React.FC<EditProfileModalProps> = ({
             </div>
 
             {/* Footer buttons */}
-            <div className="p-3 border-t border-slate-800 bg-slate-900/80 -mx-4 -mb-4 sm:-mx-5 sm:-mb-5 flex items-center justify-between mt-4">
+            <div className="sticky bottom-0 z-10 p-3 border-t border-slate-800 bg-slate-900/95 backdrop-blur-md -mx-3 -mb-3 sm:-mx-5 sm:-mb-5 flex items-center justify-between gap-3 mt-4">
               <button
                 type="button"
                 onClick={handleCloseModal}
@@ -481,3 +481,4 @@ export const EditProfileModal: React.FC<EditProfileModalProps> = ({
     </div>
   );
 };
+
