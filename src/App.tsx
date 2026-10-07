@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+﻿import React, { useState, useCallback } from 'react';
 import { NanivioProvider, useNanivio } from './context/NanivioContext';
 import { OpeningAnimation } from './components/OpeningAnimation';
 import { NanivioCelebrationVideoEffect } from './components/common/NanivioCelebrationVideoEffect';
@@ -83,6 +83,8 @@ const AppOrchestrator: React.FC = () => {
     activeCelebrationEffect,
     clearCelebrationEffect,
   } = useNanivio();
+  const isAdminRoute = typeof window !== 'undefined' && window.location.pathname === '/admin';
+
   const [showIntro, setShowIntro] = useState<boolean>(() => {
     try {
       const seen = typeof window !== 'undefined' ? sessionStorage?.getItem('nanivio_intro_seen') : 'true';
@@ -117,6 +119,16 @@ const AppOrchestrator: React.FC = () => {
     );
   }
 
+  // Protected Super Admin Gateway
+  if (isAdminRoute && !isAuthenticated) {
+    return (
+      <>
+        <NanivioAuthScreen onSuccess={() => setIsAuthModalOpen(false)} />
+        <NewUserInstallPrompt />
+      </>
+    );
+  }
+
   // Phase 3: Nanivio Authentication & Identity Entry
   if (!isAuthenticated) {
     return (
@@ -138,7 +150,7 @@ const AppOrchestrator: React.FC = () => {
               onClick={() => setIsAuthModalOpen(false)}
               className="absolute top-6 right-6 z-50 px-4 py-2 rounded-xl bg-slate-900 border border-slate-800 text-slate-300 hover:text-white text-xs font-bold shadow-lg"
             >
-              ✕ Close Switcher
+              âœ• Close Switcher
             </button>
             <NanivioAuthScreen onSuccess={() => setIsAuthModalOpen(false)} />
           </div>
@@ -157,3 +169,4 @@ export default function App() {
     </ErrorBoundary>
   );
 }
+

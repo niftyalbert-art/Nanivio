@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+﻿import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   ShieldCheck,
@@ -49,6 +49,7 @@ export const NanivioAuthScreen: React.FC<NanivioAuthScreenProps> = ({ onSuccess 
     signUpExpert,
     signUpBusiness,
     quickSwitchDemoUser,
+    signInWithAdminToken,
     authMode,
     setAuthMode,
     appLanguage,
@@ -61,7 +62,11 @@ export const NanivioAuthScreen: React.FC<NanivioAuthScreenProps> = ({ onSuccess 
   const authTxt = getAuthText(appLanguage);
 
   // Active Tab: 'signin' | 'personal' | 'expert' | 'business' | 'admin'
-  const [activeTab, setActiveTab] = useState<'signin' | 'personal' | 'expert' | 'business' | 'admin'>(authMode || 'signin');
+  const [activeTab, setActiveTab] = useState<'signin' | 'personal' | 'expert' | 'business' | 'admin'>(
+  typeof window !== 'undefined' && window.location.pathname === '/admin'
+    ? 'admin'
+    : (authMode || 'signin')
+);
 
   // Common UI State
   const [showPassword, setShowPassword] = useState(false);
@@ -433,20 +438,28 @@ export const NanivioAuthScreen: React.FC<NanivioAuthScreenProps> = ({ onSuccess 
     }
   };
 
-  // 5. Submit Admin Login
-  const handleAdminSignIn = async (e: React.FormEvent) => {
-    e.preventDefault();
-    clearMessages();
-    try {
-      setIsLoading(true);
-      await signIn(adminIdentifier.trim(), adminPassword);
-      if (onSuccess) onSuccess();
-    } catch (err: any) {
-      setErrorMessage(err.message || 'Administrative authorization rejected.');
-    } finally {
-      setIsLoading(false);
-    }
-  };
+  // 5. Submit Admin Login â€” Super Admin Master Key
+const handleAdminSignIn = async (e: React.FormEvent) => {
+  e.preventDefault();
+  clearMessages();
+
+  if (!adminPassword.trim()) {
+    setErrorMessage('Please enter the Super Admin Master Key.');
+    return;
+  }
+
+  try {
+    setIsLoading(true);
+
+    await signInWithAdminToken(adminPassword.trim());
+
+    if (onSuccess) onSuccess();
+  } catch (err: any) {
+    setErrorMessage(err.message || 'Administrative authorization rejected.');
+  } finally {
+    setIsLoading(false);
+  }
+};
 
   // 6. Handle Password Recovery Request
   const handleRecoveryRequest = async (e: React.FormEvent) => {
@@ -676,7 +689,6 @@ export const NanivioAuthScreen: React.FC<NanivioAuthScreenProps> = ({ onSuccess 
                 </>
               )}
             </button>
-
             <div className="pt-2 text-center text-xs text-slate-400">
               <span>{authTxt.noAccountText} </span>
               <button
@@ -987,7 +999,7 @@ export const NanivioAuthScreen: React.FC<NanivioAuthScreenProps> = ({ onSuccess 
                   <Award className="w-3.5 h-3.5 text-emerald-400" />
                   <span>Expert Verification Workflow</span>
                 </div>
-                <div className="text-[10px] text-slate-400">Step {expertStep} of 3 · Subject to Admin Review</div>
+                <div className="text-[10px] text-slate-400">Step {expertStep} of 3 Â· Subject to Admin Review</div>
               </div>
               <div className="flex items-center gap-1 text-xs">
                 <span className={`w-2 h-2 rounded-full ${expertStep >= 1 ? 'bg-emerald-400' : 'bg-slate-700'}`} />
@@ -1199,7 +1211,7 @@ export const NanivioAuthScreen: React.FC<NanivioAuthScreenProps> = ({ onSuccess 
               <div className="space-y-3">
                 <div className="grid grid-cols-2 gap-3">
                   <div className="space-y-1">
-                    <label className="text-xs font-semibold text-slate-300">Rate per Min (GH₵)</label>
+                    <label className="text-xs font-semibold text-slate-300">Rate per Min (GHâ‚µ)</label>
                     <input
                       type="number"
                       step="0.5"
@@ -1311,7 +1323,7 @@ export const NanivioAuthScreen: React.FC<NanivioAuthScreenProps> = ({ onSuccess 
                 <div className="text-[10px] text-slate-400">
                   {bizCategoryType === 'nanivio_drive'
                     ? 'Live Car Driver & Uba Fleet Registration'
-                    : `Step ${bizStep} of 2 · Permanent Business NV ID`}
+                    : `Step ${bizStep} of 2 Â· Permanent Business NV ID`}
                 </div>
               </div>
               <span className={`text-[10px] px-2 py-0.5 rounded-full border ${
@@ -1704,7 +1716,7 @@ export const NanivioAuthScreen: React.FC<NanivioAuthScreenProps> = ({ onSuccess 
                     <div className="p-2 rounded-xl bg-slate-900 border border-slate-700 flex items-center justify-between gap-3 text-xs">
                       <span className="text-slate-300">Daily Car Rental Rate:</span>
                       <div className="flex items-center gap-1.5">
-                        <span className="text-slate-400 font-mono">GH₵</span>
+                        <span className="text-slate-400 font-mono">GHâ‚µ</span>
                         <input
                           type="number"
                           value={driverRentalRatePerDay}
@@ -1866,7 +1878,7 @@ export const NanivioAuthScreen: React.FC<NanivioAuthScreenProps> = ({ onSuccess 
             <div className="p-4 rounded-2xl bg-amber-950/40 border border-amber-500/40 space-y-1.5">
               <div className="flex items-center gap-2 text-amber-300 font-bold text-xs">
                 <ShieldCheck className="w-4 h-4 text-amber-400 shrink-0" />
-                <span>Restricted Gateway · Authorized Personnel Only</span>
+                <span>Restricted Gateway Â· Authorized Personnel Only</span>
               </div>
               <p className="text-[11px] text-amber-200/80 leading-relaxed">
                 This administrative terminal provides sovereign control over feature switches, pricing engines, user suspension, and verification queues.
@@ -1893,7 +1905,7 @@ export const NanivioAuthScreen: React.FC<NanivioAuthScreenProps> = ({ onSuccess 
                 type="password"
                 value={adminPassword}
                 onChange={(e) => setAdminPassword(e.target.value)}
-                placeholder="••••••••••••"
+                placeholder="â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢"
                 required
                 className="w-full px-3.5 py-2.5 bg-slate-950/80 border border-amber-500/40 rounded-xl text-xs text-white focus:outline-none focus:ring-1 focus:ring-amber-500/50"
               />
@@ -1922,7 +1934,7 @@ export const NanivioAuthScreen: React.FC<NanivioAuthScreenProps> = ({ onSuccess 
           <div className="pt-3 border-t border-slate-800/80 flex items-center justify-center text-[11px] text-slate-500">
             <div className="flex items-center gap-1.5">
               <Lock className="w-3 h-3 text-slate-600" />
-              <span>Nanivio Security Engine v2.5 • Protected & Encrypted</span>
+              <span>Nanivio Security Engine v2.5 â€¢ Protected & Encrypted</span>
             </div>
           </div>
         )}
@@ -1950,7 +1962,7 @@ export const NanivioAuthScreen: React.FC<NanivioAuthScreenProps> = ({ onSuccess 
                   }}
                   className="text-slate-400 hover:text-white text-xs px-2 py-1"
                 >
-                  ✕
+                  âœ•
                 </button>
               </div>
 
@@ -1989,3 +2001,6 @@ export const NanivioAuthScreen: React.FC<NanivioAuthScreenProps> = ({ onSuccess 
     </div>
   );
 };
+
+
+
