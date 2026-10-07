@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useRef } from 'react';
+﻿import React, { useState, useEffect, useMemo, useRef } from 'react';
 import {
   Sparkles,
   Star,
@@ -61,12 +61,12 @@ export const LiveServices4KVideoHub: React.FC = () => {
   const { start1on1Call, setActiveTab, currentUser, authUser, myLanguage } = useNanivio();
 
   // Channel & Video State
-  const [selectedChannel, setSelectedChannel] = useState<Live4KChannel>(LIVE_4K_CHANNELS[0]);
+  const [selectedChannel, setSelectedChannel] = useState<Live4KChannel | null>(LIVE_4K_CHANNELS[0] ?? null);
   const [isPlaying, setIsPlaying] = useState<boolean>(true);
   const [isMuted, setIsMuted] = useState<boolean>(true);
   const [volume, setVolume] = useState<number>(0.75);
   const [isFullscreen, setIsFullscreen] = useState<boolean>(false);
-  const [viewerCount, setViewerCount] = useState<number>(LIVE_4K_CHANNELS[0].viewersCount);
+  const [viewerCount, setViewerCount] = useState<number>(LIVE_4K_CHANNELS[0]?.viewersCount ?? 0);
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const screenContainerRef = useRef<HTMLDivElement | null>(null);
 
@@ -133,7 +133,7 @@ export const LiveServices4KVideoHub: React.FC = () => {
         consultationFee: `$${item.ratePerMinUSD ? +(item.ratePerMinUSD * 15).toFixed(0) : 10}`,
         bio: item.description,
         services: item.services,
-        schedule: orig?.availableHours || 'Mon–Sat (9 AM – 9 PM GMT)',
+        schedule: orig?.availableHours || 'Monâ€“Sat (9 AM â€“ 9 PM GMT)',
         langpretationReady: true,
       };
     });
@@ -147,7 +147,7 @@ export const LiveServices4KVideoHub: React.FC = () => {
       id: b.id,
       type: 'featured_business' as const,
       title: b.title,
-      tagline: b.services.slice(0, 2).join(' • ') || 'Verified Nanivio Commercial Partner',
+      tagline: b.services.slice(0, 2).join(' â€¢ ') || 'Verified Nanivio Commercial Partner',
       companyName: b.name,
       category: b.category,
       badgeLabel: b.countryFlag ? `${b.countryFlag} Verified 4K Business` : 'Verified 4K Business',
@@ -161,7 +161,7 @@ export const LiveServices4KVideoHub: React.FC = () => {
   }, [geoMatchedResults]);
 
   const activePromos = dynamicPromos.length > 0 ? dynamicPromos : FALLBACK_PROMOS;
-  const currentPromo = activePromos[activeSlideIndex % activePromos.length];
+  const currentPromo = activePromos.length > 0 ? activePromos[activeSlideIndex % activePromos.length] : null;
 
   // Rotate promo carousel every 8 seconds
   useEffect(() => {
@@ -219,7 +219,7 @@ export const LiveServices4KVideoHub: React.FC = () => {
   // Switch channel
   const handleSelectChannel = (channel: Live4KChannel) => {
     setSelectedChannel(channel);
-    setViewerCount(channel.viewersCount);
+    setViewerCount(channel.viewersCount ?? 0);
     if (videoRef.current) {
       videoRef.current.src = channel.videoUrl;
       videoRef.current.play().catch(() => {});
@@ -257,7 +257,170 @@ export const LiveServices4KVideoHub: React.FC = () => {
   return (
     <div className="space-y-6 animate-in fade-in duration-300">
       {/* ============================================================= */}
-      {/* 1. 4K ULTRA HD BROADCAST VIDEO SCREEN (FULL SIZE & RESOLUTION) */}
+      {/* 1. 4K ULTRA HD BROADCAST VIDEO SCREEN */}
+      {/* ============================================================= */}
+      <div
+        ref={screenContainerRef}
+        className="relative rounded-3xl overflow-hidden bg-slate-950 border border-emerald-500/40 shadow-2xl shadow-emerald-500/10 group select-none"
+      >
+        {selectedChannel ? (
+          <>
+            {/* 4K Top Status Overlay Bar */}
+            <div className="absolute top-0 inset-x-0 z-30 p-3 sm:p-4 bg-gradient-to-b from-black/90 via-black/50 to-transparent flex items-center justify-between gap-3 pointer-events-auto">
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="px-3 py-1 rounded-full bg-rose-600/90 text-white font-mono font-extrabold text-xs flex items-center gap-1.5 shadow-lg shadow-rose-600/40 animate-pulse">
+                  <span className="w-2 h-2 rounded-full bg-white animate-ping" />
+                  <span>LIVE 4K</span>
+                </span>
+
+                <span className="px-2.5 py-1 rounded-full bg-emerald-500/20 text-emerald-300 font-mono font-bold text-[11px] border border-emerald-500/40 flex items-center gap-1">
+                  <Radio className="w-3.5 h-3.5 text-emerald-400 animate-pulse" />
+                  <span>{selectedChannel.resolution}</span>
+                </span>
+
+                <span className="hidden sm:inline-flex px-2 py-0.5 rounded bg-slate-800/80 text-slate-300 font-mono text-[11px] border border-slate-700">
+                  {selectedChannel.fps} FPS • {selectedChannel.bitrateMbps} Mbps HDR10
+                </span>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <div className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-black/60 backdrop-blur-md border border-white/10 text-xs text-white font-mono shadow-md">
+                  <Eye className="w-3.5 h-3.5 text-emerald-400" />
+                  <span>{viewerCount.toLocaleString()} watching</span>
+                </div>
+
+                <button
+                  onClick={toggleFullscreen}
+                  className="p-2 rounded-xl bg-black/60 hover:bg-black/90 text-white border border-white/15 transition-colors cursor-pointer"
+                  title={isFullscreen ? 'Exit Fullscreen' : 'View Full 4K Screen'}
+                >
+                  <Maximize2 className="w-4 h-4" />
+                </button>
+              </div>
+            </div>
+
+            {/* Real 4K Video Player */}
+            <div className="relative aspect-video w-full bg-black flex items-center justify-center overflow-hidden">
+              <video
+                ref={videoRef}
+                src={selectedChannel.videoUrl}
+                poster={selectedChannel.posterUrl}
+                autoPlay
+                playsInline
+                loop
+                muted={isMuted}
+                className="w-full h-full object-cover"
+              />
+
+              <div className="absolute inset-0 bg-gradient-to-t from-[#070b14] via-transparent to-transparent pointer-events-none opacity-80" />
+
+              <button
+                onClick={togglePlay}
+                className="absolute inset-0 m-auto w-16 h-16 rounded-full bg-emerald-500/80 hover:bg-emerald-400 text-slate-950 flex items-center justify-center shadow-2xl opacity-0 group-hover:opacity-100 transition-all hover:scale-110 cursor-pointer pointer-events-auto"
+                title={isPlaying ? 'Pause 4K Broadcast' : 'Play 4K Broadcast'}
+              >
+                {isPlaying ? <Pause className="w-8 h-8 fill-slate-950" /> : <Play className="w-8 h-8 ml-1 fill-slate-950" />}
+              </button>
+            </div>
+
+            {/* 4K Bottom Broadcast HUD */}
+            <div className="p-4 sm:p-5 bg-gradient-to-r from-[#070d18] via-[#091426] to-[#08101e] border-t border-slate-800 space-y-3">
+              <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
+                <div className="space-y-1">
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs uppercase font-mono font-bold text-emerald-400">
+                      {selectedChannel.category}
+                    </span>
+                    <span className="text-slate-500">•</span>
+                    <span className="text-xs text-slate-400 font-mono">Channel Verified</span>
+                  </div>
+
+                  <h2 className="text-base sm:text-lg font-black text-white leading-tight">
+                    {selectedChannel.name}
+                  </h2>
+
+                  <p className="text-xs text-slate-300 max-w-2xl leading-relaxed">
+                    {selectedChannel.description}
+                  </p>
+                </div>
+
+                <div className="flex items-center gap-2 shrink-0 flex-wrap">
+                  <button
+                    onClick={toggleMute}
+                    className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 text-xs font-bold transition-all cursor-pointer"
+                    title={isMuted ? 'Unmute Audio' : 'Mute Audio'}
+                  >
+                    {isMuted ? <VolumeX className="w-4 h-4 text-rose-400" /> : <Volume2 className="w-4 h-4 text-emerald-400" />}
+                    <span>{isMuted ? 'Unmute' : 'Audio ON'}</span>
+                  </button>
+
+                  <div className="relative">
+                    <select
+                      value={selectedChannel.id}
+                      onChange={(e) => {
+                        const chan = LIVE_4K_CHANNELS.find((c) => c.id === e.target.value);
+                        if (chan) handleSelectChannel(chan);
+                      }}
+                      className="px-3 py-2 rounded-xl bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 text-xs font-bold font-mono focus:outline-none cursor-pointer"
+                      title="Switch 4K Live Broadcast Channel"
+                    >
+                      {LIVE_4K_CHANNELS.map((chan) => (
+                        <option key={chan.id} value={chan.id} className="bg-slate-900 text-white">
+                          {chan.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2 overflow-x-auto scrollbar-none pt-2 border-t border-slate-800/80">
+                <span className="text-[11px] font-mono uppercase tracking-wider text-slate-400 shrink-0 flex items-center gap-1">
+                  <Tv className="w-3.5 h-3.5 text-cyan-400" />
+                  <span>4K Channels:</span>
+                </span>
+
+                {LIVE_4K_CHANNELS.map((chan) => {
+                  const isSelected = chan.id === selectedChannel.id;
+                  return (
+                    <button
+                      key={chan.id}
+                      onClick={() => handleSelectChannel(chan)}
+                      className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all shrink-0 cursor-pointer ${
+                        isSelected
+                          ? 'bg-emerald-500 text-slate-950 shadow-md shadow-emerald-500/20'
+                          : 'bg-slate-900 text-slate-300 hover:text-white hover:bg-slate-800 border border-slate-800'
+                      }`}
+                    >
+                      {chan.category}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          </>
+        ) : (
+          <div className="min-h-[320px] sm:min-h-[420px] flex flex-col items-center justify-center text-center px-6 py-12 bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950">
+            <div className="w-16 h-16 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center mb-5">
+              <Tv className="w-8 h-8 text-emerald-400" />
+            </div>
+
+            <h2 className="text-xl sm:text-2xl font-black text-white mb-2">
+              Live 4K Broadcasts
+            </h2>
+
+            <p className="max-w-md text-sm text-slate-400 leading-relaxed">
+              No verified live 4K broadcast channels are currently available.
+              Please check again when a live channel becomes active.
+            </p>
+
+            <div className="mt-5 flex items-center gap-2 text-xs font-mono text-slate-500">
+              <Radio className="w-3.5 h-3.5" />
+              <span>Waiting for live channel availability</span>
+            </div>
+          </div>
+        )}
+      </div>
       {/* ============================================================= */}
       <div
         ref={screenContainerRef}
@@ -278,7 +441,7 @@ export const LiveServices4KVideoHub: React.FC = () => {
             </span>
 
             <span className="hidden sm:inline-flex px-2 py-0.5 rounded bg-slate-800/80 text-slate-300 font-mono text-[11px] border border-slate-700">
-              {selectedChannel.fps} FPS • {selectedChannel.bitrateMbps} Mbps HDR10
+              {selectedChannel.fps} FPS â€¢ {selectedChannel.bitrateMbps} Mbps HDR10
             </span>
           </div>
 
@@ -333,7 +496,7 @@ export const LiveServices4KVideoHub: React.FC = () => {
                 <span className="text-xs uppercase font-mono font-bold text-emerald-400">
                   {selectedChannel.category}
                 </span>
-                <span className="text-slate-500">•</span>
+                <span className="text-slate-500">â€¢</span>
                 <span className="text-xs text-slate-400 font-mono">Channel Verified</span>
               </div>
               <h2 className="text-base sm:text-lg font-black text-white leading-tight">
@@ -419,7 +582,7 @@ export const LiveServices4KVideoHub: React.FC = () => {
               <Sparkles className="w-3.5 h-3.5" />
               <span>{currentPromo.badgeLabel}</span>
             </span>
-            <span className="text-xs text-slate-400 hidden sm:inline">• {currentPromo.category}</span>
+            <span className="text-xs text-slate-400 hidden sm:inline">â€¢ {currentPromo.category}</span>
           </div>
 
           {/* Carousel Controls (Prev / Next & Dots) */}
@@ -457,6 +620,7 @@ export const LiveServices4KVideoHub: React.FC = () => {
         </div>
 
         {/* Current Active Ad Card */}
+        {currentPromo ? (
         <div className="flex flex-col md:flex-row items-center gap-5 sm:gap-6 animate-in fade-in duration-300">
           <div className="w-full md:w-56 h-36 rounded-2xl overflow-hidden shrink-0 border border-slate-700 bg-slate-950 shadow-lg relative">
             <img
@@ -489,7 +653,7 @@ export const LiveServices4KVideoHub: React.FC = () => {
                     key={i}
                     className="px-2 py-0.5 rounded-md bg-slate-900/80 border border-slate-800 text-[11px] text-slate-300"
                   >
-                    ✓ {h}
+                    âœ“ {h}
                   </span>
                 ))}
               </div>
@@ -514,6 +678,19 @@ export const LiveServices4KVideoHub: React.FC = () => {
             </a>
           </div>
         </div>
+        ) : (
+          <div className="rounded-2xl border border-slate-800 bg-slate-950/70 p-6 text-center">
+            <div className="text-base font-bold text-slate-200">
+              Business Promotions
+            </div>
+            <p className="mt-2 text-sm text-slate-400">
+              No verified business promotions are currently available.
+            </p>
+            <p className="mt-1 text-xs text-slate-500">
+              Promotions will appear here when verified business content becomes available.
+            </p>
+          </div>
+        )}
       </div>
 
       {/* ============================================================= */}
@@ -689,3 +866,6 @@ export const LiveServices4KVideoHub: React.FC = () => {
     </div>
   );
 };
+
+
+
