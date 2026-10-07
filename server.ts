@@ -2985,8 +2985,6 @@ app.post("/api/billing/plans/change", (req, res) => {
       malviUnitsUsed: 0,
     };
 
-    billingDb.userSubscriptions.set(userId, newSub);
-
     // Verify & Debit Communication Wallet if price > 0
     let invoice: any = null;
     if (pricePaid > 0) {
@@ -3088,6 +3086,9 @@ app.post("/api/billing/plans/change", (req, res) => {
       };
       billingDb.invoices.unshift(invoice);
     }
+
+    // Only commit active subscription AFTER verified payment or successful deduction
+    billingDb.userSubscriptions.set(userId, newSub);
 
     res.json({ success: true, subscription: newSub, invoice });
   } catch (error: any) {

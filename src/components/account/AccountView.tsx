@@ -48,6 +48,7 @@ export const AccountView: React.FC = () => {
     setIsLanguageModalOpen,
     currentPlan,
     changePlan,
+    openBillingWithPlan,
     billingSummary,
     wallets,
     isSubscribed,
@@ -523,14 +524,29 @@ export const AccountView: React.FC = () => {
 
                 <button
                   disabled={isCurrent}
-                  onClick={() => changePlan(plan.tier)}
-                  className={`w-full py-2.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                  onClick={() => {
+                    if (plan.tier === 'free') {
+                      changePlan('free');
+                    } else {
+                      openBillingWithPlan(plan.tier, 'SUBSCRIPTION', 'MONTHLY');
+                    }
+                  }}
+                  className={`w-full py-2.5 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
                     isCurrent
                       ? 'bg-slate-800 text-slate-400 cursor-default'
                       : 'bg-emerald-500 hover:bg-emerald-400 text-slate-950 shadow-sm'
                   }`}
                 >
-                  {isCurrent ? 'Current Plan' : `Switch to ${plan.name}`}
+                  {isCurrent ? (
+                    'Current Active Plan'
+                  ) : plan.tier === 'free' ? (
+                    'Switch to Free Basic'
+                  ) : (
+                    <>
+                      <CreditCard className="w-3.5 h-3.5" />
+                      <span>Subscribe with Paystack (GH₵ {plan.monthlyPriceGHS}/mo)</span>
+                    </>
+                  )}
                 </button>
               </div>
             );

@@ -141,6 +141,8 @@ export const UniversalPaymentGatewayModal: React.FC<UniversalPaymentGatewayModal
           purpose.cycle,
           { network: momoNetwork, phoneNumber: momoPhoneNumber }
         );
+        onClose();
+        return;
       } else if (purpose.type === 'minutes') {
         res = await topUpMinutesWithGateway(
           purpose.minutes,
@@ -149,6 +151,8 @@ export const UniversalPaymentGatewayModal: React.FC<UniversalPaymentGatewayModal
           selectedGateway,
           { network: momoNetwork, phoneNumber: momoPhoneNumber }
         );
+        onClose();
+        return;
       } else {
         res = await depositViaGateway(
           selectedGateway,

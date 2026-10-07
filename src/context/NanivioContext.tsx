@@ -3106,22 +3106,14 @@ export const NanivioProvider: React.FC<{ children: React.ReactNode }> = ({ child
         } catch (_) {}
         setCurrentPlan({
           ...found,
-          name: 'Unsubscribed',
+          name: 'Free Basic',
           langpretationMinutesQuota: 0,
           langpretationMinutesRemaining: 0,
         });
       } else {
-        setIsSubscribed(true);
-        setIsFreeTrialActive(false);
-        try {
-          localStorage.setItem('nanivio_is_subscribed', 'true');
-          localStorage.setItem('nanivio_is_free_trial', 'false');
-          localStorage.setItem('nanivio_current_plan_rem', String(found.langpretationMinutesRemaining));
-          localStorage.setItem('nanivio_current_plan_quota', String(found.langpretationMinutesQuota));
-        } catch (_) {}
-        setCurrentPlan(found);
+        // Require real subscription payment via Paystack checkout
+        openBillingWithPlan(tier, 'SUBSCRIPTION', 'MONTHLY');
       }
-      confetti({ particleCount: 80, spread: 70, origin: { y: 0.6 } });
     }
   };
 
@@ -3307,49 +3299,14 @@ export const NanivioProvider: React.FC<{ children: React.ReactNode }> = ({ child
     cycle: 'MONTHLY' | 'ANNUAL',
     details?: any
   ): Promise<{ success: boolean; referenceId: string; message: string }> => {
-    const refId = `SUB-${Math.random().toString(36).substring(2, 8).toUpperCase()}`;
+    // Real payment is required via Paystack. Direct user to checkout modal.
+    openBillingWithPlan(planTier, 'SUBSCRIPTION', cycle);
     const targetPlan = USER_PLANS.find((p) => p.tier === planTier) || USER_PLANS[1];
-
-    setIsSubscribed(true);
-    setIsFreeTrialActive(false);
-    try {
-      localStorage.setItem('nanivio_is_subscribed', 'true');
-      localStorage.setItem('nanivio_is_free_trial', 'false');
-      localStorage.setItem('nanivio_current_plan_rem', String(targetPlan.langpretationMinutesRemaining));
-      localStorage.setItem('nanivio_current_plan_quota', String(targetPlan.langpretationMinutesQuota));
-    } catch (_) {}
-
-    setCurrentPlan(targetPlan);
-
-    const channelNames: Record<string, string> = {
-      mobileMoney: details?.network ? `${details.network} MoMo` : 'MTN Mobile Money',
-      cardPayment: details?.brand ? `${details.brand} Card` : 'Visa / Mastercard',
-      payPal: 'PayPal Express',
-      googlePay: 'Google Pay',
-      applePay: 'Apple Pay',
-      bankPayment: 'Direct Bank Wire',
-    };
-
-    const newTx: FinancialTransaction = {
-      id: `tx_${Date.now()}`,
-      type: 'subscription',
-      title: `${targetPlan.name} Subscription (${cycle})`,
-      description: `Activated via ${channelNames[gateway] || gateway} [Ref: ${refId}]`,
-      amount: cycle === 'ANNUAL' ? targetPlan.monthlyPriceGHS * 10 : targetPlan.monthlyPriceGHS,
-      currency: 'GHS',
-      fee: 0,
-      status: 'completed',
-      timestamp: Date.now(),
-      channel: (channelNames[gateway] || 'Nanivio Wallet') as any,
-    };
-
-    setTransactions((prev) => [newTx, ...prev]);
-    confetti({ particleCount: 110, spread: 85, origin: { y: 0.5 } });
 
     return {
       success: true,
-      referenceId: refId,
-      message: `Upgraded to ${targetPlan.name} successfully via ${channelNames[gateway] || gateway}!`,
+      referenceId: `PSTK-SUB-${Date.now().toString().slice(-6)}`,
+      message: `Directing to secure Paystack payment gateway for ${targetPlan.name} (${cycle})...`,
     };
   };
 
@@ -3360,42 +3317,14 @@ export const NanivioProvider: React.FC<{ children: React.ReactNode }> = ({ child
     gateway: 'mobileMoney' | 'cardPayment' | 'payPal' | 'googlePay' | 'applePay' | 'bankPayment',
     details?: any
   ): Promise<{ success: boolean; referenceId: string; message: string }> => {
-    const refId = `TOPUP-${Math.random().toString(36).substring(2, 8).toUpperCase()}`;
-    
-    setCurrentPlan((prev) => ({
-      ...prev,
-      langpretationMinutesRemaining: prev.langpretationMinutesRemaining + minutes,
-    }));
-
-    const channelNames: Record<string, string> = {
-      mobileMoney: details?.network ? `${details.network} MoMo` : 'MTN Mobile Money',
-      cardPayment: details?.brand ? `${details.brand} Card` : 'Visa / Mastercard',
-      payPal: 'PayPal Express',
-      googlePay: 'Google Pay',
-      applePay: 'Apple Pay',
-      bankPayment: 'Direct Bank Wire',
-    };
-
-    const newTx: FinancialTransaction = {
-      id: `tx_${Date.now()}`,
-      type: 'langpretation_bundle',
-      title: `+${minutes} Langpretation Minutes`,
-      description: `Purchased via ${channelNames[gateway] || gateway} [Ref: ${refId}]`,
-      amount: cost,
-      currency,
-      fee: 0,
-      status: 'completed',
-      timestamp: Date.now(),
-      channel: (channelNames[gateway] || 'Nanivio Wallet') as any,
-    };
-
-    setTransactions((prev) => [newTx, ...prev]);
-    confetti({ particleCount: 80, spread: 65, origin: { y: 0.6 } });
+    // Direct user to real payment gateway for communication minutes
+    setIsMinutesModalOpen(true);
+    setActiveTab('billing');
 
     return {
       success: true,
-      referenceId: refId,
-      message: `+${minutes} Langpretation Minutes credited to your account.`,
+      referenceId: `PSTK-MIN-${Date.now().toString().slice(-6)}`,
+      message: `Directing to secure Paystack payment gateway for +${minutes} Langpretation Minutes...`,
     };
   };
 
