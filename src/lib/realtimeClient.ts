@@ -3,6 +3,7 @@
  * Coordinates live Agora RTC signaling, incoming/outgoing call states, WebRTC peer connections,
  * live Langpretation speech streaming, and GetStream real-time chat broadcasts.
  */
+import { authClient } from './authClient';
 
 export interface RealtimeUser {
   userId: string;
@@ -78,7 +79,7 @@ class NanivioRealtimeClient {
 
         // Re-authenticate if user session is known
         if (this.currentUser) {
-          this.send('auth:presence', this.currentUser);
+          this.sendPresence();
         }
       };
 
@@ -151,7 +152,13 @@ class NanivioRealtimeClient {
       role: user.role || 'CITIZEN',
       myLanguage: user.myLanguage || 'en',
     };
-    this.send('auth:presence', this.currentUser);
+    this.sendPresence();
+  }
+
+  private sendPresence() {
+    const token = authClient.getToken();
+    if (!token || !this.currentUser) return;
+    this.send('auth:presence', { ...this.currentUser, token });
   }
 
   // Calling Signaling Actions

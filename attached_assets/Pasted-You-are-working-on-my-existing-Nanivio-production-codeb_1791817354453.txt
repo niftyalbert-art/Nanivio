@@ -1,0 +1,446 @@
+You are working on my existing Nanivio production codebase.
+
+GITHUB REPOSITORY:
+niftyalbert-art/Nanivio
+
+BRANCH:
+malvi-production-upgrade
+
+CRITICAL:
+
+* Work ONLY on the `malvi-production-upgrade` branch.
+* DO NOT modify, merge into, or push to `main`.
+* Preserve all existing working functionality.
+* Do not replace working systems with mock/demo implementations.
+* Do not remove features simply to make errors disappear.
+* Do not invent APIs, credentials, database records, payment confirmations, or live service responses.
+* Before making major changes, understand the existing architecture and dependencies.
+* This is intended to become a real production application.
+
+==================================================
+
+1. CURRENT MAJOR RUNTIME ERROR
+   ==================================================
+
+Multiple Nanivio workspace sections are crashing:
+
+* Home
+* Services
+* Billing
+* NV Number / Meter
+
+The error displayed is:
+
+"Nanivio Home Workspace
+
+The view encountered a temporary display condition.
+
+can't access property "viewersCount", sA[0] is undefined
+
+Reload Workspace"
+
+A previous fix was already made in:
+
+src/components/services/LiveServices4KVideoHub.tsx
+
+The previous unsafe initialization involving:
+
+LIVE_4K_CHANNELS[0].viewersCount
+
+was changed to null-safe handling.
+
+The source code now uses optional/null-safe logic.
+
+TypeScript typecheck and production build passed after that fix.
+
+However, the runtime error still appears.
+
+DO NOT assume the previous fix solved the root cause.
+
+Investigate the REAL source of the runtime error.
+
+Trace the error through:
+
+* App.tsx
+* ErrorBoundary
+* NanivioContext
+* HomeView
+* ServicesView
+* UniversalBillingHub
+* NVNumberView
+* shared components
+* hooks
+* live services
+* workspace initialization
+* compiled production assets
+* API responses
+* deployed build/version if relevant
+
+Search for all unsafe array access patterns such as:
+
+array[0].property
+
+especially when the array may be empty.
+
+Search globally for:
+
+viewersCount
+LIVE_4K_CHANNELS
+live channels
+workspace
+workspace initialization
+Home
+Services
+Billing
+NV Number
+Meter
+
+Determine why an error mentioning `sA[0]` and `viewersCount` can still occur even though the obvious source-level unsafe access was fixed.
+
+Also determine whether the deployed application may be running:
+
+* an old build
+* an old commit
+* another branch
+* cached assets
+* a different deployment
+* a different source file than the current GitHub branch
+
+Do not make speculative fixes.
+
+FIRST diagnose the root cause and explain the evidence.
+
+Then implement the smallest production-safe fix.
+
+==================================================
+2. MOBILE USER ACCOUNT / PROFILE UI
+===================================
+
+Review the User Account/Profile interface carefully on mobile.
+
+The following problem must be fixed:
+
+The Account section becomes cramped/overlapping on small screens.
+
+In particular:
+
+"Interface: English"
+
+must display cleanly without overlapping or becoming unreadable.
+
+Check:
+
+* profile header
+* profile information
+* Interface language selector
+* Configure Languages
+* Nanivio number
+* account buttons
+* edit profile
+* privacy settings
+* forms
+* modal layout
+* scrolling
+* buttons
+* small-screen spacing
+* text wrapping
+
+The mobile UI must remain usable on narrow phone screens.
+
+Do not solve this by simply hiding important information.
+
+==================================================
+3. MISSED CALLS / CALLING SYSTEM
+================================
+
+Audit the entire communication/calling architecture.
+
+Nanivio should support:
+
+* Nanivio number-to-Nanivio number calling
+* audio calls
+* video calls
+* incoming calls
+* outgoing calls
+* missed calls
+* call history
+* accepting calls
+* declining calls
+* ending calls
+* caller identity
+* recipient identity
+* contacts
+* call controls
+* translator/Langpretation controls
+
+The missed-call structure is currently poor.
+
+Missed calls can be hidden underneath other controls/keys and are difficult to access or click.
+
+Fix the UI and interaction so missed calls are clearly visible, accessible and clickable.
+
+Do not remove existing call functionality.
+
+Verify the actual implementation rather than assuming it works.
+
+==================================================
+4. LANGPRETATION / LIVE TRANSLATION
+===================================
+
+Audit the existing Langpretation architecture.
+
+The intended Nanivio feature is live language interpretation/translation during communication.
+
+Verify the existing implementation for:
+
+* language selection
+* user's preferred language
+* translation controls
+* translator button
+* call translation
+* text translation
+* audio translation
+* connection to the actual translation service
+* frontend/backend communication
+* error handling
+* credits/usage tracking
+
+Do not replace the existing translation architecture with fake translation.
+
+If an external API is configured, verify how it is actually called and how credentials are expected to be supplied.
+
+Do not expose or hard-code API keys.
+
+==================================================
+5. LANGPRETATION COMMUNICATION SUBSCRIPTION PLANS
+=================================================
+
+IMPORTANT NEW REQUIREMENT.
+
+Nanivio has Communication subscription plans for Langpretation.
+
+When a user selects ANY Langpretation Communication plan, the system must automatically grant the communication credit associated with that plan.
+
+CRITICAL BUSINESS RULE:
+
+Selecting the Langpretation Communication plan itself grants the user's communication credit.
+
+The user DOES NOT need to make a Paystack subscription payment for this credit to be granted.
+
+Therefore:
+
+User selects plan
+↓
+System records the selected plan
+↓
+System automatically credits the user's communication/Langpretation credit balance
+↓
+User can use the granted communication credit
+
+There must NOT be a Paystack payment requirement between plan selection and credit allocation for this specific Langpretation Communication-plan flow.
+
+Do not redirect the user to Paystack merely to grant these credits.
+
+Do not mark the credit as paid when no payment occurred.
+
+Do not fabricate a Paystack transaction.
+
+Do not create a fake payment reference.
+
+The system should distinguish between:
+
+1. PLAN SELECTION / CREDIT GRANT
+
+and
+
+2. ACTUAL PAYSTACK PAYMENT TRANSACTION
+
+The first must work without payment.
+
+The second should only occur where an actual paid transaction is intentionally required elsewhere in the existing Nanivio billing architecture.
+
+IMPORTANT:
+Do not break existing Paystack functionality for other products, subscriptions, deposits, billing or payment flows.
+
+Determine how the current billing database/state is structured and integrate this requirement into the existing architecture rather than creating an unrelated parallel credit system.
+
+The credit grant should be:
+
+* tied to the authenticated user
+* tied to the selected communication plan
+* recorded persistently
+* reflected immediately in the user's balance/usage state
+* available to Langpretation
+* protected against accidental duplicate crediting caused by repeated clicks/reloads where appropriate
+* auditable
+* compatible with existing billing/usage records
+
+If the existing system already has a credit ledger, wallet, usage balance, subscription record, or communication-minute system, reuse it rather than creating unnecessary duplicate state.
+
+Determine whether the plan selection should create:
+
+* a subscription record
+* a credit allocation/ledger entry
+* a usage allowance
+* an entitlement
+
+based on the existing architecture.
+
+Do not guess. Inspect the existing implementation first.
+
+==================================================
+6. BILLING / PAYMENT SAFETY
+===========================
+
+Review the existing billing architecture.
+
+Pay special attention to:
+
+* Paystack
+* subscriptions
+* billing plans
+* invoices
+* billing summary
+* communication minutes
+* usage
+* credits
+* disputes
+* vouchers
+* payment callbacks/webhooks
+* authenticated users
+
+Do not break existing Paystack payment functionality.
+
+Do not treat a plan selection as a successful Paystack payment.
+
+Do not create fake transactions.
+
+Make sure frontend state and backend/database state remain consistent.
+
+==================================================
+7. AUTHENTICATION / USER DATA
+=============================
+
+Verify that changes are tied to the authenticated user.
+
+Do not use hard-coded user IDs.
+
+Do not grant credits globally.
+
+Do not grant credits to the wrong account.
+
+Verify:
+
+* authenticated user identity
+* currentUser
+* authUser
+* Nanivio number
+* account ID/user ID
+* backend authorization
+* database ownership
+
+==================================================
+8. PRODUCTION QUALITY
+=====================
+
+After implementing the fixes:
+
+1. Run TypeScript typecheck.
+
+2. Run the production build.
+
+3. Inspect the complete Git diff.
+
+4. Check for accidental modifications.
+
+5. Verify no secrets/API keys were introduced.
+
+6. Verify no fake/mock production data was introduced.
+
+7. Verify existing functionality was preserved.
+
+8. Verify the new Langpretation credit flow.
+
+9. Verify the runtime crash is actually resolved.
+
+10. Verify mobile Account UI.
+
+11. Verify calling/missed-call UI.
+
+12. Verify Langpretation integration.
+
+13. Verify Paystack behavior was not unintentionally changed.
+
+14. Check for obvious regressions.
+
+If tests exist, run the relevant tests.
+
+==================================================
+9. GIT SAFETY
+=============
+
+DO NOT touch `main`.
+
+All changes must remain on:
+
+malvi-production-upgrade
+
+Before committing, report:
+
+* files changed
+* why each file changed
+* important logic changes
+* typecheck result
+* build result
+* tests result
+* any remaining warnings
+
+Then commit the changes to:
+
+malvi-production-upgrade
+
+Do not merge into main.
+
+Do not force-push.
+
+==================================================
+10. IMPORTANT WORKING METHOD
+============================
+
+Do not start by rewriting large portions of the application.
+
+First inspect and understand the current implementation.
+
+For every major issue:
+
+1. Identify the existing implementation.
+2. Identify the actual failure.
+3. Explain the root cause.
+4. Make the smallest safe correction.
+5. Test it.
+6. Check for regressions.
+
+If you discover that a requested feature is already implemented, do not rebuild it unnecessarily. Fix only what is actually missing or broken.
+
+At the end, provide a concise production-readiness report covering:
+
+A. Runtime workspace crash
+B. Mobile Account/Profile UI
+C. Missed calls
+D. Audio calling
+E. Video calling
+F. Nanivio numbers
+G. Langpretation
+H. Communication plans
+I. Automatic Langpretation credit allocation
+J. Paystack separation
+K. Billing
+L. Authentication
+M. Build/typecheck/tests
+N. Git branch/commit
+
+Most importantly:
+
+DO NOT simply tell me what could be fixed.
+
+Actually inspect the repository, implement the required fixes, test them, and report exactly what was changed and what remains.

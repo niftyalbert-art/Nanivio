@@ -12,6 +12,8 @@ import {
   getStreamChannel,
   type StreamChatMessage,
 } from './streamService.ts';
+import { authDb } from './authDb.ts';
+import * as persistentAuth from './persistentAuth.ts';
 
 export interface ConnectedUser {
   socket: WebSocket;
@@ -49,6 +51,47 @@ const clientsByUserId: Map<string, Set<ConnectedUser>> = new Map();
 const clientsByNvId: Map<string, Set<ConnectedUser>> = new Map();
 const allSockets: Set<WebSocket> = new Set();
 const activeCalls: Map<string, ActiveCallState> = new Map();
+
+async function authenticateRealtimeToken(tokenValue: unknown) {
+  const token = typeof tokenValue === 'string' ? tokenValue.trim() : '';
+  if (!token) return null;
+  try {
+    const adminUser = persistentAuth.adminFromToken(token);
+    if (adminUser) return adminUser;
+    if (await persistentAuth.persistentAuthConfigured()) {
+      return await persistentAuth.userFromToken(token);
+    }
+    if (process.env.NODE_ENV === 'production' || process.env.REQUIRE_PERSISTENT_AUTH === 'true') return null;
+    return authDb.validateSession(token);
+  } catch {
+    return null;
+  }
+}
+
+function removeConnectedUser(user: ConnectedUser) {
+  const byUser = clientsByUserId.get(user.userId);
+  byUser?.delete(user);
+  if (byUser?.size === 0) clientsByUserId.delete(user.userId);
+
+  for (const [key, users] of clientsByNvId.entries()) {
+    users.delete(user);
+    if (users.size === 0) clientsByNvId.delete(key);
+  }
+}
+
+function isCallRecipient(call: ActiveCallState, user: { userId: string; nvId: string }): boolean {
+  return (
+    call.recipientId === user.userId ||
+    (!!call.recipientNvId && !!user.nvId && cleanNumber(call.recipientNvId) === cleanNumber(user.nvId))
+  );
+}
+
+export function canJoinAgoraCall(userId: string, nvId: string, channelName: string): boolean {
+  return Array.from(activeCalls.values()).some((call) =>
+    call.channelName === channelName &&
+    (call.participants.includes(userId) || isCallRecipient(call, { userId, nvId }))
+  );
+}
 
 // Supported Language Names mapping for Langpretation translation (Authoritative 18 Launch Languages)
 const LANGUAGE_NAMES: Record<string, string> = {
@@ -254,30 +297,53 @@ export function setupRealtimeServer(httpServer: HttpServer) {
         const parsed = JSON.parse(raw);
         const { type, payload } = parsed;
 
+        if (type !== 'auth:presence' && !currentUser) {
+          socket.send(JSON.stringify({
+            type: 'auth:error',
+            payload: { message: 'Authentication required.' },
+          }));
+          return;
+        }
+
         switch (type) {
           // -------------------------------------------------------------
           // 1. PRESENCE / USER AUTHENTICATION
           // -------------------------------------------------------------
           case 'auth:presence': {
-            const { userId, nvId, name, avatar, role, myLanguage } = payload || {};
-            if (!userId) return;
+            const user = await authenticateRealtimeToken(payload?.token);
+            if (!user?.id) {
+              socket.send(JSON.stringify({
+                type: 'auth:error',
+                payload: { message: 'Authentication required.' },
+              }));
+              socket.close(4401, 'Authentication required');
+              return;
+            }
+            if (currentUser && currentUser.userId !== String(user.id)) {
+              socket.close(4403, 'Authenticated identity cannot change');
+              return;
+            }
+
+            if (currentUser) removeConnectedUser(currentUser);
+            const name = String(user.displayName || `${user.firstName || ''} ${user.lastName || ''}`.trim() || user.name || 'User');
+            const nvId = String(user.nvId || '');
 
             currentUser = {
               socket,
-              userId,
-              nvId: nvId || '',
-              name: name || 'User',
-              avatar,
-              role: role || 'CITIZEN',
-              myLanguage: myLanguage || 'en',
+              userId: String(user.id),
+              nvId,
+              name,
+              avatar: user.avatar || undefined,
+              role: String(user.role || 'PERSONAL'),
+              myLanguage: String(user.preferredLanguage || user.myLanguage || 'en'),
               connectedAt: Date.now(),
             };
 
             // Register in lookup maps
-            if (!clientsByUserId.has(userId)) {
-              clientsByUserId.set(userId, new Set());
+            if (!clientsByUserId.has(currentUser.userId)) {
+              clientsByUserId.set(currentUser.userId, new Set());
             }
-            clientsByUserId.get(userId)!.add(currentUser);
+            clientsByUserId.get(currentUser.userId)!.add(currentUser);
 
             if (nvId) {
               const rawNv = String(nvId).trim();
@@ -321,12 +387,27 @@ export function setupRealtimeServer(httpServer: HttpServer) {
               callId,
               channelName,
               callType,
-              caller,
               recipientId,
               recipientNvId,
             } = payload || {};
+            const caller = currentUser && {
+              id: currentUser.userId,
+              name: currentUser.name,
+              nvId: currentUser.nvId,
+              avatar: currentUser.avatar,
+              myLanguage: currentUser.myLanguage,
+              initials: currentUser.name.slice(0, 2).toUpperCase(),
+            };
 
-            if (!callId || !caller || (!recipientId && !recipientNvId)) {
+            if (
+              !currentUser ||
+              !callId ||
+              !caller ||
+              (!recipientId && !recipientNvId) ||
+              (recipientId && String(recipientId) === currentUser.userId) ||
+              (recipientNvId && currentUser.nvId && cleanNumber(String(recipientNvId)) === cleanNumber(currentUser.nvId)) ||
+              !['audio', 'video'].includes(callType)
+            ) {
               socket.send(
                 JSON.stringify({
                   type: 'call:error',
@@ -336,18 +417,26 @@ export function setupRealtimeServer(httpServer: HttpServer) {
               return;
             }
 
+            if (activeCalls.has(String(callId))) {
+              socket.send(JSON.stringify({
+                type: 'call:error',
+                payload: { message: 'A call with this ID is already active.' },
+              }));
+              return;
+            }
+
             const callSession: ActiveCallState = {
-              callId,
+              callId: String(callId),
               channelName: channelName || `nanivio_call_${callId}`,
-              callType: callType || 'video',
+              callType,
               caller,
-              recipientId,
-              recipientNvId,
+              recipientId: recipientId ? String(recipientId) : '',
+              recipientNvId: recipientNvId ? String(recipientNvId) : undefined,
               status: 'ringing',
               startedAt: Date.now(),
-              participants: [caller.id],
+              participants: [currentUser.userId],
             };
-            activeCalls.set(callId, callSession);
+            activeCalls.set(callSession.callId, callSession);
 
             // Register Agora room on server
             registerAgoraParticipant(callSession.channelName, callSession.callType, {
@@ -402,52 +491,56 @@ export function setupRealtimeServer(httpServer: HttpServer) {
           // 3. CALL ACCEPT (RECEIVER -> CALLER)
           // -------------------------------------------------------------
           case 'call:accept': {
-            const { callId, channelName, responder, callerId } = payload || {};
-            const callSession = activeCalls.get(callId);
-
-            if (callSession) {
-              callSession.status = 'connected';
-              callSession.connectedAt = Date.now();
-              if (responder?.id && !callSession.participants.includes(responder.id)) {
-                callSession.participants.push(responder.id);
-              }
-
-              // Register responder in Agora room
-              if (responder) {
-                registerAgoraParticipant(channelName || callSession.channelName, callSession.callType, {
-                  uid: responder.id,
-                  name: responder.name,
-                  role: 'publisher',
-                });
-              }
-
-              // Notify Caller that call was accepted
-              const targetCallerId = callerId || callSession.caller.id;
-              sendToUser(targetCallerId, {
-                type: 'call:accepted',
-                payload: {
-                  callId,
-                  channelName: channelName || callSession.channelName,
-                  callType: callSession.callType,
-                  responder,
-                  connectedAt: callSession.connectedAt,
-                },
-              });
-
-              // Confirm to responder
-              socket.send(
-                JSON.stringify({
-                  type: 'call:connected',
-                  payload: {
-                    callId,
-                    channelName: channelName || callSession.channelName,
-                    callType: callSession.callType,
-                    caller: callSession.caller,
-                    connectedAt: callSession.connectedAt,
-                  },
-                })
-              );
+            const { callId } = payload || {};
+            const callSession = activeCalls.get(String(callId || ''));
+            if (!currentUser || !callSession || callSession.status !== 'ringing' || !isCallRecipient(callSession, currentUser)) {
+              socket.send(JSON.stringify({
+                type: 'call:error',
+                payload: { message: 'This account is not the recipient of an active call.' },
+              }));
+              return;
             }
+
+            const responder = {
+              id: currentUser.userId,
+              name: currentUser.name,
+              nvId: currentUser.nvId,
+              avatar: currentUser.avatar,
+              myLanguage: currentUser.myLanguage,
+              initials: currentUser.name.slice(0, 2).toUpperCase(),
+            };
+            callSession.status = 'connected';
+            callSession.connectedAt = Date.now();
+            if (!callSession.participants.includes(currentUser.userId)) {
+              callSession.participants.push(currentUser.userId);
+            }
+            registerAgoraParticipant(callSession.channelName, callSession.callType, {
+              uid: currentUser.userId,
+              name: currentUser.name,
+              role: 'publisher',
+            });
+
+            sendToUser(callSession.caller.id, {
+              type: 'call:accepted',
+              payload: {
+                callId: callSession.callId,
+                channelName: callSession.channelName,
+                callType: callSession.callType,
+                responder,
+                connectedAt: callSession.connectedAt,
+              },
+            });
+
+            socket.send(JSON.stringify({
+              type: 'call:connected',
+              payload: {
+                callId: callSession.callId,
+                channelName: callSession.channelName,
+                callType: callSession.callType,
+                caller: callSession.caller,
+                connectedAt: callSession.connectedAt,
+              },
+            }));
             break;
           }
 
@@ -455,21 +548,24 @@ export function setupRealtimeServer(httpServer: HttpServer) {
           // 4. CALL DECLINE (RECEIVER -> CALLER)
           // -------------------------------------------------------------
           case 'call:decline': {
-            const { callId, callerId, reason } = payload || {};
-            const callSession = activeCalls.get(callId);
-
-            if (callSession) {
-              callSession.status = 'declined';
-              const targetCallerId = callerId || callSession.caller.id;
-              sendToUser(targetCallerId, {
-                type: 'call:declined',
-                payload: {
-                  callId,
-                  reason: reason || 'Recipient is unavailable or declined the call.',
-                },
-              });
-              activeCalls.delete(callId);
+            const { callId, reason } = payload || {};
+            const callSession = activeCalls.get(String(callId || ''));
+            if (!currentUser || !callSession || callSession.status !== 'ringing' || !isCallRecipient(callSession, currentUser)) {
+              socket.send(JSON.stringify({
+                type: 'call:error',
+                payload: { message: 'This account is not the recipient of an active call.' },
+              }));
+              return;
             }
+            callSession.status = 'declined';
+            sendToUser(callSession.caller.id, {
+              type: 'call:declined',
+              payload: {
+                callId: callSession.callId,
+                reason: typeof reason === 'string' ? reason.slice(0, 240) : 'Recipient declined the call.',
+              },
+            });
+            activeCalls.delete(callSession.callId);
             break;
           }
 
@@ -477,48 +573,40 @@ export function setupRealtimeServer(httpServer: HttpServer) {
           // 5. CALL END / HANGUP (EITHER PARTY)
           // -------------------------------------------------------------
           case 'call:end': {
-            const { callId, channelName, userId } = payload || {};
-            const callSession = activeCalls.get(callId);
-
-            if (channelName && userId) {
-              removeAgoraParticipant(channelName, userId);
+            const { callId } = payload || {};
+            const callSession = activeCalls.get(String(callId || ''));
+            if (!currentUser || !callSession || !callSession.participants.includes(currentUser.userId)) {
+              socket.send(JSON.stringify({
+                type: 'call:error',
+                payload: { message: 'This account is not a participant in that call.' },
+              }));
+              return;
             }
-
-            if (callSession) {
-              callSession.status = 'ended';
-              // Notify all other participants in the call
-              for (const pId of callSession.participants) {
-                if (pId !== userId) {
-                  sendToUser(pId, {
-                    type: 'call:ended',
-                    payload: {
-                      callId,
-                      endedBy: userId,
-                      durationSeconds: callSession.connectedAt
-                        ? Math.floor((Date.now() - callSession.connectedAt) / 1000)
-                        : 0,
-                    },
-                  });
-                }
-              }
-              // Also notify recipient if not in participants
-              if (callSession.recipientId && !callSession.participants.includes(callSession.recipientId)) {
-                sendToUser(callSession.recipientId, {
+            removeAgoraParticipant(callSession.channelName, currentUser.userId);
+            callSession.status = 'ended';
+            const durationSeconds = callSession.connectedAt
+              ? Math.max(0, Math.floor((Date.now() - callSession.connectedAt) / 1000))
+              : 0;
+            for (const participantId of callSession.participants) {
+              if (participantId !== currentUser.userId) {
+                sendToUser(participantId, {
                   type: 'call:ended',
-                  payload: { callId, endedBy: userId },
+                  payload: { callId: callSession.callId, endedBy: currentUser.userId, durationSeconds },
                 });
               }
-              activeCalls.delete(callId);
-            } else if (callId) {
-              // Fallback broadcast
-              broadcastToAll(
-                {
-                  type: 'call:ended',
-                  payload: { callId, endedBy: userId },
-                },
-                socket
-              );
             }
+            if (callSession.recipientId && !callSession.participants.includes(callSession.recipientId)) {
+              sendToUser(callSession.recipientId, {
+                type: 'call:ended',
+                payload: { callId: callSession.callId, endedBy: currentUser.userId },
+              });
+            } else if (callSession.recipientNvId && !callSession.participants.some((id) => id === callSession.recipientNvId)) {
+              sendToUser(callSession.recipientNvId, {
+                type: 'call:ended',
+                payload: { callId: callSession.callId, endedBy: currentUser.userId },
+              });
+            }
+            activeCalls.delete(callSession.callId);
             break;
           }
 
@@ -526,41 +614,23 @@ export function setupRealtimeServer(httpServer: HttpServer) {
           // 6. WEBRTC DIRECT P2P SIGNALING (OFFER, ANSWER, ICE)
           // -------------------------------------------------------------
           case 'call:webrtc_signal': {
-            const { callId, targetUserId, signalData, senderId } = payload || {};
-            if (signalData) {
-              let delivered = false;
-              if (targetUserId) {
-                delivered = sendToUser(targetUserId, {
-                  type: 'call:webrtc_signal',
-                  payload: {
-                    callId,
-                    senderId: senderId || currentUser?.userId,
-                    signalData,
-                  },
-                });
-              }
-
-              // Fallback to activeCall session participant if targetUserId lookup was missed
-              if (!delivered && callId) {
-                const session = activeCalls.get(callId);
-                if (session) {
-                  const currentId = senderId || currentUser?.userId;
-                  const otherParty = session.caller.id === currentId
-                    ? session.recipientId || session.recipientNvId
-                    : session.caller.id;
-                  if (otherParty) {
-                    sendToUser(otherParty, {
-                      type: 'call:webrtc_signal',
-                      payload: {
-                        callId,
-                        senderId: currentId,
-                        signalData,
-                      },
-                    });
-                  }
-                }
-              }
+            const { callId, targetUserId, signalData } = payload || {};
+            const callSession = activeCalls.get(String(callId || ''));
+            if (
+              !currentUser ||
+              !callSession ||
+              callSession.status !== 'connected' ||
+              !callSession.participants.includes(currentUser.userId) ||
+              !signalData
+            ) {
+              return;
             }
+            const targetId = String(targetUserId || callSession.participants.find((id) => id !== currentUser.userId) || '');
+            if (!targetId || targetId === currentUser.userId || !callSession.participants.includes(targetId)) return;
+            sendToUser(targetId, {
+              type: 'call:webrtc_signal',
+              payload: { callId: callSession.callId, senderId: currentUser.userId, signalData },
+            });
             break;
           }
 
