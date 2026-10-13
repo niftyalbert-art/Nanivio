@@ -89,6 +89,7 @@ export const UniversalBillingHub: React.FC = () => {
   const [isRedeeming, setIsRedeeming] = useState(false);
   const [billingCycle, setBillingCycle] = useState<'MONTHLY' | 'ANNUAL'>('MONTHLY');
   const [upgradingTier, setUpgradingTier] = useState<string | null>(null);
+  const [communicationPlanStatus, setCommunicationPlanStatus] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
 
   // Automatically handle incoming plan selection routed from elsewhere
   useEffect(() => {
@@ -105,19 +106,21 @@ export const UniversalBillingHub: React.FC = () => {
         const cycle = pendingBillingAction.cycle || 'MONTHLY';
 
         if (purpose === 'SUBSCRIPTION') {
-          const targetPlan = billingPlans.find((p) => p.tier === tier);
-          const price = cycle === 'ANNUAL' ? targetPlan?.priceAnnualGHS || 2200 : targetPlan?.priceMonthlyGHS || 220;
-          const commBalance = billingSummary?.accounts?.communication?.available || 0;
-          if (commBalance < price) {
-            setPaystackConfig({
-              purpose: 'SUBSCRIPTION',
-              planTier: tier,
-              billingCycle: cycle,
-              amount: price,
-              currency: 'GHS',
-            });
-            setIsPaystackModalOpen(true);
-          }
+          setUpgradingTier(tier);
+          setCommunicationPlanStatus(null);
+          void upgradeSubscriptionPlan(tier, cycle)
+            .then(() => {
+              setCommunicationPlanStatus({
+                type: 'success',
+                message: 'Communication plan allowance selected. No payment was collected and automatic renewal is off.',
+              });
+              setActiveSubTab('overview');
+            })
+            .catch((error) => setCommunicationPlanStatus({
+              type: 'error',
+              message: error instanceof Error ? error.message : 'Unable to select this communication plan.',
+            }))
+            .finally(() => setUpgradingTier(null));
         } else if (purpose === 'MALVI_SUBSCRIPTION') {
           const targetPlan = malviPlans.find((p) => p.tier === tier);
           const price = cycle === 'ANNUAL' ? targetPlan?.priceAnnualGHS || 2200 : targetPlan?.priceMonthlyGHS || 220;
@@ -133,7 +136,7 @@ export const UniversalBillingHub: React.FC = () => {
       }
       setPendingBillingAction(null);
     }
-  }, [pendingBillingAction, billingPlans, malviPlans, billingSummary, setPendingBillingAction]);
+  }, [pendingBillingAction, billingPlans, malviPlans, billingSummary, setPendingBillingAction, upgradeSubscriptionPlan]);
 
   // Pre-Action Calculator State
   const [calcService, setCalcService] = useState<BillingServiceType>('LANGPRETATION');
@@ -199,39 +202,20 @@ export const UniversalBillingHub: React.FC = () => {
     }
   };
 
-  const handleUpgradePlan = async (tier: string, forcePaystack = false) => {
+  const handleUpgradePlan = async (tier: string) => {
     setUpgradingTier(tier);
-    const targetPlan = billingPlans.find((p) => p.tier === tier);
-    const priceGHS = billingCycle === 'ANNUAL' ? targetPlan?.priceAnnualGHS || 0 : targetPlan?.priceMonthlyGHS || 0;
-    const commBalance = billingSummary?.accounts?.communication?.available || 0;
-
-    // Requirement 1: If zero Nanivio credit requirement or insufficient balance, automatically launch Paystack checkout
-    if (forcePaystack || commBalance < priceGHS || commBalance <= 0 || priceGHS === 0) {
-      setUpgradingTier(null);
-      setPaystackConfig({
-        purpose: 'SUBSCRIPTION',
-        planTier: tier,
-        billingCycle,
-        amount: priceGHS,
-        currency: 'GHS',
-      });
-      setIsPaystackModalOpen(true);
-      return;
-    }
-
+    setCommunicationPlanStatus(null);
     try {
       await upgradeSubscriptionPlan(tier, billingCycle);
-      setActiveSubTab('overview');
-    } catch (err: any) {
-      // Fallback to Paystack checkout modal on insufficient balance
-      setPaystackConfig({
-        purpose: 'SUBSCRIPTION',
-        planTier: tier,
-        billingCycle,
-        amount: priceGHS,
-        currency: 'GHS',
+      setCommunicationPlanStatus({
+        type: 'success',
+        message: 'Communication plan allowance selected. No payment was collected and automatic renewal is off.',
       });
-      setIsPaystackModalOpen(true);
+    } catch (error) {
+      setCommunicationPlanStatus({
+        type: 'error',
+        message: error instanceof Error ? error.message : 'Unable to select this communication plan.',
+      });
     } finally {
       setUpgradingTier(null);
     }
@@ -570,13 +554,15 @@ export const UniversalBillingHub: React.FC = () => {
                 <div className="flex items-center justify-between">
                   <span className="text-xs font-bold uppercase tracking-wider text-emerald-400">Current Subscription</span>
                   <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
-                    {currentSub?.status || 'ACTIVE'}
+                    {currentSub?.status || 'NO PLAN'}
                   </span>
                 </div>
                 <div>
-                  <h2 className="text-2xl font-black text-slate-100">{currentSub?.planName || 'Individual Premium'}</h2>
+                  <h2 className="text-2xl font-black text-slate-100">{currentSub?.planName || 'No active plan'}</h2>
                   <p className="text-xs text-slate-400 mt-1">
-                    Renews on {currentSub ? new Date(currentSub.nextBillingAt).toLocaleDateString() : 'Mar 15, 2026'} ({currentSub?.currency || 'GHS'} {currentSub?.pricePaid || 145.00}/mo)
+                    {currentSub
+                      ? `${currentSub.autoRenew ? 'Renews' : 'Allowance ends'} ${new Date(currentSub.currentPeriodEnd).toLocaleDateString()} · ${currentSub.autoRenew ? 'automatic renewal on' : 'no automatic renewal'}`
+                      : 'Choose a communication plan to assign an allowance.'}
                   </p>
                 </div>
 
@@ -875,18 +861,31 @@ export const UniversalBillingHub: React.FC = () => {
                     billingCycle === 'ANNUAL' ? 'bg-emerald-500 text-slate-950' : 'text-slate-400 hover:text-slate-200'
                   }`}
                 >
-                  <span>Annual (Save 18%)</span>
-                  <span className="px-1.5 py-0.2 rounded bg-amber-400 text-slate-950 text-[10px] font-black">SAVE</span>
+                  <span>Annual term</span>
                 </button>
               </div>
             </div>
+
+            {communicationPlanStatus && (
+              <div
+                role={communicationPlanStatus.type === 'error' ? 'alert' : 'status'}
+                className={`rounded-xl border p-3 text-sm ${
+                  communicationPlanStatus.type === 'error'
+                    ? 'border-red-500/40 bg-red-950/30 text-red-200'
+                    : 'border-emerald-500/40 bg-emerald-950/30 text-emerald-200'
+                }`}
+              >
+                {communicationPlanStatus.message}
+              </div>
+            )}
+            <p className="text-xs text-slate-400">
+              Selecting a communication plan assigns the catalog allowance for the chosen term once. It does not charge Nanivio credit or Paystack, create an invoice, auto-renew, or replenish minutes monthly.
+            </p>
 
             {/* Plans Grid */}
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-5">
               {billingPlans.map((plan) => {
                 const isCurrent = currentSub?.planId === plan.id || currentSub?.tier === plan.tier;
-                const priceGHS = billingCycle === 'ANNUAL' ? plan.priceAnnualGHS : plan.priceMonthlyGHS;
-                const priceUSD = billingCycle === 'ANNUAL' ? plan.priceAnnualUSD : plan.priceMonthlyUSD;
 
                 return (
                   <div
@@ -917,12 +916,8 @@ export const UniversalBillingHub: React.FC = () => {
                       </div>
 
                       <div className="pt-2 border-t border-slate-800">
-                        <div className="text-2xl font-black font-mono text-slate-100">
-                          GH₵ {priceGHS.toFixed(2)}
-                        </div>
-                        <div className="text-xs text-slate-400 font-mono">
-                          ≈ ${priceUSD.toFixed(2)} / {billingCycle === 'ANNUAL' ? 'year' : 'month'}
-                        </div>
+                        <div className="text-sm font-semibold text-emerald-300">No payment collected</div>
+                        <div className="text-xs text-slate-400">{billingCycle === 'ANNUAL' ? 'Allowance term: one year' : 'Allowance term: 30 days'}</div>
                       </div>
 
                       {/* Quotas Breakdown */}
@@ -958,25 +953,14 @@ export const UniversalBillingHub: React.FC = () => {
                           Active Plan
                         </div>
                       ) : (
-                        <>
-                          <button
-                            id={`btn_plan_paystack_${plan.tier}`}
-                            disabled={upgradingTier === plan.tier}
-                            onClick={() => handleUpgradePlan(plan.tier, true)}
-                            className="w-full py-2.5 rounded-xl font-bold text-xs bg-emerald-500 hover:bg-emerald-400 text-slate-950 shadow-md shadow-emerald-500/20 transition flex items-center justify-center gap-1.5 cursor-pointer"
-                          >
-                            <CreditCard className="w-3.5 h-3.5" />
-                            <span>Pay with Paystack</span>
-                          </button>
-                          <button
-                            id={`btn_plan_balance_${plan.tier}`}
-                            disabled={upgradingTier === plan.tier}
-                            onClick={() => handleUpgradePlan(plan.tier, false)}
-                            className="w-full py-1.5 rounded-xl font-medium text-[11px] bg-slate-800 hover:bg-slate-700 text-slate-300 transition flex items-center justify-center gap-1 cursor-pointer"
-                          >
-                            <span>Pay with Nanivio credit</span>
-                          </button>
-                        </>
+                        <button
+                          id={`btn_plan_select_${plan.tier}`}
+                          disabled={upgradingTier !== null}
+                          onClick={() => void handleUpgradePlan(plan.tier)}
+                          className="w-full py-2.5 rounded-xl font-bold text-xs bg-emerald-500 hover:bg-emerald-400 text-slate-950 shadow-md shadow-emerald-500/20 transition flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-60"
+                        >
+                          <span>{upgradingTier === plan.tier ? 'Selecting…' : 'Select allowance — no payment'}</span>
+                        </button>
                       )}
                     </div>
                   </div>

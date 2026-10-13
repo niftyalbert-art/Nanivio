@@ -168,6 +168,7 @@ interface NanivioContextType {
   agoraStats: AgoraTelemetryStats;
   callLogs: CallLogRecord[];
   clearCallLogs: () => void;
+  clearMissedCallLogs: () => void;
   start1on1Call: (contact: Participant, type: 'audio' | 'video', isExpert?: boolean, expert?: ExpertProvider) => void;
   startGroupCall: (participants: Participant[], type: 'audio' | 'video') => void;
   forceConnectCall: () => void;
@@ -1016,6 +1017,10 @@ export const NanivioProvider: React.FC<{ children: React.ReactNode }> = ({ child
     try {
       localStorage.removeItem('nanivio_call_logs');
     } catch (_) {}
+  }, []);
+
+  const clearMissedCallLogs = useCallback(() => {
+    setCallLogs((logs) => logs.filter((log) => log.direction !== 'missed'));
   }, []);
 
   // Global Chat Notification Toast
@@ -3337,6 +3342,7 @@ export const NanivioProvider: React.FC<{ children: React.ReactNode }> = ({ child
         agoraStats,
         callLogs,
         clearCallLogs,
+        clearMissedCallLogs,
         start1on1Call,
         startGroupCall,
         forceConnectCall,

@@ -32,7 +32,22 @@ export async function activateSubscriptionFromWallet(payload: Record<string, unk
 }
 
 export async function recordLangpretationUsagePersistent(payload: Record<string, unknown>) {
-  return billingCommand('LANGPRETATION_USAGE', payload);
+  if (!normalizedBillingEnabled()) throw new Error('Normalized billing database is not configured.');
+  const request = { ...payload, eventId: payload.eventId || `use_${crypto.randomUUID()}` };
+  const { data, error } = await db().rpc('nanivio_langpretation_usage', { payload: request });
+  if (error) throw new Error(`Langpretation usage recording failed: ${error.message}`);
+  if (!data || data.success === false) throw new Error(data?.error || 'Langpretation usage recording failed.');
+  return data as any;
+}
+
+export async function selectCommunicationPlanPersistent(payload: Record<string, unknown>) {
+  if (!normalizedBillingEnabled()) throw new Error('Normalized billing database is not configured.');
+  const { data, error } = await db().rpc('nanivio_select_communication_plan', { payload });
+  if (error) throw new Error(`Communication plan selection failed: ${error.message}`);
+  if (!data || data.success === false || !data.subscription) {
+    throw new Error(data?.error || 'Communication plan selection failed.');
+  }
+  return data as any;
 }
 
 export async function getPersistentWallet(userId: string, accountType: string, currency: string) {
@@ -42,9 +57,60 @@ export async function getPersistentWallet(userId: string, accountType: string, c
 }
 
 export async function getPersistentSubscription(userId: string) {
-  const { data, error } = await db().from('nanivio_subscriptions').select('*').eq('user_id', userId).order('updated_at', { ascending: false }).limit(1).maybeSingle();
-  if (error) throw new Error(`Unable to load subscription: ${error.message}`);
-  return data;
+  const database = db();
+  const { data: active, error: activeError } = await database
+    .from('nanivio_subscriptions')
+    .select('*')
+    .eq('user_id', userId)
+    .in('status', ['ACTIVE', 'TRIAL'])
+    .gt('current_period_end', new Date().toISOString())
+    .order('current_period_start', { ascending: false })
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (activeError) throw new Error(`Unable to load subscription: ${activeError.message}`);
+
+  let data = active;
+  if (!data) {
+    const { data: latest, error } = await database
+      .from('nanivio_subscriptions')
+      .select('*')
+      .eq('user_id', userId)
+      .order('updated_at', { ascending: false })
+      .order('started_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (error) throw new Error(`Unable to load subscription: ${error.message}`);
+    data = latest;
+  }
+  if (!data) return null;
+
+  const periodEnd = data.current_period_end ? new Date(data.current_period_end).getTime() : Date.now();
+  return {
+    id: data.subscription_id,
+    userId: data.user_id,
+    planId: data.plan_id,
+    tier: data.tier,
+    planName: data.plan_name,
+    billingCycle: data.billing_cycle,
+    status: data.status === 'ACTIVE' && periodEnd <= Date.now() ? 'EXPIRED' : data.status,
+    startedAt: data.started_at ? new Date(data.started_at).getTime() : Date.now(),
+    currentPeriodStart: data.current_period_start ? new Date(data.current_period_start).getTime() : Date.now(),
+    currentPeriodEnd: periodEnd,
+    nextBillingAt: data.next_billing_at
+      ? new Date(data.next_billing_at).getTime()
+      : data.current_period_end ? new Date(data.current_period_end).getTime() : Date.now(),
+    autoRenew: Boolean(data.auto_renew),
+    pricePaid: Number(data.price_paid || 0),
+    currency: data.currency,
+    langpretationMinutesQuota: Number(data.langpretation_minutes_quota || 0),
+    langpretationMinutesUsed: Number(data.langpretation_minutes_used || 0),
+    langpretationMinutesRemaining: Number(data.langpretation_minutes_remaining || 0),
+    voiceMinutesQuota: Number(data.voice_minutes_quota || 0),
+    voiceMinutesUsed: Number(data.voice_minutes_used || 0),
+    malviUnitsQuota: Number(data.malvi_units_quota || 0),
+    malviUnitsUsed: Number(data.malvi_units_used || 0),
+  };
 }
 
 export async function getPersistentTransactions(userId: string, limit = 50) {

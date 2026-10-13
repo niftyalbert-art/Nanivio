@@ -9,6 +9,7 @@ import AgoraRTC, {
   IRemoteAudioTrack,
   IRemoteVideoTrack,
 } from 'agora-rtc-sdk-ng';
+import { authClient } from './authClient';
 
 export interface AgoraRtcConfig {
   appId: string;
@@ -69,8 +70,14 @@ class NanivioAgoraClient {
   }
 
   public async fetchToken(channelName: string, uid: string | number): Promise<{ token: string; appId: string; agoraUid?: number }> {
+    const token = authClient.getToken();
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+    if (token) {
+      headers.Authorization = `Bearer ${token}`;
+      headers['x-nanivio-token'] = token;
+    }
     const res = await fetch('/api/agora/token', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      method: 'POST', headers,
       body: JSON.stringify({ channelName, uid, role: 'publisher', expireTimeSeconds: 3600 }),
     });
     const data = await res.json().catch(() => ({}));
@@ -102,7 +109,26 @@ class NanivioAgoraClient {
     await this.client.publish([this.localAudio, ...(this.localVideo ? [this.localVideo] : [])]);
     this.rebuildLocalStream();
 
-    await fetch('/api/agora/join', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({channelName,uid,name:userName,callType,role:'publisher'}) }).catch(()=>{});
+    const authToken = authClient.getToken();
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+    if (authToken) {
+      headers.Authorization = `Bearer ${authToken}`;
+      headers['x-nanivio-token'] = authToken;
+    }
+    try {
+      const joinResponse = await fetch('/api/agora/join', {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({ channelName, callType }),
+      });
+      const joinResult = await joinResponse.json().catch(() => ({}));
+      if (!joinResponse.ok || !joinResult.success) {
+        throw new Error(joinResult.error || 'The server did not register this call participant.');
+      }
+    } catch (error) {
+      await this.leaveChannel();
+      throw error instanceof Error ? error : new Error('Unable to register call participant.');
+    }
     this.connectionState = 'CONNECTED';
     this.startStatsTelemetry();
     this.notifyStats();
@@ -213,7 +239,19 @@ class NanivioAgoraClient {
   public subscribeTelemetry(cb: (stats: AgoraTelemetryStats) => void) { this.listeners.add(cb); cb(this.getStats()); return () => this.listeners.delete(cb); }
 
   public async leaveChannel() {
-    if (this.currentChannel && this.currentUid !== null) fetch('/api/agora/leave',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({channelName:this.currentChannel,uid:this.currentUid})}).catch(()=>{});
+    if (this.currentChannel) {
+      const token = authClient.getToken();
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+      if (token) {
+        headers.Authorization = `Bearer ${token}`;
+        headers['x-nanivio-token'] = token;
+      }
+      fetch('/api/agora/leave', {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({ channelName: this.currentChannel }),
+      }).catch((error) => console.warn('[Agora] Server leave registration failed:', error));
+    }
     if (this.client) await this.client.leave().catch(()=>{});
     this.localAudio?.stop(); this.localAudio?.close(); this.localVideo?.stop(); this.localVideo?.close(); this.translatedAudio?.stop(); this.translatedAudio?.close();
     this.client = null; this.localAudio = null; this.localVideo = null; this.originalAudio = null; this.translatedAudio = null;

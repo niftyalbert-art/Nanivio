@@ -9,10 +9,10 @@ import {
   getActiveConnectedUsersList,
   broadcastStreamChatMessage,
   broadcastStreamReaction,
+  canJoinAgoraCall,
 } from "./src/server/realtimeServer.ts";
 import {
   generateAgoraRtcToken,
-  normalizeAgoraUid,
   registerAgoraParticipant,
   removeAgoraParticipant,
   getActiveAgoraChannels,
@@ -28,7 +28,7 @@ import {
   getStreamEventLogs,
 } from "./src/server/streamService.ts";
 import { billingDb } from "./src/server/billingDb.ts";
-import { normalizedBillingEnabled, transferFintechToCommunication as persistentFintechToCommunication, transferPeerToPeer as persistentPeerToPeer, activateSubscriptionFromWallet as persistentActivateSubscription, purchaseCommunicationMinutesPersistent, activateMalviSubscriptionPersistent, recordLangpretationUsagePersistent, paystackTopUpPersistent, getPersistentPayment, getPersistentSubscription, getPersistentTransactions, getPersistentInvoices, getPersistentWallets, getPersistentCreditAccount, getPersistentUsageMeter, getPersistentMalviSubscription, getMalviCreditAccount, ensureMalviEntitlement, recordMalviUsagePersistent } from "./src/server/normalizedBillingRepository.ts";
+import { normalizedBillingEnabled, transferFintechToCommunication as persistentFintechToCommunication, transferPeerToPeer as persistentPeerToPeer, selectCommunicationPlanPersistent, purchaseCommunicationMinutesPersistent, activateMalviSubscriptionPersistent, recordLangpretationUsagePersistent, paystackTopUpPersistent, getPersistentPayment, getPersistentSubscription, getPersistentTransactions, getPersistentInvoices, getPersistentWallets, getPersistentCreditAccount, getPersistentUsageMeter, getPersistentMalviSubscription, getMalviCreditAccount, ensureMalviEntitlement, recordMalviUsagePersistent } from "./src/server/normalizedBillingRepository.ts";
 import { hydrateBillingDatabase, flushBillingDatabase, closeBillingPersistence, savePaystackOrder, getPaystackOrder, markPaystackOrderFulfilled, claimPaystackWebhook, isPersistentBillingConfigured } from "./src/server/billingPersistence.ts";
 import { billingEngine } from "./src/server/billingEngine.ts";
 import { authDb } from "./src/server/authDb.ts";
@@ -49,7 +49,6 @@ import {
   MatrixLanguageInfo,
 } from "./src/lib/translator-engine/matrix/universal18Matrix.ts";
 import type {
-  UserSubscriptionState,
   BillingTransaction,
   BillingInvoice,
   BillingPromotionalCredit,
@@ -1632,16 +1631,23 @@ app.get("/api/langpretation/azure-speech-token", requireAuthenticatedUser, async
 
 app.post("/api/agora/token", requireAuthenticatedUser, (req, res) => {
   try {
-    const { channelName, uid = 0, role = "publisher", expireTimeSeconds = 86400 } = req.body;
+    const { channelName, expireTimeSeconds = 3600, role: requestedRole = "publisher" } = req.body;
 
-    if (!channelName) {
+    if (typeof channelName !== 'string' || !channelName.trim() || channelName.length > 128) {
       return res.status(400).json({ error: "channelName is required" });
+    }
+    const authUser = (req as any).authUser;
+    const userId = authenticatedUserId(req);
+    if (channelName.startsWith('nanivio_call_') && !canJoinAgoraCall(userId, String(authUser?.nvId || ''), channelName)) {
+      return res.status(403).json({ error: "You are not a connected participant in this call." });
     }
 
     const tokenData = generateAgoraRtcToken({
-      channelName,
-      uid,
-      role,
+      channelName: channelName.trim(),
+      uid: userId,
+      role: channelName.startsWith('nanivio_call_')
+        ? "publisher"
+        : requestedRole === "subscriber" ? "subscriber" : "publisher",
       expireTimeSeconds,
     });
 
@@ -1656,12 +1662,26 @@ app.post("/api/agora/token", requireAuthenticatedUser, (req, res) => {
 
 app.post("/api/agora/join", requireAuthenticatedUser, (req, res) => {
   try {
-    const { channelName, uid, name, callType = "video", role = "publisher" } = req.body;
-    if (!channelName || uid === undefined || !name) {
-      return res.status(400).json({ error: "channelName, uid, and name required" });
+    const { channelName, callType = "video" } = req.body;
+    if (typeof channelName !== 'string' || !channelName.trim() || channelName.length > 128) {
+      return res.status(400).json({ error: "channelName is required" });
     }
-
-    const session = registerAgoraParticipant(channelName, callType, { uid, name, role });
+    const authUser = (req as any).authUser;
+    const userId = authenticatedUserId(req);
+    if (channelName.startsWith('nanivio_call_') && !canJoinAgoraCall(userId, String(authUser?.nvId || ''), channelName)) {
+      return res.status(403).json({ error: "You are not a connected participant in this call." });
+    }
+    const canonicalName = String(
+      authUser?.displayName ||
+      `${authUser?.firstName || ''} ${authUser?.lastName || ''}`.trim() ||
+      authUser?.name ||
+      'User'
+    );
+    const session = registerAgoraParticipant(channelName.trim(), callType === 'audio' ? 'audio' : 'video', {
+      uid: userId,
+      name: canonicalName,
+      role: 'publisher',
+    });
     res.json({ success: true, session });
   } catch (error: any) {
     res.status(500).json({ error: error.message });
@@ -1670,9 +1690,9 @@ app.post("/api/agora/join", requireAuthenticatedUser, (req, res) => {
 
 app.post("/api/agora/leave", requireAuthenticatedUser, (req, res) => {
   try {
-    const { channelName, uid } = req.body;
-    if (channelName && uid !== undefined) {
-      removeAgoraParticipant(channelName, uid);
+    const { channelName } = req.body;
+    if (typeof channelName === 'string' && channelName.trim()) {
+      removeAgoraParticipant(channelName.trim(), authenticatedUserId(req));
     }
     res.json({ success: true });
   } catch (error: any) {
@@ -2022,10 +2042,16 @@ app.post("/api/paystack/initialize", requireAuthenticatedUser, async (req, res) 
       minutes,
     } = req.body;
 
+    if (String(purpose) === "SUBSCRIPTION") {
+      return res.status(400).json({
+        success: false,
+        error: "Communication plans are selected directly in Nanivio; Paystack is only used for top-ups, minute packs, and Malvi plans.",
+      });
+    }
     if (!amount || Number(amount) <= 0) {
       return res.status(400).json({ error: "Valid amount is required" });
     }
-    const allowedPurposes = new Set(["COMMUNICATION_TOPUP","SUBSCRIPTION","COMMUNICATION_MINUTES","MALVI_SUBSCRIPTION"]);
+    const allowedPurposes = new Set(["COMMUNICATION_TOPUP","COMMUNICATION_MINUTES","MALVI_SUBSCRIPTION"]);
     if (!allowedPurposes.has(String(purpose))) return res.status(400).json({success:false,error:"Unsupported Paystack payment purpose."});
     const accountUser = await persistentAuth.findById(userId);
     if (!accountUser?.email) return res.status(400).json({success:false,error:"A verified email address is required for Paystack checkout."});
@@ -2161,86 +2187,9 @@ async function fulfillPaystackOrder({
     };
   }
 
-  // 2. Langpretation & Communication Subscription Plan Activation
+  // Communication plans are never fulfilled from a Paystack reference.
   if (purpose === "SUBSCRIPTION") {
-    const planTier = authoritativeOrder.planTier || "individual_premium";
-    const billingCycle = authoritativeOrder.billingCycle || "MONTHLY";
-    const targetPlan = billingDb.subscriptionPlans.find((p) => p.tier === planTier) || billingDb.subscriptionPlans[1];
-    if (!targetPlan) throw new Error(`Subscription plan ${planTier} is not configured.`);
-    const periodDays = billingCycle === "ANNUAL" ? 365 : 30;
-    const now = Date.now();
-
-    const newSub: UserSubscriptionState = {
-      id: `sub_${userId}_${now}`,
-      userId,
-      planId: targetPlan.id,
-      tier: targetPlan.tier,
-      planName: targetPlan.name,
-      billingCycle,
-      status: "ACTIVE",
-      startedAt: now,
-      currentPeriodStart: now,
-      currentPeriodEnd: now + 86400000 * periodDays,
-      nextBillingAt: now + 86400000 * periodDays,
-      autoRenew: true,
-      pricePaid: verifiedAmount,
-      currency: verifiedCurrency,
-      langpretationMinutesQuota: targetPlan.includedLangpretationMinutes,
-      langpretationMinutesUsed: 0,
-      langpretationMinutesRemaining: targetPlan.includedLangpretationMinutes,
-      voiceMinutesQuota: targetPlan.includedVoiceMinutes,
-      voiceMinutesUsed: 0,
-      malviUnitsQuota: targetPlan.includedMalviRequests,
-      malviUnitsUsed: 0,
-    };
-
-    if (normalizedBillingEnabled()) {
-      const txId = `tx_sub_${now}`;
-      const persisted = await persistentActivateSubscription({
-        userId,
-        subscriptionId: newSub.id,
-        planId: targetPlan.id,
-        tier: targetPlan.tier,
-        planName: targetPlan.name,
-        billingCycle,
-        periodDays,
-        price: verifiedAmount,
-        currency: verifiedCurrency,
-        langpretationQuota: targetPlan.includedLangpretationMinutes,
-        voiceQuota: targetPlan.includedVoiceMinutes,
-        malviQuota: targetPlan.includedMalviRequests,
-        paymentMethod: "Paystack Payment Gateway",
-        referenceId: reference,
-        transactionId: txId,
-        items: [{ description: `Nanivio ${targetPlan.name} Subscription (${billingCycle})`, quantity: 1, unit: billingCycle === "ANNUAL" ? "year" : "month", unitPrice: verifiedAmount, subtotal: verifiedAmount, total: verifiedAmount }],
-      });
-      newSub.id = persisted.subscription.id;
-      newSub.currentPeriodStart = persisted.subscription.currentPeriodStart;
-      newSub.currentPeriodEnd = persisted.subscription.currentPeriodEnd;
-      newSub.nextBillingAt = persisted.subscription.nextBillingAt;
-      newSub.status = persisted.subscription.status;
-      newSub.langpretationMinutesQuota = Number(persisted.subscription.langpretationMinutesQuota || 0);
-      newSub.langpretationMinutesRemaining = Number(persisted.subscription.langpretationMinutesRemaining || 0);
-      billingDb.userSubscriptions.set(userId, newSub);
-      billingDb.markDirty();
-    } else {
-      throw new Error("Normalized billing database is required for production subscription activation.");
-    }
-
-    const invoice = { invoiceId: `persisted:${reference}`, invoiceNumber: `Paystack-${reference}`, userId, transactionReference: reference, total: verifiedAmount, currency: verifiedCurrency, status: "PAID" };
-    pendingPaystackOrders.delete(reference);
-    await markPaystackOrderFulfilled(reference);
-    return {
-      success: true,
-      verified: true,
-      type: "SUBSCRIPTION",
-      reference,
-      amount: verifiedAmount,
-      currency: verifiedCurrency,
-      subscription: newSub,
-      invoice,
-      message: `Paystack payment confirmed. ${targetPlan.name} subscription successfully activated with ${targetPlan.includedLangpretationMinutes} Langpretation minutes!`,
-    };
+    throw new Error("Communication plans are selected directly in Nanivio, not through Paystack.");
   }
 
   // 3. Separate Malvi Subscription Activation
@@ -2674,19 +2623,27 @@ app.post("/api/billing/plans/change", requireAuthenticatedUser, async (req, res)
     const userId = authenticatedUserId(req);
     const { planTier, billingCycle = "MONTHLY" } = req.body;
     const targetPlan = billingDb.subscriptionPlans.find((p) => p.tier === planTier);
-    if (!targetPlan) return res.status(404).json({ error: "Subscription plan tier not found" });
+    if (!targetPlan || !targetPlan.isActive) return res.status(404).json({ error: "Subscription plan tier not found" });
+    if (!["MONTHLY", "ANNUAL"].includes(billingCycle)) return res.status(400).json({ success: false, error: "Unsupported billing cycle." });
     if (!normalizedBillingEnabled()) return res.status(503).json({ success:false, error:"Persistent billing database is required for subscription changes." });
-    const now = Date.now();
-    const periodDays = billingCycle === "ANNUAL" ? 365 : 30;
-    const pricePaid = billingCycle === "ANNUAL" ? targetPlan.priceAnnualGHS : targetPlan.priceMonthlyGHS;
-    const persisted = await persistentActivateSubscription({
-      userId, subscriptionId: `sub_${userId}_${now}`, planId: targetPlan.id, tier: targetPlan.tier, planName: targetPlan.name,
-      billingCycle, periodDays, price: pricePaid, currency: "GHS", langpretationQuota: targetPlan.includedLangpretationMinutes,
-      voiceQuota: targetPlan.includedVoiceMinutes, malviQuota: targetPlan.includedMalviRequests, paymentMethod: "Nanivio credit",
-      referenceId: `REF-NV-SUB-${now}-${crypto.randomBytes(4).toString("hex")}`, transactionId: `tx_sub_${crypto.randomBytes(8).toString("hex")}`,
-      items: [{ description: `Nanivio ${targetPlan.name} Subscription (${billingCycle})`, quantity: 1, unit: billingCycle === "ANNUAL" ? "year" : "month", unitPrice: pricePaid, subtotal: pricePaid, total: pricePaid }],
+    const persisted = await selectCommunicationPlanPersistent({
+      userId,
+      planId: targetPlan.id,
+      tier: targetPlan.tier,
+      planName: targetPlan.name,
+      billingCycle,
+      currency: "GHS",
+      langpretationQuota: targetPlan.includedLangpretationMinutes,
+      voiceQuota: targetPlan.includedVoiceMinutes,
+      malviQuota: targetPlan.includedMalviRequests,
     });
-    return res.json({ success:true, subscription:persisted.subscription, invoice:{ invoiceId:persisted.invoiceId, invoiceNumber:persisted.invoiceNumber, userId, total:pricePaid, currency:"GHS", status:"PAID" } });
+    return res.json({
+      success: true,
+      subscription: persisted.subscription,
+      granted: Boolean(persisted.granted),
+      paymentCollected: false,
+      invoiceCreated: false,
+    });
   } catch (error:any) {
     return res.status(400).json({ success:false, error:error.message || "Unable to change subscription" });
   }

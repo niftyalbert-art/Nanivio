@@ -1,5 +1,10 @@
 import crypto from 'crypto';
-import { RtcTokenBuilder } from 'agora-token';
+import * as AgoraTokenModule from 'agora-token';
+
+// agora-token is CommonJS, and Node's ESM named-export detection misses some
+// class names from the package. Read its CommonJS default export in both modes.
+const RtcTokenBuilder = ((AgoraTokenModule as unknown as { default?: typeof AgoraTokenModule }).default || AgoraTokenModule)
+  .RtcTokenBuilder;
 
 export interface AgoraTokenOptions {
   appId?: string;

@@ -25,8 +25,8 @@ import {
   AlertCircle,
 } from 'lucide-react';
 import { useNanivio } from '../../context/NanivioContext';
-import { USER_PLANS } from '../../data/mockData';
-import { SUPPORTED_LANGUAGES, PlanTier } from '../../types';
+import { SUPPORTED_LANGUAGES } from '../../types';
+import type { BillingSubscriptionPlan } from '../../types/billing';
 import { EditProfileModal } from './EditProfileModal';
 import { SettingsModal } from '../settings/SettingsModal';
 import { getLanguageByCode, getAllLanguages } from '../../i18n/languages';
@@ -47,7 +47,8 @@ export const AccountView: React.FC = () => {
     translationLanguage,
     setIsLanguageModalOpen,
     currentPlan,
-    changePlan,
+    billingPlans,
+    upgradeSubscriptionPlan,
     billingSummary,
     wallets,
     isSubscribed,
@@ -70,6 +71,8 @@ export const AccountView: React.FC = () => {
   const [transferAmount, setTransferAmount] = useState<number>(20);
   const [isProcessingAction, setIsProcessingAction] = useState(false);
   const [actionSuccessMessage, setActionSuccessMessage] = useState<string | null>(null);
+  const [planActionError, setPlanActionError] = useState<string | null>(null);
+  const [activatingPlanTier, setActivatingPlanTier] = useState<string | null>(null);
 
   const accTxt = getAccountText(appLanguage);
   const appLangInfo = getLanguageByCode(appLanguage || myLanguage) || getLanguageByCode('en')!;
@@ -80,6 +83,20 @@ export const AccountView: React.FC = () => {
   const nvId = authUser?.nvId || currentUser.nvId || currentUser.nanivioNumber || '0486000000';
   const role = authUser?.role || (currentUser.role === 'admin' ? 'ADMIN' : currentUser.role === 'expert' ? 'EXPERT' : currentUser.role === 'business' ? 'BUSINESS' : currentUser.role === 'driver' ? 'DRIVER' : 'PERSONAL');
   const verificationStatus = authUser?.verificationStatus || 'VERIFIED';
+
+  const activateCommunicationPlan = async (plan: BillingSubscriptionPlan) => {
+    setActivatingPlanTier(plan.tier);
+    setPlanActionError(null);
+    try {
+      await upgradeSubscriptionPlan(plan.tier, 'MONTHLY');
+      setActionSuccessMessage(`${plan.name} selected. Its included allowance is available now; no payment was collected and it will not auto-renew.`);
+      window.setTimeout(() => setActionSuccessMessage(null), 6000);
+    } catch (error) {
+      setPlanActionError(error instanceof Error ? error.message : 'Unable to select this communication plan.');
+    } finally {
+      setActivatingPlanTier(null);
+    }
+  };
 
   // Nanivio credit
   const availableServiceValue = (
@@ -214,11 +231,11 @@ export const AccountView: React.FC = () => {
               </div>
 
               <p className="text-xs text-slate-400 break-words">
-                {currentUser.email} • {currentUser.phoneNumber || '+233 24 412 3456'}
+                {[currentUser.email, currentUser.phoneNumber].filter(Boolean).join(' • ') || 'No contact details added'}
               </p>
 
               <div className="flex flex-col sm:flex-row sm:flex-wrap items-stretch sm:items-center gap-2 pt-2 text-xs min-w-0">
-                <div className="flex items-center gap-2 px-3 py-2 rounded-xl bg-slate-900 border border-emerald-500/40 text-xs shadow-inner w-full sm:w-auto min-w-0">
+                <div className="flex flex-col sm:flex-row sm:items-center gap-2 px-3 py-2 rounded-xl bg-slate-900 border border-emerald-500/40 text-xs shadow-inner w-full sm:w-auto min-w-0">
                   <Globe className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
                   <span className="text-[11px] text-slate-400 font-medium shrink-0">Interface:</span>
                   <select
@@ -229,7 +246,7 @@ export const AccountView: React.FC = () => {
                       setAppLanguage(newCode);
                       setMyLanguage(newCode as any);
                     }}
-                    className="bg-transparent text-emerald-300 font-bold text-xs border-none outline-none cursor-pointer pr-1 min-w-0 flex-1 sm:flex-none max-w-full"
+                    className="bg-transparent text-emerald-300 font-bold text-xs border-none outline-none cursor-pointer pr-1 min-w-0 w-full sm:w-auto max-w-full"
                   >
                     {getAllLanguages()
                       .filter((l) => l.ui)
@@ -477,13 +494,17 @@ export const AccountView: React.FC = () => {
           </div>
 
           <span className="text-xs font-bold text-emerald-400 bg-emerald-500/20 px-3 py-1 rounded-full border border-emerald-500/40 self-start sm:self-auto">
-            Active Renewal
+            No automatic renewal
           </span>
         </div>
 
+        <p className="text-xs text-slate-400">
+          Selecting a communication plan assigns its listed Langpretation allowance immediately. This action does not charge a wallet, create an invoice, or start a payment.
+        </p>
+
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          {USER_PLANS.map((plan) => {
-            const isCurrent = currentPlan?.tier === plan.tier;
+          {billingPlans.map((plan) => {
+            const isCurrent = sub?.tier === plan.tier;
             return (
               <div
                 key={plan.tier}
@@ -503,14 +524,9 @@ export const AccountView: React.FC = () => {
                     )}
                   </div>
 
-                  <div className="text-2xl font-black text-white font-mono">
-                    GH₵ {plan.monthlyPriceGHS}
-                    <span className="text-xs text-slate-400 font-sans font-normal"> / month</span>
-                  </div>
-
                   <div className="text-xs text-emerald-400 font-semibold flex items-center gap-1.5">
                     <Zap className="w-3.5 h-3.5" />
-                    <span>{plan.langpretationMinutesQuota} Langpretation Minutes Included</span>
+                    <span>{plan.includedLangpretationMinutes} Langpretation Minutes Included</span>
                   </div>
 
                   <ul className="space-y-1.5 text-xs text-slate-400 pt-2 border-t border-slate-800">
@@ -524,20 +540,21 @@ export const AccountView: React.FC = () => {
                 </div>
 
                 <button
-                  disabled={isCurrent}
-                  onClick={() => changePlan(plan.tier)}
-                  className={`w-full py-2.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                  disabled={isCurrent || activatingPlanTier !== null}
+                  onClick={() => void activateCommunicationPlan(plan)}
+                  className={`w-full py-2.5 rounded-xl text-xs font-bold transition-all cursor-pointer disabled:opacity-60 ${
                     isCurrent
                       ? 'bg-slate-800 text-slate-400 cursor-default'
                       : 'bg-emerald-500 hover:bg-emerald-400 text-slate-950 shadow-sm'
                   }`}
                 >
-                  {isCurrent ? 'Current Plan' : `Switch to ${plan.name}`}
+                  {isCurrent ? 'Current Plan' : activatingPlanTier === plan.tier ? 'Selecting…' : `Select ${plan.name} allowance`}
                 </button>
               </div>
             );
           })}
         </div>
+        {planActionError && <p role="alert" className="text-sm text-red-300">{planActionError}</p>}
       </div>
 
       {/* ------------------------------------------------------------- */}

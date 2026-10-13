@@ -164,7 +164,7 @@ export const billingClient = {
   },
 
   // 1C4. Paystack Payment Verification & Direct Activation
-  async verifyPaystack(reference: string, userId?: string, amount?: number): Promise<{
+  async verifyPaystack(reference: string, _userId?: string, _amount?: number): Promise<{
     success: boolean;
     verified: boolean;
     type?: string;
@@ -179,9 +179,7 @@ export const billingClient = {
     message: string;
   }> {
     const url = new URL(`/api/paystack/verify/${encodeURIComponent(reference)}`, window.location.origin);
-    if (userId) url.searchParams.append('userId', userId);
-    if (amount) url.searchParams.append('amount', String(amount));
-    const res = await fetch(url.toString());
+    const res = await fetch(url.toString(), { headers: billingHeaders() });
     const data = await res.json();
     if (!res.ok || !data.success) {
       throw new Error(data.error || 'Failed to verify Paystack payment');

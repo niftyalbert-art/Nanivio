@@ -1,4 +1,5 @@
-import React from 'react';
+import React, { useEffect, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { PhoneMissed, PhoneCall, Video, X, Clock, UserCheck, MessageSquare } from 'lucide-react';
 import { useNanivio } from '../../context/NanivioContext';
 import { Participant } from '../../types';
@@ -16,58 +17,94 @@ export const MissedCallsModal: React.FC<MissedCallsModalProps> = ({ isOpen, onCl
     startDirectChatWithUser,
     setActiveConversationId,
     setActiveTab,
-    clearCallLogs,
+    clearMissedCallLogs,
   } = useNanivio();
+  const dialogRef = useRef<HTMLDivElement>(null);
+  const onCloseRef = useRef(onClose);
+
+  useEffect(() => {
+    onCloseRef.current = onClose;
+  }, [onClose]);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    const previousFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    const dialog = dialogRef.current;
+    const focusable = () => Array.from(
+      dialog?.querySelectorAll<HTMLElement>(
+        'button:not([disabled]), a[href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
+      ) || []
+    );
+    (focusable()[0] || dialog)?.focus();
+
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        onCloseRef.current();
+        return;
+      }
+      if (event.key !== 'Tab' || !dialog) return;
+      const items = focusable();
+      if (items.length === 0) {
+        event.preventDefault();
+        dialog.focus();
+      } else if (event.shiftKey && (document.activeElement === items[0] || !dialog.contains(document.activeElement))) {
+        event.preventDefault();
+        items[items.length - 1].focus();
+      } else if (!event.shiftKey && (document.activeElement === items[items.length - 1] || !dialog.contains(document.activeElement))) {
+        event.preventDefault();
+        items[0].focus();
+      }
+    };
+    document.addEventListener('keydown', onKeyDown);
+    return () => {
+      document.removeEventListener('keydown', onKeyDown);
+      previousFocus?.focus();
+    };
+  }, [isOpen]);
 
   if (!isOpen) return null;
 
   const missedLogs = callLogs.filter((l) => l.direction === 'missed');
 
-  const handleReturnCall = async (log: any, callType: 'audio' | 'video') => {
-    onClose();
-    let targetParticipant: Participant | null = null;
+  const resolveParticipant = async (log: any): Promise<Participant | null> => {
     if (log.participantNvId) {
-      targetParticipant = await lookupNanivioUser(log.participantNvId);
+      const found = await lookupNanivioUser(log.participantNvId);
+      if (found) return found;
     }
-    if (!targetParticipant) {
-      targetParticipant = {
-        id: log.participantId || `caller_${Date.now()}`,
-        nvId: log.participantNvId,
-        name: log.participantName || 'Nanivio Contact',
-        avatar: log.participantAvatar || '',
-        initials: (log.participantName || 'NV').slice(0, 2).toUpperCase(),
-        myLanguage: 'en',
-        role: 'user',
-      };
-    }
+    const id = log.participantId || log.participantNvId;
+    if (!id) return null;
+    return {
+      id: String(id),
+      nvId: log.participantNvId,
+      name: log.participantName || 'Nanivio Contact',
+      avatar: log.participantAvatar || '',
+      initials: (log.participantName || 'NV').slice(0, 2).toUpperCase(),
+      myLanguage: 'en',
+      role: 'user',
+    };
+  };
+
+  const handleReturnCall = async (log: any, callType: 'audio' | 'video') => {
+    const targetParticipant = await resolveParticipant(log);
+    if (!targetParticipant) return;
+    onClose();
     start1on1Call(targetParticipant, callType, true);
   };
 
   const handleChatBack = async (log: any) => {
+    const targetParticipant = await resolveParticipant(log);
+    if (!targetParticipant) return;
     onClose();
-    let targetParticipant: Participant | null = null;
-    if (log.participantNvId) {
-      targetParticipant = await lookupNanivioUser(log.participantNvId);
-    }
-    if (!targetParticipant) {
-      targetParticipant = {
-        id: log.participantId || `caller_${Date.now()}`,
-        nvId: log.participantNvId,
-        name: log.participantName || 'Nanivio Contact',
-        avatar: log.participantAvatar || '',
-        initials: (log.participantName || 'NV').slice(0, 2).toUpperCase(),
-        myLanguage: 'en',
-        role: 'user',
-      };
-    }
     const convId = startDirectChatWithUser(targetParticipant);
     setActiveConversationId(convId);
     setActiveTab('chat');
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-200">
-      <div className="bg-[#0b1424] border border-red-500/40 rounded-3xl p-6 max-w-lg w-full shadow-2xl space-y-5 max-h-[85vh] flex flex-col">
+    createPortal(
+    <div className="fixed inset-0 z-[100] flex items-center justify-center p-3 sm:p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-200" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
+      <div ref={dialogRef} role="dialog" aria-modal="true" aria-labelledby="missed-calls-title" tabIndex={-1} className="bg-[#0b1424] border border-red-500/40 rounded-3xl p-4 sm:p-6 max-w-lg w-full shadow-2xl space-y-4 sm:space-y-5 max-h-[calc(100dvh-1.5rem)] flex flex-col overflow-hidden">
         {/* Header */}
         <div className="flex items-center justify-between border-b border-slate-800 pb-3">
           <div className="flex items-center gap-3">
@@ -75,11 +112,11 @@ export const MissedCallsModal: React.FC<MissedCallsModalProps> = ({ isOpen, onCl
               <PhoneMissed className="w-5 h-5 animate-pulse" />
             </div>
             <div>
-              <h3 className="font-bold text-base text-white flex items-center gap-2">
+              <h3 id="missed-calls-title" className="font-bold text-base text-white flex items-center gap-2">
                 <span>Missed Calls &amp; Alerts</span>
                 {missedLogs.length > 0 && (
                   <span className="px-2 py-0.5 rounded-full bg-red-500/20 text-red-400 font-mono text-xs font-bold border border-red-500/30">
-                    {missedLogs.length} New
+                    {missedLogs.length} missed
                   </span>
                 )}
               </h3>
@@ -89,21 +126,23 @@ export const MissedCallsModal: React.FC<MissedCallsModalProps> = ({ isOpen, onCl
 
           <button
             onClick={onClose}
-            className="p-1.5 rounded-xl text-slate-400 hover:text-white hover:bg-slate-800 transition-colors cursor-pointer"
+            aria-label="Close missed calls"
+            className="min-w-11 min-h-11 p-2 rounded-xl text-slate-400 hover:text-white hover:bg-slate-800 transition-colors cursor-pointer flex items-center justify-center"
           >
             <X className="w-5 h-5" />
           </button>
         </div>
 
         {/* Missed Calls List */}
-        <div className="flex-1 overflow-y-auto space-y-3 pr-1">
+        <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain space-y-3 pr-1">
           {missedLogs.length === 0 ? (
             <div className="py-12 text-center text-slate-400 text-xs space-y-2">
               <UserCheck className="w-8 h-8 mx-auto text-slate-600" />
-              <p>No unread missed calls. You are all caught up!</p>
+              <p>No missed calls.</p>
             </div>
           ) : (
             missedLogs.map((log) => {
+              const canContact = Boolean(log.participantId || log.participantNvId);
               const formattedNvNumber = log.participantNvId
                 ? log.participantNvId.startsWith('NV ')
                   ? log.participantNvId
@@ -151,6 +190,8 @@ export const MissedCallsModal: React.FC<MissedCallsModalProps> = ({ isOpen, onCl
                   <div className="flex items-center gap-2 pt-1 border-t border-slate-900 flex-wrap">
                     <button
                       onClick={() => handleReturnCall(log, 'audio')}
+                      disabled={!canContact}
+                      aria-label={`Return audio call to ${log.participantName}`}
                       className="flex-1 py-2 px-3 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-slate-950 font-bold text-xs flex items-center justify-center gap-1.5 transition-all shadow-md cursor-pointer"
                     >
                       <PhoneCall className="w-3.5 h-3.5" />
@@ -159,6 +200,8 @@ export const MissedCallsModal: React.FC<MissedCallsModalProps> = ({ isOpen, onCl
 
                     <button
                       onClick={() => handleReturnCall(log, 'video')}
+                      disabled={!canContact}
+                      aria-label={`Return video call to ${log.participantName}`}
                       className="flex-1 py-2 px-3 rounded-xl bg-cyan-500/20 hover:bg-cyan-500/30 text-cyan-300 font-bold text-xs flex items-center justify-center gap-1.5 transition-all border border-cyan-500/30 cursor-pointer"
                     >
                       <Video className="w-3.5 h-3.5" />
@@ -167,6 +210,7 @@ export const MissedCallsModal: React.FC<MissedCallsModalProps> = ({ isOpen, onCl
 
                     <button
                       onClick={() => handleChatBack(log)}
+                      disabled={!canContact}
                       className="py-2 px-3 rounded-xl bg-slate-800 hover:bg-slate-750 text-slate-200 border border-slate-700 hover:border-emerald-500/50 font-bold text-xs flex items-center justify-center gap-1.5 transition-all cursor-pointer"
                       title="Send message to caller"
                     >
@@ -188,7 +232,7 @@ export const MissedCallsModal: React.FC<MissedCallsModalProps> = ({ isOpen, onCl
             </span>
             <button
               onClick={() => {
-                clearCallLogs();
+                clearMissedCallLogs();
                 onClose();
               }}
               className="text-slate-400 hover:text-red-400 text-xs font-bold transition-colors cursor-pointer"
@@ -198,6 +242,8 @@ export const MissedCallsModal: React.FC<MissedCallsModalProps> = ({ isOpen, onCl
           </div>
         )}
       </div>
-    </div>
+    </div>,
+    document.body
+    )
   );
 };

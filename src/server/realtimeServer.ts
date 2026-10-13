@@ -89,7 +89,10 @@ function isCallRecipient(call: ActiveCallState, user: { userId: string; nvId: st
 export function canJoinAgoraCall(userId: string, nvId: string, channelName: string): boolean {
   return Array.from(activeCalls.values()).some((call) =>
     call.channelName === channelName &&
-    (call.participants.includes(userId) || isCallRecipient(call, { userId, nvId }))
+    (
+      (call.status === 'connected' && call.participants.includes(userId)) ||
+      (call.status === 'ringing' && isCallRecipient(call, { userId, nvId }))
+    )
   );
 }
 
@@ -283,6 +286,7 @@ export function setupRealtimeServer(httpServer: HttpServer) {
   wss.on('connection', (socket: WebSocket) => {
     allSockets.add(socket);
     let currentUser: ConnectedUser | null = null;
+    let messageChain: Promise<void> = Promise.resolve();
 
     // Heartbeat ping/pong
     const pingInterval = setInterval(() => {
@@ -291,11 +295,13 @@ export function setupRealtimeServer(httpServer: HttpServer) {
       }
     }, 25000);
 
-    socket.on('message', async (data: string) => {
-      try {
-        const raw = data.toString();
-        const parsed = JSON.parse(raw);
-        const { type, payload } = parsed;
+    socket.on('message', (data: string) => {
+      messageChain = messageChain.then(async () => {
+        try {
+          if (socket.readyState !== WebSocket.OPEN) return;
+          const raw = data.toString();
+          const parsed = JSON.parse(raw);
+          const { type, payload } = parsed;
 
         if (type !== 'auth:presence' && !currentUser) {
           socket.send(JSON.stringify({
@@ -311,6 +317,7 @@ export function setupRealtimeServer(httpServer: HttpServer) {
           // -------------------------------------------------------------
           case 'auth:presence': {
             const user = await authenticateRealtimeToken(payload?.token);
+            if (socket.readyState !== WebSocket.OPEN) return;
             if (!user?.id) {
               socket.send(JSON.stringify({
                 type: 'auth:error',
@@ -325,7 +332,7 @@ export function setupRealtimeServer(httpServer: HttpServer) {
             }
 
             if (currentUser) removeConnectedUser(currentUser);
-            const name = String(user.displayName || `${user.firstName || ''} ${user.lastName || ''}`.trim() || user.name || 'User');
+            const name = String(user.displayName || `${user.firstName || ''} ${user.lastName || ''}`.trim() || 'User');
             const nvId = String(user.nvId || '');
 
             currentUser = {
@@ -335,7 +342,7 @@ export function setupRealtimeServer(httpServer: HttpServer) {
               name,
               avatar: user.avatar || undefined,
               role: String(user.role || 'PERSONAL'),
-              myLanguage: String(user.preferredLanguage || user.myLanguage || 'en'),
+              myLanguage: String(user.preferredLanguage || 'en'),
               connectedAt: Date.now(),
             };
 
@@ -663,7 +670,7 @@ export function setupRealtimeServer(httpServer: HttpServer) {
               channelId,
               userId: currentUser.userId,
               userName: currentUser.name,
-              userAvatar: userAvatar || currentUser.avatar,
+              userAvatar: currentUser.avatar,
               text,
               translatedText: translatedText !== text ? translatedText : undefined,
               sourceLang: sourceLang || currentUser.myLanguage,
@@ -679,12 +686,22 @@ export function setupRealtimeServer(httpServer: HttpServer) {
 
           case 'chat:message': {
             if (payload && payload.conversationId && payload.message) {
+              const message = payload.message && typeof payload.message === 'object'
+                ? {
+                    ...payload.message,
+                    senderId: currentUser?.userId,
+                    senderName: currentUser?.name,
+                    senderAvatar: currentUser?.avatar || '',
+                    senderLang: currentUser?.myLanguage || 'en',
+                  }
+                : null;
+              if (!message) return;
               broadcastToAll(
                 {
                   type: 'chat:message',
                   payload: {
                     conversationId: payload.conversationId,
-                    message: payload.message,
+                    message,
                   },
                 },
                 socket
@@ -732,9 +749,10 @@ export function setupRealtimeServer(httpServer: HttpServer) {
           default:
             break;
         }
-      } catch (err) {
-        console.error('WebSocket message processing error:', err);
-      }
+        } catch (err) {
+          console.error('WebSocket message processing error:', err);
+        }
+      });
     });
 
     socket.on('close', () => {
@@ -742,19 +760,7 @@ export function setupRealtimeServer(httpServer: HttpServer) {
       allSockets.delete(socket);
 
       if (currentUser) {
-        const byUser = clientsByUserId.get(currentUser.userId);
-        if (byUser) {
-          byUser.delete(currentUser);
-          if (byUser.size === 0) clientsByUserId.delete(currentUser.userId);
-        }
-
-        if (currentUser.nvId) {
-          const byNv = clientsByNvId.get(currentUser.nvId);
-          if (byNv) {
-            byNv.delete(currentUser);
-            if (byNv.size === 0) clientsByNvId.delete(currentUser.nvId);
-          }
-        }
+        removeConnectedUser(currentUser);
 
         // Broadcast presence update on disconnect
         broadcastToAll({

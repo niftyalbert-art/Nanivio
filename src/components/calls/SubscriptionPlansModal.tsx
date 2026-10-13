@@ -1,8 +1,6 @@
-import React from 'react';
-import { X, Sparkles, Check, Zap, CreditCard, ShieldCheck } from 'lucide-react';
+import React, { useState } from 'react';
+import { X, Sparkles, Check, Zap, ShieldCheck } from 'lucide-react';
 import { useNanivio } from '../../context/NanivioContext';
-import { USER_PLANS } from '../../data/mockData';
-import { PlanTier } from '../../types';
 import { PaymentPurpose } from '../payment/UniversalPaymentGatewayModal';
 
 interface SubscriptionPlansModalProps {
@@ -16,9 +14,27 @@ export const SubscriptionPlansModal: React.FC<SubscriptionPlansModalProps> = ({
   onClose,
   onSelectPayment,
 }) => {
-  const { currentPlan, setActiveTab, wallets, openBillingWithPlan } = useNanivio();
+  const { billingSummary, billingPlans, upgradeSubscriptionPlan } = useNanivio();
+  const [activatingTier, setActivatingTier] = useState<string | null>(null);
+  const [planStatus, setPlanStatus] = useState<{ message: string; isError: boolean } | null>(null);
 
   if (!isOpen) return null;
+
+  const selectPlan = async (tier: string) => {
+    setActivatingTier(tier);
+    setPlanStatus(null);
+    try {
+      await upgradeSubscriptionPlan(tier, 'MONTHLY');
+      setPlanStatus({ message: 'Allowance activated. No payment was collected and the plan will not auto-renew.', isError: false });
+    } catch (error) {
+      setPlanStatus({
+        message: error instanceof Error ? error.message : 'Unable to select this plan.',
+        isError: true,
+      });
+    } finally {
+      setActivatingTier(null);
+    }
+  };
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6 bg-black/80 backdrop-blur-md animate-in fade-in duration-200 overflow-y-auto">
@@ -34,7 +50,7 @@ export const SubscriptionPlansModal: React.FC<SubscriptionPlansModalProps> = ({
             </div>
             <h2 className="text-xl sm:text-2xl font-black text-white">Choose Your Plan &amp; Quota</h2>
             <p className="text-xs sm:text-sm text-slate-400">
-              Unlock unlimited HD WebRTC voice &amp; video calling, high-speed multilateral translation, and zero-fee P2P wallet rails.
+              Select a server-listed allowance for the displayed term. It is assigned immediately and does not auto-renew; paid minute packs and Malvi plans remain separate.
             </p>
           </div>
           <button
@@ -47,8 +63,8 @@ export const SubscriptionPlansModal: React.FC<SubscriptionPlansModalProps> = ({
 
         {/* Subscription Tiers Grid */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-          {USER_PLANS.map((plan) => {
-            const isCurrent = currentPlan.tier === plan.tier;
+          {billingPlans.map((plan) => {
+            const isCurrent = billingSummary?.subscription?.tier === plan.tier;
             return (
               <div
                 key={plan.tier}
@@ -67,16 +83,13 @@ export const SubscriptionPlansModal: React.FC<SubscriptionPlansModalProps> = ({
                       </span>
                     )}
                   </div>
-                  <div className="text-2xl font-black text-white font-mono">
-                    ${plan.monthlyPriceUSD}{' '}
-                    <span className="text-xs text-slate-400 font-normal">/mo (GH₵ {plan.monthlyPriceGHS})</span>
-                  </div>
+                  <div className="text-sm font-semibold text-emerald-300">No payment collected</div>
                   <p className="text-xs text-slate-400 leading-relaxed">{plan.description}</p>
 
                   <div className="pt-2 space-y-1.5 text-xs text-slate-300">
                     <div className="flex items-center gap-1.5">
                       <Check className="w-3.5 h-3.5 text-emerald-400 stroke-[3]" />
-                      <span>{plan.langpretationMinutesPerMonth} Langpretation mins</span>
+                      <span>{plan.includedLangpretationMinutes} Langpretation mins</span>
                     </div>
                     <div className="flex items-center gap-1.5">
                       <Check className="w-3.5 h-3.5 text-emerald-400 stroke-[3]" />
@@ -94,36 +107,26 @@ export const SubscriptionPlansModal: React.FC<SubscriptionPlansModalProps> = ({
                 </div>
 
                 <button
-                  onClick={() => {
-                    onClose();
-                    // Requirement 1: When a user selects a subscription with a zero Nanivio credit requirement, the system should automatically direct the user to the Billing Section to complete payment.
-                    const commWallet = wallets.find((w) => w.currency === 'GHS');
-                    const balance = commWallet?.balance || 0;
-                    if (balance < plan.monthlyPriceGHS || balance <= 0 || plan.monthlyPriceGHS === 0) {
-                      openBillingWithPlan(plan.tier, 'SUBSCRIPTION', 'MONTHLY');
-                    } else {
-                      onSelectPayment({
-                        type: 'subscription',
-                        tier: plan.tier,
-                        cycle: 'MONTHLY',
-                        title: `Subscribe to ${plan.name} Plan`,
-                        amountUSD: plan.monthlyPriceUSD,
-                        amountGHS: plan.monthlyPriceGHS,
-                      });
-                    }
-                  }}
+                  disabled={isCurrent || activatingTier !== null}
+                  onClick={() => void selectPlan(plan.tier)}
                   className={`w-full py-2.5 rounded-xl font-bold text-xs transition-all cursor-pointer ${
                     isCurrent
-                      ? 'bg-slate-800 text-slate-300 hover:bg-slate-700'
+                      ? 'bg-slate-800 text-slate-300'
                       : 'bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-slate-950 shadow-md shadow-emerald-500/20'
                   }`}
                 >
-                  {isCurrent ? 'Renew Current Plan' : 'Select Plan & Pay'}
+                  {isCurrent ? 'Current Plan' : activatingTier === plan.tier ? 'Selecting…' : 'Select allowance — no payment'}
                 </button>
               </div>
             );
           })}
         </div>
+
+        {planStatus && (
+          <p role={planStatus.isError ? 'alert' : 'status'} className={planStatus.isError ? 'text-sm text-red-300' : 'text-sm text-emerald-300'}>
+            {planStatus.message}
+          </p>
+        )}
 
         {/* On-Demand Minute Bundles */}
         <div className="bg-slate-950/80 border border-slate-800/80 rounded-2xl p-5 space-y-3">
