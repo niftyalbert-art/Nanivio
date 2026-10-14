@@ -51,6 +51,29 @@ BEGIN
   IF (switched->'subscription'->>'langpretationMinutesRemaining')::numeric <> 0 THEN
     RAISE EXCEPTION 'Reselection replenished an exhausted allowance';
   END IF;
+  IF EXISTS (SELECT 1 FROM nanivio_invoices WHERE user_id = test_user)
+     OR EXISTS (SELECT 1 FROM nanivio_payments WHERE user_id = test_user)
+     OR EXISTS (SELECT 1 FROM nanivio_billing_transactions WHERE user_id = test_user)
+     OR EXISTS (SELECT 1 FROM nanivio_wallets WHERE user_id = test_user) THEN
+    RAISE EXCEPTION 'Plan selection created a financial mutation';
+  END IF;
+  INSERT INTO nanivio_subscriptions(
+    subscription_id, user_id, plan_id, tier, plan_name, billing_cycle, status,
+    started_at, current_period_start, current_period_end, price_paid, currency,
+    langpretation_minutes_quota, langpretation_minutes_remaining
+  ) VALUES (
+    test_user || '_paid_pack', test_user, 'test_pack', 'minutes_pack',
+    'Purchased test minutes', 'ONE_OFF', 'ACTIVE', NOW(), NOW(),
+    NOW() + INTERVAL '30 days', 10, 'GHS', 20, 20
+  );
+  switched := nanivio_select_communication_plan(plan_a);
+  usage := nanivio_langpretation_usage(jsonb_build_object('userId', test_user,
+    'minutes', 1, 'eventId', test_user || '_paid_usage', 'channel', 'AUDIO_CALL'));
+  IF NOT EXISTS (
+    SELECT 1 FROM nanivio_subscriptions
+     WHERE subscription_id = test_user || '_paid_pack'
+       AND status = 'ACTIVE' AND langpretation_minutes_remaining = 19
+  ) THEN RAISE EXCEPTION 'Purchased pack was cancelled, reset or unavailable'; END IF;
   RAISE NOTICE 'Communication entitlement regression checks passed';
 END;
 $$;

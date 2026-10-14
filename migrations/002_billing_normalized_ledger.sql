@@ -287,7 +287,7 @@ DECLARE
   w_comm nanivio_wallets%ROWTYPE;
   sub_row nanivio_subscriptions%ROWTYPE;
   v_minutes NUMERIC;
-  v_price NUMERIC;
+  p_price NUMERIC;
   v_plan JSONB;
   v_now TIMESTAMPTZ := NOW();
   v_invoice_id TEXT;
