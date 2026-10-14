@@ -10,3 +10,4 @@
 - [GitHub write access](github-write-access.md) — healthy authentication does not establish repository write permission or working native Git access.
 - [Large sandbox arguments](sandbox-arguments.md) — split unusually long strings before the isolated execution boundary; a parse failure is not an authorization failure.
 - [Portable package lockfiles](portable-package-locks.md) — keep external builds independent of workspace-private download hosts without disabling package screening.
+- [Preview proxy checks](preview-proxy-checks.md) — workspace proxy errors can coexist with a healthy app; distinguish local server checks from public reachability.
