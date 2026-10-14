@@ -4,3 +4,4 @@
 - [Billing payment sources](billing-payment-sources.md) — wallet debits and verified external-payment fulfillment must use separate commands.
 - [GitHub authentication boundary](github-authentication.md) — a working GitHub App connection does not guarantee valid shell Git credentials.
 - [Unconfigured development preview](development-setup.md) — show setup instructions without enabling application APIs; production must still fail closed.
+- [Read-only audit runtimes](audit-runtimes.md) — use an existing runtime; invoking an absent runtime can automatically change project configuration.
