@@ -32,19 +32,33 @@ BEGIN
   PERFORM pg_advisory_xact_lock(hashtext('nanivio-entitlements:' || p_user));
   v_end := v_now + CASE WHEN p_cycle = 'ANNUAL' THEN INTERVAL '365 days' ELSE INTERVAL '30 days' END;
 
-  -- A repeated selection of the same active plan is idempotent and does not regrant quota.
+  -- Reuse the durable grant for the entire term, across tier/cycle changes and
+  -- cancellation. Neither switching nor reselecting can reset usage or extend expiry.
   SELECT * INTO sub_row
     FROM nanivio_subscriptions
    WHERE user_id = p_user
      AND left(subscription_id, 11) = 'comm_grant_'
-     AND status = 'ACTIVE'
      AND current_period_end > v_now
-     AND plan_id = p_plan_id
-     AND billing_cycle = p_cycle
    ORDER BY created_at DESC
    LIMIT 1
    FOR UPDATE;
   IF FOUND THEN
+    UPDATE nanivio_subscriptions
+       SET plan_id = p_plan_id, tier = p_tier, plan_name = p_plan_name,
+           billing_cycle = p_cycle, status = 'ACTIVE', auto_renew = false,
+           langpretation_minutes_quota = p_langpretation,
+           langpretation_minutes_remaining = GREATEST(0, p_langpretation - langpretation_minutes_used),
+           voice_minutes_quota = p_voice, malvi_units_quota = p_malvi,
+           updated_at = v_now
+     WHERE id = sub_row.id
+     RETURNING * INTO sub_row;
+    INSERT INTO nanivio_billing_audit_logs(actor_user_id, action, entity_type, entity_id, metadata)
+    VALUES (
+      p_user, 'COMMUNICATION_PLAN_CHANGED', 'SUBSCRIPTION', sub_row.subscription_id,
+      jsonb_build_object('planId', p_plan_id, 'tier', p_tier, 'billingCycle', p_cycle,
+        'consumedMinutesPreserved', sub_row.langpretation_minutes_used,
+        'periodEndPreserved', sub_row.current_period_end)
+    );
     RETURN jsonb_build_object(
       'success', true,
       'granted', false,
@@ -164,17 +178,14 @@ BEGIN
     );
   END IF;
 
-  IF NOT EXISTS (
-    SELECT 1 FROM nanivio_subscriptions
-     WHERE user_id = p_user AND status IN ('ACTIVE', 'TRIAL') AND current_period_end > v_now
-  ) THEN
-    INSERT INTO nanivio_subscriptions(
-      subscription_id, user_id, plan_id, tier, plan_name, billing_cycle, status,
-      started_at, current_period_start, current_period_end, currency
-    ) VALUES (
-      'auto_' || p_user, p_user, 'free', 'free', 'Free Basic Tier', 'MONTHLY', 'ACTIVE',
-      v_now, v_now, v_now + INTERVAL '30 days', 'GHS'
-    ) ON CONFLICT (subscription_id) DO NOTHING;
+  SELECT COALESCE(SUM(langpretation_minutes_remaining), 0)
+    INTO v_remaining
+    FROM nanivio_subscriptions
+   WHERE user_id = p_user AND status IN ('ACTIVE', 'TRIAL') AND current_period_end > v_now;
+  -- This RPC consumes allowance, not wallet money. Never report uncovered usage
+  -- as successfully funded; paid-credit fallback needs a separate verified debit.
+  IF v_remaining < v_minutes THEN
+    RAISE EXCEPTION 'Insufficient Langpretation allowance';
   END IF;
 
   -- Consume the earliest-expiring allowances first; retain all other active quota rows.
