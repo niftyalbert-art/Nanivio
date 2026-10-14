@@ -2,6 +2,12 @@
  * Nanivio GetStream (Stream Chat) Client & Webhook Synchronization Engine
  * Coordinates real-time messaging, channels, typing indicators, and Langpretation integration.
  */
+import { authClient } from './authClient';
+
+function streamHeaders() {
+  const token = authClient.getToken();
+  return { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) };
+}
 
 export interface StreamReaction {
   type: string;
@@ -39,6 +45,7 @@ export interface StreamChannelMember {
   language?: string;
   role: 'admin' | 'member' | 'guest';
   online?: boolean;
+  nvId?: string;
 }
 
 export interface StreamChannelData {
@@ -75,7 +82,7 @@ export interface StreamClientState {
 
 class NanivioStreamClient {
   private status: 'CONNECTED' | 'CONNECTING' | 'DISCONNECTED' = 'DISCONNECTED';
-  private apiKey = 'nanivio_stream_key';
+  private apiKey = '';
   private userId: string | null = null;
   private userName = 'User';
   private token: string | null = null;
@@ -91,7 +98,7 @@ class NanivioStreamClient {
     try {
       const res = await fetch('/api/stream/token', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: streamHeaders(),
         body: JSON.stringify({ userId, name }),
       });
 
@@ -101,11 +108,13 @@ class NanivioStreamClient {
 
       const data = await res.json();
       this.token = data.token;
+      this.userId = data.userId;
       this.apiKey = data.apiKey;
       this.status = 'CONNECTED';
     } catch (err) {
       this.status = 'DISCONNECTED';
       this.token = null;
+      this.notify();
       throw err;
     }
 
@@ -120,7 +129,7 @@ class NanivioStreamClient {
 
   public async fetchChannels(): Promise<StreamChannelData[]> {
     try {
-      const res = await fetch('/api/stream/channels');
+      const res = await fetch('/api/stream/channels', { headers: streamHeaders() });
       if (!res.ok) return [];
       const data = await res.json();
       return data.channels || [];
@@ -132,7 +141,7 @@ class NanivioStreamClient {
 
   public async fetchMessages(channelId: string): Promise<StreamChatMessage[]> {
     try {
-      const res = await fetch(`/api/stream/channels/${channelId}/messages`);
+      const res = await fetch(`/api/stream/channels/${encodeURIComponent(channelId)}/messages`, { headers: streamHeaders() });
       if (!res.ok) return [];
       const data = await res.json();
       return data.messages || [];
@@ -151,9 +160,9 @@ class NanivioStreamClient {
     attachments?: Array<{ type: 'image' | 'audio' | 'file'; url: string; name?: string; size?: string }>
   ): Promise<StreamChatMessage | null> {
     try {
-      const res = await fetch(`/api/stream/channels/${channelId}/messages`, {
+      const res = await fetch(`/api/stream/channels/${encodeURIComponent(channelId)}/messages`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: streamHeaders(),
         body: JSON.stringify({
           userId: this.userId,
           userName: this.userName,
@@ -181,9 +190,9 @@ class NanivioStreamClient {
     reactionType: string
   ): Promise<StreamChatMessage | null> {
     try {
-      const res = await fetch(`/api/stream/channels/${channelId}/reactions`, {
+      const res = await fetch(`/api/stream/channels/${encodeURIComponent(channelId)}/reactions`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: streamHeaders(),
         body: JSON.stringify({
           messageId,
           reactionType,
@@ -211,7 +220,7 @@ class NanivioStreamClient {
     try {
       const res = await fetch('/api/stream/channels', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: streamHeaders(),
         body: JSON.stringify({ id, name, members, type, custom }),
       });
       if (!res.ok) return null;
@@ -223,9 +232,26 @@ class NanivioStreamClient {
     }
   }
 
+  public async removeChannelMember(channelId: string, memberId: string): Promise<void> {
+    const response = await fetch(`/api/stream/channels/${encodeURIComponent(channelId)}/members/remove`, {
+      method: 'POST', headers: streamHeaders(), body: JSON.stringify({ memberId }),
+    });
+    const data = await response.json();
+    if (!response.ok || data.success !== true) throw new Error(data.error || 'Participant could not be removed.');
+  }
+
+  public async moderateChannelMember(channelId: string, memberId: string, action: 'promote' | 'demote'): Promise<StreamChannelData> {
+    const response = await fetch(`/api/stream/channels/${encodeURIComponent(channelId)}/members/moderate`, {
+      method: 'POST', headers: streamHeaders(), body: JSON.stringify({ memberId, action }),
+    });
+    const data = await response.json();
+    if (!response.ok || data.success !== true || !data.channel) throw new Error(data.error || 'Moderator could not be updated.');
+    return data.channel;
+  }
+
   public async fetchLogs(): Promise<StreamEventLog[]> {
     try {
-      const res = await fetch('/api/stream/logs');
+      const res = await fetch('/api/stream/logs', { headers: streamHeaders() });
       if (!res.ok) return [];
       const data = await res.json();
       return data.logs || [];

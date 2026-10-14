@@ -5,3 +5,5 @@
 - [GitHub authentication boundary](github-authentication.md) — a working GitHub App connection does not guarantee valid shell Git credentials.
 - [Unconfigured development preview](development-setup.md) — show setup instructions without enabling application APIs; production must still fail closed.
 - [Read-only audit runtimes](audit-runtimes.md) — use an existing runtime; invoking an absent runtime can automatically change project configuration.
+- [Private-chat cache ownership](private-chat-cache-ownership.md) — do not assign unowned legacy browser history to the account that next signs in.
+- [GetStream webhook bytes](stream-webhook-bytes.md) — signatures cover exact uncompressed JSON bytes, including for gzip transport.

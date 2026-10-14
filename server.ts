@@ -26,7 +26,11 @@ import {
   addStreamMessage,
   toggleStreamReaction,
   getStreamEventLogs,
+  requireStreamChannelMember,
+  removeStreamChannelMember,
+  moderateStreamChannelMember,
 } from "./src/server/streamService.ts";
+import { requireActiveChatAccount, requireStreamWebhookSignature, StreamAccessError } from "./src/server/chatPrivacy.ts";
 import { billingDb } from "./src/server/billingDb.ts";
 import { purchaseCommunicationMinutesFromWalletPersistent, activateMalviSubscriptionFromWalletPersistent } from "./src/server/normalizedBillingRepository.ts";
 import { normalizedBillingEnabled, transferFintechToCommunication as persistentFintechToCommunication, transferPeerToPeer as persistentPeerToPeer, selectCommunicationPlanPersistent, purchaseCommunicationMinutesPersistent, activateMalviSubscriptionPersistent, recordLangpretationUsagePersistent, paystackTopUpPersistent, getPersistentPayment, getPersistentSubscription, getPersistentTransactions, getPersistentInvoices, getPersistentWallets, getPersistentCreditAccount, getPersistentUsageMeter, getPersistentMalviSubscription, getMalviCreditAccount, ensureMalviEntitlement, recordMalviUsagePersistent } from "./src/server/normalizedBillingRepository.ts";
@@ -1718,13 +1722,13 @@ app.get("/api/agora/channels", requireAuthenticatedUser, (_req, res) => {
 // ==========================================
 // GETSTREAM (STREAM CHAT) API
 // ==========================================
-app.get("/api/stream/config", requireAuthenticatedUser, async (req, res) => {
+app.get("/api/stream/config", requireAuthenticatedUser, requireActiveChatAccount, async (req, res) => {
   const hasKey = !!process.env.STREAM_API_KEY; const hasSecret=!!process.env.STREAM_API_SECRET;
   const channels=hasKey&&hasSecret?await getActiveStreamChannels(authenticatedUserId(req)):[];
   res.json({status:hasKey&&hasSecret?"configured":"not_configured",apiKey:hasKey?`${process.env.STREAM_API_KEY!.substring(0,6)}...`:null,hasSecret,appId:process.env.STREAM_APP_ID||null,activeChannelsCount:channels.length});
 });
 
-app.post("/api/stream/token", requireAuthenticatedUser, (req, res) => {
+app.post("/api/stream/token", requireAuthenticatedUser, requireActiveChatAccount, (req, res) => {
   try {
     const authUser = (req as any).authUser;
     const { expirationSeconds } = req.body;
@@ -1748,49 +1752,67 @@ app.post("/api/stream/token", requireAuthenticatedUser, (req, res) => {
   }
 });
 
-app.get("/api/stream/channels", requireAuthenticatedUser, async (req, res) => {
+app.get("/api/stream/channels", requireAuthenticatedUser, requireActiveChatAccount, async (req, res) => {
   try { const channels = await getActiveStreamChannels(authenticatedUserId(req)); res.json({channels,totalChannels:channels.length}); }
   catch(error:any){ res.status(502).json({success:false,error:error.message||'GetStream unavailable'}); }
 });
 
-app.get("/api/stream/channels/:channelId", requireAuthenticatedUser, async (req, res) => {
-  const channel = await getStreamChannel(req.params.channelId);
-  if (!channel) {
-    return res.status(404).json({ error: "Stream channel not found" });
+app.get("/api/stream/channels/:channelId", requireAuthenticatedUser, requireActiveChatAccount, async (req, res) => {
+  try {
+    const channel = await getStreamChannel(req.params.channelId, authenticatedUserId(req));
+    if (!channel) return res.status(404).json({ success: false, error: "Stream channel not found" });
+    res.json({ success: true, channel });
+  } catch (error) {
+    res.status(error instanceof StreamAccessError ? error.status : 502)
+      .json({ success: false, error: error instanceof StreamAccessError ? error.message : "Stream channel unavailable." });
   }
-  res.json({ success: true, channel });
 });
 
-app.post("/api/stream/channels", requireAuthenticatedUser, async (req, res) => {
+app.post("/api/stream/channels", requireAuthenticatedUser, requireActiveChatAccount, async (req, res) => {
   try {
     const { id, type = "messaging", name, members = [], custom = {} } = req.body;
     if (!id || !name) {
       return res.status(400).json({ error: "Channel id and name required" });
     }
+    if (!Array.isArray(members) || members.length > 100 || type !== "messaging") {
+      return res.status(400).json({ success: false, error: "A private messaging channel supports up to 100 participants." });
+    }
+    const actor = (req as any).authUser;
+    // Resolve identities and profile metadata through Nanivio authentication
+    // records. Never let the request choose provider roles or pretend users exist.
+    const resolvedMembers = await Promise.all([...members, { userId: actor.id }].map(async (member: any) => {
+      if (!member || typeof member !== "object") throw new StreamAccessError("Invalid participant.", 400);
+      let user = member.userId === actor.id ? actor : await persistentAuth.findById(String(member.userId || ""));
+      if (!user && member.nvId) user = await persistentAuth.findByNvId(String(member.nvId));
+      if (!user || user.accountStatus !== "ACTIVE") throw new StreamAccessError("Every participant must be an active registered Nanivio account.", 400);
+      return { userId: user.id, name: user.displayName || user.firstName, avatar: user.avatar, nvId: user.nvId, language: user.preferredLanguage, role: 'member' as const };
+    }));
+    const uniqueMembers = [...new Map(resolvedMembers.map(member => [member.userId, member])).values()];
+    if (uniqueMembers.length > 100) return res.status(400).json({ success: false, error: "Too many participants." });
     const channel = await upsertStreamChannel({
       id,
       type,
       name,
-      members,
+      members: uniqueMembers,
       custom,
       updatedAt: Date.now(),
-    });
+    }, actor.id);
     res.json({ success: true, channel });
   } catch (error: any) {
-    res.status(500).json({ error: error.message });
+    res.status(error instanceof StreamAccessError ? error.status : 502).json({ success: false, error: error instanceof StreamAccessError ? error.message : "Unable to create private channel." });
   }
 });
 
-app.get("/api/stream/channels/:channelId/messages", requireAuthenticatedUser, async (req, res) => {
+app.get("/api/stream/channels/:channelId/messages", requireAuthenticatedUser, requireActiveChatAccount, async (req, res) => {
   try {
-    const messages = await getStreamMessages(req.params.channelId);
+    const messages = await getStreamMessages(req.params.channelId, authenticatedUserId(req));
     res.json({ success: true, messages, count: messages.length });
   } catch (error: any) {
-    res.status(500).json({ error: error.message });
+    res.status(error instanceof StreamAccessError ? error.status : 502).json({ success: false, error: error instanceof StreamAccessError ? error.message : "Messages unavailable." });
   }
 });
 
-app.post("/api/stream/channels/:channelId/messages", requireAuthenticatedUser, async (req, res) => {
+app.post("/api/stream/channels/:channelId/messages", requireAuthenticatedUser, requireActiveChatAccount, async (req, res) => {
   try {
     const { channelId } = req.params;
     const authUser = (req as any).authUser;
@@ -1799,6 +1821,7 @@ app.post("/api/stream/channels/:channelId/messages", requireAuthenticatedUser, a
     const { userAvatar, text, sourceLang = "auto", targetLang, attachments } = req.body;
 
     if (!text) return res.status(400).json({ error: "text is required" });
+    await requireStreamChannelMember(channelId, userId);
 
     // Auto-translate using Nanivio Multi-Provider Langpretation Engine (Khaya, Sunbird, Azure, NLLB)
     let translatedText: string | undefined;
@@ -1839,16 +1862,16 @@ app.post("/api/stream/channels/:channelId/messages", requireAuthenticatedUser, a
       attachments,
     });
 
-    // Real-time broadcast to all connected WebSocket clients
-    broadcastStreamChatMessage(newMessage);
+    // Fresh provider membership determines private realtime recipients.
+    await broadcastStreamChatMessage(newMessage);
 
     res.json({ success: true, message: newMessage });
   } catch (error: any) {
-    res.status(500).json({ error: error.message });
+    res.status(error instanceof StreamAccessError ? error.status : 502).json({ success: false, error: error instanceof StreamAccessError ? error.message : "Unable to send message." });
   }
 });
 
-app.post("/api/stream/channels/:channelId/reactions", requireAuthenticatedUser, async (req, res) => {
+app.post("/api/stream/channels/:channelId/reactions", requireAuthenticatedUser, requireActiveChatAccount, async (req, res) => {
   try {
     const { channelId } = req.params;
     const { messageId, reactionType } = req.body;
@@ -1865,20 +1888,42 @@ app.post("/api/stream/channels/:channelId/reactions", requireAuthenticatedUser, 
     }
 
     // Real-time broadcast of updated reaction
-    broadcastStreamReaction(channelId, updated);
+    await broadcastStreamReaction(channelId, updated);
 
     res.json({ success: true, message: updated });
   } catch (error: any) {
-    res.status(500).json({ error: error.message });
+    res.status(error instanceof StreamAccessError ? error.status : 502).json({ success: false, error: error instanceof StreamAccessError ? error.message : "Unable to update reaction." });
   }
 });
 
-app.get("/api/stream/logs", (_req, res) => {
+app.post("/api/stream/channels/:channelId/members/remove", requireAuthenticatedUser, requireActiveChatAccount, async (req, res) => {
+  try {
+    const memberId = req.body?.memberId;
+    if (typeof memberId !== "string" || !memberId) return res.status(400).json({ success: false, error: "memberId is required." });
+    await removeStreamChannelMember(req.params.channelId, authenticatedUserId(req), memberId);
+    res.json({ success: true, removedMemberId: memberId });
+  } catch (error) {
+    res.status(error instanceof StreamAccessError ? error.status : 502).json({ success: false, error: error instanceof StreamAccessError ? error.message : "Unable to remove participant." });
+  }
+});
+
+app.post("/api/stream/channels/:channelId/members/moderate", requireAuthenticatedUser, requireActiveChatAccount, async (req, res) => {
+  try {
+    const { memberId, action } = req.body || {};
+    if (typeof memberId !== "string" || !memberId || !["promote", "demote"].includes(action)) return res.status(400).json({ success: false, error: "A participant and valid moderator action are required." });
+    const channel = await moderateStreamChannelMember(req.params.channelId, authenticatedUserId(req), memberId, action);
+    res.json({ success: true, channel });
+  } catch (error) {
+    res.status(error instanceof StreamAccessError ? error.status : 502).json({ success: false, error: error instanceof StreamAccessError ? error.message : "Unable to update moderator." });
+  }
+});
+
+app.get("/api/stream/logs", requireAdmin, (_req, res) => {
   res.json({ logs: getStreamEventLogs() });
 });
 
 // REAL-TIME PRESENCE & USERS API
-app.get("/api/realtime/active-users", (_req, res) => {
+app.get("/api/realtime/active-users", requireAuthenticatedUser, requireActiveChatAccount, (_req, res) => {
   res.json({
     onlineUsers: getActiveConnectedUsersList(),
     count: getActiveConnectedUsersList().length,
@@ -3744,7 +3789,7 @@ RESPONSE SCHEMA (Return strictly JSON):
 
 
 // Stream Chat Webhook & Message Langpretation Bridge
-app.post("/api/stream/webhook", async (req, res) => {
+app.post("/api/stream/webhook", requireStreamWebhookSignature, async (req, res) => {
   try {
     const event = req.body;
     // Intercept message.new event to translate into target language

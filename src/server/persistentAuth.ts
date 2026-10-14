@@ -1,7 +1,13 @@
 import crypto from 'crypto';
-import { sanitizeApplication, publicApplicationProfile } from './applicationPrivacy';
+import { sanitizeApplication as sanitizeApplicationFields, publicApplicationProfile, redactApplicationSecrets } from './applicationPrivacy';
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import type { NanivioUser, PersonalSignUpData, ExpertSignUpData, BusinessSignUpData, DriverSignUpData, AuthSession, ExpertApplication, BusinessApplication, DriverVerificationApplication } from '../types/auth';
+
+// Keep the main project's broad credential filtering and this task's cycle,
+// depth, prototype-key and additional secret-field protections.
+function sanitizeApplication<T>(value: T): T {
+  return sanitizeApplicationFields(redactApplicationSecrets(value));
+}
 
 function serverDb(): SupabaseClient {
   const url = process.env.SUPABASE_URL;

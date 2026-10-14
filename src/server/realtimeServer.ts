@@ -10,10 +10,13 @@ import {
   addStreamMessage,
   toggleStreamReaction,
   getStreamChannel,
+  getStreamChannelMembers,
+  requireStreamChannelMember,
   type StreamChatMessage,
 } from './streamService.ts';
 import { authDb } from './authDb.ts';
 import * as persistentAuth from './persistentAuth.ts';
+import { channelRecipients, normalizeChannelId } from './chatPrivacy.ts';
 
 export interface ConnectedUser {
   socket: WebSocket;
@@ -57,12 +60,14 @@ async function authenticateRealtimeToken(tokenValue: unknown) {
   if (!token) return null;
   try {
     const adminUser = persistentAuth.adminFromToken(token);
-    if (adminUser) return adminUser;
+    if (adminUser) return adminUser.accountStatus === 'ACTIVE' ? adminUser : null;
     if (await persistentAuth.persistentAuthConfigured()) {
-      return await persistentAuth.userFromToken(token);
+      const user = await persistentAuth.userFromToken(token);
+      return user?.accountStatus === 'ACTIVE' ? user : null;
     }
     if (process.env.NODE_ENV === 'production' || process.env.REQUIRE_PERSISTENT_AUTH === 'true') return null;
-    return authDb.validateSession(token);
+    const user = authDb.validateSession(token);
+    return user?.accountStatus === 'ACTIVE' ? user : null;
   } catch {
     return null;
   }
@@ -157,7 +162,9 @@ function getAI(): GoogleGenAI | null {
 
 function broadcastToAll(message: any, excludeSocket?: WebSocket) {
   const jsonStr = JSON.stringify(message);
-  for (const client of allSockets) {
+  // General presence/control events go only to authenticated sockets.
+  const authenticatedSockets = new Set([...clientsByUserId.values()].flatMap(users => [...users].map(user => user.socket)));
+  for (const client of authenticatedSockets) {
     if (client !== excludeSocket && client.readyState === WebSocket.OPEN) {
       try {
         client.send(jsonStr);
@@ -256,8 +263,17 @@ export function getActiveConnectedUsersList() {
   return uniqueUsers;
 }
 
-export function broadcastStreamChatMessage(message: StreamChatMessage) {
-  broadcastToAll({
+async function broadcastToChannel(channelId: string, event: any, excludeSocket?: WebSocket) {
+  const members = await getStreamChannelMembers(channelId);
+  const recipients = channelRecipients(members, clientsByUserId);
+  const json = JSON.stringify(event);
+  for (const recipient of recipients) {
+    if (recipient.socket !== excludeSocket && recipient.socket.readyState === WebSocket.OPEN) recipient.socket.send(json);
+  }
+}
+
+export async function broadcastStreamChatMessage(message: StreamChatMessage) {
+  await broadcastToChannel(message.channelId, {
     type: 'chat:message',
     payload: {
       channelId: message.channelId,
@@ -266,8 +282,8 @@ export function broadcastStreamChatMessage(message: StreamChatMessage) {
   });
 }
 
-export function broadcastStreamReaction(channelId: string, message: StreamChatMessage) {
-  broadcastToAll({
+export async function broadcastStreamReaction(channelId: string, message: StreamChatMessage) {
+  await broadcastToChannel(channelId, {
     type: 'chat:reaction_updated',
     payload: {
       channelId,
@@ -297,11 +313,13 @@ export function setupRealtimeServer(httpServer: HttpServer) {
 
     socket.on('message', (data: string) => {
       messageChain = messageChain.then(async () => {
+        let chatRequestId: string | undefined;
         try {
           if (socket.readyState !== WebSocket.OPEN) return;
           const raw = data.toString();
           const parsed = JSON.parse(raw);
           const { type, payload } = parsed;
+          if (typeof type === 'string' && type.startsWith('chat:') && typeof payload?.requestId === 'string') chatRequestId = payload.requestId;
 
         if (type !== 'auth:presence' && !currentUser) {
           socket.send(JSON.stringify({
@@ -657,6 +675,7 @@ export function setupRealtimeServer(httpServer: HttpServer) {
           case 'chat:send': {
             const { channelId, text, sourceLang, targetLang, userAvatar, attachments } = payload || {};
             if (!channelId || !text || !currentUser) return;
+            await requireStreamChannelMember(channelId, currentUser.userId);
 
             let translatedText: string | undefined;
             if (sourceLang && targetLang && sourceLang !== targetLang) {
@@ -680,12 +699,16 @@ export function setupRealtimeServer(httpServer: HttpServer) {
               attachments,
             });
 
-            broadcastStreamChatMessage(newMsg);
+            await broadcastStreamChatMessage(newMsg);
             break;
           }
 
           case 'chat:message': {
             if (payload && payload.conversationId && payload.message) {
+              const channelId = normalizeChannelId(payload.channelId || '');
+              await requireStreamChannelMember(channelId, currentUser!.userId);
+              const channel = await getStreamChannel(channelId, currentUser!.userId);
+              if (!channel) throw new Error('Private channel unavailable.');
               const message = payload.message && typeof payload.message === 'object'
                 ? {
                     ...payload.message,
@@ -693,19 +716,38 @@ export function setupRealtimeServer(httpServer: HttpServer) {
                     senderName: currentUser?.name,
                     senderAvatar: currentUser?.avatar || '',
                     senderLang: currentUser?.myLanguage || 'en',
+                    status: 'sent',
+                    reactions: [],
                   }
                 : null;
               if (!message) return;
-              broadcastToAll(
+              const originalMessageId = String(message.id || '');
+              const saved = await addStreamMessage(channelId, {
+                id: originalMessageId, channelId, userId: currentUser!.userId, userName: currentUser!.name,
+                userAvatar: currentUser!.avatar, text: String(message.text || ''),
+                sourceLang: currentUser!.myLanguage, createdAt: Date.now(), reactions: [],
+              });
+              message.id = saved.id;
+              // A canonical provider channel ID, not a caller-chosen local
+              // conversation ID, binds the receiving UI to the right room.
+              await broadcastToChannel(channelId,
                 {
                   type: 'chat:message',
                   payload: {
-                    conversationId: payload.conversationId,
+                    conversationId: channelId,
+                    channelId,
+                    members: await getStreamChannelMembers(channelId),
+                    title: channel.name,
+                    isGroup: channel.custom?.isGroup,
                     message,
                   },
                 },
                 socket
               );
+              socket.send(JSON.stringify({
+                type: 'chat:message_ack',
+                payload: { requestId: chatRequestId, channelId, messageId: originalMessageId, savedMessageId: saved.id, status: 'sent' },
+              }));
             }
             break;
           }
@@ -713,7 +755,8 @@ export function setupRealtimeServer(httpServer: HttpServer) {
           case 'chat:typing': {
             const { channelId, isTyping } = payload || {};
             if (channelId && currentUser) {
-              broadcastToAll(
+              await requireStreamChannelMember(channelId, currentUser.userId);
+              await broadcastToChannel(channelId,
                 {
                   type: 'chat:typing_indicator',
                   payload: {
@@ -740,7 +783,7 @@ export function setupRealtimeServer(httpServer: HttpServer) {
                 currentUser.name
               );
               if (updated) {
-                broadcastStreamReaction(channelId, updated);
+                await broadcastStreamReaction(channelId, updated);
               }
             }
             break;
@@ -750,7 +793,10 @@ export function setupRealtimeServer(httpServer: HttpServer) {
             break;
         }
         } catch (err) {
-          console.error('WebSocket message processing error:', err);
+          if (chatRequestId && socket.readyState === WebSocket.OPEN) {
+            socket.send(JSON.stringify({ type: 'chat:error', payload: { requestId: chatRequestId, message: 'Private chat request could not be authorized or completed.' } }));
+          }
+          console.warn('WebSocket request could not be completed.');
         }
       });
     });

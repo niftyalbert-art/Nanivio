@@ -111,7 +111,7 @@ export interface ChatMessage {
   isVoiceNote?: boolean;
   voiceNote?: VoiceNoteData;
   isTranslated?: boolean;
-  status: 'sending' | 'sent' | 'delivered' | 'read';
+  status: 'sending' | 'sent' | 'delivered' | 'read' | 'failed';
   mediaType?: 'text' | 'image' | 'video' | 'document';
   mediaUrl?: string;
   mediaFileName?: string;
@@ -131,6 +131,7 @@ export interface ChatMessage {
 
 export interface Conversation {
   id: string;
+  streamChannelId?: string;
   isGroup: boolean;
   title: string;
   avatar: string;
