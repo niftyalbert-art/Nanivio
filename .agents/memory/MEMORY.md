@@ -5,3 +5,4 @@
 - [Private-chat cache ownership](private-chat-cache-ownership.md) — do not assign unowned legacy browser history to the account that next signs in.
 - [GetStream webhook bytes](stream-webhook-bytes.md) — signatures cover exact uncompressed JSON bytes, including for gzip transport.
 - [GitHub write access](github-write-access.md) — healthy authentication does not establish repository write permission or working native Git access.
+- [Large sandbox arguments](sandbox-arguments.md) — split unusually long strings before the isolated execution boundary; a parse failure is not an authorization failure.
