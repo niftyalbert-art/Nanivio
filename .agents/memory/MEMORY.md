@@ -3,3 +3,4 @@
 - [Branch safety](branch-safety.md) — this project's approved source and push target is malvi-production-upgrade, never main.
 - [Billing payment sources](billing-payment-sources.md) — wallet debits and verified external-payment fulfillment must use separate commands.
 - [GitHub authentication boundary](github-authentication.md) — a working GitHub App connection does not guarantee valid shell Git credentials.
+- [Unconfigured development preview](development-setup.md) — show setup instructions without enabling application APIs; production must still fail closed.
