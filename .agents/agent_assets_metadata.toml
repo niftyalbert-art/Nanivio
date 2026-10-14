@@ -1,0 +1,16 @@
+uploads = []
+generated = []
+
+[[outputs]]
+id = "0oeyFOELfycFw7P8XQaK5"
+uri = "file://docs/malvi-migration-audit.html"
+type = "html"
+title = "Malvi upgrade — complete audit findings and migration checklist"
+description = "Source audit, executed checks, 21 detailed findings, feature coverage, blockers and required real-provider verification before migrating into Nanivio."
+logical_id = "885a643c-8ea8-4ce4-83fe-4a039b8cfb1e"
+content_hash = "sha256:4477428dc48b7aec7445591cac03852f7653676f334d0f38fe14a0eed054da78"
+size = 43340
+mtime_ms = 1791985586753
+storage_uri = "gcs://replit-rams-assets-sisko/rams/assets/repl:8a53f482-19ae-49f0-ab16-31b527f92091/885a643c-8ea8-4ce4-83fe-4a039b8cfb1e/e50ab27b-6247-4484-954c-18bd5d8a1ab3"
+storage_version_token = "1791985681904506"
+content_type = "text/html"
