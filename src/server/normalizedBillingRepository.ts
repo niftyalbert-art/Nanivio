@@ -125,6 +125,20 @@ export async function getPersistentInvoices(userId: string, limit = 50) {
   return data || [];
 }
 
+export async function getPersistentInvoice(userId: string, invoiceId: string) {
+  // Filter by the authenticated owner in the database, not after loading a
+  // different user's invoice. Accept both external invoice IDs and UUID row IDs.
+  const { data, error } = await db().from('nanivio_invoices').select('*')
+    .eq('user_id', userId).eq('invoice_id', invoiceId).maybeSingle();
+  if (error) throw new Error(`Unable to load invoice: ${error.message}`);
+  if (data) return data;
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(invoiceId)) return null;
+  const byRowId = await db().from('nanivio_invoices').select('*')
+    .eq('user_id', userId).eq('id', invoiceId).maybeSingle();
+  if (byRowId.error) throw new Error(`Unable to load invoice: ${byRowId.error.message}`);
+  return byRowId.data || null;
+}
+
 export async function purchaseCommunicationMinutesPersistent(payload: Record<string, unknown>) {
   return billingCommand('COMMUNICATION_MINUTES_PURCHASE', payload);
 }
