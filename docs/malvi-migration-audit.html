@@ -15,7 +15,7 @@
 <p class="meta">Pre-migration audit · 14 October 2026 · latest workspace source · intended target: Nanivio GitHub main</p>
 <h1>Malvi production upgrade: observations, checks and migration readiness</h1>
 <div class="notice"><strong>Recommendation: do not merge this version into production yet.</strong><p>The upgrade builds, but confirmed source-level security, integration and data-migration defects remain. Live calling, translation, payments and signed-in mobile screens have not been verified. This is an audit, not a certification that every function works.</p></div>
-<nav aria-label="Report sections"><a href="#scope">Scope and evidence</a><a href="#checks">Executed checks</a><a href="#features">Feature coverage</a><a href="#findings">Detailed findings</a><a href="#migration">Migration plan</a><a href="#gates">Release gates</a></nav>
+<nav aria-label="Report sections"><a href="#scope">Scope and evidence</a><a href="#checks">Executed checks</a><a href="#live">Live deployment checks</a><a href="#features">Feature coverage</a><a href="#findings">Detailed findings</a><a href="#migration">Migration plan</a><a href="#gates">Release gates</a></nav>
 
 <h2 id="scope">What was examined</h2>
 <p>The source is the <strong>latest workspace version</strong>, not only the older GitHub Malvi branch. Compared with <code>origin/main</code>, it changes <strong>136 files: 66 added, 66 modified and 4 deleted</strong>, with 12,841 insertions and 8,688 deletions. Full Git history was fetched; the two histories still do not share a common ancestor. This must be treated as a reviewed integration, not a routine fast-forward merge.</p>
@@ -41,6 +41,19 @@
 <tr><td>GitHub write readiness</td><td>Blocked</td><td>A non-writing push dry run failed GitHub authentication. No merge or push occurred.</td></tr>
 </tbody></table></div>
 <p>There is no general <code>npm test</code> script or comprehensive automated suite proving all user journeys. No live end-to-end or formal penetration test was performed.</p>
+
+<h2 id="live">Correction and live Render deployment evidence</h2>
+<p>The user identified the existing configured upgrade at <a href="https://nanivioupgrades.onrender.com/">https://nanivioupgrades.onrender.com/</a>. Public, read-only checks of that deployment establish that the original upgrade is not the unconfigured task copy. Existing Supabase and Agora connections should not be recreated merely because this task workspace lacks their secrets.</p>
+<div class="table-wrap"><table><thead><tr><th>Live request</th><th>Observed result</th><th>Interpretation</th></tr></thead><tbody>
+<tr><td>GET homepage</td><td>200 HTML</td><td>Nanivio application shell loads. Signed-in screens and media playback were not tested.</td></tr>
+<tr><td>GET /api/health</td><td>200; status OK; version 2.5.0; Gemini configured</td><td>The live server responds. This is not a provider connectivity or model-output test.</td></tr>
+<tr><td>GET /api/production/status</td><td>200; 8 of 11 checks enabled; criticalReady true</td><td>Supabase auth, persistent billing, Agora, Paystack, GetStream, Khaya, Sunbird and Malvi report configuration present. Azure Translator, Azure Speech and Twilio report false. These are configuration flags, not successful provider operations.</td></tr>
+<tr><td>POST /api/agora/token, /api/translate, /api/malvi/chat without credentials</td><td>401 AUTH_REQUIRED for all three</td><td>These endpoints reject unauthenticated callers. Empty requests did not initiate calls, translation, model output or payments.</td></tr>
+<tr><td>HEAD /api/admin/billing/pricing and /api/admin/billing/overview without credentials</td><td>200 application/json for both</td><td>The live endpoints do not reject unauthenticated header-only access. Together with their source handlers, this supports the missing-authorization finding. No financial response bodies were retrieved.</td></tr>
+<tr><td>HEAD /api/admin/features without credentials</td><td>403</td><td>This administrator endpoint rejects the same unauthenticated access, unlike the two billing routes above.</td></tr>
+</tbody></table></div>
+<p>The live client references <code>index-B2gufCEt.js</code>; the local audited build generated <code>index-u8U9a57v.js</code>. Build inputs or configuration may differ; the exact deployed server revision has not been established. Do not assume every workspace finding is already deployed, or that this live deployment contains every latest workspace change.</p>
+<p><strong>Updated prerequisite:</strong> genuine authenticated access for two test accounts is still needed for live calls, identity routing, media, translation output, usage and signed-in mobile checks. No new Supabase or Agora setup is justified by these findings.</p>
 
 <h2 id="features">Feature-by-feature observations</h2>
 <div class="table-wrap"><table>
@@ -76,6 +89,7 @@
 <p>Fifteen <code>/api/admin/billing/*</code> declarations lack authentication/role middleware, with no enclosing global administrator gate. They include pricing/emergency updates, dispute resolution, refund/adjustment operations, ledger/audit/user summaries and gateway/mobile-money toggles. Some handlers trust a role or administrator name from the request body. Invoice detail and earnings endpoints also lack appropriate authentication/ownership checks.</p>
 <p><strong>Consequence:</strong> once the normal app is enabled, sensitive financial reads and changes can be requested without the intended administrator identity. A protected admin page does not secure its backend. Require server-verified admin permissions and resource ownership; never trust body-supplied role declarations.</p>
 <p class="source">Evidence: <code>server.ts</code>, administrative billing block around lines 2825–3105; invoice detail around 2685. These operations were not invoked against real or fabricated financial accounts.</p>
+<p class="source">Live corroboration: unauthenticated HEAD requests to the pricing and overview routes returned 200 JSON headers. No financial bodies or mutations were requested.</p>
 
 <h3><span class="label critical">CRITICAL · SOURCE-CONFIRMED</span><br>2. Chat messages can leave the intended conversation</h3>
 <p>Realtime chat-message/reaction broadcasting uses the global WebSocket set rather than authenticated conversation recipients. Sockets enter that set before authentication. GetStream server-token channel/message reads do not verify the requesting account's membership; the Stream webhook does not validate a provider signature.</p>
@@ -195,7 +209,7 @@
 
 <h2 id="migration">How to migrate without losing existing Nanivio behavior</h2>
 <ol>
-<li><strong>Restore a healthy staging environment.</strong> Resolve the development workflow's existing port owner, start the managed application once, and add the existing Supabase/provider configuration through workspace secrets. Do not remove authentication or enable fake data to make screens appear.</li>
+<li><strong>Distinguish the existing deployment from staging.</strong> The Render upgrade already reports Supabase/Agora configuration. Use that existing deployment for approved live checks; separately resolve the task preview's port conflict and missing access if staging is needed. Do not recreate providers, remove authentication or enable fake data to make screens appear.</li>
 <li><strong>Fix the access and privacy blockers first.</strong> Protect all admin/financial routes, filter chat recipients and reads, sanitize role applications, restrict privileged database functions and enforce account status.</li>
 <li><strong>Repair truthful integration behavior.</strong> Use authenticated client calls; validate success responses; remove canned failure substitutes; fix capability delivery, tools/contracts, group signaling and server call cleanup.</li>
 <li><strong>Inspect and upgrade the existing database explicitly.</strong> Back up the target; inventory schemas, policies, grants and row counts; prepare reversible field/ID conversions and backfills. Review migrations 001–007 against actual existing objects. Do not replace the database or blindly concatenate the old schema and new migrations.</li>
@@ -217,7 +231,7 @@
 <tr><td>Database migration</td><td>Staging conversion of representative existing data; RPCs/policies/grants reviewed; balance/invoice/identity reconciliation before/after; rollback proven without losing target data.</td></tr>
 <tr><td>Operations/PWA</td><td>Healthy managed/proxied preview, production startup, responsive signed-in views, real-device load measurement, install/update/offline behavior, provider errors and long-lived WebSocket operation.</td></tr>
 </tbody></table></div>
-<div class="notice"><strong>Outstanding limitation:</strong> the assigned real mobile calls/translation verification is still incomplete. Completing this audit does not complete those live tests. The next concrete prerequisite is the existing Supabase authentication/database configuration, genuine provider configuration and two authenticated test accounts. The previously declined secrets request was not bypassed.</div>
+<div class="notice"><strong>Outstanding limitation:</strong> the assigned real mobile calls/translation verification is still incomplete. Completing this audit and checking public endpoints does not complete those live tests. The connected Render deployment has now been identified; the next prerequisite is approved authenticated access for two genuine test accounts and verification of the deployed revision. The previously declined secrets request was not bypassed.</div>
 <footer>This is a source-and-execution snapshot, not a live status dashboard. All report content and styling are inline; opening it performs no backend or provider queries. There are no charts because exact check results and defect explanations are more useful here than graphical pass-rate claims. Some source line numbers may move after fixes.</footer>
 </main></body>
 </html>
