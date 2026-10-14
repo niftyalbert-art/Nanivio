@@ -29,7 +29,7 @@ import {
 } from "./src/server/streamService.ts";
 import { billingDb } from "./src/server/billingDb.ts";
 import { normalizedBillingEnabled, transferFintechToCommunication as persistentFintechToCommunication, transferPeerToPeer as persistentPeerToPeer, selectCommunicationPlanPersistent, purchaseCommunicationMinutesPersistent, activateMalviSubscriptionPersistent, recordLangpretationUsagePersistent, paystackTopUpPersistent, getPersistentPayment, getPersistentSubscription, getPersistentTransactions, getPersistentInvoices, getPersistentWallets, getPersistentCreditAccount, getPersistentUsageMeter, getPersistentMalviSubscription, getMalviCreditAccount, ensureMalviEntitlement, recordMalviUsagePersistent } from "./src/server/normalizedBillingRepository.ts";
-import { hydrateBillingDatabase, flushBillingDatabase, closeBillingPersistence, savePaystackOrder, getPaystackOrder, markPaystackOrderFulfilled, claimPaystackWebhook, isPersistentBillingConfigured } from "./src/server/billingPersistence.ts";
+import { hydrateBillingDatabase, flushBillingDatabase, closeBillingPersistence, savePaystackOrder, getPaystackOrder, markPaystackOrderFulfilled, claimPaystackWebhook, isPersistentBillingConfigured, markBillingDatabaseDirty } from "./src/server/billingPersistence.ts";
 import { billingEngine } from "./src/server/billingEngine.ts";
 import { authDb } from "./src/server/authDb.ts";
 import * as persistentAuth from "./src/server/persistentAuth.ts";
@@ -2539,9 +2539,9 @@ app.post("/api/paystack/webhook", async (req, res) => {
 });
 
 // 2. Pre-Action Billing Preview
-app.post("/api/billing/preview", (req, res) => {
+app.post("/api/billing/preview", requireAuthenticatedUser, (req, res) => {
   try {
-    const preview = billingEngine.previewCharge(req.body);
+    const preview = billingEngine.previewCharge({ ...req.body, userId: authenticatedUserId(req) });
     res.json({ success: true, preview });
   } catch (error: any) {
     res.status(500).json({ error: error.message || "Failed to calculate billing preview" });
@@ -2549,12 +2549,37 @@ app.post("/api/billing/preview", (req, res) => {
 });
 
 // 3. Start Live Usage Session (Fund Reservation)
-app.post("/api/billing/session/start", (req, res) => {
+app.post("/api/billing/session/start", requireAuthenticatedUser, async (req, res) => {
   try {
-    const result = billingEngine.startUsageSession(req.body);
+    const userId = authenticatedUserId(req);
+    const sessionId = String(req.body?.sessionId || "");
+    if (!sessionId) return res.status(400).json({ error: "sessionId is required" });
+    const existingSession = billingDb.activeUsageSessions.get(sessionId);
+    if (existingSession) {
+      if (existingSession.userId !== userId) {
+        return res.status(409).json({ error: "Usage session ID is already in use" });
+      }
+      if (existingSession.status === "ACTIVE") {
+        return res.json({ success: true, session: existingSession });
+      }
+      return res.status(409).json({ error: "Usage session ID has already been completed" });
+    }
+    if (normalizedBillingEnabled()) {
+      const subscription = await getPersistentSubscription(userId);
+      if (subscription) {
+        const isCurrent = subscription.status === "ACTIVE" || subscription.status === "TRIAL";
+        billingDb.userSubscriptions.set(userId, {
+          ...subscription,
+          status: isCurrent ? subscription.status : "CANCELLED",
+          langpretationMinutesRemaining: isCurrent ? subscription.langpretationMinutesRemaining : 0,
+        } as any);
+      }
+    }
+    const result = billingEngine.startUsageSession({ ...req.body, userId, sessionId });
     if (!result.success) {
       return res.status(400).json({ error: result.error });
     }
+    if (isPersistentBillingConfigured()) markBillingDatabaseDirty(billingDb);
     res.json({ success: true, session: result.usageSession });
   } catch (error: any) {
     res.status(500).json({ error: error.message || "Failed to start usage session" });
@@ -2562,16 +2587,49 @@ app.post("/api/billing/session/start", (req, res) => {
 });
 
 // 4. Update Live Usage Meter
-app.post("/api/billing/session/meter", (req, res) => {
+app.post("/api/billing/session/meter", requireAuthenticatedUser, async (req, res) => {
   try {
     const { sessionId, elapsedSeconds } = req.body;
     if (!sessionId || elapsedSeconds === undefined) {
       return res.status(400).json({ error: "sessionId and elapsedSeconds required" });
     }
-    const updated = billingEngine.updateUsageMeter(sessionId, elapsedSeconds);
+    const userId = authenticatedUserId(req);
+    const activeSession = billingDb.activeUsageSessions.get(sessionId);
+    if (!activeSession || activeSession.userId !== userId) {
+      return res.status(404).json({ error: "Active usage session not found" });
+    }
+    const requestedElapsed = Number(elapsedSeconds);
+    if (!Number.isFinite(requestedElapsed) || requestedElapsed < 0) {
+      return res.status(400).json({ error: "elapsedSeconds must be a finite, non-negative number" });
+    }
+    const nextElapsed = Math.max(activeSession.elapsedSeconds, requestedElapsed);
+    const previousBoundary = Math.floor(activeSession.elapsedSeconds / 60);
+    const currentBoundary = Math.floor(nextElapsed / 60);
+    let persistentUsage: any = null;
+    if (activeSession.isLangpretationActive && currentBoundary > previousBoundary && normalizedBillingEnabled()) {
+      persistentUsage = await recordLangpretationUsagePersistent({
+        userId,
+        channel: "AUDIO_CALL",
+        minutes: currentBoundary - previousBoundary,
+        sessionId,
+        eventId: `call_usage_${sessionId}_${currentBoundary}`,
+        sourceLang: activeSession.sourceLang,
+        targetLang: activeSession.targetLang,
+      });
+    }
+    const updated = billingEngine.updateUsageMeter(sessionId, nextElapsed);
     if (!updated) {
       return res.status(404).json({ error: "Active usage session not found" });
     }
+    if (persistentUsage) {
+      const userSubscription = billingDb.userSubscriptions.get(userId);
+      if (userSubscription) {
+        userSubscription.langpretationMinutesRemaining = Number(persistentUsage.remainingAllowance || 0);
+        userSubscription.langpretationMinutesUsed = Number(persistentUsage.minutesUsed || 0);
+      }
+      updated.langpretationMinutesRemaining = Number(persistentUsage.remainingAllowance || 0);
+    }
+    if (isPersistentBillingConfigured()) markBillingDatabaseDirty(billingDb);
     res.json({ success: true, session: updated });
   } catch (error: any) {
     res.status(500).json({ error: error.message });
@@ -2579,16 +2637,21 @@ app.post("/api/billing/session/meter", (req, res) => {
 });
 
 // 5. Complete Usage Session & Capture Universal Ledger Charge
-app.post("/api/billing/session/complete", (req, res) => {
+app.post("/api/billing/session/complete", requireAuthenticatedUser, (req, res) => {
   try {
     const { sessionId } = req.body;
     if (!sessionId) {
       return res.status(400).json({ error: "sessionId is required" });
     }
+    const activeSession = billingDb.activeUsageSessions.get(sessionId);
+    if (!activeSession || activeSession.userId !== authenticatedUserId(req)) {
+      return res.status(404).json({ error: "Active usage session not found" });
+    }
     const result = billingEngine.completeUsageSession(sessionId);
     if (!result.success) {
       return res.status(400).json({ error: result.error });
     }
+    if (isPersistentBillingConfigured()) markBillingDatabaseDirty(billingDb);
     res.json({ success: true, transaction: result.transaction, invoice: result.invoice });
   } catch (error: any) {
     res.status(500).json({ error: error.message });
@@ -2637,6 +2700,12 @@ app.post("/api/billing/plans/change", requireAuthenticatedUser, async (req, res)
       voiceQuota: targetPlan.includedVoiceMinutes,
       malviQuota: targetPlan.includedMalviRequests,
     });
+    billingDb.userSubscriptions.set(userId, {
+      ...persisted.subscription,
+      status: "ACTIVE",
+      langpretationMinutesRemaining: Number(persisted.subscription.langpretationMinutesRemaining || 0),
+    } as any);
+    if (isPersistentBillingConfigured()) markBillingDatabaseDirty(billingDb);
     return res.json({
       success: true,
       subscription: persisted.subscription,
