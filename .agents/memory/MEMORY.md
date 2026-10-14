@@ -1,2 +1,3 @@
 - [Agora package interoperability](agora-interop.md) — validate the Node/tsx runtime as well as the CJS production bundle.
 - [Communication grant periods](communication-grants.md) — self-service tier/cycle switches must preserve consumption and the existing term.
+- [Unconfigured development preview](development-setup.md) — show setup instructions without enabling application APIs; production must still fail closed.

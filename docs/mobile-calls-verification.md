@@ -14,7 +14,7 @@ No fabricated provider responses, payment records, account balances, or authenti
   and Sunbird secrets checked were absent.
 - Integration search for Agora, Azure Translator, and Supabase: no matches.
 - Started workflow with `PORT=5000 REQUIRE_PERSISTENT_AUTH=true npm run dev`.
-  Startup failed before opening a port:
+  Initial startup failed before opening a port:
   `SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY are required. Nanivio will not start with in-memory financial state.`
 - Source inspection confirms WebSocket presence authenticates a session token
   and derives the user's identity from the authenticated account. Translation
@@ -56,3 +56,24 @@ responses, before/after quota readings, call outcomes and history, and mobile
 layout evidence without recording credentials or session tokens.
 
 No provider-backed result or signed-in mobile layout has been verified yet.
+
+## Development startup recovery
+
+The development server now serves a configuration-required page when Supabase
+is absent. This is a separate setup-only application: normal routes, financial
+state hydration and realtime signaling are not mounted. All API requests return
+503 and WebSocket upgrades are rejected. Production startup still fails when
+the persistent database is missing.
+
+Verified after the change:
+
+- `npm run lint`: passed.
+- `node --import tsx --test tests/setup-preview.test.ts`: passed. Checked the
+  setup page, no-store response, API GET/POST rejection and WebSocket rejection.
+- Production-mode startup without Supabase: still refused to start.
+- Restarted development workflow: running on port 5000.
+- Mobile screenshot at 390 × 844: configuration page readable without overflow.
+
+This restores a useful development preview, not sign-in or provider operation.
+The original real-call, translation, quota and signed-in layout checks remain
+blocked by missing configuration and authenticated accounts.

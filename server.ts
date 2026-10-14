@@ -34,6 +34,7 @@ import { billingEngine } from "./src/server/billingEngine.ts";
 import { authDb } from "./src/server/authDb.ts";
 import * as persistentAuth from "./src/server/persistentAuth.ts";
 import { productionStatus } from "./src/server/productionStatus.ts";
+import { createSetupPreview, rejectSetupRealtime } from "./src/server/setupPreview.ts";
 import { getServerSupabase } from "./src/server/supabaseServer.ts";
 import { otpService } from "./src/server/otpService.ts";
 import {
@@ -3773,7 +3774,19 @@ app.post("/api/services/rental/book", (req, res) => {
 });
 
 async function startServer() {
+  const isProduction =
+    process.env.NODE_ENV === "production" ||
+    (typeof __filename !== "undefined" && (__filename.includes("dist") || __filename.endsWith(".cjs")));
+
   if (!isPersistentBillingConfigured()) {
+    if (!isProduction) {
+      const setupServer = http.createServer(createSetupPreview());
+      rejectSetupRealtime(setupServer);
+      setupServer.listen(PORT, "0.0.0.0", () => {
+        console.warn(`[Nanivio] Development setup preview running on port ${PORT}. Supabase is missing; application APIs and realtime are disabled.`);
+      });
+      return;
+    }
     throw new Error("SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY are required. Nanivio will not start with in-memory financial state.");
   }
   await hydrateBillingDatabase(billingDb);
@@ -3786,10 +3799,6 @@ async function startServer() {
   // Determine production environment:
   // - Explicit NODE_ENV=production
   // - Running from dist bundle (e.g. node dist/server.cjs on Render)
-  const isProduction =
-    process.env.NODE_ENV === "production" ||
-    (typeof __filename !== "undefined" && (__filename.includes("dist") || __filename.endsWith(".cjs")));
-
   if (isProduction) {
     const distPath = path.join(process.cwd(), "dist");
     app.use(express.static(distPath));
