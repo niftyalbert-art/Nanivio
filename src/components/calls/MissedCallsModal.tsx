@@ -30,7 +30,7 @@ export const MissedCallsModal: React.FC<MissedCallsModalProps> = ({ isOpen, onCl
     if (!isOpen) return;
     const previousFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     const dialog = dialogRef.current;
-    const focusable = () => Array.from(
+    const focusable = (): HTMLElement[] => Array.from<HTMLElement>(
       dialog?.querySelectorAll<HTMLElement>(
         'button:not([disabled]), a[href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
       ) || []

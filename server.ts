@@ -2587,7 +2587,14 @@ app.post("/api/billing/session/start", requireAuthenticatedUser, async (req, res
 });
 
 // 4. Update Live Usage Meter
+const billingMeterQueues = new Map<string, Promise<void>>();
 app.post("/api/billing/session/meter", requireAuthenticatedUser, async (req, res) => {
+  const meterUserId = authenticatedUserId(req);
+  const previousMeter = billingMeterQueues.get(meterUserId) || Promise.resolve();
+  let releaseMeter: () => void = () => {};
+  const currentMeter = new Promise<void>((resolve) => { releaseMeter = resolve; });
+  billingMeterQueues.set(meterUserId, currentMeter);
+  await previousMeter;
   try {
     const { sessionId, elapsedSeconds } = req.body;
     if (!sessionId || elapsedSeconds === undefined) {
@@ -2602,22 +2609,25 @@ app.post("/api/billing/session/meter", requireAuthenticatedUser, async (req, res
     if (!Number.isFinite(requestedElapsed) || requestedElapsed < 0) {
       return res.status(400).json({ error: "elapsedSeconds must be a finite, non-negative number" });
     }
-    const nextElapsed = Math.max(activeSession.elapsedSeconds, requestedElapsed);
+    const serverElapsed = Math.max(0, Math.floor((Date.now() - activeSession.startedAt) / 1000));
+    const nextElapsed = Math.max(activeSession.elapsedSeconds, Math.min(requestedElapsed, serverElapsed));
     const previousBoundary = Math.floor(activeSession.elapsedSeconds / 60);
     const currentBoundary = Math.floor(nextElapsed / 60);
     let persistentUsage: any = null;
     if (activeSession.isLangpretationActive && currentBoundary > previousBoundary && normalizedBillingEnabled()) {
-      persistentUsage = await recordLangpretationUsagePersistent({
-        userId,
-        channel: "AUDIO_CALL",
-        minutes: currentBoundary - previousBoundary,
-        sessionId,
-        eventId: `call_usage_${sessionId}_${currentBoundary}`,
-        sourceLang: activeSession.sourceLang,
-        targetLang: activeSession.targetLang,
-      });
+      for (let boundary = previousBoundary + 1; boundary <= currentBoundary; boundary++) {
+        persistentUsage = await recordLangpretationUsagePersistent({
+          userId,
+          channel: "AUDIO_CALL",
+          minutes: 1,
+          sessionId,
+          eventId: `call_usage_${userId}_${sessionId}_${boundary}`,
+          sourceLang: activeSession.sourceLang,
+          targetLang: activeSession.targetLang,
+        });
+      }
     }
-    const updated = billingEngine.updateUsageMeter(sessionId, nextElapsed);
+    const updated = billingEngine.updateUsageMeter(sessionId, Math.max(nextElapsed, activeSession.elapsedSeconds));
     if (!updated) {
       return res.status(404).json({ error: "Active usage session not found" });
     }
@@ -2633,6 +2643,9 @@ app.post("/api/billing/session/meter", requireAuthenticatedUser, async (req, res
     res.json({ success: true, session: updated });
   } catch (error: any) {
     res.status(500).json({ error: error.message });
+  } finally {
+    releaseMeter();
+    if (billingMeterQueues.get(meterUserId) === currentMeter) billingMeterQueues.delete(meterUserId);
   }
 });
 

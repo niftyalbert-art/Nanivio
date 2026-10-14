@@ -151,15 +151,16 @@ BEGIN
    WHERE event_id = v_event_id
      AND user_id = p_user;
   IF FOUND THEN
-    SELECT COALESCE(SUM(langpretation_minutes_remaining), 0)
-      INTO v_remaining
+    SELECT COALESCE(SUM(langpretation_minutes_remaining), 0),
+           COALESCE(SUM(langpretation_minutes_used), 0)
+      INTO v_remaining, v_minutes_used
       FROM nanivio_subscriptions
      WHERE user_id = p_user AND status IN ('ACTIVE', 'TRIAL') AND current_period_end > v_now;
     RETURN jsonb_build_object(
       'success', true, 'duplicate', true,
       'deductedFromQuota', COALESCE((existing_event.metadata->>'deductedFromQuota')::numeric, existing_event.credits_consumed, 0),
       'deductedFromBalance', 0, 'remainingAllowance', v_remaining,
-      'minutesUsed', COALESCE((existing_event.metadata->>'deductedFromQuota')::numeric, existing_event.credits_consumed, 0)
+      'minutesUsed', v_minutes_used
     );
   END IF;
 
