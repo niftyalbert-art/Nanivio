@@ -32,6 +32,8 @@ import { purchaseCommunicationMinutesFromWalletPersistent, activateMalviSubscrip
 import { normalizedBillingEnabled, transferFintechToCommunication as persistentFintechToCommunication, transferPeerToPeer as persistentPeerToPeer, selectCommunicationPlanPersistent, purchaseCommunicationMinutesPersistent, activateMalviSubscriptionPersistent, recordLangpretationUsagePersistent, paystackTopUpPersistent, getPersistentPayment, getPersistentSubscription, getPersistentTransactions, getPersistentInvoices, getPersistentWallets, getPersistentCreditAccount, getPersistentUsageMeter, getPersistentMalviSubscription, getMalviCreditAccount, ensureMalviEntitlement, recordMalviUsagePersistent } from "./src/server/normalizedBillingRepository.ts";
 import { hydrateBillingDatabase, flushBillingDatabase, closeBillingPersistence, savePaystackOrder, getPaystackOrder, markPaystackOrderFulfilled, claimPaystackWebhook, isPersistentBillingConfigured, markBillingDatabaseDirty } from "./src/server/billingPersistence.ts";
 import { billingEngine } from "./src/server/billingEngine.ts";
+import { requireBillingAdmin, billingAdminActor, canRefund, ownsBillingRecord, ownsProviderEarnings, ownsBusinessBilling } from "./src/server/billingAccess.ts";
+import { getPersistentInvoice } from "./src/server/normalizedBillingRepository.ts";
 import { authDb } from "./src/server/authDb.ts";
 import * as persistentAuth from "./src/server/persistentAuth.ts";
 import { productionStatus } from "./src/server/productionStatus.ts";
@@ -203,12 +205,16 @@ async function requireAdmin(req: express.Request, res: express.Response, next: e
 }
 
 async function requireAuthenticatedUser(req: express.Request, res: express.Response, next: express.NextFunction) {
-  const user = await getAuthUser(req);
-  if (!user) {
-    return res.status(401).json({ success: false, error: "Authentication required.", code: "AUTH_REQUIRED" });
+  try {
+    const user = await getAuthUser(req);
+    if (!user) {
+      return res.status(401).json({ success: false, error: "Authentication required.", code: "AUTH_REQUIRED" });
+    }
+    (req as any).authUser = user;
+    next();
+  } catch {
+    return res.status(503).json({ success: false, error: "Authentication is temporarily unavailable.", code: "AUTH_UNAVAILABLE" });
   }
-  (req as any).authUser = user;
-  next();
 }
 
 function authenticatedUserId(req: express.Request): string {
@@ -2688,12 +2694,17 @@ app.get("/api/billing/invoices", requireAuthenticatedUser, async (req, res) => {
   try { const userId=authenticatedUserId(req); if(!normalizedBillingEnabled()) return res.status(503).json({success:false,error:"Persistent billing database is required."}); const invoices=await getPersistentInvoices(userId,100); res.json({success:true,invoices,count:invoices.length}); } catch(error:any){res.status(502).json({success:false,error:error.message});}
 });
 
-app.get("/api/billing/invoices/:invoiceId", (req, res) => {
-  const invoice = billingDb.invoices.find((i) => i.id === req.params.invoiceId);
-  if (!invoice) {
-    return res.status(404).json({ error: "Invoice not found" });
+app.get("/api/billing/invoices/:invoiceId", requireAuthenticatedUser, async (req, res) => {
+  try {
+    const user = (req as any).authUser;
+    if (!ownsBillingRecord(user, user.id)) return res.status(403).json({ success: false, error: "Active account required." });
+    if (!normalizedBillingEnabled()) return res.status(503).json({ success: false, error: "Persistent billing database is required." });
+    const invoice = await getPersistentInvoice(authenticatedUserId(req), String(req.params.invoiceId));
+    if (!invoice) return res.status(404).json({ success: false, error: "Invoice not found" });
+    return res.json({ success: true, invoice });
+  } catch {
+    return res.status(502).json({ success: false, error: "Unable to load invoice." });
   }
-  res.json({ success: true, invoice });
 });
 
 // 8. Subscription Plans & Upgrades
@@ -2771,7 +2782,8 @@ app.post("/api/billing/disputes/create", requireAuthenticatedUser, (req, res) =>
       return res.status(400).json({ error: "transactionId, reason, and userExplanation required" });
     }
 
-    const tx = billingDb.transactions.find((t) => t.transactionId === transactionId);
+    const tx = billingDb.transactions.find((t) => t.transactionId === transactionId &&
+      ownsBillingRecord((req as any).authUser, t.userId));
     if (!tx) {
       return res.status(404).json({ error: "Transaction not found" });
     }
@@ -2804,9 +2816,11 @@ app.post("/api/billing/disputes/create", requireAuthenticatedUser, (req, res) =>
 });
 
 // 11. Provider Earnings & Payout Summary
-app.get("/api/billing/provider/earnings", (req, res) => {
-  const { providerId = "exp_amina" } = req.query;
-  const earnings = billingDb.providerEarnings.get(providerId as string);
+app.get("/api/billing/provider/earnings", requireAuthenticatedUser, (req, res) => {
+  const user = (req as any).authUser;
+  const providerId = String(req.query.providerId || user.expertProfileId || user.id);
+  if (!ownsProviderEarnings(user, providerId)) return res.status(404).json({ success: false, error: "Provider not found" });
+  const earnings = billingDb.providerEarnings.get(providerId);
   if (!earnings) {
     return res.status(404).json({ error: "Provider not found" });
   }
@@ -2814,10 +2828,11 @@ app.get("/api/billing/provider/earnings", (req, res) => {
 });
 
 // 12. B2B Corporate Billing Account
-app.get("/api/billing/business", (req, res) => {
-  const { businessId = "biz_agro_trade" } = req.query;
-  const biz = billingDb.businessAccounts.get(businessId as string);
-  if (!biz) {
+app.get("/api/billing/business", requireAuthenticatedUser, (req, res) => {
+  const user = (req as any).authUser;
+  const businessId = String(req.query.businessId || user.businessProfileId || user.id);
+  const biz = billingDb.businessAccounts.get(businessId);
+  if (!ownsBusinessBilling(user, biz)) {
     return res.status(404).json({ error: "Business account not found" });
   }
   res.json({ success: true, business: biz });
@@ -2826,6 +2841,9 @@ app.get("/api/billing/business", (req, res) => {
 // ==========================================
 // ADMIN UNIVERSAL BILLING & OPERATIONS ENDPOINTS
 // ==========================================
+
+// Protect reads, writes, HEAD requests and future routes in this namespace.
+app.use("/api/admin/billing", requireAuthenticatedUser, requireBillingAdmin);
 
 // Admin Financial Overview
 app.get("/api/admin/billing/overview", (_req, res) => {
@@ -2852,7 +2870,8 @@ app.get("/api/admin/billing/pricing", (_req, res) => {
 
 app.post("/api/admin/billing/pricing/update-rule", (req, res) => {
   try {
-    const { ruleId, ratePerUnit, minimumCharge, platformCommissionPercent, adminUser = "super_admin@nanivio.tech" } = req.body;
+    const { ruleId, ratePerUnit, minimumCharge, platformCommissionPercent } = req.body;
+    const { adminUser, adminRole } = billingAdminActor(req);
     const activeVersion = billingDb.pricingVersions.find((v) => v.isActive);
     if (!activeVersion) return res.status(404).json({ error: "Active pricing version not found" });
 
@@ -2868,7 +2887,7 @@ app.post("/api/admin/billing/pricing/update-rule", (req, res) => {
       id: `aud_pr_${Date.now()}`,
       timestamp: Date.now(),
       adminUser,
-      adminRole: "SUPER_ADMIN",
+      adminRole,
       action: "UPDATE_PRICING_RULE",
       targetEntityType: "PRICING",
       targetEntityId: ruleId,
@@ -2891,7 +2910,8 @@ app.get("/api/admin/billing/emergency", (_req, res) => {
 
 app.post("/api/admin/billing/emergency/update", (req, res) => {
   try {
-    const { updates, adminUser = "super_admin@nanivio.tech", reason = "Emergency administrative protocol" } = req.body;
+    const { updates, reason = "Emergency administrative protocol" } = req.body;
+    const { adminUser, adminRole } = billingAdminActor(req);
     const prev = { ...billingDb.emergencyControls };
     Object.assign(billingDb.emergencyControls, updates);
 
@@ -2899,7 +2919,7 @@ app.post("/api/admin/billing/emergency/update", (req, res) => {
       id: `aud_em_${Date.now()}`,
       timestamp: Date.now(),
       adminUser,
-      adminRole: "SUPER_ADMIN",
+      adminRole,
       action: "EMERGENCY_BILLING_SWITCH",
       targetEntityType: "SYSTEM",
       targetEntityId: "emergencyControls",
@@ -2942,9 +2962,11 @@ app.post("/api/admin/billing/disputes/resolve", (req, res) => {
       resolution, // 'APPROVED' | 'PARTIALLY_COMPENSATED' | 'REJECTED'
       adminExplanation,
       refundAmount,
-      adminUser = "support_admin@nanivio.tech",
-      adminRole = "SUPPORT_ADMIN",
     } = req.body;
+    const { adminUser, adminRole } = billingAdminActor(req);
+    if ((resolution === "APPROVED" || resolution === "PARTIALLY_COMPENSATED") && Number(refundAmount) > 0 && !canRefund(adminRole)) {
+      return res.status(403).json({ success: false, error: "Finance administrator permission required for refunds.", code: "BILLING_FORBIDDEN" });
+    }
 
     const dispute = billingDb.disputes.find((d) => d.id === disputeId);
     if (!dispute) return res.status(404).json({ error: "Dispute not found" });
@@ -2963,7 +2985,7 @@ app.post("/api/admin/billing/disputes/resolve", (req, res) => {
         amount: refundAmount,
         reason: `Dispute Case ${dispute.caseNumber} resolved: ${adminExplanation}`,
         adminUser,
-        adminRole: "SUPER_ADMIN",
+        adminRole,
       });
     }
 
@@ -2971,7 +2993,7 @@ app.post("/api/admin/billing/disputes/resolve", (req, res) => {
       id: `aud_disp_${Date.now()}`,
       timestamp: Date.now(),
       adminUser,
-      adminRole: adminRole as AdminBillingRole,
+      adminRole,
       action: "RESOLVE_DISPUTE",
       targetEntityType: "DISPUTE",
       targetEntityId: disputeId,
@@ -2990,7 +3012,7 @@ app.post("/api/admin/billing/disputes/resolve", (req, res) => {
 // Admin Process Direct Refund
 app.post("/api/admin/billing/refunds/process", (req, res) => {
   try {
-    const result = billingEngine.processRefund(req.body);
+    const result = billingEngine.processRefund({ ...req.body, ...billingAdminActor(req) });
     if (!result.success) {
       return res.status(400).json({ error: result.error });
     }
@@ -3003,7 +3025,7 @@ app.post("/api/admin/billing/refunds/process", (req, res) => {
 // Admin Manual Balance Adjustment
 app.post("/api/admin/billing/adjustments/create", (req, res) => {
   try {
-    const result = billingEngine.createAdminAdjustment(req.body);
+    const result = billingEngine.createAdminAdjustment({ ...req.body, ...billingAdminActor(req) });
     if (!result.success) {
       return res.status(400).json({ error: result.error });
     }
@@ -3052,7 +3074,8 @@ app.get("/api/admin/billing/user/:userId", (req, res) => {
 // Admin Payment Gateway Active Toggle
 app.post("/api/admin/billing/gateways/toggle", (req, res) => {
   try {
-    const { gatewayId, isActive, adminUser = "super_admin@nanivio.tech" } = req.body;
+    const { gatewayId, isActive } = req.body;
+    const { adminUser, adminRole } = billingAdminActor(req);
     const gw = billingDb.paymentGateways.find((g) => g.id === gatewayId);
     if (!gw) return res.status(404).json({ error: "Gateway not found" });
 
@@ -3062,7 +3085,7 @@ app.post("/api/admin/billing/gateways/toggle", (req, res) => {
       id: `aud_gw_${Date.now()}`,
       timestamp: Date.now(),
       adminUser,
-      adminRole: "SUPER_ADMIN",
+      adminRole,
       action: "TOGGLE_PAYMENT_GATEWAY",
       targetEntityType: "SYSTEM",
       targetEntityId: gatewayId,
@@ -3081,7 +3104,8 @@ app.post("/api/admin/billing/gateways/toggle", (req, res) => {
 // Admin Mobile Money Country Toggle
 app.post("/api/admin/billing/momo/countries/toggle", (req, res) => {
   try {
-    const { countryId, isActive, adminUser = "super_admin@nanivio.tech" } = req.body;
+    const { countryId, isActive } = req.body;
+    const { adminUser, adminRole } = billingAdminActor(req);
     const country = billingDb.mobileMoneyCountries.find((c) => c.id === countryId);
     if (!country) return res.status(404).json({ error: "Country not found" });
 
@@ -3091,7 +3115,7 @@ app.post("/api/admin/billing/momo/countries/toggle", (req, res) => {
       id: `aud_cntry_${Date.now()}`,
       timestamp: Date.now(),
       adminUser,
-      adminRole: "SUPER_ADMIN",
+      adminRole,
       action: "TOGGLE_MOMO_COUNTRY",
       targetEntityType: "SYSTEM",
       targetEntityId: countryId,
@@ -3121,8 +3145,8 @@ app.post("/api/admin/billing/momo/accounts", (req, res) => {
       minimumDeposit = 10,
       maximumDeposit = 20000,
       isActive = true,
-      adminUser = "finance_admin@nanivio.tech",
     } = req.body;
+    const { adminUser, adminRole } = billingAdminActor(req);
 
     const country = billingDb.mobileMoneyCountries.find((c) => c.id === countryId);
     const network = billingDb.mobileMoneyNetworks.find((n) => n.id === networkId);
@@ -3171,7 +3195,7 @@ app.post("/api/admin/billing/momo/accounts", (req, res) => {
       id: `aud_momo_acc_${Date.now()}`,
       timestamp: Date.now(),
       adminUser,
-      adminRole: "FINANCE_ADMIN",
+      adminRole,
       action: id ? "UPDATE_MOMO_RECEIVING_ACCOUNT" : "CREATE_MOMO_RECEIVING_ACCOUNT",
       targetEntityType: "SYSTEM",
       targetEntityId: account.id,
@@ -3834,4 +3858,3 @@ async function startServer() {
 }
 
 startServer();
-
