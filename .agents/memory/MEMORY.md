@@ -1,2 +1,4 @@
 - [Agora package interoperability](agora-interop.md) — validate the Node/tsx runtime as well as the CJS production bundle.
 - [Communication grant periods](communication-grants.md) — self-service tier/cycle switches must preserve consumption and the existing term.
+- [Branch safety](branch-safety.md) — this project's approved source and push target is malvi-production-upgrade, never main.
+- [Billing payment sources](billing-payment-sources.md) — wallet debits and verified external-payment fulfillment must use separate commands.
