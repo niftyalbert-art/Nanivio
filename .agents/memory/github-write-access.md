@@ -13,3 +13,9 @@ The authenticated GitHub Git Data API is a fallback when native Git remains unav
 **Why:** Reconnecting the GitHub App restored repository write access without fixing native Git, while Git Data uploads reproduced the original object hashes.
 
 **How to apply:** Verify uploaded object hashes against local Git and create only the intended new review reference after its complete history is available. Keep existing production-connected references unchanged.
+
+For a focused fix, verify the actual comparison against the intended remote pull-request target before opening the request.
+
+**Why:** A branch containing the latest workspace can carry earlier upgrades absent from the target, even when the newest local commit changes only a small fix. Opening a pull request directly from it can unintentionally include unrelated work.
+
+**How to apply:** If the comparison exceeds the approved scope, start a separate patch branch at the current target and carry over only the fix. Preserve the existing upgrade branches and leave broader changes for their own review.
