@@ -1,24 +1,249 @@
 import crypto from 'crypto';
+import { canManageChannelMembers, canRemoveChannelMember, isChannelMember, normalizeChannelId, StreamAccessError } from './chatPrivacy.ts';
 
-export interface StreamUserTokenOptions { userId:string; name?:string; role?:string; expirationSeconds?:number; }
-export interface StreamChannelMember { userId:string; name:string; avatar?:string; language?:string; role:'admin'|'member'|'guest'; online?:boolean; }
-export interface StreamReaction { type:string; userId:string; userName:string; timestamp:number; }
-export interface StreamChatMessage { id:string; channelId:string; userId:string; userName:string; userAvatar?:string; text:string; translatedText?:string; targetLang?:string; sourceLang?:string; createdAt:number; reactions:StreamReaction[]; attachments?:Array<{type:'image'|'audio'|'file';url:string;name?:string;size?:string}>; isVoiceNote?:boolean; voiceNoteDuration?:number; }
-export interface StreamChannelData { id:string; type:string; name:string; members:StreamChannelMember[]; custom?:Record<string,any>; lastMessage?:string; lastMessageAt?:number; updatedAt:number; unreadCount?:number; }
-export interface StreamEventLog { id:string; type:string; channelId?:string; userId?:string; payload:any; timestamp:number; }
+export interface StreamUserTokenOptions { userId: string; name?: string; role?: string; expirationSeconds?: number; }
+export interface StreamChannelMember { userId: string; name: string; avatar?: string; language?: string; role: 'admin' | 'member' | 'guest'; online?: boolean; nvId?: string; }
+export interface StreamReaction { type: string; userId: string; userName: string; timestamp: number; }
+export interface StreamChatMessage {
+  id: string; channelId: string; userId: string; userName: string; userAvatar?: string; text: string;
+  translatedText?: string; targetLang?: string; sourceLang?: string; createdAt: number; reactions: StreamReaction[];
+  attachments?: Array<{ type: 'image' | 'audio' | 'file'; url: string; name?: string; size?: string }>;
+  isVoiceNote?: boolean; voiceNoteDuration?: number;
+}
+export interface StreamChannelData { id: string; type: string; name: string; members: StreamChannelMember[]; custom?: Record<string, any>; lastMessage?: string; lastMessageAt?: number; updatedAt: number; unreadCount?: number; }
+export interface StreamEventLog { id: string; type: string; channelId?: string; userId?: string; payload: any; timestamp: number; }
 
-function cfg(){const apiKey=process.env.STREAM_API_KEY,secret=process.env.STREAM_API_SECRET;if(!apiKey||!secret)throw new Error('GetStream production credentials are not configured.');return {apiKey,secret,base:(process.env.STREAM_API_BASE_URL||'https://chat.stream-io-api.com').replace(/\/$/,'')};}
-function b64(v:Buffer|string){return Buffer.from(v).toString('base64url');}
-function tokenFor(userId:string,exp:number){const {secret}=cfg();const iat=Math.floor(Date.now()/1000);const head=b64(JSON.stringify({alg:'HS256',typ:'JWT'}));const body=b64(JSON.stringify({user_id:userId,user:{id:userId},iat,exp}));const sig=b64(crypto.createHmac('sha256',secret).update(`${head}.${body}`).digest());return `${head}.${body}.${sig}`;}
-async function streamRequest(path:string,method='POST',body?:any,userId='server'){const {apiKey,base}=cfg();const exp=Math.floor(Date.now()/1000)+3600;const headers={'Content-Type':'application/json','Stream-Auth-Type':'jwt','Authorization':tokenFor(userId,exp)};const r=await fetch(`${base}${path}${path.includes('?')?'&':'?'}api_key=${encodeURIComponent(apiKey)}`,{method,headers,body:body===undefined?undefined:JSON.stringify(body),signal:AbortSignal.timeout(15000)});const raw=await r.text();let data:any={};try{data=raw?JSON.parse(raw):{};}catch{data={raw};}if(!r.ok)throw new Error(data?.message||data?.error||`GetStream request failed (${r.status})`);return data;}
-function ensureId(id:string){return id.replace(/^messaging:/,'');}
-function mapMessage(m:any,channelId:string):StreamChatMessage{return{id:m.id,channelId,userId:m.user?.id||m.user_id||'',userName:m.user?.name||m.user_id||'',userAvatar:m.user?.image,text:m.text||'',translatedText:m.translatedText||m.translated_text,targetLang:m.targetLang||m.target_lang,sourceLang:m.sourceLang||m.source_lang,createdAt:m.created_at?new Date(m.created_at).getTime():Date.now(),reactions:(m.latest_reactions||[]).map((r:any)=>({type:r.type,userId:r.user_id,userName:r.user_id,timestamp:Date.now()})),attachments:(m.attachments||[]).map((a:any)=>({type:a.type==='image'?'image':a.type==='video'?'file':'file',url:a.asset_url||a.image_url||a.url||'',name:a.title,size:a.file_size?String(a.file_size):undefined})),isVoiceNote:Boolean(m.isVoiceNote||m.is_voice_note),voiceNoteDuration:Number(m.voiceNoteDuration||m.voice_note_duration||0)||undefined};}
-export function generateStreamUserToken(options:StreamUserTokenOptions){const {apiKey}=cfg();const seconds=Math.min(options.expirationSeconds||3600,86400);const token=tokenFor(options.userId,Math.floor(Date.now()/1000)+seconds);return{token,apiKey,userId:options.userId,expiresAt:Date.now()+seconds*1000,isMock:false};}
-export async function upsertStreamChannel(c:StreamChannelData){const id=ensureId(c.id);await streamRequest(`/channels/${encodeURIComponent(c.type||'messaging')}/${encodeURIComponent(id)}/query`,'POST',{watch:false,state:false,presence:false,members:{limit:100},data:{name:c.name,...c.custom},add_members:c.members.map(m=>m.userId)},c.members[0]?.userId||'server');return c;}
-export async function getStreamChannel(channelId:string){const id=ensureId(channelId);try{const d=await streamRequest(`/channels/messaging/${encodeURIComponent(id)}/query`,'POST',{watch:false,state:true,presence:false,messages:{limit:1},members:{limit:100}},'server');const ch=d.channel||{};const members=Object.values(d.members||{}).map((m:any)=>({userId:m.user_id,name:m.user?.name||m.user_id,avatar:m.user?.image,role:m.role||'member'}));const m=d.messages?.[0];return{id,type:'messaging',name:ch.name||id,members,updatedAt:m?.created_at?new Date(m.created_at).getTime():Date.now(),lastMessage:m?.text,lastMessageAt:m?.created_at?new Date(m.created_at).getTime():undefined};}catch{return null;}}
-export async function getStreamMessages(channelId:string){const id=ensureId(channelId);const d=await streamRequest(`/channels/messaging/${encodeURIComponent(id)}/query`,'POST',{watch:false,state:true,presence:false,messages:{limit:50}},'server');return(d.messages||[]).map((m:any)=>mapMessage(m,id));}
-export async function addStreamMessage(channelId:string,message:StreamChatMessage){const id=ensureId(channelId);const d=await streamRequest(`/channels/messaging/${encodeURIComponent(id)}/message`,'POST',{message:{text:message.text,attachments:message.attachments||[],sourceLang:message.sourceLang,targetLang:message.targetLang,translatedText:message.translatedText,isVoiceNote:message.isVoiceNote,voiceNoteDuration:message.voiceNoteDuration,user:{id:message.userId}}},message.userId);return mapMessage(d.message,id);}
-export async function toggleStreamReaction(channelId:string,messageId:string,reactionType:string,userId:string,userName:string){const id=ensureId(channelId);const messages=await getStreamMessages(id);const m=messages.find(x=>x.id===messageId);if(!m)return null;const has=m.reactions.some(r=>r.userId===userId&&r.type===reactionType);if(has)await streamRequest(`/channels/messaging/${encodeURIComponent(id)}/message/${encodeURIComponent(messageId)}/reaction/${encodeURIComponent(reactionType)}/${encodeURIComponent(userId)}`,'DELETE',undefined,userId);else await streamRequest(`/channels/messaging/${encodeURIComponent(id)}/message/${encodeURIComponent(messageId)}/reaction`,'POST',{reaction:{type:reactionType,user_id:userId}},userId);return (await getStreamMessages(id)).find(x=>x.id===messageId)||null;}
-export async function getActiveStreamChannels(userId?:string){ if(!userId) return []; const d=await streamRequest('/channels/messaging/query','POST',{filter:{members:{$in:[userId]}},sort:[{field:'last_message_at',direction:-1}],limit:100},userId); return (d.channels||[]).map((x:any)=>({id:x.channel?.id||x.cid?.split(':')[1],type:x.channel?.type||'messaging',name:x.channel?.name||x.channel?.id||x.cid,members:Object.values(x.members||{}).map((m:any)=>({userId:m.user_id,name:m.user?.name||m.user_id,avatar:m.user?.image,role:m.role||'member'})),updatedAt:x.channel?.updated_at?new Date(x.channel.updated_at).getTime():Date.now(),lastMessage:x.channel?.last_message?.text,lastMessageAt:x.channel?.last_message?.created_at?new Date(x.channel.last_message.created_at).getTime():undefined})); }
-export function getStreamEventLogs(){return[];}
-export function recordStreamEvent(){return;}
+function cfg() {
+  const apiKey = process.env.STREAM_API_KEY, secret = process.env.STREAM_API_SECRET;
+  if (!apiKey || !secret) throw new StreamAccessError('GetStream is not configured.', 503);
+  return { apiKey, secret, base: (process.env.STREAM_API_BASE_URL || 'https://chat.stream-io-api.com').replace(/\/$/, '') };
+}
+
+function signedToken(payload: Record<string, unknown>) {
+  const { secret } = cfg();
+  const head = Buffer.from(JSON.stringify({ alg: 'HS256', typ: 'JWT' })).toString('base64url');
+  const body = Buffer.from(JSON.stringify(payload)).toString('base64url');
+  const signature = crypto.createHmac('sha256', secret).update(`${head}.${body}`).digest('base64url');
+  return `${head}.${body}.${signature}`;
+}
+
+// This privileged token never leaves the server. Every account-facing operation
+// below checks provider-authoritative membership before accessing private data.
+async function streamRequest(path: string, method = 'POST', body?: unknown, actingUserId?: string): Promise<any> {
+  const { apiKey, base } = cfg();
+  const response = await fetch(`${base}${path}${path.includes('?') ? '&' : '?'}api_key=${encodeURIComponent(apiKey)}`, {
+    method,
+    headers: {
+      'Content-Type': 'application/json', 'Stream-Auth-Type': 'jwt',
+      Authorization: signedToken(actingUserId
+        ? { user_id: actingUserId, iat: Math.floor(Date.now() / 1000), exp: Math.floor(Date.now() / 1000) + 3600 }
+        : { server: true }),
+    },
+    body: body === undefined ? undefined : JSON.stringify(body),
+    signal: AbortSignal.timeout(15000),
+  });
+  if (!response.ok) {
+    // Never return provider payloads containing private state or request details.
+    throw new StreamAccessError(response.status === 404 ? 'Channel not found.' : 'GetStream request failed.', response.status === 404 ? 404 : 502);
+  }
+  return response.json();
+}
+
+function mapMember(member: any): StreamChannelMember {
+  const channelRole = member.channel_role || member.role;
+  return {
+    userId: member.user_id || member.user?.id || '',
+    name: member.user?.name || member.user_id || '',
+    avatar: member.user?.image,
+    nvId: member.user?.nvId,
+    language: member.user?.language,
+    role: member.is_moderator || ['admin', 'channel_moderator', 'channel_admin'].includes(channelRole) ? 'admin' : 'member',
+  };
+}
+
+function mapChannel(snapshot: any): StreamChannelData {
+  const channel = snapshot.channel || {};
+  const creator = channel.created_by?.id || channel.created_by_id;
+  const message = snapshot.messages?.[0] || channel.last_message;
+  return {
+    id: channel.id, type: channel.type || 'messaging', name: channel.name || channel.id,
+    members: Object.values(snapshot.members || {}).map(member => {
+      const mapped = mapMember(member);
+      return mapped.userId === creator ? { ...mapped, role: 'admin' as const } : mapped;
+    }),
+    custom: { description: channel.description, isGroup: channel.isGroup, avatar: channel.avatar, createdBy: creator },
+    updatedAt: channel.updated_at ? new Date(channel.updated_at).getTime() : Date.now(),
+    lastMessage: message?.text,
+    lastMessageAt: message?.created_at ? new Date(message.created_at).getTime() : undefined,
+  };
+}
+
+function mapMessage(message: any, channelId: string): StreamChatMessage {
+  return {
+    id: message.id, channelId, userId: message.user?.id || message.user_id || '',
+    userName: message.user?.name || message.user_id || '', userAvatar: message.user?.image,
+    text: message.text || '', translatedText: message.translatedText || message.translated_text,
+    targetLang: message.targetLang || message.target_lang, sourceLang: message.sourceLang || message.source_lang,
+    createdAt: message.created_at ? new Date(message.created_at).getTime() : Date.now(),
+    reactions: (message.latest_reactions || []).map((r: any) => ({ type: r.type, userId: r.user_id, userName: r.user_id, timestamp: Date.now() })),
+    attachments: (message.attachments || []).map((a: any) => ({
+      type: a.type === 'image' ? 'image' : a.type === 'audio' ? 'audio' : 'file',
+      url: a.asset_url || a.image_url || a.url || '', name: a.title || a.name, size: a.file_size ? String(a.file_size) : undefined,
+    })),
+    isVoiceNote: Boolean(message.isVoiceNote || message.is_voice_note),
+    voiceNoteDuration: Number(message.voiceNoteDuration || message.voice_note_duration || 0) || undefined,
+  };
+}
+
+async function queryChannel(channelId: string, messageLimit = 0, actingUserId?: string) {
+  const id = normalizeChannelId(channelId);
+  const data = await streamRequest('/channels', 'POST', {
+    filter_conditions: { cid: `messaging:${id}`, ...(actingUserId ? { members: { $in: [actingUserId] } } : {}) }, limit: 1, messages_limit: messageLimit,
+    member_limit: 100, state: true, watch: false, presence: false,
+  });
+  return data.channels?.[0] || null;
+}
+
+export async function requireStreamChannelMember(channelId: string, userId: string): Promise<StreamChannelMember> {
+  if (!userId) throw new StreamAccessError('Authentication required.', 401);
+  const id = normalizeChannelId(channelId);
+  const payload = { type: 'messaging', id, filter_conditions: { id: userId }, limit: 1 };
+  const data = await streamRequest(`/members?payload=${encodeURIComponent(JSON.stringify(payload))}`, 'GET');
+  const members = (data.members || []).map(mapMember);
+  if (!isChannelMember(userId, members)) throw new StreamAccessError();
+  return members.find((member: StreamChannelMember) => member.userId === userId)!;
+}
+
+/** Fresh complete membership for private fan-out; no stale permission cache. */
+export async function getStreamChannelMembers(channelId: string): Promise<StreamChannelMember[]> {
+  const id = normalizeChannelId(channelId);
+  const members: StreamChannelMember[] = [];
+  for (let offset = 0; offset < 10000; offset += 100) {
+    const payload = { type: 'messaging', id, filter_conditions: {}, sort: [{ user_id: 1 }], limit: 100, offset };
+    const data = await streamRequest(`/members?payload=${encodeURIComponent(JSON.stringify(payload))}`, 'GET');
+    const page = (data.members || []).map(mapMember);
+    members.push(...page);
+    if (page.length < 100) return members;
+  }
+  throw new StreamAccessError('Complete channel membership could not be verified.', 503);
+}
+
+export function generateStreamUserToken(options: StreamUserTokenOptions) {
+  const { apiKey } = cfg();
+  const requested = Number(options.expirationSeconds || 3600);
+  const seconds = Number.isFinite(requested) ? Math.max(1, Math.min(requested, 86400)) : 3600;
+  const iat = Math.floor(Date.now() / 1000);
+  return { token: signedToken({ user_id: options.userId, iat, exp: iat + seconds }), apiKey, userId: options.userId, expiresAt: Date.now() + seconds * 1000, isMock: false };
+}
+
+export async function upsertStreamChannel(channel: StreamChannelData, actingUserId: string) {
+  if (channel.type !== 'messaging') throw new StreamAccessError('Only private messaging channels are supported.', 400);
+  if (!isChannelMember(actingUserId, channel.members)) throw new StreamAccessError();
+  const requestedId = normalizeChannelId(channel.id);
+  const existing = await queryChannel(requestedId);
+  let id: string;
+  if (existing) {
+    const member = await requireStreamChannelMember(requestedId, actingUserId);
+    const members = await getStreamChannelMembers(requestedId);
+    const addingMembers = channel.members.some(candidate => !isChannelMember(candidate.userId, members));
+    const creator = existing.channel?.created_by?.id || existing.channel?.created_by_id;
+    if (!canManageChannelMembers(member, creator)) {
+      if (addingMembers) throw new StreamAccessError('Only a channel administrator can add participants.');
+      return getStreamChannel(requestedId, actingUserId);
+    }
+    id = requestedId;
+  } else {
+    // The caller cannot select a colliding existing ID and use creation to
+    // insert themselves into someone else's channel.
+    id = `nv_${crypto.randomUUID().replace(/-/g, '')}`;
+  }
+  const users = Object.fromEntries(channel.members.map(member => [member.userId, {
+    id: member.userId, name: member.name, image: member.avatar || '', nvId: member.nvId, language: member.language,
+  }]));
+  await streamRequest('/users', 'POST', { users });
+  const custom = channel.custom || {};
+  const data = {
+    name: channel.name, created_by_id: existing ? undefined : actingUserId,
+    members: existing ? undefined : channel.members.map(member => member.userId),
+    description: typeof custom.description === 'string' ? custom.description : undefined,
+    isGroup: typeof custom.isGroup === 'boolean' ? custom.isGroup : undefined,
+    avatar: typeof custom.avatar === 'string' ? custom.avatar : undefined,
+  };
+  if (existing) {
+    await streamRequest(`/channels/messaging/${id}`, 'POST', { data, add_members: channel.members.map(member => member.userId) });
+  } else {
+    await streamRequest(`/channels/messaging/${id}/query`, 'POST', { data, watch: false, state: true, presence: false });
+  }
+  return getStreamChannel(id, actingUserId);
+}
+
+export async function getStreamChannel(channelId: string, userId: string) {
+  await requireStreamChannelMember(channelId, userId);
+  const snapshot = await queryChannel(channelId, 1, userId);
+  return snapshot ? mapChannel(snapshot) : null;
+}
+
+export async function getStreamMessages(channelId: string, userId: string): Promise<StreamChatMessage[]> {
+  await requireStreamChannelMember(channelId, userId);
+  const snapshot = await queryChannel(channelId, 50, userId);
+  if (!snapshot) throw new StreamAccessError();
+  return (snapshot?.messages || []).map((message: any) => mapMessage(message, normalizeChannelId(channelId)));
+}
+
+export async function addStreamMessage(channelId: string, message: StreamChatMessage) {
+  await requireStreamChannelMember(channelId, message.userId);
+  const id = normalizeChannelId(channelId);
+  const data = await streamRequest(`/channels/messaging/${id}/message`, 'POST', {
+    message: {
+      text: message.text, attachments: message.attachments || [], user_id: message.userId,
+      sourceLang: message.sourceLang, targetLang: message.targetLang, translatedText: message.translatedText,
+      isVoiceNote: message.isVoiceNote, voiceNoteDuration: message.voiceNoteDuration,
+    },
+  }, message.userId);
+  return mapMessage(data.message, id);
+}
+
+export async function toggleStreamReaction(channelId: string, messageId: string, reactionType: string, userId: string, userName: string) {
+  const id = normalizeChannelId(channelId);
+  const messages = await getStreamMessages(id, userId);
+  const message = messages.find(candidate => candidate.id === messageId);
+  if (!message) return null;
+  const hasReaction = message.reactions.some(reaction => reaction.userId === userId && reaction.type === reactionType);
+  if (hasReaction) await streamRequest(`/messages/${encodeURIComponent(messageId)}/reaction/${encodeURIComponent(reactionType)}?user_id=${encodeURIComponent(userId)}`, 'DELETE', undefined, userId);
+  else await streamRequest(`/messages/${encodeURIComponent(messageId)}/reaction`, 'POST', { reaction: { type: reactionType, user_id: userId } }, userId);
+  return (await getStreamMessages(id, userId)).find(candidate => candidate.id === messageId) || null;
+}
+
+export async function getActiveStreamChannels(userId?: string): Promise<StreamChannelData[]> {
+  if (!userId) return [];
+  const data = await streamRequest('/channels', 'POST', {
+    filter_conditions: { type: 'messaging', members: { $in: [userId] } },
+    sort: [{ last_message_at: -1 }], limit: 100, state: true, watch: false, presence: false,
+  });
+  return (data.channels || []).map(mapChannel);
+}
+
+export async function removeStreamChannelMember(channelId: string, actingUserId: string, targetUserId: string) {
+  const id = normalizeChannelId(channelId);
+  const actor = await requireStreamChannelMember(id, actingUserId);
+  const snapshot = await queryChannel(id, 0, actingUserId);
+  const creator = snapshot?.channel?.created_by?.id || snapshot?.channel?.created_by_id;
+  if (!snapshot || !canRemoveChannelMember(actor, targetUserId, creator)) throw new StreamAccessError();
+  await streamRequest(`/channels/messaging/${id}`, 'POST', { remove_members: [targetUserId] });
+}
+
+export async function moderateStreamChannelMember(channelId: string, actingUserId: string, targetUserId: string, action: 'promote' | 'demote') {
+  const id = normalizeChannelId(channelId);
+  await requireStreamChannelMember(id, actingUserId);
+  const snapshot = await queryChannel(id, 0, actingUserId);
+  const creator = snapshot?.channel?.created_by?.id || snapshot?.channel?.created_by_id;
+  if (!snapshot || creator !== actingUserId || !targetUserId || !['promote', 'demote'].includes(action)) throw new StreamAccessError();
+  await requireStreamChannelMember(id, targetUserId);
+  await streamRequest(`/channels/messaging/${id}`, 'POST', {
+    [action === 'promote' ? 'add_moderators' : 'demote_moderators']: [targetUserId],
+  });
+  return getStreamChannel(id, actingUserId);
+}
+
+export function getStreamEventLogs() { return []; }
+export function recordStreamEvent() { return; }
