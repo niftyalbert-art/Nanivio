@@ -6,6 +6,11 @@ export function videoCallingEnabled(env: NodeJS.ProcessEnv = process.env): boole
     && env.NANIVIO_VIDEO_CALLS_ENABLED !== 'false';
 }
 
+export function audioCallingEnabled(env: NodeJS.ProcessEnv = process.env): boolean {
+  return Boolean(env.AGORA_APP_ID?.trim() && env.AGORA_APP_CERTIFICATE?.trim())
+    && env.NANIVIO_AUDIO_CALLS_ENABLED !== 'false';
+}
+
 /** Non-sensitive, read-only capabilities for ordinary clients; no admin access needed. */
 export function featureSettingsHandler(features: Record<string, boolean>): RequestHandler {
   return (_req, res) => {

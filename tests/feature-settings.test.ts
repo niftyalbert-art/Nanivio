@@ -3,25 +3,39 @@ import { readFileSync } from 'node:fs';
 import { once } from 'node:events';
 import test from 'node:test';
 import express from 'express';
-import { featureSettingsHandler, videoCallingEnabled } from '../src/server/featureSettings.ts';
+import { audioCallingEnabled, featureSettingsHandler, videoCallingEnabled } from '../src/server/featureSettings.ts';
 
 const configured = { AGORA_APP_ID: 'test-app-id', AGORA_APP_CERTIFICATE: 'test-certificate' };
 
-test('configured video calling defaults to enabled and honors the explicit off switch', () => {
-  assert.equal(videoCallingEnabled(configured), true);
-  assert.equal(videoCallingEnabled({ ...configured, NANIVIO_VIDEO_CALLS_ENABLED: 'true' }), true);
-  assert.equal(videoCallingEnabled({ ...configured, NANIVIO_VIDEO_CALLS_ENABLED: 'false' }), false);
-});
+for (const [type, key, enabled] of [
+  ['video', 'NANIVIO_VIDEO_CALLS_ENABLED', videoCallingEnabled],
+  ['audio', 'NANIVIO_AUDIO_CALLS_ENABLED', audioCallingEnabled],
+] as const) {
+  test(`configured ${type} calling defaults to enabled and honors the explicit off switch`, () => {
+    assert.equal(enabled(configured), true);
+    assert.equal(enabled({ ...configured, [key]: 'true' }), true);
+    assert.equal(enabled({ ...configured, [key]: 'false' }), false);
+  });
 
-test('video calling stays disabled when Agora configuration is missing', () => {
-  assert.equal(videoCallingEnabled({}), false);
-  assert.equal(videoCallingEnabled({ AGORA_APP_ID: 'test-app-id' }), false);
-  assert.equal(videoCallingEnabled({ AGORA_APP_CERTIFICATE: 'test-certificate' }), false);
-  assert.equal(videoCallingEnabled({ ...configured, AGORA_APP_ID: ' ', NANIVIO_VIDEO_CALLS_ENABLED: 'true' }), false);
+  test(`${type} calling stays disabled when Agora configuration is missing`, () => {
+    assert.equal(enabled({}), false);
+    assert.equal(enabled({ AGORA_APP_ID: 'test-app-id' }), false);
+    assert.equal(enabled({ AGORA_APP_CERTIFICATE: 'test-certificate' }), false);
+    assert.equal(enabled({ ...configured, AGORA_APP_ID: ' ', [key]: 'true' }), false);
+  });
+}
+
+test('audio and video can be disabled independently', () => {
+  const audioOff = { ...configured, NANIVIO_AUDIO_CALLS_ENABLED: 'false' };
+  assert.equal(audioCallingEnabled(audioOff), false);
+  assert.equal(videoCallingEnabled(audioOff), true);
+  const videoOff = { ...configured, NANIVIO_VIDEO_CALLS_ENABLED: 'false' };
+  assert.equal(audioCallingEnabled(videoOff), true);
+  assert.equal(videoCallingEnabled(videoOff), false);
 });
 
 test('ordinary clients can read current capabilities without gaining write permissions', async () => {
-  const features = { videoCallsEnabled: true, audioCallsEnabled: false };
+  const features = { videoCallsEnabled: true, audioCallsEnabled: true };
   const app = express();
   app.get('/api/features', featureSettingsHandler(features));
   const server = app.listen(0, '127.0.0.1');
@@ -35,9 +49,10 @@ test('ordinary clients can read current capabilities without gaining write permi
     assert.deepEqual(await response.json(), features);
     assert.equal((await fetch(url, { method: 'POST' })).status, 404);
     Object.assign(features, { unexpectedText: 'must not be public', unexpectedObject: { hidden: true } });
-    assert.deepEqual(await (await fetch(url)).json(), { videoCallsEnabled: true, audioCallsEnabled: false });
+    assert.deepEqual(await (await fetch(url)).json(), { videoCallsEnabled: true, audioCallsEnabled: true });
     features.videoCallsEnabled = false;
-    assert.equal((await (await fetch(url)).json()).videoCallsEnabled, false);
+    features.audioCallsEnabled = false;
+    assert.deepEqual(await (await fetch(url)).json(), { videoCallsEnabled: false, audioCallsEnabled: false });
   } finally {
     await new Promise<void>((resolve, reject) => server.close(error => error ? reject(error) : resolve()));
   }
@@ -46,6 +61,8 @@ test('ordinary clients can read current capabilities without gaining write permi
 test('management remains admin-only and clients read the ordinary-user endpoint', () => {
   const server = readFileSync(new URL('../server.ts', import.meta.url), 'utf8');
   const context = readFileSync(new URL('../src/context/NanivioContext.tsx', import.meta.url), 'utf8');
+  assert.match(server, /audioCallsEnabled: audioCallingEnabled\(\)/);
+  assert.match(server, /videoCallsEnabled: videoCallingEnabled\(\)/);
   assert.match(server, /app\.get\("\/api\/features", featureSettingsHandler\(adminFeatureSwitches\)\)/);
   assert.match(server, /app\.get\("\/api\/admin\/features", requireAdmin,/);
   assert.match(server, /app\.post\("\/api\/admin\/features\/update", requireAdmin,/);

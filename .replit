@@ -43,3 +43,4 @@ timeoutMs = 300000
 
 [userenv.shared]
 NANIVIO_VIDEO_CALLS_ENABLED = "true"
+NANIVIO_AUDIO_CALLS_ENABLED = "true"

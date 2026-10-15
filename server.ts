@@ -41,7 +41,7 @@ import { getPersistentInvoice } from "./src/server/normalizedBillingRepository.t
 import { authDb } from "./src/server/authDb.ts";
 import * as persistentAuth from "./src/server/persistentAuth.ts";
 import { productionStatus } from "./src/server/productionStatus.ts";
-import { featureSettingsHandler, videoCallingEnabled } from "./src/server/featureSettings.ts";
+import { audioCallingEnabled, featureSettingsHandler, videoCallingEnabled } from "./src/server/featureSettings.ts";
 import { callKhayaEngine, callSunbirdEngine } from "./src/server/translationProviders.ts";
 import { translateWithProductionProviders, translationProviderConfigured } from "./src/server/translationRouter.ts";
 import { planTranslation, requireLanguage, speechProvider } from "./src/lib/translator-engine/languagePlan.ts";
@@ -105,7 +105,7 @@ function getAI(): GoogleGenAI | null {
 // In-Memory Database / Server-Authoritative State
 const adminFeatureSwitches = {
   freeCallsForAllUsers: process.env.NANIVIO_FREE_CALLS === 'true',
-  audioCallsEnabled: process.env.NANIVIO_AUDIO_CALLS_ENABLED === 'true',
+  audioCallsEnabled: audioCallingEnabled(),
   videoCallsEnabled: videoCallingEnabled(),
   liveAdsEnabled: process.env.NANIVIO_LIVE_ADS_ENABLED === 'true',
   liveServicesEnabled: process.env.NANIVIO_LIVE_SERVICES_ENABLED === 'true',
