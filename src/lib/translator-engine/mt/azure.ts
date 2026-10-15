@@ -9,6 +9,6 @@ export class AzureMtProvider implements IMtProvider {
     const start=Date.now(); const r=await fetch('/api/translate',{method:'POST',headers:{'Content-Type':'application/json',...(token?{Authorization:`Bearer ${token}`}:{})},body:JSON.stringify({text,sourceLang,targetLang,preferredProvider:'azure'})});
     const data=await r.json().catch(()=>({}));
     if(!r.ok||data.success!==true||!data.translatedText||data.untranslated) throw new Error(data.error||'Azure translation unavailable');
-    return {translatedText:data.translatedText,sourceLang,targetLang,provider:'azure',latencyMs:Date.now()-start,pivotUsed:!!data.pivotUsed};
+    return {translatedText:data.translatedText,sourceLang,targetLang,provider:data.provider,providerChain:data.providerChain,latencyMs:Date.now()-start,pivotUsed:!!data.pivotUsed};
   }
 }

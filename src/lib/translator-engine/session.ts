@@ -40,7 +40,8 @@ export class LangpretationCallSession {
     text: string
   ): Promise<LangpretationTurn> {
     const start = Date.now();
-    const targetLang = this.receiver.myLanguage;
+    if (speakerId !== this.host.id && speakerId !== this.receiver.id) throw new Error('Speaker is not a call participant.');
+    const targetLang = (speakerId === this.host.id ? this.receiver : this.host).myLanguage;
 
     // Check cache
     const cached = this.cache.get(text, speakerLang, targetLang);
@@ -49,19 +50,9 @@ export class LangpretationCallSession {
     if (cached) {
       mtResult = cached;
     } else {
-      const decision = this.router.resolveRoute(speakerLang, targetLang);
-      if (decision.requiresPivot && decision.pivotLanguage) {
-        mtResult = await PivotRouter.translateWithPivot(
-          text,
-          speakerLang,
-          targetLang,
-          decision.pivotLanguage,
-          decision.provider,
-          this.azure
-        );
-      } else {
-        mtResult = await decision.provider.translate(text, speakerLang, targetLang);
-      }
+      // The authenticated server executes the entire authoritative per-hop plan.
+      // Do not perform a second, conflicting browser-side pivot.
+      mtResult = await this.azure.translate(text, speakerLang, targetLang);
       this.cache.set(text, speakerLang, targetLang, mtResult);
     }
 
@@ -76,9 +67,9 @@ export class LangpretationCallSession {
       receiverLang: targetLang,
       originalText: text,
       translatedText: mtResult.translatedText, // ONLY in receiver's language
-      asrLatencyMs: Math.round(totalMs * 0.25),
-      mtLatencyMs: Math.round(totalMs * 0.65),
-      ttsLatencyMs: Math.round(totalMs * 0.1),
+      asrLatencyMs: null,
+      mtLatencyMs: totalMs,
+      ttsLatencyMs: null,
       totalLatencyMs: totalMs,
       latencyGrade: grade,
       provider: mtResult.provider,

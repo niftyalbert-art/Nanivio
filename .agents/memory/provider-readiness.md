@@ -29,3 +29,13 @@ implementations and changes needed across the engine and all available languages
 **How to apply:** Review every declared language, cross-provider route, and
 ASR/MT/TTS stage. Separate exhaustive planning checks from actual provider output
 and real speech-to-speech evidence.
+
+Do not treat absence from a published language catalogue as proof that every
+provider rejects that language. Preserve distinct dialect codes when probing.
+
+**Why:** Khaya's SDK explicitly states that its catalogues are not exhaustive
+whitelists, and ASR/TTS coverage differs from MT coverage.
+
+**How to apply:** Check the operation-specific contract and real response using
+the distinct ISO code. Record the actual service/version result; never silently
+substitute a generic language for a promised dialect.

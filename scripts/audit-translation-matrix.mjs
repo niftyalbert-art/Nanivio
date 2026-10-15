@@ -105,14 +105,15 @@ const summary = {
     id: provider.id, declaredStatus: provider.status, declaredLatencyMs: provider.averageLatencyMs,
   })),
   nllbCanHandle: new NllbMtProvider().canHandle('en', 'fr'),
-  unknownLanguagePlan: router.route('not-a-language', 'en', 'CALL'),
+  unknownLanguageRejected: (()=>{try{router.route('not-a-language','en','CALL');return false;}catch{return true;}})(),
   unmatchedTextDetection: new LanguageDetector().detect('qzxvpl 918273'),
   languages: languageRows,
 };
 assert.equal(summary.nonSelfCombinations, 306);
 assert.equal(summary.matrixLiveVerifiedEntries, 0);
-assert.equal(summary.declaredRealtimeExecutableCount, 324);
-assert.equal(summary.pivotPlanningDisagreementCount, 104);
+assert.equal(summary.declaredRealtimeExecutableCount, 18);
+assert.equal(summary.pivotPlanningDisagreementCount, 0);
+assert.equal(summary.unknownLanguageRejected,true);
 assert.equal(summary.nllbCanHandle, false);
 
 const csv = value => `"${String(value ?? '').replaceAll('"', '""')}"`;

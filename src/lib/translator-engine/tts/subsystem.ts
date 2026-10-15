@@ -1,14 +1,17 @@
 import { ITtsProvider } from './interface';
 import { TtsResult } from '../types';
+import { authenticatedFetch } from '../../authenticatedFetch';
+import { requireLanguage } from '../languagePlan';
 
 class ProductionTtsProvider implements ITtsProvider {
   public id='production-tts'; public name='Nanivio Production TTS';
-  public canSynthesize(_language:string){return true;}
+  public canSynthesize(language:string){try{requireLanguage(language);return true;}catch{return false;}}
   public async synthesize(text:string,language:string):Promise<TtsResult>{
-    const start=Date.now(); const r=await fetch('/api/langpretation/synthesize',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({text,language})});
+    requireLanguage(language);
+    const start=Date.now(); const r=await authenticatedFetch('/api/langpretation/synthesize',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({text,language})});
     const data=await r.json(); if(!r.ok||!data.audioBase64) throw new Error(data.error||'TTS unavailable');
     const raw=atob(data.audioBase64); const bytes=new Uint8Array(raw.length); for(let i=0;i<raw.length;i++)bytes[i]=raw.charCodeAt(i);
-    return {audioBuffer:bytes.buffer,durationMs:Math.max(0,Date.now()-start),provider:data.provider,latencyMs:Date.now()-start};
+    return {audioBuffer:bytes.buffer,durationMs:null,provider:data.provider,latencyMs:Date.now()-start};
   }
   public async speakInBrowser(text:string,language:string){ const {speechService}=await import('../../../services/speechService'); await speechService.speak(text,language); }
 }

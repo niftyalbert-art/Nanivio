@@ -2,6 +2,7 @@
  * Synthetic oscillators and browser speechSynthesis are intentionally not used.
  */
 export interface SynthesizedAudioPayload { audioBase64?:string; audioBuffer?:AudioBuffer; sampleRate:number; channels:number; durationMs:number; provider:string; latencyMs:number; }
+import { authenticatedFetch } from '../../authenticatedFetch';
 
 function base64ToBytes(value:string){ const raw=atob(value); const out=new Uint8Array(raw.length); for(let i=0;i<raw.length;i++)out[i]=raw.charCodeAt(i); return out; }
 
@@ -16,7 +17,7 @@ export class NanivioTtsAudioGenerator {
 
   public static async generateSpokenAudioBuffer(text:string,language:string,audioCtx?:AudioContext):Promise<AudioBuffer|null>{
     const start=performance.now();
-    const r=await fetch('/api/langpretation/synthesize',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({text,language})});
+    const r=await authenticatedFetch('/api/langpretation/synthesize',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({text,language})});
     const data=await r.json().catch(()=>({}));
     if(!r.ok||!data.audioBase64) throw new Error(data.error||'Production TTS returned no audio');
     const bytes=base64ToBytes(data.audioBase64); const ctx=audioCtx||this.getAudioContext(); if(!ctx) return null;

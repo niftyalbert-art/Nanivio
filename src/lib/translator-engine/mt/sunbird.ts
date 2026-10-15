@@ -46,7 +46,8 @@ export class SunbirdMtProvider implements IMtProvider {
           translatedText: data.translatedText || '',
           sourceLang,
           targetLang,
-          provider: 'sunbird',
+          provider: data.provider,
+          providerChain: data.providerChain,
           latencyMs: Date.now() - start,
         };
       }

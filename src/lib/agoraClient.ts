@@ -62,6 +62,8 @@ class NanivioAgoraClient {
   private statsInterval: ReturnType<typeof setInterval> | null = null;
   private isAudioMuted = false;
   private isVideoOff = false;
+  private translationQueue:Promise<boolean>=Promise.resolve(true);
+  private queuedTranslations=0;
 
   constructor() {
     if (typeof window !== 'undefined') {
@@ -195,9 +197,24 @@ class NanivioAgoraClient {
   }
 
   public async injectTranslatedAudioToRemote(audioBuffer: AudioBuffer): Promise<boolean> {
+    const channel=this.currentChannel;
+    if(!channel||this.queuedTranslations>=2)return false;
+    this.queuedTranslations++;
+    const task=this.translationQueue.catch(()=>false).then(async()=>{
+      if(this.currentChannel!==channel)return false;
+      return this.publishTranslatedAudio(audioBuffer,channel);
+    }).finally(()=>{this.queuedTranslations--;});
+    this.translationQueue=task;
+    return task;
+  }
+
+  private async publishTranslatedAudio(audioBuffer:AudioBuffer,channel:string):Promise<boolean>{
     if (!this.client || !this.originalAudio || !audioBuffer) return false;
+    let ctx:AudioContext|null=null;
     try {
-      const ctx = NanivioAgoraClientAudioContext();
+      ctx = NanivioAgoraClientAudioContext();
+      await ctx.resume();
+      if(this.currentChannel!==channel)return false;
       const destination = ctx.createMediaStreamDestination();
       const source = ctx.createBufferSource(); source.buffer = audioBuffer;
       const gain = ctx.createGain(); gain.gain.value = 1;
@@ -205,15 +222,16 @@ class NanivioAgoraClient {
       const streamTrack = destination.stream.getAudioTracks()[0];
       if (!streamTrack) return false;
       const custom = AgoraRTC.createCustomAudioTrack({ mediaStreamTrack: streamTrack, encoderConfig:'speech_standard' } as any);
+      await custom.setEnabled(!this.isAudioMuted);
       if (this.localAudio) await this.client.unpublish(this.localAudio);
       this.localAudio = custom;
       await this.client.publish([custom]);
       this.rebuildLocalStream();
-      source.onended = () => { this.restoreOriginalAudioTrack().catch(()=>{}); };
-      source.start(0);
       this.translatedAudio = custom;
+      await new Promise<void>((resolve,reject)=>{source.onended=()=>resolve();try{source.start(0);}catch(error){reject(error);}});
       return true;
     } catch (err) { console.warn('[Agora] translated audio injection failed:', err); return false; }
+    finally{if(this.currentChannel===channel)await this.restoreOriginalAudioTrack();await ctx?.close().catch(()=>{});}
   }
 
   public async restoreOriginalAudioTrack() {

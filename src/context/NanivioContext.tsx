@@ -2180,6 +2180,11 @@ export const NanivioProvider: React.FC<{ children: React.ReactNode }> = ({ child
   const processLiveSpeechUtterance = async (speakerId: string, text: string) => {
     if (!activeCall) return;
     const speaker = activeCall.participants.find(p => p.id === speakerId) || activeCall.host;
+    if(speaker.id!==speakerId)throw new Error('Speaker is not a call participant.');
+    const recipient = activeCall.participants.find(p => p.id !== speakerId)
+      || (activeCall.host.id !== speakerId ? activeCall.host : null);
+    if (!recipient) throw new Error('The remote call participant is unavailable.');
+    const receiverLanguage = recipient.myLanguage || 'en';
     
     // Set speaking indicator
     setActiveCall(prev => {
@@ -2197,9 +2202,9 @@ export const NanivioProvider: React.FC<{ children: React.ReactNode }> = ({ child
       const mtResult = await engine.translateText(
         text,
         speaker.myLanguage || 'en',
-        myLanguage || 'en'
+        receiverLanguage
       );
-      const translatedText = mtResult.translatedText || text;
+      const translatedText = mtResult.translatedText;
 
       // Update call receiver transcript display (ONLY in receiver's language!)
       setActiveCall(prev => {
@@ -2226,13 +2231,15 @@ export const NanivioProvider: React.FC<{ children: React.ReactNode }> = ({ child
           const { NanivioTtsAudioGenerator } = await import('../lib/translator-engine/audio/ttsAudioGenerator');
           const audioBuf = await NanivioTtsAudioGenerator.generateSpokenAudioBuffer(
             translatedText,
-            myLanguage || 'en'
+            receiverLanguage
           );
           if (audioBuf) {
-            await agoraClient.injectTranslatedAudioToRemote(audioBuf);
+            if (!await agoraClient.injectTranslatedAudioToRemote(audioBuf)) throw new Error('Translated audio was not published.');
           }
         } catch (audioErr) {
           console.warn('Audio track injection notice:', audioErr);
+          setActiveCall(prev => prev ? { ...prev, langpretationState: 'Error' } : null);
+          throw audioErr;
         }
       }
 
@@ -2244,6 +2251,7 @@ export const NanivioProvider: React.FC<{ children: React.ReactNode }> = ({ child
     } catch (e) {
       console.error('Translation processing error:', e);
       setActiveCall(prev => prev ? { ...prev, langpretationState: 'Error' } : null);
+      throw e;
     }
   };
 

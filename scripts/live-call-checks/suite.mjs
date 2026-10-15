@@ -154,6 +154,15 @@ export async function runChecks({ accounts, origin, originName, request }) {
           translatedText: sunbird.data.translatedText, cached: sunbird.data.cached === true,
           latencyMs: sunbird.data.latencyMs });
     }
+    if(originName==='workspace'){
+      const synthesized=await request(origin,'/api/langpretation/synthesize',localAccounts[0],{text:'Meda wo ase.',language:'ak'});
+      const validAudio=synthesized.status===200&&synthesized.data.success===true&&typeof synthesized.data.audioBase64==='string'&&synthesized.data.audioBase64.length>44;
+      check('Real Khaya Twi speech synthesis returns audio',validAudio,{status:synthesized.status,provider:synthesized.data.provider,audioBytes:validAudio?Buffer.from(synthesized.data.audioBase64,'base64').length:0,error:validAudio?undefined:synthesized.data.error});
+      if(validAudio){
+        const recognition=await request(origin,'/api/langpretation/transcribe',localAccounts[0],{language:'ak',audioBase64:synthesized.data.audioBase64});
+        check('Real Khaya ASR transcribes provider-generated speech',recognition.status===200&&recognition.data.success===true&&typeof recognition.data.text==='string'&&Boolean(recognition.data.text.trim()),{status:recognition.status,provider:recognition.data.provider,physicalMicrophoneVerified:false,error:recognition.status===200?undefined:recognition.data.error});
+      }
+    }
     const meterAfter = await request(origin, '/api/billing/langpretation/meter', localAccounts[0]);
     check('Authenticated quota meter is readable',
       meterBefore.status === 200 && meterAfter.status === 200,

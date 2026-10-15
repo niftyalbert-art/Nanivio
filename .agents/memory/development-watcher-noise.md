@@ -13,3 +13,7 @@ handling even without an application source change.
 configuration. If a signed-in test unexpectedly navigates or loses its call,
 check reload messages for generated paths before treating it as an application
 regression. Do not hide the interrupted run or count it as successful evidence.
+
+Runtime-managed environment-cache writes can also reload the app without an
+application edit. These are tooling activity, not a reason to restart a call
+or evidence of a provider failure.

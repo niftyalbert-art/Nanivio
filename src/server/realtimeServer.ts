@@ -18,6 +18,7 @@ import { authDb } from './authDb.ts';
 import * as persistentAuth from './persistentAuth.ts';
 import { channelRecipients, normalizeChannelId } from './chatPrivacy.ts';
 import { callKhayaEngine as khaya, callSunbirdEngine as sunbird } from './translationProviders.ts';
+import { translateWithProductionProviders as callProductionTranslation } from './translationRouter.ts';
 
 export interface ConnectedUser {
   socket: WebSocket;
@@ -155,25 +156,6 @@ const LANGUAGE_NAMES: Record<string, string> = {
 };
 
 let genAiInstance: GoogleGenAI | null = null;
-async function callProductionTranslation(text:string, sourceLang:string, targetLang:string):Promise<{text:string;provider:string}|null>{
-  if(sourceLang===targetLang) return {text,provider:'direct-passthrough'};
-  const ghana=new Set(['ak','tw-ak','fat','ee','gaa','ha']);
-  const east=new Set(['sw','lg']);
-  const key=process.env.AZURE_TRANSLATOR_KEY;
-  const endpoint=(process.env.AZURE_TRANSLATOR_ENDPOINT||'https://api.cognitive.microsofttranslator.com').replace(/\/$/,'');
-  const region=process.env.AZURE_TRANSLATOR_REGION;
-  const azure=async(input:string,a:string,b:string)=>{ if(!key)return null; const params=new URLSearchParams({'api-version':'3.0',to:b}); if(a!=='auto')params.set('from',a); const h:any={'Ocp-Apim-Subscription-Key':key,'Content-Type':'application/json'}; if(region)h['Ocp-Apim-Subscription-Region']=region; const r=await fetch(`${endpoint}/translate?${params}`,{method:'POST',headers:h,body:JSON.stringify([{text:input}]),signal:AbortSignal.timeout(5000)}); if(!r.ok)return null; const d:any=await r.json(); const t=d?.[0]?.translations?.[0]?.text; return t?{text:String(t),provider:'azure-translator'}:null; };
-  const direct=ghana.has(sourceLang)||ghana.has(targetLang)?await khaya(text,sourceLang,targetLang):east.has(sourceLang)||east.has(targetLang)?await sunbird(text,sourceLang,targetLang):await azure(text,sourceLang,targetLang);
-  if(direct)return direct;
-  if(sourceLang!=='en'&&targetLang!=='en'){
-    const toEn=ghana.has(sourceLang)?await khaya(text,sourceLang,'en'):east.has(sourceLang)?await sunbird(text,sourceLang,'en'):await azure(text,sourceLang,'en');
-    if(toEn){
-      const fromEn=ghana.has(targetLang)?await khaya(toEn.text,'en',targetLang):east.has(targetLang)?await sunbird(toEn.text,'en',targetLang):await azure(toEn.text,'en',targetLang);
-      if(fromEn)return {text:fromEn.text,provider:`${toEn.provider}+${fromEn.provider}`};
-    }
-  }
-  return null;
-}
 
 function getAI(): GoogleGenAI | null {
   if (!genAiInstance && process.env.GEMINI_API_KEY) {
