@@ -19,3 +19,13 @@ raw upstream payloads.
 Do not infer invalid credentials, exhausted quota, or a particular provider-side
 failure from a timeout alone. Public documentation being reachable does not
 establish that inference is available within the application's latency budget.
+
+The user expects translation audits to cover the full 18 × 18 language design,
+not only Twi and Luganda.
+
+**Why:** The user corrected the narrower focus and asked to identify fake
+implementations and changes needed across the engine and all available languages.
+
+**How to apply:** Review every declared language, cross-provider route, and
+ASR/MT/TTS stage. Separate exhaustive planning checks from actual provider output
+and real speech-to-speech evidence.
