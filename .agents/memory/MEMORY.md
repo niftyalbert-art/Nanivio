@@ -13,3 +13,4 @@
 - [Preview proxy checks](preview-proxy-checks.md) — workspace proxy errors can coexist with a healthy app; distinguish local server checks from public reachability.
 - [Provider readiness evidence](provider-readiness.md) — configured credentials and HTTP 200 do not prove that the intended provider service actually ran.
 - [Development watcher noise](development-watcher-noise.md) — workspace log writes can reload authenticated pages and interrupt live-call verification.
+- [Post-merge runtime freshness](post-merge-runtime.md) — successful setup reconciliation does not prove the running process picked up reinstalled dependencies.
