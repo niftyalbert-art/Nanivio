@@ -12,7 +12,7 @@ export interface AudioSegment {
 export interface AsrResult {
   text: string;
   language: string;
-  confidence: number;
+  confidence: number | null;
   isFinal: boolean;
   latencyMs: number;
 }
@@ -21,7 +21,8 @@ export interface MtResult {
   translatedText: string;
   sourceLang: string;
   targetLang: string;
-  provider: 'khaya' | 'sunbird' | 'azure' | 'nllb' | 'local';
+  provider: string;
+  providerChain?: string[];
   latencyMs: number;
   cached?: boolean;
   confidence?: number;
@@ -31,7 +32,7 @@ export interface MtResult {
 export interface TtsResult {
   audioBuffer?: ArrayBuffer | AudioBuffer;
   audioUrl?: string;
-  durationMs: number;
+  durationMs: number | null;
   provider: string;
   latencyMs: number;
 }
@@ -44,9 +45,9 @@ export interface LangpretationTurn {
   receiverLang: string;
   originalText?: string;
   translatedText: string; // ONLY in receiver's language
-  asrLatencyMs: number;
+  asrLatencyMs: number | null;
   mtLatencyMs: number;
-  ttsLatencyMs: number;
+  ttsLatencyMs: number | null;
   totalLatencyMs: number;
   latencyGrade: 'ideal' | 'acceptable' | 'warning' | 'poor';
   provider: string;
@@ -58,10 +59,10 @@ export interface ProviderCapability {
   name: string;
   type: 'asr' | 'mt' | 'tts' | 'full-duplex';
   supportedPairs: Array<{ from: string; to: string }>;
-  averageLatencyMs: number;
+  averageLatencyMs: number | null;
   isRealtime: boolean;
   isAfricanLanguageSpecialist?: boolean;
-  status: 'online' | 'degraded' | 'offline';
+  status: 'online' | 'degraded' | 'offline' | 'not-verified';
 }
 
 export interface EngineTelemetry {

@@ -82,6 +82,8 @@ export default defineConfig(() => {
         ignored: [
           '**/.local/**',
           '**/.agents/**',
+          '**/.cache/**',
+          '**/docs/**',
           '**/generated-artifacts/**',
           '**/scripts/live-call-checks/**',
         ],

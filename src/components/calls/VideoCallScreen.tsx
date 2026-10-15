@@ -57,7 +57,8 @@ export const VideoCallScreen: React.FC<VideoCallScreenProps> = ({ onEndCall }) =
   } = useNanivio();
 
   // Participant resolution
-  const host = activeCall?.host || currentUser;
+  const host = activeCall?.participants.find(p=>p.id===currentUser.id)
+    || (activeCall?.host.id===currentUser.id?activeCall.host:currentUser);
   const remoteParticipant: Participant =
     activeCall?.participants.find((p) => p.id !== host.id) ||
     activeCall?.participants[1] || {
@@ -142,13 +143,10 @@ export const VideoCallScreen: React.FC<VideoCallScreenProps> = ({ onEndCall }) =
 
           if (isFinal && transcript.trim()) {
             setSpeechStatus('Langpretating...');
-            const engine = NanivioTranslatorEngine.getInstance();
-            const res = await engine.translateText(transcript, hostLang.code, remoteLang.code);
-            setCurrentTranslatedSubtitle(res.translatedText);
-            setLangpretationStage('speaking');
-            setSpeechStatus('');
-
-            processLiveSpeechUtterance(host.id, transcript);
+            try{
+              await processLiveSpeechUtterance(host.id, transcript);
+              setLangpretationStage('speaking');setSpeechStatus('');
+            }catch{setSpeechStatus('Translation unavailable.');setLangpretationStage('listening');}
           }
         },
         () => {

@@ -461,7 +461,7 @@ export const AdminLangpretationManager: React.FC = () => {
                         <span>{lang.provider}</span>
                       </div>
                       <span className="text-[10px] text-slate-500 font-mono">
-                        ${lang.costPerMinuteUsd.toFixed(3)}/min
+                        {lang.costPerMinuteUsd == null ? 'Not measured' : `$${lang.costPerMinuteUsd.toFixed(3)}/min`}
                       </span>
                     </td>
 

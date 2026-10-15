@@ -1,5 +1,10 @@
 # Nanivio 18 × 18 translation-engine audit
 
+> Historical pre-repair findings. Subsequent implementation and remaining live
+> blockers are documented in [Translation production readiness](translation-production-readiness.md).
+> The current routing audit now checks the repaired implementation; planning
+> agreement does not establish successful live translation.
+
 Date: 2026-10-14 Pacific / 2026-10-15 UTC.
 
 ## Verdict

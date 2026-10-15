@@ -54,7 +54,7 @@ export async function runBrowserChecks({ accounts, origin, outputDirectory }) {
     }
     phase = 'authenticated-translation-adapters';
     for (const [provider, className, targetLang] of [
-      ['khaya', 'KhayaMtProvider', 'ak'], ['sunbird', 'SunbirdMtProvider', 'lg'],
+      ['engine', 'NanivioTranslatorEngine', 'ak'], ['khaya', 'KhayaMtProvider', 'ak'], ['sunbird', 'SunbirdMtProvider', 'lg'],
     ]) {
       const result = await pages[0].evaluate(`(async()=>{
         const actualFetch=window.fetch;
@@ -64,7 +64,7 @@ export async function runBrowserChecks({ accounts, origin, outputDirectory }) {
           if(String(args[0]).includes('/api/translate')){
             const body=await response.clone().json();
             requests.push({
-              status:response.status,authenticated:Boolean(args[1]?.headers?.Authorization),
+              status:response.status,authenticated:new Headers(args[1]?.headers).has('Authorization'),
               provider:body.provider,success:body.success===true,untranslated:body.untranslated===true
             });
           }
@@ -72,8 +72,8 @@ export async function runBrowserChecks({ accounts, origin, outputDirectory }) {
         };
         let returnedTranslation=false;
         try{
-          const module=await import('/src/lib/translator-engine/mt/${provider}.ts');
-          await new module.${className}().translate('A live authenticated translation check.','en','${targetLang}');
+          const module=await import('${provider==='engine'?'/src/lib/translator-engine/engine.ts':`/src/lib/translator-engine/mt/${provider}.ts`}');
+          ${provider==='engine'?"await module.NanivioTranslatorEngine.getInstance().translateText('A live authenticated translation check.','en','ak');":`await new module.${className}().translate('A live authenticated translation check.','en','${targetLang}');`}
           returnedTranslation=true;
         }catch{}
         finally{window.fetch=actualFetch;}

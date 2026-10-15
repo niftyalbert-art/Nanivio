@@ -46,7 +46,8 @@ export class KhayaMtProvider implements IMtProvider {
           translatedText: data.translatedText || '',
           sourceLang,
           targetLang,
-          provider: 'khaya',
+          provider: data.provider,
+          providerChain: data.providerChain,
           latencyMs: Date.now() - start,
         };
       }
