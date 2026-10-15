@@ -41,6 +41,7 @@ import { getPersistentInvoice } from "./src/server/normalizedBillingRepository.t
 import { authDb } from "./src/server/authDb.ts";
 import * as persistentAuth from "./src/server/persistentAuth.ts";
 import { productionStatus } from "./src/server/productionStatus.ts";
+import { featureSettingsHandler, videoCallingEnabled } from "./src/server/featureSettings.ts";
 import { callKhayaEngine, callSunbirdEngine } from "./src/server/translationProviders.ts";
 import { translateWithProductionProviders, translationProviderConfigured } from "./src/server/translationRouter.ts";
 import { planTranslation, requireLanguage, speechProvider } from "./src/lib/translator-engine/languagePlan.ts";
@@ -105,7 +106,7 @@ function getAI(): GoogleGenAI | null {
 const adminFeatureSwitches = {
   freeCallsForAllUsers: process.env.NANIVIO_FREE_CALLS === 'true',
   audioCallsEnabled: process.env.NANIVIO_AUDIO_CALLS_ENABLED === 'true',
-  videoCallsEnabled: process.env.NANIVIO_VIDEO_CALLS_ENABLED === 'true',
+  videoCallsEnabled: videoCallingEnabled(),
   liveAdsEnabled: process.env.NANIVIO_LIVE_ADS_ENABLED === 'true',
   liveServicesEnabled: process.env.NANIVIO_LIVE_SERVICES_ENABLED === 'true',
   expertsEnabled: process.env.NANIVIO_EXPERTS_ENABLED === 'true',
@@ -789,6 +790,9 @@ app.get("/api/services/geo-match", async (req, res) => {
 });
 
 // Admin Feature Switches
+// Clients must be able to read capabilities without receiving administrator permissions.
+app.get("/api/features", featureSettingsHandler(adminFeatureSwitches));
+
 app.get("/api/admin/features", requireAdmin, (_req, res) => {
   res.json(adminFeatureSwitches);
 });

@@ -38,3 +38,8 @@ externalPort = 80
 [postMerge]
 path = "scripts/post-merge.sh"
 timeoutMs = 300000
+
+[userenv]
+
+[userenv.shared]
+NANIVIO_VIDEO_CALLS_ENABLED = "true"

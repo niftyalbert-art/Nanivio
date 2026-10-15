@@ -1239,11 +1239,12 @@ export const NanivioProvider: React.FC<{ children: React.ReactNode }> = ({ child
     b2bPremiumEnabled:false, fintechEnabled:false, commFintechEnabled:false, maintenanceMode:false, allowPaidAdCollapse:false, nanivioRideEnabled:false, nanivioDriveEnabled:false,
     rideHailingEnabled:false, googleMapsSdkEnabled:false, driverPartnerAppEnabled:false, driverInstantAcceptanceSimEnabled:false, realtimeGpsTrackingEnabled:false, malviAiAssistantEnabled:false,
   });
+  const [featureSettingsStatus, setFeatureSettingsStatus] = useState<'loading' | 'ready' | 'error'>('loading');
   const [adminPricing, setAdminPricing] = useState<AdminPricingEngine>({
     langpretationPerMinuteRateUSD:0, langpretationPerMinuteRateGHS:0, voiceNoteLangpretationRateGHS:0, platformExpertCommissionPercent:0, b2bSeatMonthlyRateUSD:0,
     fintechTransferFeePercent:0, freeTierLangpretationMinutes:0, rideBaseFareGHS:0, ridePerKmRateGHS:0, ridePerMinuteRateGHS:0, rideSurgeMultiplier:0, driverCommissionPercent:0, rideCancellationFeeGHS:0,
   });
-  useEffect(()=>{ if(!isAdmin)return; const token=authClient.getToken(); const h=token?{Authorization:`Bearer ${token}`}:{ }; fetch('/api/admin/features',{headers:h}).then(r=>r.ok?r.json():Promise.reject(0)).then(d=>setAdminFeatures(d)).catch(()=>{}); fetch('/api/admin/pricing',{headers:h}).then(r=>r.ok?r.json():Promise.reject(0)).then(d=>setAdminPricing(d)).catch(()=>{}); },[isAdmin]);
+  useEffect(()=>{ if(!isAdmin)return; const token=authClient.getToken(); const h=token?{Authorization:`Bearer ${token}`}:{ }; fetch('/api/admin/pricing',{headers:h}).then(r=>r.ok?r.json():Promise.reject(0)).then(d=>setAdminPricing(d)).catch(()=>{}); },[isAdmin]);
 
   // Universal Billing & Monetization Engine State
   const [billingSummary, setBillingSummary] = useState<UserBillingSummaryResponse | null>(null);
@@ -1515,17 +1516,39 @@ export const NanivioProvider: React.FC<{ children: React.ReactNode }> = ({ child
     setActiveTab('billing');
   }, []);
 
-  // Fetch Admin state on initial load
+  // Read public capabilities, not the administrator-only management endpoint.
+  // Refresh on focus and periodically so users see changes made by administrators.
   useEffect(() => {
-    fetch('/api/admin/features')
-      .then(res => res.ok ? res.json() : null)
-      .then(data => { if (data) setAdminFeatures(data); })
-      .catch(() => {});
-
-    fetch('/api/admin/pricing')
-      .then(res => res.ok ? res.json() : null)
-      .then(data => { if (data) setAdminPricing(data); })
-      .catch(() => {});
+    const controller = new AbortController();
+    let pending = false;
+    const refreshFeatures = async () => {
+      if (pending) return;
+      pending = true;
+      try {
+        const response = await fetch('/api/features', { signal: controller.signal, cache: 'no-store' });
+        if (!response.ok) throw new Error('Calling settings could not be loaded.');
+        const features = await response.json();
+        if (typeof features.videoCallsEnabled !== 'boolean' || typeof features.audioCallsEnabled !== 'boolean') {
+          throw new Error('Invalid calling settings response.');
+        }
+        if (!controller.signal.aborted) {
+          setAdminFeatures(previous => ({ ...previous, ...features }));
+          setFeatureSettingsStatus('ready');
+        }
+      } catch {
+        if (!controller.signal.aborted) setFeatureSettingsStatus('error');
+      } finally {
+        pending = false;
+      }
+    };
+    void refreshFeatures();
+    const interval = window.setInterval(refreshFeatures, 30_000);
+    window.addEventListener('focus', refreshFeatures);
+    return () => {
+      controller.abort();
+      window.clearInterval(interval);
+      window.removeEventListener('focus', refreshFeatures);
+    };
   }, []);
 
   const setAppLanguage = useCallback((lang: string) => {
@@ -1568,15 +1591,22 @@ export const NanivioProvider: React.FC<{ children: React.ReactNode }> = ({ child
       updated.nanivioRideEnabled = value;
       updated.rideHailingEnabled = value;
     }
-    setAdminFeatures(updated);
     try {
-      await fetch('/api/admin/features/update', {
+      const token = authClient.getToken();
+      const response = await fetch('/api/admin/features/update', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ [key]: value }),
+        headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+        body: JSON.stringify(Object.fromEntries(
+          Object.entries(updated).filter(([feature, enabled]) => adminFeatures[feature as keyof AdminFeatureSwitches] !== enabled),
+        )),
       });
+      if (!response.ok) throw new Error('The server did not save the feature setting.');
+      const result = await response.json();
+      setAdminFeatures(previous => ({ ...previous, ...result.features }));
+      setFeatureSettingsStatus('ready');
     } catch (e) {
       console.error('Failed to sync feature switch:', e);
+      alert('The feature setting could not be saved. Please sign in as an administrator and try again.');
     }
   };
 
@@ -1606,6 +1636,12 @@ export const NanivioProvider: React.FC<{ children: React.ReactNode }> = ({ child
   // CALLING LOGIC & REAL-TIME LANGPRETATION (AGORA RTC POWERED)
   // -------------------------------------------------------------
   const start1on1Call = (contact: Participant, type: 'audio' | 'video', isExpert = false, expert?: ExpertProvider) => {
+    if (featureSettingsStatus !== 'ready') {
+      alert(featureSettingsStatus === 'loading'
+        ? 'Calling settings are still loading. Please try again in a moment.'
+        : 'Calling settings could not be loaded. Please check your connection and try again.');
+      return;
+    }
     // Admin Master Switch enforcement
     if (type === 'audio' && adminFeatures.audioCallsEnabled === false) {
       alert('Audio calling is currently turned OFF by system administration.');
