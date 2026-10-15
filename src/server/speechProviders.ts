@@ -28,16 +28,25 @@ async function boundedBody(response:Response,max=8*1024*1024):Promise<Buffer>{
 }
 export function wavDurationSeconds(bytes:Buffer):number|null {
   if(bytes.length<44||bytes.toString('ascii',0,4)!=='RIFF'||bytes.toString('ascii',8,12)!=='WAVE')return null;
-  let rate=0,data=0;
+  let byteRate=0,blockAlign=0,data=0;
   for(let offset=12;offset+8<=bytes.length;){
     const size=bytes.readUInt32LE(offset+4),end=offset+8+size;
     if(end>bytes.length)return null;
     const type=bytes.toString('ascii',offset,offset+4);
-    if(type==='fmt '&&size>=16)rate=bytes.readUInt32LE(offset+16);
+    if(type==='fmt '&&size>=16){
+      if(byteRate)return null;
+      const format=bytes.readUInt16LE(offset+8),channels=bytes.readUInt16LE(offset+10);
+      const sampleRate=bytes.readUInt32LE(offset+12),bits=bytes.readUInt16LE(offset+22);
+      byteRate=bytes.readUInt32LE(offset+16);
+      blockAlign=bytes.readUInt16LE(offset+20);
+      if(![1,3].includes(format)||(format===1&&![8,16,24,32].includes(bits))||
+        (format===3&&![32,64].includes(bits))||!channels||!sampleRate||!bits||bits%8||
+        blockAlign!==channels*(bits/8)||byteRate!==sampleRate*blockAlign)return null;
+    }
     if(type==='data')data+=size;
     offset=end+(size%2);
   }
-  return rate>0&&data>0?data/rate:null;
+  return byteRate>0&&blockAlign>0&&data>0&&data%blockAlign===0?data/byteRate:null;
 }
 export async function transcribeProviderAudio(audio:Buffer,language:string,contentType='audio/wav'){
   if(!audio.length||audio.length>4*1024*1024)throw new SpeechProviderError(400,'Audio must be nonempty and smaller than 4 MB.');

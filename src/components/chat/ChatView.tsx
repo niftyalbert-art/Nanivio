@@ -192,7 +192,6 @@ export const ChatView: React.FC = () => {
   };
 
   const handleVoiceSend = async (payload: any) => {
-    setIsRecordingVoice(false);
     if (payload && typeof payload === 'object' && payload.duration) {
       await sendVoiceNote(
         payload.duration,
@@ -206,6 +205,7 @@ export const ChatView: React.FC = () => {
     } else {
       await sendVoiceNote(payload || 3, 'Voice note');
     }
+    setIsRecordingVoice(false);
   };
 
   const handleTogglePlayVoice = (msg: ChatMessage) => {

@@ -45,6 +45,7 @@ import { callKhayaEngine, callSunbirdEngine } from "./src/server/translationProv
 import { translateWithProductionProviders, translationProviderConfigured } from "./src/server/translationRouter.ts";
 import { planTranslation, requireLanguage, speechProvider } from "./src/lib/translator-engine/languagePlan.ts";
 import { speechConfigured, SpeechProviderError, transcribeProviderAudio, synthesizeProviderAudio } from "./src/server/speechProviders.ts";
+import { recordTranslatedVoiceNoteUsage } from "./src/server/voiceNoteUsage.ts";
 import { createSetupPreview, rejectSetupRealtime } from "./src/server/setupPreview.ts";
 import { getServerSupabase } from "./src/server/supabaseServer.ts";
 import { otpService } from "./src/server/otpService.ts";
@@ -1210,7 +1211,7 @@ app.post("/api/langpretation/voice-note/process-audio", requireAuthenticatedUser
     const durationSeconds=recognized.durationSeconds;
     if(!durationSeconds)throw new SpeechProviderError(400,'A WAV recording with measurable duration is required.');
     const synthesized=await synthesizeProviderAudio(translated.text,targetLang);
-    const usage=await recordLangpretationUsagePersistent({userId:authenticatedUserId(req),channel:"VOICE_NOTE",minutes:durationSeconds/60,sourceLang,targetLang,provider:`${asrProvider}+${translated.provider}+${synthesized.provider}`,audioSeconds:durationSeconds});
+    const usage=await recordTranslatedVoiceNoteUsage(audio,{userId:authenticatedUserId(req),sourceLang,targetLang,provider:`${asrProvider}+${translated.provider}+${synthesized.provider}`},recordLangpretationUsagePersistent);
     return res.json({success:true,sourceLang,targetLang,transcript,translatedTranscript:translated.text,asrProvider,translationProvider:translated.provider,...synthesized,usage,requiresSynthesis:false});
   } catch(err:any){ return res.status(err instanceof SpeechProviderError?err.status:500).json({success:false,error:err instanceof SpeechProviderError?err.message:"Voice-note pipeline failed"}); }
 });
