@@ -64,6 +64,12 @@ unmeasured pairs as live verified.
 
 ## Remaining production blockers
 
+The user requested saving and pushing the completed repairs while deferring
+the remaining verification because Azure is not currently accessible.
+This is a partial verification handoff, not approval of all 18 × 18 routes
+or production media readiness. Resume the checks below when the required
+provider access and real devices are available.
+
 1. **Azure configuration:** this workspace lacks `AZURE_TRANSLATOR_KEY` and
    Azure Speech key/region configuration. Translator region may also be needed
    for the provisioned resource. Supabase and Agora do not supply these services.
