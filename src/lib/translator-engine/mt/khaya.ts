@@ -1,5 +1,6 @@
 import { IMtProvider } from './interface';
 import { MtResult } from '../types';
+import { authClient } from '../../authClient';
 
 /**
  * Khaya AI / Ghana NLP Provider
@@ -23,7 +24,10 @@ export class KhayaMtProvider implements IMtProvider {
     try {
       const response = await fetch('/api/translate', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          ...(authClient.getToken() ? { Authorization: `Bearer ${authClient.getToken()}` } : {}),
+        },
         body: JSON.stringify({
           text,
           sourceLang,
@@ -34,13 +38,17 @@ export class KhayaMtProvider implements IMtProvider {
 
       if (response.ok) {
         const data = await response.json();
+        if (data.success !== true || data.untranslated ||
+          typeof data.translatedText !== 'string' || !data.translatedText.trim()) {
+          throw new Error(data.error || 'Khaya provider did not return a translation.');
+        }
         return {
           translatedText: data.translatedText || '',
           sourceLang,
           targetLang,
-          provider: 'khaya',
+          provider: data.provider,
+          providerChain: data.providerChain,
           latencyMs: Date.now() - start,
-          confidence: 0.95,
         };
       }
     } catch (e) {

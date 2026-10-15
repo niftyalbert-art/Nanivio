@@ -1,9 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Mic, Square, Trash2, Send, Radio, Sparkles, Volume2 } from 'lucide-react';
 import { useNanivio } from '../../context/NanivioContext';
-import { NanivioTranslatorEngine } from '../../lib/translator-engine/engine';
-import { NanivioTtsAudioGenerator } from '../../lib/translator-engine/audio/ttsAudioGenerator';
 import { PcmUtils } from '../../lib/translator-engine/audio/pcm';
+import { authenticatedFetch } from '../../lib/authenticatedFetch';
 
 export interface VoiceNoteSendPayload {
   duration: number;
@@ -20,7 +19,7 @@ interface VoiceNoteRecorderProps {
   targetLang?: string;
   targetUserName?: string;
   onCancel: () => void;
-  onSend: (payload: VoiceNoteSendPayload) => void;
+  onSend: (payload: VoiceNoteSendPayload) => void | Promise<void>;
 }
 
 export const VoiceNoteRecorder: React.FC<VoiceNoteRecorderProps> = ({
@@ -34,6 +33,7 @@ export const VoiceNoteRecorder: React.FC<VoiceNoteRecorderProps> = ({
   const [waveformData, setWaveformData] = useState<number[]>([15, 25, 40, 20, 60, 35, 80, 45, 30, 70, 50, 20]);
   const [transcript, setTranscript] = useState('');
   const [isProcessing, setIsProcessing] = useState(false);
+  const [processingError,setProcessingError]=useState('');
   const [voiceMode, setVoiceMode] = useState<'normal' | 'langpretation'>(
     globalLangpretationEnabled ? 'langpretation' : 'normal'
   );
@@ -161,10 +161,9 @@ export const VoiceNoteRecorder: React.FC<VoiceNoteRecorderProps> = ({
       recordedBlob = new Blob(audioChunksRef.current, { type });
     }
 
-    // Fallback audio blob if mic produced no chunks
+    // An empty microphone recording is a failure, never a synthetic voice note.
     if (!recordedBlob || recordedBlob.size === 0) {
-      const fallbackSamples = new Float32Array(16000 * Math.max(1, seconds));
-      recordedBlob = PcmUtils.float32ToWavBlob(fallbackSamples, 16000);
+      setIsProcessing(false);setProcessingError('No microphone audio was recorded. Please try again.');return;
     }
 
     const originalAudioBlobUrl = URL.createObjectURL(recordedBlob);
@@ -187,37 +186,37 @@ export const VoiceNoteRecorder: React.FC<VoiceNoteRecorderProps> = ({
 
     // 2. Langpretation Voice Note: Translate & Synthesize Speech
     try {
-      const engine = NanivioTranslatorEngine.getInstance();
-      const mtResult = await engine.translateText(rawTranscript, myLanguage, targetLang);
-      const translatedText = mtResult?.translatedText || rawTranscript;
-
-      // Synthesize audio in recipient's language
-      const synth = await NanivioTtsAudioGenerator.generatePlayableWavBlob(translatedText, targetLang);
+      setProcessingError('');
+      const context=new AudioContext();
+      let recording:AudioBuffer;
+      try{recording=await context.decodeAudioData(await recordedBlob.arrayBuffer());}finally{await context.close();}
+      const offline=new OfflineAudioContext(1,Math.ceil(recording.duration*16000),16000);
+      const source=offline.createBufferSource();source.buffer=recording;source.connect(offline.destination);source.start();
+      const rendered=await offline.startRendering();
+      const wav=PcmUtils.float32ToWavBlob(rendered.getChannelData(0),16000);
+      const response=await authenticatedFetch(`/api/langpretation/voice-note/process-audio?sourceLang=${encodeURIComponent(myLanguage)}&targetLang=${encodeURIComponent(targetLang)}`,{method:'POST',headers:{'Content-Type':'audio/wav'},body:wav});
+      const recognized=await response.json();
+      if(!response.ok||!recognized.success||!recognized.transcript||!recognized.translatedTranscript||!recognized.audioBase64)throw new Error(recognized.error||'Voice-note translation did not complete.');
+      const verifiedTranscript=recognized.transcript,translatedText=recognized.translatedTranscript;
+      const audio=Uint8Array.from(atob(recognized.audioBase64),character=>character.charCodeAt(0));
+      const translatedAudioUrl=URL.createObjectURL(new Blob([audio],{type:recognized.contentType||'audio/wav'}));
 
       setIsProcessing(false);
-      onSend({
+      await onSend({
         duration: durationSec,
-        transcript: rawTranscript,
+        transcript: verifiedTranscript,
         audioBlobUrl: originalAudioBlobUrl,
         isLangpretation: true,
         translatedTranscript: translatedText,
-        translatedAudioUrl: synth.url,
+        translatedAudioUrl,
         sourceLang: myLanguage,
         targetLang,
       });
     } catch (err) {
       console.warn('Langpretation voice note processing warning:', err);
       setIsProcessing(false);
-      onSend({
-        duration: durationSec,
-        transcript: rawTranscript,
-        audioBlobUrl: originalAudioBlobUrl,
-        isLangpretation: true,
-        translatedTranscript: rawTranscript,
-        translatedAudioUrl: originalAudioBlobUrl,
-        sourceLang: myLanguage,
-        targetLang,
-      });
+      URL.revokeObjectURL(originalAudioBlobUrl);
+      setProcessingError(err instanceof Error?err.message:'Voice-note translation failed. Nothing was sent.');
     }
   };
 
@@ -233,6 +232,7 @@ export const VoiceNoteRecorder: React.FC<VoiceNoteRecorderProps> = ({
         </div>
 
         {/* Distinct Mode Selector: Normal vs Langpretation */}
+        {processingError&&<p role="alert" className="text-sm text-red-300">{processingError}</p>}
         <div className="flex items-center gap-1.5 bg-slate-950 p-1 rounded-xl border border-slate-800">
           <button
             type="button"

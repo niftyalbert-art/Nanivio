@@ -41,6 +41,15 @@ function billingHeaders(): Record<string, string> {
   return headers;
 }
 
+async function protectedBillingRequest(url: string, init: RequestInit = {}) {
+  const response = await fetch(url, { ...init, headers: billingHeaders() });
+  const data = await response.json();
+  if (!response.ok || data.success === false) {
+    throw new Error(data.error || 'Billing request was rejected.');
+  }
+  return data;
+}
+
 export interface UserBillingSummaryResponse {
   success: boolean;
   userId: string;
@@ -282,32 +291,26 @@ export const billingClient = {
 
   // 1J. Admin Toggle Payment Gateway
   async toggleGateway(gatewayId: string, isActive: boolean): Promise<any> {
-    const res = await fetch('/api/admin/billing/gateways/toggle', {
+    return protectedBillingRequest('/api/admin/billing/gateways/toggle', {
       method: 'POST',
-      headers: billingHeaders(),
       body: JSON.stringify({ gatewayId, isActive }),
     });
-    return res.json();
   },
 
   // 1K. Admin Toggle MoMo Country
   async toggleMomoCountry(countryId: string, isActive: boolean): Promise<any> {
-    const res = await fetch('/api/admin/billing/momo/countries/toggle', {
+    return protectedBillingRequest('/api/admin/billing/momo/countries/toggle', {
       method: 'POST',
-      headers: billingHeaders(),
       body: JSON.stringify({ countryId, isActive }),
     });
-    return res.json();
   },
 
   // 1L. Admin Save MoMo Receiving Account
   async saveMomoReceivingAccount(accountData: any): Promise<any> {
-    const res = await fetch('/api/admin/billing/momo/accounts', {
+    return protectedBillingRequest('/api/admin/billing/momo/accounts', {
       method: 'POST',
-      headers: billingHeaders(),
       body: JSON.stringify(accountData),
     });
-    return res.json();
   },
 
   // 2. Pre-Action Billing Preview
@@ -380,8 +383,7 @@ export const billingClient = {
 
   // 7. Get Invoices
   async getInvoices(userId?: string): Promise<BillingInvoice[]> {
-    const res = await fetch(`/api/billing/invoices`, { headers: billingHeaders() });
-    const data = await res.json();
+    const data = await protectedBillingRequest('/api/billing/invoices');
     return data.invoices || [];
   },
 
@@ -405,8 +407,7 @@ export const billingClient = {
 
   // 9. Promotional Credits & Voucher Redemption
   async getCredits(userId?: string): Promise<BillingPromotionalCredit[]> {
-    const res = await fetch(`/api/billing/credits?userId=${encodeURIComponent(userId)}`);
-    const data = await res.json();
+    const data = await protectedBillingRequest('/api/billing/credits');
     return data.credits || [];
   },
 
@@ -438,21 +439,20 @@ export const billingClient = {
   },
 
   async getDisputes(userId?: string): Promise<BillingDispute[]> {
-    const res = await fetch(`/api/billing/disputes`, { headers: billingHeaders() });
-    const data = await res.json();
+    const data = await protectedBillingRequest('/api/billing/disputes');
     return data.disputes || [];
   },
 
   // 11. Provider & Business
-  async getProviderEarnings(providerId: string = 'exp_amina'): Promise<ProviderEarningsRecord> {
-    const res = await fetch(`/api/billing/provider/earnings?providerId=${encodeURIComponent(providerId)}`);
-    const data = await res.json();
+  async getProviderEarnings(providerId?: string): Promise<ProviderEarningsRecord> {
+    const query = providerId ? `?providerId=${encodeURIComponent(providerId)}` : '';
+    const data = await protectedBillingRequest(`/api/billing/provider/earnings${query}`);
     return data.earnings;
   },
 
-  async getBusinessAccount(businessId: string = 'biz_agro_trade'): Promise<BusinessBillingAccount> {
-    const res = await fetch(`/api/billing/business?businessId=${encodeURIComponent(businessId)}`);
-    const data = await res.json();
+  async getBusinessAccount(businessId?: string): Promise<BusinessBillingAccount> {
+    const query = businessId ? `?businessId=${encodeURIComponent(businessId)}` : '';
+    const data = await protectedBillingRequest(`/api/billing/business${query}`);
     return data.business;
   },
 
@@ -467,9 +467,7 @@ export const billingClient = {
     disputesCount: number;
     activeSessionsCount: number;
   }> {
-    const res = await fetch('/api/admin/billing/overview');
-    const data = await res.json();
-    return data;
+    return protectedBillingRequest('/api/admin/billing/overview');
   },
 
   async updatePricingRule(params: {
@@ -478,29 +476,24 @@ export const billingClient = {
     minimumCharge?: number;
     platformCommissionPercent?: number;
   }): Promise<any> {
-    const res = await fetch('/api/admin/billing/pricing/update-rule', {
+    return protectedBillingRequest('/api/admin/billing/pricing/update-rule', {
       method: 'POST',
-      headers: billingHeaders(),
       body: JSON.stringify(params),
     });
-    return res.json();
   },
 
   async updateEmergencyControls(updates: Partial<EmergencyBillingControls>, reason?: string): Promise<any> {
-    const res = await fetch('/api/admin/billing/emergency/update', {
+    return protectedBillingRequest('/api/admin/billing/emergency/update', {
       method: 'POST',
-      headers: billingHeaders(),
       body: JSON.stringify({ updates, reason }),
     });
-    return res.json();
   },
 
   async getAdminLedger(entityType?: string, limit: number = 50): Promise<BillingLedgerEntry[]> {
     const url = new URL('/api/admin/billing/ledger', window.location.origin);
     if (entityType) url.searchParams.append('entityType', entityType);
     url.searchParams.append('limit', limit.toString());
-    const res = await fetch(url.toString());
-    const data = await res.json();
+    const data = await protectedBillingRequest(url.toString());
     return data.ledger || [];
   },
 
@@ -511,12 +504,10 @@ export const billingClient = {
     refundAmount?: number;
     adminRole?: string;
   }): Promise<any> {
-    const res = await fetch('/api/admin/billing/disputes/resolve', {
+    return protectedBillingRequest('/api/admin/billing/disputes/resolve', {
       method: 'POST',
-      headers: billingHeaders(),
       body: JSON.stringify(params),
     });
-    return res.json();
   },
 
   async processRefund(params: {
@@ -526,16 +517,10 @@ export const billingClient = {
     adminUser?: string;
     adminRole?: string;
   }): Promise<any> {
-    const res = await fetch('/api/admin/billing/refunds/process', {
+    return protectedBillingRequest('/api/admin/billing/refunds/process', {
       method: 'POST',
-      headers: billingHeaders(),
-      body: JSON.stringify({
-        adminUser: 'super_admin@nanivio.tech',
-        adminRole: 'SUPER_ADMIN',
-        ...params,
-      }),
+      body: JSON.stringify(params),
     });
-    return res.json();
   },
 
   async createAdjustment(params: {
@@ -547,33 +532,24 @@ export const billingClient = {
     adminUser?: string;
     adminRole?: string;
   }): Promise<any> {
-    const res = await fetch('/api/admin/billing/adjustments/create', {
+    return protectedBillingRequest('/api/admin/billing/adjustments/create', {
       method: 'POST',
-      headers: billingHeaders(),
-      body: JSON.stringify({
-        adminUser: 'super_admin@nanivio.tech',
-        adminRole: 'SUPER_ADMIN',
-        ...params,
-      }),
+      body: JSON.stringify(params),
     });
-    return res.json();
   },
 
   async getReconciliationReport(): Promise<any> {
-    const res = await fetch('/api/admin/billing/reconciliation');
-    const data = await res.json();
+    const data = await protectedBillingRequest('/api/admin/billing/reconciliation');
     return data.report;
   },
 
   async getAuditLogs(): Promise<BillingAuditRecord[]> {
-    const res = await fetch('/api/admin/billing/audit');
-    const data = await res.json();
+    const data = await protectedBillingRequest('/api/admin/billing/audit');
     return data.logs || [];
   },
 
   async inspectUser(userId: string): Promise<any> {
-    const res = await fetch(`/api/admin/billing/user/${encodeURIComponent(userId)}`);
-    return res.json();
+    return protectedBillingRequest(`/api/admin/billing/user/${encodeURIComponent(userId)}`);
   },
 
   // ==========================================
@@ -674,8 +650,7 @@ export const billingClient = {
   // Live Langpretation Meter & Usage Deduction
   // ==========================================
   async getLangpretationMeter(userId?: string): Promise<LangpretationMeterData> {
-    const res = await fetch(`/api/billing/langpretation/meter?userId=${encodeURIComponent(userId)}`);
-    const data = await res.json();
+    const data = await protectedBillingRequest('/api/billing/langpretation/meter');
     return data.meter;
   },
 

@@ -3,3 +3,14 @@
 - [Branch safety](branch-safety.md) — this project's approved source and push target is malvi-production-upgrade, never main.
 - [Billing payment sources](billing-payment-sources.md) — wallet debits and verified external-payment fulfillment must use separate commands.
 - [GitHub authentication boundary](github-authentication.md) — a working GitHub App connection does not guarantee valid shell Git credentials.
+- [Unconfigured development preview](development-setup.md) — show setup instructions without enabling application APIs; production must still fail closed.
+- [Read-only audit runtimes](audit-runtimes.md) — use an existing runtime; invoking an absent runtime can automatically change project configuration.
+- [Private-chat cache ownership](private-chat-cache-ownership.md) — do not assign unowned legacy browser history to the account that next signs in.
+- [GetStream webhook bytes](stream-webhook-bytes.md) — signatures cover exact uncompressed JSON bytes, including for gzip transport.
+- [GitHub write access](github-write-access.md) — healthy authentication does not establish repository write permission or working native Git access.
+- [Large sandbox arguments](sandbox-arguments.md) — split unusually long strings before the isolated execution boundary; a parse failure is not an authorization failure.
+- [Portable package lockfiles](portable-package-locks.md) — keep external builds independent of workspace-private download hosts without disabling package screening.
+- [Preview proxy checks](preview-proxy-checks.md) — workspace proxy errors can coexist with a healthy app; distinguish local server checks from public reachability.
+- [Provider readiness evidence](provider-readiness.md) — configured credentials and HTTP 200 do not prove that the intended provider service actually ran.
+- [Development watcher noise](development-watcher-noise.md) — workspace log writes can reload authenticated pages and interrupt live-call verification.
+- [Post-merge runtime freshness](post-merge-runtime.md) — successful setup reconciliation does not prove the running process picked up reinstalled dependencies.

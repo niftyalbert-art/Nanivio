@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, useRef, useCallback } from 'react';
+import React, { createContext, useContext, useState, useEffect, useLayoutEffect, useRef, useCallback } from 'react';
 import confetti from 'canvas-confetti';
 import {
   SupportedLanguageCode,
@@ -47,6 +47,8 @@ import {
 import { lookupNanivioUser, normalizeNanivioNumber } from '../utils/userLookup';
 import { agoraClient, AgoraTelemetryStats } from '../lib/agoraClient';
 import { streamClient, StreamClientState } from '../lib/streamClient';
+import { linkedPrivateConversation, privateConversationChannel, publishPrivateMessage } from '../lib/privateChat';
+import { ownedChatSnapshot, readPrivateChatCache, writePrivateChatCache } from '../lib/privateChatStorage';
 import { realtimeClient, IncomingCallEvent, RealtimeUser } from '../lib/realtimeClient';
 import { buildMalviContextMemory } from '../lib/malviMemory';
 import { billingClient, UserBillingSummaryResponse } from '../lib/billingClient';
@@ -735,70 +737,41 @@ export const NanivioProvider: React.FC<{ children: React.ReactNode }> = ({ child
   const [isLanguageModalOpen, setIsLanguageModalOpen] = useState<boolean>(false);
 
   // Chat
-  const [conversations, setConversations] = useState<Conversation[]>(() => {
-    try {
-      const saved = localStorage.getItem('nanivio_chat_conversations');
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed)) {
-          return parsed.filter(
-            (c: any) =>
-              c.id &&
-              !c.id.startsWith('conv_mr_nifty') &&
-              !c.id.startsWith('conv_dr_kwame') &&
-              !c.id.startsWith('conv_fatima') &&
-              !c.id.startsWith('conv_nanivio_system') &&
-              !['conv_1', 'conv_2', 'conv_3', 'conv_4'].includes(c.id)
-          );
-        }
-      }
-    } catch {
-      // fallback
-    }
-    return [];
-  });
+  const [chatOwnerId, setChatOwnerId] = useState(currentUser.id);
+  const [conversations, setConversations] = useState<Conversation[]>(() =>
+    readPrivateChatCache(currentUser.id).conversations);
   const [activeConversationId, setActiveConversationId] = useState<string>('');
-  const [messages, setMessages] = useState<Record<string, ChatMessage[]>>(() => {
-    try {
-      const saved = localStorage.getItem('nanivio_chat_messages');
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        if (typeof parsed === 'object' && parsed !== null) {
-          delete parsed['conv_mr_nifty'];
-          delete parsed['conv_dr_kwame'];
-          delete parsed['conv_fatima'];
-          delete parsed['conv_nanivio_system'];
-          delete parsed['conv_1'];
-          delete parsed['conv_2'];
-          delete parsed['conv_3'];
-          delete parsed['conv_4'];
-          return parsed;
-        }
-      }
-    } catch {
-      // fallback
-    }
-    return {};
-  });
+  const [messages, setMessages] = useState<Record<string, ChatMessage[]>>(() =>
+    readPrivateChatCache(currentUser.id).messages);
   const [streamState, setStreamState] = useState<StreamClientState>(streamClient.getState());
+  const accountChats = chatOwnerId === currentUser.id
+    ? ownedChatSnapshot(currentUser.id, { conversations, messages }) : { conversations: [], messages: {} };
+
+  useLayoutEffect(() => {
+    if (chatOwnerId === currentUser.id) return;
+    const cache = readPrivateChatCache(currentUser.id);
+    setConversations(cache.conversations);
+    setMessages(cache.messages);
+    setActiveConversationId('');
+    setReplyingToMessage(null);
+    setChatNotificationToast(null);
+    setChatOwnerId(currentUser.id);
+  }, [currentUser.id, chatOwnerId]);
 
   useEffect(() => {
-    try {
-      localStorage.setItem('nanivio_chat_conversations', JSON.stringify(conversations));
-    } catch {}
-  }, [conversations]);
-
-  useEffect(() => {
-    try {
-      localStorage.setItem('nanivio_chat_messages', JSON.stringify(messages));
-    } catch {}
-  }, [messages]);
+    if (chatOwnerId !== currentUser.id) return;
+    writePrivateChatCache(chatOwnerId, { conversations, messages });
+  }, [currentUser.id, chatOwnerId, conversations, messages]);
 
   // Active tab & Active conversation refs for realtime filtering
   const activeTabRef = useRef(activeTab);
   activeTabRef.current = activeTab;
   const activeConversationIdRef = useRef(activeConversationId);
   activeConversationIdRef.current = activeConversationId;
+  const conversationsRef = useRef(conversations);
+  conversationsRef.current = conversations;
+  const currentAccountIdRef = useRef(currentUser.id);
+  currentAccountIdRef.current = currentUser.id;
 
   // Clear unread count when user is viewing the conversation
   useEffect(() => {
@@ -1117,9 +1090,9 @@ export const NanivioProvider: React.FC<{ children: React.ReactNode }> = ({ child
       agoraClient.leaveChannel();
       setActiveCall(null);
       setIncomingCall((currIncoming) => {
-        if (currIncoming) {
+        if (currIncoming && currIncoming.callId === data?.callId) {
           const logItem: CallLogRecord = {
-            id: `call_log_${Date.now()}`,
+            id: `call_log_${currIncoming.callId}`,
             participantId: currIncoming.caller.id,
             participantNvId: currIncoming.caller.nvId,
             participantName: currIncoming.caller.name,
@@ -1130,9 +1103,13 @@ export const NanivioProvider: React.FC<{ children: React.ReactNode }> = ({ child
             durationSeconds: 0,
             hasLangpretation: globalLangpretationEnabled,
           };
-          setCallLogs((prev) => [logItem, ...prev.slice(0, 49)]);
+          // React can replay this updater in development. A call's stable ID
+          // prevents the same missed invitation being recorded twice.
+          setCallLogs((prev) => prev.some(log => log.id === logItem.id)
+            ? prev
+            : [logItem, ...prev.slice(0, 49)]);
         }
-        return null;
+        return currIncoming?.callId === data?.callId ? null : currIncoming;
       });
       if (data?.endedBy === 'SYSTEM_BILLING_ENGINE' && adminFeatures.callMinutesWarningApproved) {
         setInCallNotice({
@@ -1162,8 +1139,11 @@ export const NanivioProvider: React.FC<{ children: React.ReactNode }> = ({ child
     });
 
     const unsubChat = realtimeClient.on('chat:message', (data) => {
-      if (!data || !data.conversationId || !data.message) return;
-      const { conversationId, message } = data;
+      if (!data?.channelId || data.conversationId !== data.channelId || !data.message ||
+        !Array.isArray(data.members) || !data.members.some((member: any) => member.userId === currentUser.id)) return;
+      const { message, channelId } = data;
+      const linkedConversation = conversationsRef.current.find(c => c.streamChannelId === channelId || c.id === channelId);
+      const conversationId = linkedConversation?.id || channelId;
       setMessages((prev) => {
         const existingList = prev[conversationId] || [];
         if (existingList.some((m) => m.id === message.id)) {
@@ -1182,24 +1162,17 @@ export const NanivioProvider: React.FC<{ children: React.ReactNode }> = ({ child
         if (!found) {
           const newConv: Conversation = {
             id: conversationId,
-            title: message.senderName || 'Nanivio Contact',
+            streamChannelId: channelId,
+            title: data.title || message.senderName || 'Private conversation',
             avatar: message.senderAvatar || '',
             lastMessage: message.text || (message.isVoiceNote ? '🎤 Voice note' : 'New message'),
             lastMessageTime: message.timestamp || Date.now(),
             unreadCount: isCurrentlyViewingThisChat ? 0 : 1,
-            isGroup: false,
-            participants: [
-              {
-                id: message.senderId,
-                name: message.senderName || 'Nanivio Contact',
-                avatar: message.senderAvatar || '',
-                nanivioNumber: '0486482199',
-                myLanguage: message.senderLang || 'en',
-                isOnline: true,
-                role: 'user',
-              },
-              currentUser,
-            ],
+            isGroup: Boolean(data.isGroup),
+            participants: data.members.map((member: any) => ({
+              id: member.userId, name: member.name, avatar: member.avatar || '', nvId: member.nvId || '',
+              myLanguage: member.language || 'en', role: 'user',
+            })),
           };
           return [newConv, ...prev];
         }
@@ -1249,7 +1222,9 @@ export const NanivioProvider: React.FC<{ children: React.ReactNode }> = ({ child
   useEffect(() => {
     const unsubAgora = agoraClient.subscribeTelemetry(setAgoraStats);
     const unsubStream = streamClient.subscribe(setStreamState);
-    streamClient.connectUser(currentUser.id, currentUser.name);
+    streamClient.connectUser(currentUser.id, currentUser.name).catch(() => {
+      console.warn('Authenticated Stream connection is unavailable.');
+    });
 
     return () => {
       unsubAgora();
@@ -2205,6 +2180,11 @@ export const NanivioProvider: React.FC<{ children: React.ReactNode }> = ({ child
   const processLiveSpeechUtterance = async (speakerId: string, text: string) => {
     if (!activeCall) return;
     const speaker = activeCall.participants.find(p => p.id === speakerId) || activeCall.host;
+    if(speaker.id!==speakerId)throw new Error('Speaker is not a call participant.');
+    const recipient = activeCall.participants.find(p => p.id !== speakerId)
+      || (activeCall.host.id !== speakerId ? activeCall.host : null);
+    if (!recipient) throw new Error('The remote call participant is unavailable.');
+    const receiverLanguage = recipient.myLanguage || 'en';
     
     // Set speaking indicator
     setActiveCall(prev => {
@@ -2222,9 +2202,9 @@ export const NanivioProvider: React.FC<{ children: React.ReactNode }> = ({ child
       const mtResult = await engine.translateText(
         text,
         speaker.myLanguage || 'en',
-        myLanguage || 'en'
+        receiverLanguage
       );
-      const translatedText = mtResult.translatedText || text;
+      const translatedText = mtResult.translatedText;
 
       // Update call receiver transcript display (ONLY in receiver's language!)
       setActiveCall(prev => {
@@ -2251,13 +2231,15 @@ export const NanivioProvider: React.FC<{ children: React.ReactNode }> = ({ child
           const { NanivioTtsAudioGenerator } = await import('../lib/translator-engine/audio/ttsAudioGenerator');
           const audioBuf = await NanivioTtsAudioGenerator.generateSpokenAudioBuffer(
             translatedText,
-            myLanguage || 'en'
+            receiverLanguage
           );
           if (audioBuf) {
-            await agoraClient.injectTranslatedAudioToRemote(audioBuf);
+            if (!await agoraClient.injectTranslatedAudioToRemote(audioBuf)) throw new Error('Translated audio was not published.');
           }
         } catch (audioErr) {
           console.warn('Audio track injection notice:', audioErr);
+          setActiveCall(prev => prev ? { ...prev, langpretationState: 'Error' } : null);
+          throw audioErr;
         }
       }
 
@@ -2269,6 +2251,7 @@ export const NanivioProvider: React.FC<{ children: React.ReactNode }> = ({ child
     } catch (e) {
       console.error('Translation processing error:', e);
       setActiveCall(prev => prev ? { ...prev, langpretationState: 'Error' } : null);
+      throw e;
     }
   };
 
@@ -2382,6 +2365,34 @@ export const NanivioProvider: React.FC<{ children: React.ReactNode }> = ({ child
   // -------------------------------------------------------------
   // CHAT & VOICE NOTE MESSAGING
   // -------------------------------------------------------------
+  const sendPrivateConversationMessage = useCallback(async (conversation: Conversation, message: ChatMessage) => {
+    try {
+      const channel = await privateConversationChannel(conversation, message.senderId);
+      if (currentAccountIdRef.current !== message.senderId) return false;
+      const link = (current: Conversation) => linkedPrivateConversation(current, channel);
+      conversationsRef.current = conversationsRef.current.some(c => c.id === conversation.id)
+        ? conversationsRef.current.map(c => c.id === conversation.id ? link(c) : c)
+        : [link(conversation), ...conversationsRef.current];
+      setConversations(prev => prev.some(c => c.id === conversation.id)
+        ? prev.map(c => c.id === conversation.id ? link(c) : c) : [link(conversation), ...prev]);
+      const savedId = await publishPrivateMessage(conversation, channel.id, message);
+      if (currentAccountIdRef.current !== message.senderId) return false;
+      setMessages(prev => ({
+        ...prev, [conversation.id]: (prev[conversation.id] || []).map(m =>
+          m.id === message.id ? { ...m, id: savedId, status: 'sent' } : m),
+      }));
+      playMessageSentTone();
+      return true;
+    } catch {
+      if (currentAccountIdRef.current !== message.senderId) return false;
+      setMessages(prev => ({
+        ...prev, [conversation.id]: (prev[conversation.id] || []).map(m =>
+          m.id === message.id ? { ...m, status: 'failed' } : m),
+      }));
+      return false;
+    }
+  }, []);
+
   const sendMessage = async (text: string) => {
     if (!text.trim()) return;
 
@@ -2447,7 +2458,7 @@ export const NanivioProvider: React.FC<{ children: React.ReactNode }> = ({ child
       text,
       translatedText,
       timestamp: Date.now(),
-      status: 'sent',
+      status: 'sending',
       replyTo: replyingToMessage ? {
         id: replyingToMessage.id,
         senderName: replyingToMessage.senderName,
@@ -2469,53 +2480,7 @@ export const NanivioProvider: React.FC<{ children: React.ReactNode }> = ({ child
       lastMessageTime: Date.now(),
     } : c));
 
-    // Broadcast message to all active WebSocket clients / tabs in real-time
-    realtimeClient.sendChatMessage(targetConvId, newMsg);
-    playMessageSentTone();
-
-    // Mark as delivered
-    setTimeout(() => {
-      setMessages(prev => ({
-        ...prev,
-        [targetConvId]: (prev[targetConvId] || []).map(m => m.id === newMsg.id ? { ...m, status: 'delivered' } : m),
-      }));
-    }, 300);
-
-    // If recipient is a verified support/expert line, provide instant responsive acknowledgment
-    if (otherParticipant && (otherParticipant.role === 'expert' || otherParticipant.id === 'usr_nanivio_service')) {
-      setTimeout(async () => {
-        const replyText = `Message received on secure Nanivio line. Connecting for consultation...`;
-        let replyTranslated: string | undefined;
-        if (globalLangpretationEnabled && myLanguage !== 'en') {
-          try {
-            const repTrans = await NanivioTranslatorEngine.getInstance().translateText(replyText, 'en', myLanguage);
-            if (repTrans && repTrans.translatedText) {
-              replyTranslated = repTrans.translatedText;
-            }
-          } catch {}
-        }
-        const replyMsg: ChatMessage = {
-          id: `msg_rep_${Date.now()}`,
-          senderId: otherParticipant.id,
-          senderName: otherParticipant.name,
-          senderAvatar: otherParticipant.avatar,
-          senderLang: otherParticipant.myLanguage || 'en',
-          text: replyTranslated || replyText,
-          timestamp: Date.now(),
-          status: 'delivered',
-        };
-        setMessages(prev => ({
-          ...prev,
-          [targetConvId]: [...(prev[targetConvId] || []), replyMsg],
-        }));
-        setConversations(prev => prev.map(c => c.id === targetConvId ? {
-          ...c,
-          lastMessage: replyTranslated || replyText,
-          lastMessageTime: Date.now(),
-        } : c));
-        playChatMessageTone();
-      }, 1200);
-    }
+    await sendPrivateConversationMessage(activeConv, newMsg);
   };
 
   const sendMediaMessage = async (media: {
@@ -2541,7 +2506,7 @@ export const NanivioProvider: React.FC<{ children: React.ReactNode }> = ({ child
       mediaFileName: media.fileName,
       mediaFileSize: media.fileSize,
       timestamp: Date.now(),
-      status: 'delivered',
+      status: 'sending',
       replyTo: replyingToMessage ? {
         id: replyingToMessage.id,
         senderName: replyingToMessage.senderName,
@@ -2562,8 +2527,7 @@ export const NanivioProvider: React.FC<{ children: React.ReactNode }> = ({ child
       lastMessageTime: Date.now(),
     } : c));
 
-    realtimeClient.sendChatMessage(activeConversationId, newMsg);
-    playMessageSentTone();
+    await sendPrivateConversationMessage(activeConv, newMsg);
   };
 
   const deleteMessage = useCallback((conversationId: string, messageId: string) => {
@@ -2613,7 +2577,7 @@ export const NanivioProvider: React.FC<{ children: React.ReactNode }> = ({ child
         senderAvatar: currentUser.avatar,
         senderLang: myLanguage,
         timestamp: Date.now(),
-        status: 'sent',
+        status: 'sending',
       };
 
       setMessages(prev => ({
@@ -2627,9 +2591,10 @@ export const NanivioProvider: React.FC<{ children: React.ReactNode }> = ({ child
         lastMessageTime: Date.now(),
       } : c));
 
-      realtimeClient.sendChatMessage(convId, fwdMsg);
+      const conversation = conversations.find(c => c.id === convId);
+      if (conversation) await sendPrivateConversationMessage(conversation, fwdMsg);
     }
-  }, [currentUser, myLanguage]);
+  }, [currentUser, myLanguage, conversations, sendPrivateConversationMessage]);
 
   const pinConversation = useCallback((convId: string) => {
     setConversations(prev => prev.map(c => c.id === convId ? { ...c, isPinned: !c.isPinned } : c));
@@ -2682,11 +2647,18 @@ export const NanivioProvider: React.FC<{ children: React.ReactNode }> = ({ child
   }, [contacts, currentUser]);
 
   const updateGroup = useCallback((convId: string, updates: { title?: string; description?: string }) => {
-    setConversations(prev => prev.map(c => c.id === convId ? {
-      ...c,
+    const conversation = conversationsRef.current.find(c => c.id === convId);
+    if (!conversation) return;
+    const updated = {
+      ...conversation,
       ...(updates.title ? { title: updates.title } : {}),
       ...(updates.description !== undefined ? { groupDescription: updates.description } : {}),
-    } : c));
+    };
+    const actorId = currentAccountIdRef.current;
+    privateConversationChannel(updated, actorId).then(channel => {
+      if (currentAccountIdRef.current !== actorId) return;
+      setConversations(prev => prev.map(c => c.id === convId ? linkedPrivateConversation(updated, channel) : c));
+    }).catch(() => window.alert('Group changes were not saved. Check your connection and channel permissions.'));
   }, []);
 
   const addMembersToGroup = useCallback((convId: string, participantIds: string[]) => {
@@ -2702,38 +2674,65 @@ export const NanivioProvider: React.FC<{ children: React.ReactNode }> = ({ child
         role: 'user' as const,
       }));
 
-    setConversations(prev => prev.map(c => {
-      if (c.id !== convId) return c;
-      const existingIds = c.participants.map(p => p.id);
-      const toAdd = newMembers.filter(m => !existingIds.includes(m.id));
-      return {
-        ...c,
-        participants: [...c.participants, ...toAdd],
-      };
-    }));
+    const conversation = conversationsRef.current.find(c => c.id === convId);
+    if (!conversation) return;
+    const existingIds = conversation.participants.map(p => p.id);
+    const updated = { ...conversation, participants: [...conversation.participants, ...newMembers.filter(m => !existingIds.includes(m.id))] };
+    const actorId = currentAccountIdRef.current;
+    privateConversationChannel(updated, actorId).then(channel => {
+      if (currentAccountIdRef.current !== actorId) return;
+      setConversations(prev => prev.map(c => c.id === convId ? linkedPrivateConversation(updated, channel) : c));
+    }).catch(() => window.alert('Participants were not added. Only channel administrators can add registered accounts.'));
   }, [contacts]);
 
   const removeMemberFromGroup = useCallback((convId: string, participantId: string) => {
-    setConversations(prev => prev.map(c => c.id === convId ? {
-      ...c,
-      participants: c.participants.filter(p => p.id !== participantId),
-      groupAdmins: (c.groupAdmins || []).filter(id => id !== participantId),
-    } : c));
+    const conversation = conversationsRef.current.find(c => c.id === convId);
+    if (!conversation) return;
+    const actorId = currentAccountIdRef.current;
+    const remove = async () => {
+      const channel = await privateConversationChannel(conversation, actorId);
+      const selected = conversation.participants.find(p => p.id === participantId);
+      const target = channel.members.find(m => m.userId === participantId || (selected?.nvId && m.nvId === selected.nvId));
+      if (!target) throw new Error('Participant could not be verified.');
+      await streamClient.removeChannelMember(channel.id, target.userId);
+      if (currentAccountIdRef.current !== actorId) return;
+      if (target.userId === actorId) {
+        setConversations(prev => prev.filter(c => c.id !== convId));
+        if (activeConversationIdRef.current === convId) setActiveConversationId('');
+      } else {
+        const linked = linkedPrivateConversation(conversation, channel);
+        setConversations(prev => prev.map(c => c.id === convId ? {
+          ...linked, participants: linked.participants.filter(p => p.id !== target.userId),
+          groupAdmins: (linked.groupAdmins || []).filter(id => id !== target.userId),
+        } : c));
+      }
+    };
+    remove().catch(() => window.alert('Participant removal was not confirmed. Your local group has not been changed.'));
+  }, []);
+
+  const changeGroupModerator = useCallback((convId: string, participantId: string, action: 'promote' | 'demote') => {
+    const conversation = conversationsRef.current.find(c => c.id === convId);
+    if (!conversation) return;
+    const actorId = currentAccountIdRef.current;
+    const change = async () => {
+      const channel = await privateConversationChannel(conversation, actorId);
+      const selected = conversation.participants.find(p => p.id === participantId);
+      const target = channel.members.find(m => m.userId === participantId || (selected?.nvId && m.nvId === selected.nvId));
+      if (!target) throw new Error('Participant could not be verified.');
+      const updated = await streamClient.moderateChannelMember(channel.id, target.userId, action);
+      if (currentAccountIdRef.current !== actorId) return;
+      setConversations(prev => prev.map(c => c.id === convId ? linkedPrivateConversation(c, updated) : c));
+    };
+    change().catch(() => window.alert('Moderator changes were not confirmed. Only the channel creator can change moderator roles.'));
   }, []);
 
   const promoteGroupAdmin = useCallback((convId: string, participantId: string) => {
-    setConversations(prev => prev.map(c => c.id === convId ? {
-      ...c,
-      groupAdmins: Array.from(new Set([...(c.groupAdmins || []), participantId])),
-    } : c));
-  }, []);
+    changeGroupModerator(convId, participantId, 'promote');
+  }, [changeGroupModerator]);
 
   const dismissGroupAdmin = useCallback((convId: string, participantId: string) => {
-    setConversations(prev => prev.map(c => c.id === convId ? {
-      ...c,
-      groupAdmins: (c.groupAdmins || []).filter(id => id !== participantId),
-    } : c));
-  }, []);
+    changeGroupModerator(convId, participantId, 'demote');
+  }, [changeGroupModerator]);
 
   const sendVoiceNote = async (
     duration: number,
@@ -2756,25 +2755,12 @@ export const NanivioProvider: React.FC<{ children: React.ReactNode }> = ({ child
     let voiceNoteProvider = 'direct-passthrough';
 
     if (shouldLangpretate) {
-      try {
-        if (!translatedTranscriptParam) {
-          const engine = NanivioTranslatorEngine.getInstance();
-          const mtResult = await engine.translateText(transcript, myLanguage, resolvedTargetLang);
-          if (mtResult && mtResult.translatedText) {
-            finalTranslatedTranscript = mtResult.translatedText;
-            voiceNoteProvider = mtResult.provider;
-          }
-        }
-        if (!finalTranslatedAudioUrl && finalTranslatedTranscript) {
-          const synth = await NanivioTtsAudioGenerator.generatePlayableWavBlob(finalTranslatedTranscript, resolvedTargetLang);
-          finalTranslatedAudioUrl = synth.url;
-        }
-
-        const minsUsed = Number((duration / 60).toFixed(2)) || 0.1;
-        recordLangpretationUsage('VOICE_NOTE', minsUsed, myLanguage, resolvedTargetLang).catch(() => {});
-      } catch (err) {
-        console.warn('Voice note translation failed:', err);
+      if (!translatedTranscriptParam?.trim() || !translatedAudioUrl) {
+        throw new Error('The server voice-note pipeline must complete before sending a translated recording.');
       }
+      voiceNoteProvider = 'server-voice-note-pipeline';
+      // Processing already persisted usage. Refresh the display, never debit again.
+      refreshBilling().catch(() => console.warn('Unable to refresh the voice-note usage display.'));
     }
 
     const voiceNoteData: VoiceNoteData = {
@@ -2803,7 +2789,7 @@ export const NanivioProvider: React.FC<{ children: React.ReactNode }> = ({ child
       timestamp: Date.now(),
       isVoiceNote: true,
       voiceNote: voiceNoteData,
-      status: 'delivered',
+      status: 'sending',
     };
 
     setMessages(prev => ({
@@ -2819,8 +2805,7 @@ export const NanivioProvider: React.FC<{ children: React.ReactNode }> = ({ child
       lastMessageTime: Date.now(),
     } : c));
 
-    // Broadcast voice note message in real-time
-    realtimeClient.sendChatMessage(activeConversationId, newMsg);
+    await sendPrivateConversationMessage(activeConv, newMsg);
   };
 
   // Start direct chat with a participant
@@ -3255,9 +3240,9 @@ export const NanivioProvider: React.FC<{ children: React.ReactNode }> = ({ child
       wallets,
       transactions,
       currentPlan,
-      conversations,
+      conversations: accountChats.conversations,
       activeConversationId,
-      messages,
+      messages: accountChats.messages,
       activeCall,
       experts,
       currentUser,
@@ -3355,10 +3340,10 @@ export const NanivioProvider: React.FC<{ children: React.ReactNode }> = ({ child
         processLiveSpeechUtterance,
 
         streamState,
-        conversations,
+        conversations: accountChats.conversations,
         activeConversationId,
         setActiveConversationId,
-        messages,
+        messages: accountChats.messages,
         chatNotificationToast,
         dismissChatNotificationToast,
         sendMessage,

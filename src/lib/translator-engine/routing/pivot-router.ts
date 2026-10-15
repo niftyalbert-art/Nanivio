@@ -19,15 +19,16 @@ export class PivotRouter {
 
     // Second hop: pivot -> target (e.g. English -> Arabic via Azure Translator)
     const step2 = await secondHopProvider.translate(pivotText, pivotLang, targetLang);
+    if (!step2.translatedText?.trim()) throw new Error(`Pivot translation failed for ${pivotLang} -> ${targetLang}.`);
 
     return {
-      translatedText: step2.translatedText || pivotText,
+      translatedText: step2.translatedText,
       sourceLang,
       targetLang,
-      provider: (step2.provider === 'azure' || step2.provider === 'khaya' || step2.provider === 'sunbird' || step2.provider === 'nllb' || step2.provider === 'local') ? step2.provider : 'azure',
+      provider: `${step1.provider}+${step2.provider}`,
+      providerChain: [step1.provider, step2.provider],
       latencyMs: Date.now() - start,
       pivotUsed: true,
-      confidence: 0.91,
     };
   }
 }

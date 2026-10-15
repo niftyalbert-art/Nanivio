@@ -1,5 +1,6 @@
 import { ITtsProvider } from './interface';
 import { TtsResult } from '../types';
+import { authenticatedFetch } from '../../authenticatedFetch';
 
 export class KhayaTtsProvider implements ITtsProvider {
   public id = 'khaya-tts';
@@ -12,7 +13,7 @@ export class KhayaTtsProvider implements ITtsProvider {
 
   public async synthesize(text: string, language: string): Promise<TtsResult> {
     const start = Date.now();
-    const response = await fetch('/api/langpretation/synthesize', {
+    const response = await authenticatedFetch('/api/langpretation/synthesize', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ text, language }),
@@ -31,7 +32,7 @@ export class KhayaTtsProvider implements ITtsProvider {
 
     return {
       audioBuffer,
-      durationMs: Math.max(1, Math.round((text.trim().split(/\s+/).length * 350))),
+      durationMs: null,
       provider: data.provider || 'khaya-tts',
       latencyMs: Date.now() - start,
     };

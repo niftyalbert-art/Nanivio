@@ -1,0 +1,86 @@
+uploads = []
+generated = []
+
+[[outputs]]
+id = "0oeyFOELfycFw7P8XQaK5"
+uri = "file://docs/malvi-migration-audit.html"
+type = "html"
+title = "Updated Malvi migration audit"
+description = "Approved chat and registration-data repairs, 28 passing regression tests, and the remaining live-validation and migration blockers."
+logical_id = "885a643c-8ea8-4ce4-83fe-4a039b8cfb1e"
+content_hash = "sha256:85b6a421dc321093de264fd36e25235943b65a8171f8fd274c367b8ff3cd582e"
+size = 54385
+mtime_ms = 1791991121353
+storage_uri = "gcs://replit-rams-assets-sisko/rams/assets/repl:8a53f482-19ae-49f0-ab16-31b527f92091/885a643c-8ea8-4ce4-83fe-4a039b8cfb1e/ef03cb71-f2fa-422a-ab58-9b0d11f5fc56"
+storage_version_token = "1791991147613580"
+content_type = "text/html"
+
+[[outputs]]
+id = "ktFjLsaD3wBb38MHiR_xy"
+uri = "file://generated-artifacts/live-call-checks/account-a-mobile.png"
+type = "image"
+title = "Verified signed-in mobile Account screen"
+description = "Actual normal-form sign-in with dedicated test account A at a 390px viewport. This is browser emulation, not physical-phone media verification."
+logical_id = "6bf0428e-955b-4d4a-92c9-e11603f1e615"
+content_hash = "sha256:feabbfc262d05d6b331ce905d78a2e418910b55857f397ee032079c0bb6409a5"
+size = 118119
+mtime_ms = 1792023398044
+storage_uri = "gcs://replit-rams-assets-sisko/rams/assets/repl:8a53f482-19ae-49f0-ab16-31b527f92091/6bf0428e-955b-4d4a-92c9-e11603f1e615/15d24e60-b005-474f-93ed-1675d59da7ab"
+storage_version_token = "1792023744524531"
+content_type = "image/png"
+
+[[outputs]]
+id = "yBQok1f0ATUrGl_Uu8bLD"
+uri = "file://generated-artifacts/live-call-checks/missed-calls-mobile.png"
+type = "image"
+title = "Verified missed-call history after a real timeout"
+description = "One actual unanswered invitation produces one missed-call entry after the duplication repair. No call-history fixture was injected."
+logical_id = "22ea8884-3868-4f89-a8f5-63258666bcdf"
+content_hash = "sha256:f9753f0d7a3dcade992e9ef85b2cb00f53f8c01799cfeb4c944f67bae3e2e42b"
+size = 74588
+mtime_ms = 1792023439317
+storage_uri = "gcs://replit-rams-assets-sisko/rams/assets/repl:8a53f482-19ae-49f0-ab16-31b527f92091/22ea8884-3868-4f89-a8f5-63258666bcdf/c264b080-5ee3-42bb-98a5-611a21165bd6"
+storage_version_token = "1792023745845936"
+content_type = "image/png"
+
+[[outputs]]
+id = "PvYVkZTx4kRKPmZx70tTz"
+uri = "file://docs/translation-engine-audit.md"
+type = "text"
+title = "Complete Nanivio 18 × 18 engine audit"
+description = "Detailed source audit of every declared language, confirmed integration defects, misleading metrics, provider-contract gaps, and recommended repairs. Not a claim of 306 successful live translations."
+logical_id = "fe7fd10e-1dfb-4585-b75a-e7d933bf5d5a"
+content_hash = "sha256:b75dbb16aad151f50a58b19a1bd3910257cca000cff08d51c2a5de7b959d5c4f"
+size = 16600
+mtime_ms = 1792027201620
+storage_uri = "gcs://replit-rams-assets-sisko/rams/assets/repl:8a53f482-19ae-49f0-ab16-31b527f92091/fe7fd10e-1dfb-4585-b75a-e7d933bf5d5a/d3aaf7b1-494e-42f8-b61c-aca22dc50358"
+storage_version_token = "1792027231086333"
+content_type = "text/markdown"
+
+[[outputs]]
+id = "jXjHfmEfgTZZlN2ibZyw5"
+uri = "file://generated-artifacts/translation-engine-audit/18x18-routing-audit.csv"
+type = "table"
+title = "Updated 324-combination routing audit"
+description = "Post-repair planning matrix: zero planner disagreements, explicit unsupported dialect routes, and no fabricated live-verification claims."
+logical_id = "60535210-e498-411d-be62-d61e1e993029"
+content_hash = "sha256:e8b8ae40ae7e82369517dc963af8256a0f3b74fc3512c3e6c8c1a9492cf9835b"
+size = 79816
+mtime_ms = 1792029153991
+storage_uri = "gcs://replit-rams-assets-sisko/rams/assets/repl:8a53f482-19ae-49f0-ab16-31b527f92091/60535210-e498-411d-be62-d61e1e993029/6f071eda-3c20-404d-8dca-c044e0913d98"
+storage_version_token = "1792029399580233"
+content_type = "text/csv"
+
+[[outputs]]
+id = "8o4F14mV0AcQQbdj1KJnn"
+uri = "file://docs/translation-production-readiness.md"
+type = "text"
+title = "Translation repairs and production blockers"
+description = "Implemented repairs, successful real-provider checks, failed checks, and requirements still blocking full production approval."
+logical_id = "2faa366b-0f07-4637-b9c2-4f9383a674f3"
+content_hash = "sha256:0ad7bc4f74246ee8807e793724f3942d844a985be03009f7608fd5571b882acb"
+size = 6313
+mtime_ms = 1792029249062
+storage_uri = "gcs://replit-rams-assets-sisko/rams/assets/repl:8a53f482-19ae-49f0-ab16-31b527f92091/2faa366b-0f07-4637-b9c2-4f9383a674f3/6529d8f4-9cbd-42e1-b1f7-14f8519c4ee7"
+storage_version_token = "1792029398302018"
+content_type = "text/markdown"
