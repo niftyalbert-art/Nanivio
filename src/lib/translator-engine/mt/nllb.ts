@@ -1,5 +1,6 @@
 import { IMtProvider } from './interface';
 import { MtResult } from '../types';
+import { authClient } from '../../authClient';
 
 /**
  * NLLB / Neural Fallback Provider
@@ -18,7 +19,10 @@ export class NllbMtProvider implements IMtProvider {
     try {
       const response = await fetch('/api/translate', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          ...(authClient.getToken() ? { Authorization: `Bearer ${authClient.getToken()}` } : {}),
+        },
         body: JSON.stringify({
           text,
           sourceLang,
@@ -29,14 +33,13 @@ export class NllbMtProvider implements IMtProvider {
 
       if (response.ok) {
         const data = await response.json();
-        if (data.untranslated || !data.translatedText) throw new Error(data.error || 'NLLB translation unavailable');
+        if (data.success !== true || data.untranslated || !data.translatedText) throw new Error(data.error || 'NLLB translation unavailable');
         return {
           translatedText: data.translatedText,
           sourceLang,
           targetLang,
           provider: 'nllb',
           latencyMs: Date.now() - start,
-          confidence: 0.92,
         };
       }
     } catch (e) {

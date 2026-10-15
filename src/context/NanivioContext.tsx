@@ -1090,9 +1090,9 @@ export const NanivioProvider: React.FC<{ children: React.ReactNode }> = ({ child
       agoraClient.leaveChannel();
       setActiveCall(null);
       setIncomingCall((currIncoming) => {
-        if (currIncoming) {
+        if (currIncoming && currIncoming.callId === data?.callId) {
           const logItem: CallLogRecord = {
-            id: `call_log_${Date.now()}`,
+            id: `call_log_${currIncoming.callId}`,
             participantId: currIncoming.caller.id,
             participantNvId: currIncoming.caller.nvId,
             participantName: currIncoming.caller.name,
@@ -1103,9 +1103,13 @@ export const NanivioProvider: React.FC<{ children: React.ReactNode }> = ({ child
             durationSeconds: 0,
             hasLangpretation: globalLangpretationEnabled,
           };
-          setCallLogs((prev) => [logItem, ...prev.slice(0, 49)]);
+          // React can replay this updater in development. A call's stable ID
+          // prevents the same missed invitation being recorded twice.
+          setCallLogs((prev) => prev.some(log => log.id === logItem.id)
+            ? prev
+            : [logItem, ...prev.slice(0, 49)]);
         }
-        return null;
+        return currIncoming?.callId === data?.callId ? null : currIncoming;
       });
       if (data?.endedBy === 'SYSTEM_BILLING_ENGINE' && adminFeatures.callMinutesWarningApproved) {
         setInCallNotice({

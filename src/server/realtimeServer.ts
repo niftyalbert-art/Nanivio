@@ -54,6 +54,36 @@ const clientsByUserId: Map<string, Set<ConnectedUser>> = new Map();
 const clientsByNvId: Map<string, Set<ConnectedUser>> = new Map();
 const allSockets: Set<WebSocket> = new Set();
 const activeCalls: Map<string, ActiveCallState> = new Map();
+const ringingTimers = new Map<string, ReturnType<typeof setTimeout>>();
+const RING_TIMEOUT_MS = 30_000;
+
+function clearRingingTimer(callId: string) {
+  const timer = ringingTimers.get(callId);
+  if (timer) clearTimeout(timer);
+  ringingTimers.delete(callId);
+}
+
+function finishCall(callId: string, endedBy: string, reason?: string) {
+  const call = activeCalls.get(callId);
+  if (!call) return false;
+  clearRingingTimer(callId);
+  call.status = 'ended';
+  const durationSeconds = call.connectedAt
+    ? Math.max(0, Math.floor((Date.now() - call.connectedAt) / 1000))
+    : 0;
+  for (const id of call.participants) removeAgoraParticipant(call.channelName, id);
+  const recipients = new Set([call.caller.id, ...call.participants]);
+  if (call.recipientId) recipients.add(call.recipientId);
+  else if (call.recipientNvId) recipients.add(call.recipientNvId);
+  activeCalls.delete(callId);
+  for (const recipient of recipients) {
+    sendToUser(recipient, {
+      type: 'call:ended',
+      payload: { callId, endedBy, reason, durationSeconds },
+    });
+  }
+  return true;
+}
 
 async function authenticateRealtimeToken(tokenValue: unknown) {
   const token = typeof tokenValue === 'string' ? tokenValue.trim() : '';
@@ -462,6 +492,13 @@ export function setupRealtimeServer(httpServer: HttpServer) {
               participants: [currentUser.userId],
             };
             activeCalls.set(callSession.callId, callSession);
+            const ringingTimer = setTimeout(() => {
+              if (activeCalls.get(callSession.callId)?.status === 'ringing') {
+                finishCall(callSession.callId, 'SYSTEM', 'NO_ANSWER');
+              }
+            }, RING_TIMEOUT_MS);
+            ringingTimer.unref();
+            ringingTimers.set(callSession.callId, ringingTimer);
 
             // Register Agora room on server
             registerAgoraParticipant(callSession.channelName, callSession.callType, {
@@ -535,6 +572,7 @@ export function setupRealtimeServer(httpServer: HttpServer) {
               initials: currentUser.name.slice(0, 2).toUpperCase(),
             };
             callSession.status = 'connected';
+            clearRingingTimer(callSession.callId);
             callSession.connectedAt = Date.now();
             if (!callSession.participants.includes(currentUser.userId)) {
               callSession.participants.push(currentUser.userId);
@@ -583,6 +621,8 @@ export function setupRealtimeServer(httpServer: HttpServer) {
               return;
             }
             callSession.status = 'declined';
+            clearRingingTimer(callSession.callId);
+            for (const id of callSession.participants) removeAgoraParticipant(callSession.channelName, id);
             sendToUser(callSession.caller.id, {
               type: 'call:declined',
               payload: {
@@ -607,31 +647,7 @@ export function setupRealtimeServer(httpServer: HttpServer) {
               }));
               return;
             }
-            removeAgoraParticipant(callSession.channelName, currentUser.userId);
-            callSession.status = 'ended';
-            const durationSeconds = callSession.connectedAt
-              ? Math.max(0, Math.floor((Date.now() - callSession.connectedAt) / 1000))
-              : 0;
-            for (const participantId of callSession.participants) {
-              if (participantId !== currentUser.userId) {
-                sendToUser(participantId, {
-                  type: 'call:ended',
-                  payload: { callId: callSession.callId, endedBy: currentUser.userId, durationSeconds },
-                });
-              }
-            }
-            if (callSession.recipientId && !callSession.participants.includes(callSession.recipientId)) {
-              sendToUser(callSession.recipientId, {
-                type: 'call:ended',
-                payload: { callId: callSession.callId, endedBy: currentUser.userId },
-              });
-            } else if (callSession.recipientNvId && !callSession.participants.some((id) => id === callSession.recipientNvId)) {
-              sendToUser(callSession.recipientNvId, {
-                type: 'call:ended',
-                payload: { callId: callSession.callId, endedBy: currentUser.userId },
-              });
-            }
-            activeCalls.delete(callSession.callId);
+            finishCall(callSession.callId, currentUser.userId);
             break;
           }
 
@@ -807,6 +823,17 @@ export function setupRealtimeServer(httpServer: HttpServer) {
 
       if (currentUser) {
         removeConnectedUser(currentUser);
+        // Another tab/device may still own this identity. Only the last
+        // disconnected session ends its calls.
+        const stillOnline = [...(clientsByUserId.get(currentUser.userId) || [])]
+          .some(client => client.socket.readyState === WebSocket.OPEN);
+        if (!stillOnline) {
+          for (const call of [...activeCalls.values()]) {
+            if (call.caller.id === currentUser.userId || isCallRecipient(call, currentUser)) {
+              finishCall(call.callId, currentUser.userId, 'PARTICIPANT_DISCONNECTED');
+            }
+          }
+        }
 
         // Broadcast presence update on disconnect
         broadcastToAll({
@@ -832,6 +859,7 @@ export function setupRealtimeServer(httpServer: HttpServer) {
  * and clears the active call registry.
  */
 export function forceServerTerminateCall(callId: string, reason: string): boolean {
+  clearRingingTimer(callId);
   const callSession = activeCalls.get(callId);
   if (callSession) {
     callSession.status = 'ended';
