@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { X, Sparkles, Check, Zap, ShieldCheck } from 'lucide-react';
 import { useNanivio } from '../../context/NanivioContext';
 import { PaymentPurpose } from '../payment/UniversalPaymentGatewayModal';
+import { formatBillingAmount } from '../../lib/billingPresentation';
 
 interface SubscriptionPlansModalProps {
   isOpen: boolean;
@@ -14,13 +15,23 @@ export const SubscriptionPlansModal: React.FC<SubscriptionPlansModalProps> = ({
   onClose,
   onSelectPayment,
 }) => {
-  const { billingSummary, billingPlans, upgradeSubscriptionPlan } = useNanivio();
+  const { billingSummary, billingPlans, upgradeSubscriptionPlan, openBillingWithPlan } = useNanivio();
   const [activatingTier, setActivatingTier] = useState<string | null>(null);
   const [planStatus, setPlanStatus] = useState<{ message: string; isError: boolean } | null>(null);
 
   if (!isOpen) return null;
 
   const selectPlan = async (tier: string) => {
+    const plan = billingPlans.find(plan => plan.tier === tier);
+    if (!plan) {
+      setPlanStatus({ message:'This plan is unavailable. Refresh billing and try again.', isError:true });
+      return;
+    }
+    if (Number(plan.priceMonthlyGHS) > 0 || Number(plan.priceMonthlyUSD) > 0) {
+      openBillingWithPlan(tier, 'SUBSCRIPTION', 'MONTHLY');
+      onClose();
+      return;
+    }
     setActivatingTier(tier);
     setPlanStatus(null);
     try {
@@ -50,7 +61,7 @@ export const SubscriptionPlansModal: React.FC<SubscriptionPlansModalProps> = ({
             </div>
             <h2 className="text-xl sm:text-2xl font-black text-white">Choose Your Plan &amp; Quota</h2>
             <p className="text-xs sm:text-sm text-slate-400">
-              Select a server-listed allowance for the displayed term. It is assigned immediately and does not auto-renew; paid minute packs and Malvi plans remain separate.
+              Paid plans activate after verified Paystack payment. The free plan requires no payment. Renewal is manual.
             </p>
           </div>
           <button
@@ -64,7 +75,10 @@ export const SubscriptionPlansModal: React.FC<SubscriptionPlansModalProps> = ({
         {/* Subscription Tiers Grid */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
           {billingPlans.map((plan) => {
-            const isCurrent = billingSummary?.subscription?.tier === plan.tier;
+            const sub = billingSummary?.subscription;
+            const isCurrent = sub?.tier === plan.tier && sub?.status === 'ACTIVE'
+              && sub.currentPeriodEnd > Date.now()
+              && (Number(plan.priceMonthlyGHS) === 0 || Number(sub.pricePaid) > 0);
             return (
               <div
                 key={plan.tier}
@@ -83,7 +97,7 @@ export const SubscriptionPlansModal: React.FC<SubscriptionPlansModalProps> = ({
                       </span>
                     )}
                   </div>
-                  <div className="text-sm font-semibold text-emerald-300">No payment collected</div>
+                  <div className="text-sm font-semibold text-emerald-300">{Number(plan.priceMonthlyGHS) > 0 ? `GH₵ ${formatBillingAmount(plan.priceMonthlyGHS)} / month` : 'Free — no payment'}</div>
                   <p className="text-xs text-slate-400 leading-relaxed">{plan.description}</p>
 
                   <div className="pt-2 space-y-1.5 text-xs text-slate-300">
@@ -115,7 +129,7 @@ export const SubscriptionPlansModal: React.FC<SubscriptionPlansModalProps> = ({
                       : 'bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-slate-950 shadow-md shadow-emerald-500/20'
                   }`}
                 >
-                  {isCurrent ? 'Current Plan' : activatingTier === plan.tier ? 'Selecting…' : 'Select allowance — no payment'}
+                  {isCurrent ? 'Current Plan' : activatingTier === plan.tier ? 'Selecting…' : Number(plan.priceMonthlyGHS) > 0 ? 'Pay with Paystack' : 'Select free plan'}
                 </button>
               </div>
             );

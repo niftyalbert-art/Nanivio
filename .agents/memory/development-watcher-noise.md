@@ -17,3 +17,14 @@ regression. Do not hide the interrupted run or count it as successful evidence.
 Runtime-managed environment-cache writes can also reload the app without an
 application edit. These are tooling activity, not a reason to restart a call
 or evidence of a provider failure.
+
+Ignored generated browser fixtures need a unique import query when rebuilt.
+
+**Why:** Vite retained the first transformed verification bundle after its file
+was rebuilt in an excluded directory; a fresh browser alone still loaded stale
+test code.
+
+**How to apply:** Cache-bust imports of regenerated verification bundles rather
+than restarting the application or diagnosing old fixture errors as app bugs.
+When bundling against Vite's optimized React modules, bridge their default CJS
+object for dependencies that request named exports.

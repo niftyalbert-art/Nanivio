@@ -20,6 +20,7 @@ import {
 } from 'lucide-react';
 import { motion } from 'motion/react';
 import { useNanivio } from '../../context/NanivioContext';
+import { formatBillingAmount } from '../../lib/billingPresentation';
 
 interface LiveLangpretationMeterProps {
   onTopUpMinutes?: () => void;
@@ -197,10 +198,10 @@ export const LiveLangpretationMeter: React.FC<LiveLangpretationMeterProps> = ({
             <Sparkles className="w-3.5 h-3.5 text-purple-400" />
           </div>
           <div className="text-2xl sm:text-3xl font-black text-purple-400 font-mono">
-            GH₵ {meter.estimatedSavingsGHS.toFixed(2)}
+            GH₵ {formatBillingAmount(meter.estimatedSavingsGHS)}
           </div>
           <div className="text-[11px] text-slate-400">
-            ~${meter.estimatedSavingsUSD.toFixed(2)} USD vs traditional
+            ~${formatBillingAmount(meter.estimatedSavingsUSD)} USD vs traditional
           </div>
         </div>
       </div>

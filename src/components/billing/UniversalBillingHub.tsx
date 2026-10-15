@@ -411,7 +411,7 @@ export const UniversalBillingHub: React.FC = () => {
                 <p className="text-sm font-semibold text-slate-200">
                   {activeUsageSession.serviceType} • {activeUsageSession.currentQuantity} {activeUsageSession.unit}s elapsed • Cost:{' '}
                   <span className="text-emerald-400 font-mono">
-                    {activeUsageSession.currency} {activeUsageSession.currentCost.toFixed(2)}
+                    {activeUsageSession.currency} {formatBillingAmount(activeUsageSession.currentCost)}
                   </span>
                 </p>
               </div>
@@ -1069,7 +1069,7 @@ export const UniversalBillingHub: React.FC = () => {
                   </span>
                 </div>
                 <div className="text-slate-400 font-mono">
-                  Allowance: <strong className="text-cyan-400">{(malviSubscription?.videoMinutesRemaining ?? 3).toFixed(1)} mins</strong> video companion
+                  Allowance: <strong className="text-cyan-400">{formatBillingAmount(malviSubscription?.videoMinutesRemaining)} mins</strong> video companion
                 </div>
               </div>
             </div>
@@ -1114,10 +1114,10 @@ export const UniversalBillingHub: React.FC = () => {
 
                       <div className="pt-2 border-t border-slate-800">
                         <div className="text-2xl font-black font-mono text-white">
-                          GH₵ {priceGHS.toFixed(2)}
+                          GH₵ {formatBillingAmount(priceGHS)}
                         </div>
                         <div className="text-xs text-slate-400 font-mono">
-                          ≈ ${priceUSD.toFixed(2)} / {billingCycle === 'ANNUAL' ? 'year' : 'month'}
+                          ≈ ${formatBillingAmount(priceUSD)} / {billingCycle === 'ANNUAL' ? 'year' : 'month'}
                         </div>
                       </div>
 
@@ -1322,7 +1322,7 @@ export const UniversalBillingHub: React.FC = () => {
                   <div className="flex justify-between text-slate-400">
                     <span>Base Service ({calcMinutes} {calcPreview?.unit || 'units'}):</span>
                     <span className="font-mono text-slate-200">
-                      {calcCurrency} {calcPreview?.baseCharge.toFixed(2) || '0.00'}
+                      {calcCurrency} {formatBillingAmount(calcPreview?.baseCharge)}
                     </span>
                   </div>
 
@@ -1330,7 +1330,7 @@ export const UniversalBillingHub: React.FC = () => {
                     <div className="flex justify-between text-slate-400">
                       <span>Langpretation Transformation:</span>
                       <span className="font-mono text-emerald-400">
-                        {calcCurrency} {calcPreview.langpretationCharge.toFixed(2)}
+                        {calcCurrency} {formatBillingAmount(calcPreview.langpretationCharge)}
                       </span>
                     </div>
                   )}
@@ -1339,7 +1339,7 @@ export const UniversalBillingHub: React.FC = () => {
                     <div className="flex justify-between text-slate-400">
                       <span>Platform Brokerage Fee:</span>
                       <span className="font-mono text-slate-300">
-                        {calcCurrency} {calcPreview.platformFee.toFixed(2)}
+                        {calcCurrency} {formatBillingAmount(calcPreview.platformFee)}
                       </span>
                     </div>
                   )}
@@ -1347,7 +1347,7 @@ export const UniversalBillingHub: React.FC = () => {
                   {calcPreview?.promotionalCreditApplied !== undefined && calcPreview.promotionalCreditApplied > 0 && (
                     <div className="flex justify-between text-emerald-400 font-semibold">
                       <span>Promotional Credit Applied:</span>
-                      <span className="font-mono">-{calcCurrency} {calcPreview.promotionalCreditApplied.toFixed(2)}</span>
+                      <span className="font-mono">-{calcCurrency} {formatBillingAmount(calcPreview.promotionalCreditApplied)}</span>
                     </div>
                   )}
                 </div>
@@ -1355,7 +1355,7 @@ export const UniversalBillingHub: React.FC = () => {
                 <div>
                   <div className="text-xs text-slate-400">Net Estimated Total</div>
                   <div className="text-3xl font-black font-mono text-slate-100 mt-1">
-                    {calcCurrency} {calcPreview?.totalEstimatedCharge.toFixed(2) || '0.00'}
+                    {calcCurrency} {formatBillingAmount(calcPreview?.totalEstimatedCharge)}
                   </div>
                 </div>
 
@@ -1368,7 +1368,7 @@ export const UniversalBillingHub: React.FC = () => {
                   <p>
                     Required fund pre-authorization for this session is{' '}
                     <span className="text-emerald-400 font-mono font-bold">
-                      {calcCurrency} {calcPreview?.requiredReservation.toFixed(2)}
+                      {calcCurrency} {formatBillingAmount(calcPreview?.requiredReservation)}
                     </span>
                     . Unused funds are released instantly upon call completion.
                   </p>
@@ -1435,7 +1435,7 @@ export const UniversalBillingHub: React.FC = () => {
                       <div key={item.id} className="flex justify-between items-center text-slate-300">
                         <span className="truncate max-w-[240px]">{item.description}</span>
                         <span className="font-mono font-semibold text-slate-100">
-                          {inv.currency} {item.total.toFixed(2)}
+                          {inv.currency} {formatBillingAmount(item.total)}
                         </span>
                       </div>
                     ))}
@@ -1445,7 +1445,7 @@ export const UniversalBillingHub: React.FC = () => {
                     <div>
                       <div className="text-[10px] text-slate-500 uppercase font-semibold">Total Paid</div>
                       <div className="text-base font-black font-mono text-emerald-400">
-                        {inv.currency} {inv.total.toFixed(2)}
+                        {inv.currency} {formatBillingAmount(inv.total)}
                       </div>
                     </div>
 
@@ -1528,11 +1528,11 @@ export const UniversalBillingHub: React.FC = () => {
                             <div>
                               <div>{item.description}</div>
                               <div className="text-[10px] text-slate-500">
-                                {item.quantity} {item.unit}s @ {selectedInvoice.currency} {item.unitPrice.toFixed(2)}
+                                {item.quantity} {item.unit}s @ {selectedInvoice.currency} {formatBillingAmount(item.unitPrice)}
                               </div>
                             </div>
                             <div className="font-mono font-bold">
-                              {selectedInvoice.currency} {item.total.toFixed(2)}
+                              {selectedInvoice.currency} {formatBillingAmount(item.total)}
                             </div>
                           </div>
                         ))}
@@ -1544,7 +1544,7 @@ export const UniversalBillingHub: React.FC = () => {
                       <div className="w-64 space-y-1.5">
                         <div className="flex justify-between text-slate-400">
                           <span>Subtotal:</span>
-                          <span className="font-mono">{selectedInvoice.currency} {selectedInvoice.subtotal.toFixed(2)}</span>
+                          <span className="font-mono">{selectedInvoice.currency} {formatBillingAmount(selectedInvoice.subtotal)}</span>
                         </div>
                         <div className="flex justify-between text-slate-400">
                           <span>VAT / Tax (0%):</span>
@@ -1553,7 +1553,7 @@ export const UniversalBillingHub: React.FC = () => {
                         <div className="flex justify-between font-bold text-slate-100 text-sm border-t border-slate-800 pt-2">
                           <span>Total Paid:</span>
                           <span className="font-mono text-emerald-400">
-                            {selectedInvoice.currency} {selectedInvoice.total.toFixed(2)}
+                            {selectedInvoice.currency} {formatBillingAmount(selectedInvoice.total)}
                           </span>
                         </div>
                       </div>

@@ -33,6 +33,7 @@ import { getLanguageByCode, getAllLanguages } from '../../i18n/languages';
 import { LangpretationIcon } from '../common/LangpretationIcon';
 import { PWAInstallButton } from '../common/PWAInstallButton';
 import { getAccountText } from '../../i18n/authTranslations';
+import { billingNumber, formatBillingAmount } from '../../lib/billingPresentation';
 
 export const AccountView: React.FC = () => {
   const {
@@ -49,6 +50,7 @@ export const AccountView: React.FC = () => {
     currentPlan,
     billingPlans,
     upgradeSubscriptionPlan,
+    openBillingWithPlan,
     billingSummary,
     wallets,
     isSubscribed,
@@ -85,6 +87,11 @@ export const AccountView: React.FC = () => {
   const verificationStatus = authUser?.verificationStatus || 'VERIFIED';
 
   const activateCommunicationPlan = async (plan: BillingSubscriptionPlan) => {
+    if (Number(plan.priceMonthlyGHS) > 0 || Number(plan.priceMonthlyUSD) > 0) {
+      setPlanActionError(null);
+      openBillingWithPlan(plan.tier, 'SUBSCRIPTION', 'MONTHLY');
+      return;
+    }
     setActivatingPlanTier(plan.tier);
     setPlanActionError(null);
     try {
@@ -99,12 +106,13 @@ export const AccountView: React.FC = () => {
   };
 
   // Nanivio credit
-  const availableServiceValue = (
+  const availableServiceValue = billingNumber(
+    billingSummary?.accounts?.communicationAccount?.wallets?.find(w => w.currency === 'GHS')?.available ??
     billingSummary?.communicationAccount?.balance ??
     (billingSummary?.wallets?.find((w) => w.currency === 'GHS')?.available ?? 
      wallets?.find((w) => w.currency === 'GHS')?.amount ?? 
      0.0)
-  );
+  ) ?? 0;
 
   // Meter Reading Calculation
   const totalQuotaMinutes = sub?.langpretationMinutesQuota ?? (isFreeTrialActive ? 15 : (currentPlan?.langpretationMinutesQuota ?? 0));
@@ -504,7 +512,9 @@ export const AccountView: React.FC = () => {
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           {billingPlans.map((plan) => {
-            const isCurrent = sub?.tier === plan.tier;
+            const isCurrent = sub?.tier === plan.tier && sub?.status === 'ACTIVE'
+              && sub.currentPeriodEnd > Date.now()
+              && (Number(plan.priceMonthlyGHS) === 0 || Number(sub.pricePaid) > 0);
             return (
               <div
                 key={plan.tier}
@@ -548,7 +558,7 @@ export const AccountView: React.FC = () => {
                       : 'bg-emerald-500 hover:bg-emerald-400 text-slate-950 shadow-sm'
                   }`}
                 >
-                  {isCurrent ? 'Current Plan' : activatingPlanTier === plan.tier ? 'Selecting…' : `Select ${plan.name} allowance`}
+                  {isCurrent ? 'Current Plan' : activatingPlanTier === plan.tier ? 'Selecting…' : Number(plan.priceMonthlyGHS) > 0 ? `Pay with Paystack — ${plan.name}` : `Select ${plan.name}`}
                 </button>
               </div>
             );
@@ -590,7 +600,7 @@ export const AccountView: React.FC = () => {
                   </div>
                 </div>
                 <div className={`font-mono font-bold ${tx.type === 'TOPUP' ? 'text-emerald-400' : 'text-slate-300'}`}>
-                  {tx.type === 'TOPUP' ? '+' : '–'} GH₵ {tx.amount.toFixed(2)}
+                  {tx.type === 'TOPUP' ? '+' : '–'} GH₵ {formatBillingAmount(tx.amount)}
                 </div>
               </div>
             ))
