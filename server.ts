@@ -32,6 +32,7 @@ import {
 } from "./src/server/streamService.ts";
 import { requireActiveChatAccount, requireStreamWebhookSignature, StreamAccessError } from "./src/server/chatPrivacy.ts";
 import { billingDb } from "./src/server/billingDb.ts";
+import { purchaseCommunicationMinutesFromWalletPersistent, activateMalviSubscriptionFromWalletPersistent } from "./src/server/normalizedBillingRepository.ts";
 import { normalizedBillingEnabled, transferFintechToCommunication as persistentFintechToCommunication, transferPeerToPeer as persistentPeerToPeer, selectCommunicationPlanPersistent, purchaseCommunicationMinutesPersistent, activateMalviSubscriptionPersistent, recordLangpretationUsagePersistent, paystackTopUpPersistent, getPersistentPayment, getPersistentSubscription, getPersistentTransactions, getPersistentInvoices, getPersistentWallets, getPersistentCreditAccount, getPersistentUsageMeter, getPersistentMalviSubscription, getMalviCreditAccount, ensureMalviEntitlement, recordMalviUsagePersistent } from "./src/server/normalizedBillingRepository.ts";
 import { hydrateBillingDatabase, flushBillingDatabase, closeBillingPersistence, savePaystackOrder, getPaystackOrder, markPaystackOrderFulfilled, claimPaystackWebhook, isPersistentBillingConfigured, markBillingDatabaseDirty } from "./src/server/billingPersistence.ts";
 import { billingEngine } from "./src/server/billingEngine.ts";
@@ -747,17 +748,17 @@ app.get("/api/admin/audit-logs", requireAdmin, (req, res) => {
 });
 
 // K. Public Dynamic Live Services Experts Endpoint (Combines verified registered experts)
-app.get("/api/services/experts/live", async (_req,res)=>{try{const experts=await persistentAuth.listApplications("EXPERT","VERIFIED");res.json({success:true,experts});}catch(error:any){res.status(502).json({success:false,error:error.message});}});
+app.get("/api/services/experts/live", async (_req,res)=>{try{const experts=await persistentAuth.listPublicApplications("EXPERT");res.json({success:true,experts});}catch(error:any){res.status(502).json({success:false,error:error.message});}});
 
 // K2. Public Dynamic Live Verified Businesses Endpoint
-app.get("/api/services/businesses/live", async (_req,res)=>{try{const businesses=await persistentAuth.listApplications("BUSINESS","VERIFIED");res.json({success:true,businesses});}catch(error:any){res.status(502).json({success:false,error:error.message});}});
+app.get("/api/services/businesses/live", async (_req,res)=>{try{const businesses=await persistentAuth.listPublicApplications("BUSINESS");res.json({success:true,businesses});}catch(error:any){res.status(502).json({success:false,error:error.message});}});
 
 // K3. Nanivio Location Detection & Regional Geo-Matching Algorithm Endpoint
 app.get("/api/services/geo-match", async (req, res) => {
   try {
     const { country, state, city, language, type, category, q, onlyOnline } = req.query;
-    const verifiedExperts = await persistentAuth.listApplications("EXPERT","VERIFIED");
-    const verifiedBusinesses = await persistentAuth.listApplications("BUSINESS","VERIFIED");
+    const verifiedExperts = await persistentAuth.listPublicApplications("EXPERT");
+    const verifiedBusinesses = await persistentAuth.listPublicApplications("BUSINESS");
 
     const userProfile = detectUserLocationProfile({
       country: country as string,
@@ -2116,9 +2117,12 @@ app.post("/api/billing/communication-minutes/purchase", requireAuthenticatedUser
     if (!pkg) return res.status(404).json({ error:"Communication minute package not found" });
     if (!normalizedBillingEnabled()) return res.status(503).json({ success:false, error:"Persistent billing database is required for communication-minute purchases." });
     const price = currency === "USD" ? pkg.priceUSD : pkg.priceGHS;
+    if (!["GHS", "USD"].includes(currency) || !Number.isFinite(price) || price <= 0) {
+      return res.status(400).json({ success:false, error:"Unsupported currency or invalid configured package price." });
+    }
     if (paymentMethod !== "NANIVIO_CREDIT") return res.status(503).json({ success:false, error:"This purchase route only supports Nanivio credit. Use Paystack checkout for external payment." });
     const now=Date.now();
-    const result=await purchaseCommunicationMinutesPersistent({ userId, packageId:pkg.id, subscriptionId:`minutes_${userId}_${now}_${crypto.randomBytes(4).toString("hex")}`, minutes:pkg.minutes, price, currency, validityDays:30, paymentMethod:"Nanivio credit", referenceId:`REF-NV-MIN-${now}-${crypto.randomBytes(4).toString("hex")}`, transactionId:`tx_min_${crypto.randomBytes(8).toString("hex")}`, items:[{description:`${pkg.minutes} Communication Minutes`,quantity:1,unit:"package",unitPrice:price,subtotal:price,total:price}] });
+    const result=await purchaseCommunicationMinutesFromWalletPersistent({ userId, packageId:pkg.id, subscriptionId:`minutes_${userId}_${now}_${crypto.randomBytes(4).toString("hex")}`, minutes:pkg.minutes, price, currency, validityDays:pkg.validityDays || 30, paymentMethod:"Nanivio credit", referenceId:`REF-NV-MIN-${now}-${crypto.randomBytes(4).toString("hex")}`, transactionId:`tx_min_${crypto.randomBytes(8).toString("hex")}`, items:[{description:`${pkg.minutes} Communication Minutes`,quantity:1,unit:"package",unitPrice:price,subtotal:price,total:price}] });
     return res.json({success:true,result});
   } catch(error:any){ return res.status(400).json({success:false,error:error.message||"Communication-minute purchase failed"}); }
 });
@@ -2140,11 +2144,13 @@ app.post("/api/billing/malvi-subscription/change", requireAuthenticatedUser, asy
     const { tier, billingCycle="MONTHLY", paymentMethod="NANIVIO_CREDIT", currency="GHS" }=req.body;
     const plan=billingDb.malviPlans.find((p)=>p.tier===tier);
     if(!plan) return res.status(404).json({error:"Malvi subscription plan not found"});
+    if(!["GHS","USD"].includes(currency) || !["MONTHLY","ANNUAL"].includes(billingCycle)) return res.status(400).json({success:false,error:"Unsupported currency or billing cycle."});
     if(!normalizedBillingEnabled()) return res.status(503).json({success:false,error:"Persistent billing database is required for Malvi subscriptions."});
     const price=tier==="free"?0:(billingCycle==="ANNUAL"?(currency==="USD"?plan.priceAnnualUSD:plan.priceAnnualGHS):(currency==="USD"?plan.priceMonthlyUSD:plan.priceMonthlyGHS));
+    if(!Number.isFinite(price) || price<0) return res.status(400).json({success:false,error:"Invalid configured Malvi plan price."});
     if(paymentMethod!=="NANIVIO_CREDIT") return res.status(503).json({success:false,error:"Use Paystack checkout for external Malvi subscription payment."});
     const now=Date.now();
-    const result=await activateMalviSubscriptionPersistent({userId,tier,billingCycle,price,currency,paymentMethod:"Nanivio credit",planId:plan.id,planName:plan.name,videoMinutesAllowed:plan.videoInteractionMinutesLimit,voiceMinutesAllowed:plan.videoInteractionMinutesLimit,referenceId:`REF-NV-MALVI-${now}-${crypto.randomBytes(4).toString("hex")}`,transactionId:`tx_malvi_${crypto.randomBytes(8).toString("hex")}`,metadata:{source:"malvi_subscription"}});
+    const result=await activateMalviSubscriptionFromWalletPersistent({userId,tier,billingCycle,price,currency,paymentMethod:"Nanivio credit",planId:plan.id,planName:plan.name,videoMinutesAllowed:plan.videoInteractionMinutesLimit,voiceMinutesAllowed:plan.videoInteractionMinutesLimit,referenceId:`REF-NV-MALVI-${now}-${crypto.randomBytes(4).toString("hex")}`,transactionId:`tx_malvi_${crypto.randomBytes(8).toString("hex")}`,metadata:{source:"malvi_subscription"}});
     return res.json({success:true,result});
   }catch(error:any){return res.status(400).json({success:false,error:error.message||"Malvi subscription change failed"});}
 });
@@ -3641,8 +3647,3 @@ async function startServer() {
 }
 
 startServer();
-
-
-
-
-

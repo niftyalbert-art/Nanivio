@@ -138,13 +138,20 @@ export async function getPersistentInvoice(userId: string, invoiceId: string) {
   if (byRowId.error) throw new Error(`Unable to load invoice: ${byRowId.error.message}`);
   return byRowId.data || null;
 }
-
 export async function purchaseCommunicationMinutesPersistent(payload: Record<string, unknown>) {
   return billingCommand('COMMUNICATION_MINUTES_PURCHASE', payload);
 }
 
+export async function purchaseCommunicationMinutesFromWalletPersistent(payload: Record<string, unknown>) {
+  return billingCommand('COMMUNICATION_MINUTES_FROM_WALLET', payload);
+}
+
 export async function activateMalviSubscriptionPersistent(payload: Record<string, unknown>) {
   return billingCommand('MALVI_SUBSCRIPTION', payload);
+}
+
+export async function activateMalviSubscriptionFromWalletPersistent(payload: Record<string, unknown>) {
+  return billingCommand('MALVI_SUBSCRIPTION_FROM_WALLET', payload);
 }
 
 export async function getPersistentPayment(provider: string, providerReference: string) {
