@@ -34,7 +34,7 @@ import { requireActiveChatAccount, requireStreamWebhookSignature, StreamAccessEr
 import { billingDb } from "./src/server/billingDb.ts";
 import { purchaseCommunicationMinutesFromWalletPersistent, activateMalviSubscriptionFromWalletPersistent } from "./src/server/normalizedBillingRepository.ts";
 import { normalizedBillingEnabled, transferFintechToCommunication as persistentFintechToCommunication, transferPeerToPeer as persistentPeerToPeer, selectCommunicationPlanPersistent, purchaseCommunicationMinutesPersistent, activateMalviSubscriptionPersistent, recordLangpretationUsagePersistent, paystackTopUpPersistent, getPersistentPayment, getPersistentSubscription, getPersistentTransactions, getPersistentInvoices, getPersistentWallets, getPersistentCreditAccount, getPersistentUsageMeter, getPersistentMalviSubscription, getMalviCreditAccount, ensureMalviEntitlement, recordMalviUsagePersistent } from "./src/server/normalizedBillingRepository.ts";
-import { hydrateBillingDatabase, flushBillingDatabase, closeBillingPersistence, savePaystackOrder, getPaystackOrder, markPaystackOrderFulfilled, claimPaystackWebhook, isPersistentBillingConfigured, markBillingDatabaseDirty } from "./src/server/billingPersistence.ts";
+import { hydrateBillingDatabase, flushBillingDatabase, closeBillingPersistence, savePaystackOrder, getPaystackOrder, markPaystackOrderFulfilled, isPersistentBillingConfigured, markBillingDatabaseDirty } from "./src/server/billingPersistence.ts";
 import { billingEngine } from "./src/server/billingEngine.ts";
 import { requireBillingAdmin, billingAdminActor, canRefund, ownsBillingRecord, ownsProviderEarnings, ownsBusinessBilling } from "./src/server/billingAccess.ts";
 import { getPersistentInvoice } from "./src/server/normalizedBillingRepository.ts";
@@ -42,6 +42,8 @@ import { authDb } from "./src/server/authDb.ts";
 import * as persistentAuth from "./src/server/persistentAuth.ts";
 import { productionStatus } from "./src/server/productionStatus.ts";
 import { audioCallingEnabled, featureSettingsHandler, videoCallingEnabled } from "./src/server/featureSettings.ts";
+import { quotePaystackOrder, validateVerifiedOrder } from "./src/server/paystackOrders.ts";
+import { activatePaystackSubscriptionPersistent } from "./src/server/normalizedBillingRepository.ts";
 import { callKhayaEngine, callSunbirdEngine } from "./src/server/translationProviders.ts";
 import { translateWithProductionProviders, translationProviderConfigured } from "./src/server/translationRouter.ts";
 import { planTranslation, requireLanguage, speechProvider } from "./src/lib/translator-engine/languagePlan.ts";
@@ -1833,28 +1835,11 @@ const pendingPaystackOrders = new Map<string, {
 app.post("/api/paystack/initialize", requireAuthenticatedUser, async (req, res) => {
   try {
     const userId = authenticatedUserId(req);
-    const {
-      amount,
-      currency = "GHS",
-      metadata = {},
-      purpose = "COMMUNICATION_TOPUP",
-      packageId,
-      planTier,
-      billingCycle = "MONTHLY",
-      minutes,
-    } = req.body;
-
-    if (String(purpose) === "SUBSCRIPTION") {
-      return res.status(400).json({
-        success: false,
-        error: "Communication plans are selected directly in Nanivio; Paystack is only used for top-ups, minute packs, and Malvi plans.",
-      });
-    }
-    if (!amount || Number(amount) <= 0) {
-      return res.status(400).json({ error: "Valid amount is required" });
-    }
-    const allowedPurposes = new Set(["COMMUNICATION_TOPUP","COMMUNICATION_MINUTES","MALVI_SUBSCRIPTION"]);
-    if (!allowedPurposes.has(String(purpose))) return res.status(400).json({success:false,error:"Unsupported Paystack payment purpose."});
+    let quote: ReturnType<typeof quotePaystackOrder>;
+    try { quote = quotePaystackOrder(req.body, billingDb); }
+    catch (error: any) { return res.status(400).json({ success: false, error: error.message }); }
+    const { amount, currency, purpose, packageId, planTier, billingCycle, minutes } = quote;
+    if (!normalizedBillingEnabled()) return res.status(503).json({ success:false, error:"Persistent billing database is required for Paystack purchases." });
     const accountUser = await persistentAuth.findById(userId);
     if (!accountUser?.email) return res.status(400).json({success:false,error:"A verified email address is required for Paystack checkout."});
     const email = accountUser.email;
@@ -1863,18 +1848,16 @@ app.post("/api/paystack/initialize", requireAuthenticatedUser, async (req, res) 
     if (!paystackSecretKey) {
       return res.status(503).json({ success: false, error: "Paystack production payments are not configured on this server." });
     }
+    if (purpose === 'SUBSCRIPTION') {
+      try { await activatePaystackSubscriptionPersistent({ preflight:true }); }
+      catch { return res.status(503).json({ success:false, error:"Paid subscription billing setup is incomplete. An administrator must apply the paid-subscription database migration before accepting payment." }); }
+    }
     const ref = `NV-PSTK-${Date.now()}-${crypto.randomBytes(6).toString("hex").toUpperCase()}`;
-    const amountInSubunits = Math.round(Number(amount) * 100);
+    const amountInSubunits = Math.round(amount * 100);
 
     // Save order intent in server-authoritative store
     const pendingOrder = {
-      purpose: purpose as any,
-      packageId,
-      planTier,
-      billingCycle,
-      minutes: minutes ? Number(minutes) : undefined,
-      amount: Number(amount),
-      currency,
+      ...quote,
       userId,
       email: email,
       createdAt: Date.now(),
@@ -1885,6 +1868,7 @@ app.post("/api/paystack/initialize", requireAuthenticatedUser, async (req, res) 
     if (paystackSecretKey) {
       const response = await fetch("https://api.paystack.co/transaction/initialize", {
         method: "POST",
+        signal: AbortSignal.timeout(15_000),
         headers: {
           Authorization: `Bearer ${paystackSecretKey}`,
           "Content-Type": "application/json",
@@ -1895,7 +1879,6 @@ app.post("/api/paystack/initialize", requireAuthenticatedUser, async (req, res) 
           currency,
           reference: ref,
           metadata: {
-            ...metadata,
             userId,
             purpose,
             packageId,
@@ -1913,6 +1896,7 @@ app.post("/api/paystack/initialize", requireAuthenticatedUser, async (req, res) 
 
       return res.json({
         success: true,
+          sandbox: paystackSecretKey.startsWith('sk_test_'),
         authorization_url: data.data.authorization_url,
         access_code: data.data.access_code,
         reference: data.data.reference,
@@ -1939,35 +1923,32 @@ async function fulfillPaystackOrder({
   verifiedCurrency: string;
   order: any;
 }) {
-  if (normalizedBillingEnabled()) {
-    const existingPayment = await getPersistentPayment('paystack', reference);
-    if (existingPayment) {
-      return { success:true, verified:true, alreadyFulfilled:true, reference, amount:verifiedAmount, currency:verifiedCurrency, message:'Paystack transaction was already fulfilled. No duplicate Nanivio value was delivered.' };
-    }
-  }
   const durableOrder = await getPaystackOrder(reference);
-  const authoritativeOrder = durableOrder || order;
-  if (!authoritativeOrder || String(authoritativeOrder.userId) !== String(userId)) {
-    throw new Error("No authoritative Paystack order exists for this account/reference.");
-  }
-  if (authoritativeOrder.amount != null && Math.round(Number(authoritativeOrder.amount) * 100) !== Math.round(Number(verifiedAmount) * 100)) {
-    throw new Error("Verified Paystack amount does not match the Nanivio order.");
-  }
-  if (authoritativeOrder.currency && String(authoritativeOrder.currency).toUpperCase() !== String(verifiedCurrency).toUpperCase()) {
-    throw new Error("Verified Paystack currency does not match the Nanivio order.");
+  const authoritativeOrder = durableOrder || pendingPaystackOrders.get(reference);
+  validateVerifiedOrder(authoritativeOrder, userId, verifiedAmount, verifiedCurrency);
+  if (!normalizedBillingEnabled()) throw new Error("Persistent billing database is required.");
+  const existingPayment = await getPersistentPayment('paystack', reference);
+  if (existingPayment) {
+    if (existingPayment.user_id !== userId) throw new Error("Payment belongs to another account.");
+    return { success:true, verified:true, alreadyFulfilled:true, reference, amount:verifiedAmount, currency:verifiedCurrency, message:'Paystack transaction was already fulfilled. No duplicate Nanivio value was delivered.' };
   }
   const purpose = authoritativeOrder.purpose || "COMMUNICATION_TOPUP";
 
   // 1. Communication Minutes Package Activation
   if (purpose === "COMMUNICATION_MINUTES") {
-    const minutes = authoritativeOrder.minutes || 150;
-    const packageId = authoritativeOrder.packageId || "comm_pkg_150";
+    const minutes = authoritativeOrder.product?.minutes ?? authoritativeOrder.minutes;
+    const packageId = authoritativeOrder.packageId;
     const pkg = billingDb.communicationMinutePackages.find((p) => p.id === packageId);
+    if (!pkg || !Number.isFinite(minutes) || minutes <= 0) throw new Error("The paid minute package is not available.");
+    if (!authoritativeOrder.product
+      && (minutes !== pkg.minutes || verifiedAmount !== (verifiedCurrency === 'USD' ? pkg.priceUSD : pkg.priceGHS))) {
+      throw new Error("Legacy minute order does not match the configured package.");
+    }
     const result = normalizedBillingEnabled()
       ? await purchaseCommunicationMinutesPersistent({
           userId, minutes, price: verifiedAmount, currency: verifiedCurrency, paymentMethod: "Paystack Payment Gateway",
-          referenceId: reference, transactionId: `tx_min_${reference}`, subscriptionId: `sub_${userId}_minutes_${reference}`,
-          validityDays: pkg?.validityDays || 30,
+          referenceId: reference, transactionId: `tx_min_${reference}`, subscriptionId: `minutes_${userId}_${reference}`,
+          validityDays: authoritativeOrder.product?.validityDays ?? pkg.validityDays ?? 30,
           items: [{ description: `Nanivio Communication Minutes Pack (+${minutes} Mins)`, quantity: minutes, unit: "minute", unitPrice: verifiedAmount / minutes, subtotal: verifiedAmount, total: verifiedAmount }],
         })
       : billingDb.addCommunicationMinutes({ userId, packageId, minutes, pricePaid: verifiedAmount, currency: verifiedCurrency, paymentMethod: "Paystack Payment Gateway", referenceId: reference });
@@ -1989,9 +1970,20 @@ async function fulfillPaystackOrder({
     };
   }
 
-  // Communication plans are never fulfilled from a Paystack reference.
   if (purpose === "SUBSCRIPTION") {
-    throw new Error("Communication plans are selected directly in Nanivio, not through Paystack.");
+    const product = authoritativeOrder.product;
+    if (!product?.id) throw new Error("Paid subscription order has no configured plan.");
+    const result = await activatePaystackSubscriptionPersistent({
+      userId, referenceId: reference, transactionId: `tx_sub_${reference}`,
+      subscriptionId: `paid_${userId}_${reference}`, planId: product.id,
+      tier: product.tier, planName: product.name, billingCycle: authoritativeOrder.billingCycle,
+      price: verifiedAmount, currency: verifiedCurrency, periodDays: product.periodDays,
+      langpretationQuota: product.langpretationQuota, voiceQuota: product.voiceQuota, malviQuota: product.malviQuota,
+    });
+    pendingPaystackOrders.delete(reference);
+    await markPaystackOrderFulfilled(reference);
+    return { success:true, verified:true, type:"SUBSCRIPTION", reference, amount:verifiedAmount, currency:verifiedCurrency,
+      subscription:result.subscription, message:"Paystack payment verified. Your paid communication subscription is active." };
   }
 
   // 3. Separate Malvi Subscription Activation
@@ -2000,13 +1992,13 @@ async function fulfillPaystackOrder({
     const billingCycle = authoritativeOrder.billingCycle || "MONTHLY";
     const plan = billingDb.malviPlans.find((p) => p.tier === tier);
     if (!plan) throw new Error(`Malvi plan ${tier} is not configured.`);
-    const expectedAmount = billingCycle === "ANNUAL"
+    const expectedAmount = authoritativeOrder.product ? authoritativeOrder.amount : billingCycle === "ANNUAL"
       ? (verifiedCurrency === "USD" ? plan.priceAnnualUSD : plan.priceAnnualGHS)
       : (verifiedCurrency === "USD" ? plan.priceMonthlyUSD : plan.priceMonthlyGHS);
     if (Number(verifiedAmount) !== Number(expectedAmount)) throw new Error("Verified Paystack amount does not match the selected Malvi plan price.");
-    const voiceMinutesAllowed = Number(plan.videoInteractionMinutesLimit || 0);
+    const voiceMinutesAllowed = Number(authoritativeOrder.product?.videoMinutesAllowed ?? plan.videoInteractionMinutesLimit ?? 0);
     const result = normalizedBillingEnabled()
-      ? await activateMalviSubscriptionPersistent({ userId, tier, planId: plan.id, planName: plan.name, billingCycle, price: verifiedAmount, currency: verifiedCurrency, paymentMethod: "Paystack Payment Gateway", referenceId: reference, transactionId: `tx_malvi_${reference}`, videoMinutesAllowed: plan.videoInteractionMinutesLimit, voiceMinutesAllowed, metadata:{source:"paystack",planTier:tier} })
+      ? await activateMalviSubscriptionPersistent({ userId, tier, planId: plan.id, planName: plan.name, billingCycle, price: verifiedAmount, currency: verifiedCurrency, paymentMethod: "Paystack Payment Gateway", referenceId: reference, transactionId: `tx_malvi_${reference}`, videoMinutesAllowed: voiceMinutesAllowed, voiceMinutesAllowed, metadata:{source:"paystack",planTier:tier} })
       : billingDb.activateMalviSubscription({ userId, tier, billingCycle, paymentMethod: "Paystack Payment Gateway", pricePaid: verifiedAmount, currency: verifiedCurrency, referenceId: reference });
 
     pendingPaystackOrders.delete(reference);
@@ -2060,6 +2052,7 @@ app.get("/api/paystack/verify/:reference", requireAuthenticatedUser, async (req,
       try {
         const response = await fetch(`https://api.paystack.co/transaction/verify/${encodeURIComponent(reference)}`, {
           method: "GET",
+          signal: AbortSignal.timeout(15_000),
           headers: {
             Authorization: `Bearer ${paystackSecretKey}`,
           },
@@ -2317,9 +2310,8 @@ app.post("/api/paystack/webhook", async (req, res) => {
     const event = req.body;
     const data = event?.data || {};
     const ref = data.reference;
-    const eventId = String(data.id ? `${event.event}:${data.id}` : `${event.event}:${ref || crypto.createHash("sha256").update(rawBody || Buffer.from("" )).digest("hex")}`);
-    const firstDelivery = await claimPaystackWebhook(eventId, String(event?.event || "unknown"), event);
-    if (!firstDelivery) return res.status(200).send("OK");
+    // Fulfillment is atomic and idempotent by payment reference in PostgreSQL.
+    // Do not acknowledge a failed delivery just because an earlier attempt was received.
 
     if (event?.event === "charge.success") {
       if (!ref) return res.status(400).json({ error: "Paystack event is missing transaction reference" });
@@ -2512,6 +2504,9 @@ app.post("/api/billing/plans/change", requireAuthenticatedUser, async (req, res)
     const { planTier, billingCycle = "MONTHLY" } = req.body;
     const targetPlan = billingDb.subscriptionPlans.find((p) => p.tier === planTier);
     if (!targetPlan || !targetPlan.isActive) return res.status(404).json({ error: "Subscription plan tier not found" });
+    if (targetPlan.priceMonthlyGHS > 0 || targetPlan.priceAnnualGHS > 0) {
+      return res.status(402).json({ success:false, error:"Paid communication plans require verified Paystack checkout." });
+    }
     if (!["MONTHLY", "ANNUAL"].includes(billingCycle)) return res.status(400).json({ success: false, error: "Unsupported billing cycle." });
     if (!normalizedBillingEnabled()) return res.status(503).json({ success:false, error:"Persistent billing database is required for subscription changes." });
     const persisted = await selectCommunicationPlanPersistent({

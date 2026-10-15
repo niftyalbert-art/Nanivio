@@ -13,6 +13,7 @@ import {
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { billingClient } from '../../lib/billingClient';
+import { useNanivio } from '../../context/NanivioContext';
 
 interface PaystackTopUpModalProps {
   isOpen: boolean;
@@ -39,10 +40,12 @@ export const PaystackTopUpModal: React.FC<PaystackTopUpModalProps> = ({
   billingCycle = 'MONTHLY',
   minutes,
 }) => {
+  const { authUser } = useNanivio();
+  const isFixedProduct = purpose !== 'COMMUNICATION_TOPUP';
   const [amount, setAmount] = useState<number>(initialAmount || 50);
   const [customAmount, setCustomAmount] = useState<string>('');
   const [currency, setCurrency] = useState<string>(defaultCurrency);
-  const [email, setEmail] = useState<string>('kwame.mensah@nanivio.tech');
+  const email = authUser?.email ?? '';
   const [paymentStep, setPaymentStep] = useState<'INPUT' | 'INITIALIZING' | 'CHECKOUT' | 'VERIFYING' | 'SUCCESS'>('INPUT');
   const [hasOpenedCheckout, setHasOpenedCheckout] = useState<boolean>(false);
   const [paystackData, setPaystackData] = useState<{
@@ -53,6 +56,17 @@ export const PaystackTopUpModal: React.FC<PaystackTopUpModalProps> = ({
   } | null>(null);
   const [verificationResult, setVerificationResult] = useState<any>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  React.useEffect(() => {
+    if (!isOpen) return;
+    setAmount(initialAmount ?? 50);
+    setCustomAmount('');
+    setCurrency(defaultCurrency);
+    setPaymentStep('INPUT');
+    setHasOpenedCheckout(false);
+    setPaystackData(null);
+    setVerificationResult(null);
+    setErrorMessage(null);
+  }, [isOpen, initialAmount, defaultCurrency, purpose, packageId, planTier, billingCycle]);
 
   // Background auto-polling for payment completion once user opens Paystack checkout
   React.useEffect(() => {
@@ -61,9 +75,7 @@ export const PaystackTopUpModal: React.FC<PaystackTopUpModalProps> = ({
       interval = setInterval(async () => {
         try {
           const verifyRes = await billingClient.verifyPaystack(
-            paystackData.reference,
-            'user_me',
-            amount
+            paystackData.reference
           );
           if (verifyRes && verifyRes.success) {
             clearInterval(interval);
@@ -91,13 +103,11 @@ export const PaystackTopUpModal: React.FC<PaystackTopUpModalProps> = ({
   const handleCustomChange = (val: string) => {
     setCustomAmount(val);
     const parsed = parseFloat(val);
-    if (!isNaN(parsed) && parsed > 0) {
-      setAmount(parsed);
-    }
+    setAmount(Number.isFinite(parsed) && parsed > 0 ? parsed : 0);
   };
 
   const handleInitialize = async () => {
-    if (amount <= 0) {
+    if (!Number.isFinite(amount) || amount <= 0) {
       setErrorMessage('Please enter a valid amount.');
       return;
     }
@@ -109,7 +119,6 @@ export const PaystackTopUpModal: React.FC<PaystackTopUpModalProps> = ({
         email,
         amount,
         currency,
-        userId: 'user_me',
         purpose: purpose as 'COMMUNICATION_TOPUP' | 'SUBSCRIPTION' | 'COMMUNICATION_MINUTES' | 'MALVI_SUBSCRIPTION',
         packageId,
         planTier,
@@ -137,9 +146,7 @@ export const PaystackTopUpModal: React.FC<PaystackTopUpModalProps> = ({
 
     try {
       const verifyRes = await billingClient.verifyPaystack(
-        paystackData.reference,
-        'user_me',
-        amount
+        paystackData.reference
       );
 
       setVerificationResult(verifyRes);
@@ -231,6 +238,7 @@ export const PaystackTopUpModal: React.FC<PaystackTopUpModalProps> = ({
                     <button
                       key={c}
                       type="button"
+                      disabled={isFixedProduct}
                       onClick={() => setCurrency(c)}
                       className={`px-3 py-1 rounded-lg font-bold text-xs transition ${
                         currency === c
@@ -245,7 +253,7 @@ export const PaystackTopUpModal: React.FC<PaystackTopUpModalProps> = ({
               </div>
 
               {/* Amount Presets */}
-              <div>
+              <div hidden={isFixedProduct}>
                 <label className="block text-xs font-semibold text-slate-300 mb-2">Select Amount</label>
                 <div className="grid grid-cols-5 gap-2">
                   {presetAmounts.map((preset) => (
@@ -267,7 +275,7 @@ export const PaystackTopUpModal: React.FC<PaystackTopUpModalProps> = ({
               </div>
 
               {/* Custom Amount Field */}
-              <div>
+              <div hidden={isFixedProduct}>
                 <label className="block text-xs font-semibold text-slate-300 mb-1.5">Or Custom Amount</label>
                 <div className="relative">
                   <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 font-mono text-sm">
@@ -275,8 +283,8 @@ export const PaystackTopUpModal: React.FC<PaystackTopUpModalProps> = ({
                   </span>
                   <input
                     type="number"
-                    min="5"
-                    step="1"
+                    min="0.01"
+                    step="0.01"
                     placeholder="Enter custom amount"
                     value={customAmount}
                     onChange={(e) => handleCustomChange(e.target.value)}
@@ -291,7 +299,7 @@ export const PaystackTopUpModal: React.FC<PaystackTopUpModalProps> = ({
                 <input
                   type="email"
                   value={email}
-                  onChange={(e) => setEmail(e.target.value)}
+                  readOnly
                   className="w-full px-3.5 py-2 rounded-xl bg-slate-950 border border-slate-800 focus:border-emerald-500 focus:outline-none text-slate-200 text-xs font-mono"
                 />
               </div>

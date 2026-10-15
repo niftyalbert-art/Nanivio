@@ -1,5 +1,6 @@
 - [Agora package interoperability](agora-interop.md) — validate the Node/tsx runtime as well as the CJS production bundle.
 - [Communication grant periods](communication-grants.md) — self-service tier/cycle switches must preserve consumption and the existing term.
+- [Authentication signature](signature-video-policy.md) — show only after successful sign-in/sign-up, with sound and without skip or sound controls.
 - [Branch safety](branch-safety.md) — this project's approved source and push target is malvi-production-upgrade, never main.
 - [Billing payment sources](billing-payment-sources.md) — wallet debits and verified external-payment fulfillment must use separate commands.
 - [GitHub authentication boundary](github-authentication.md) — a working GitHub App connection does not guarantee valid shell Git credentials.

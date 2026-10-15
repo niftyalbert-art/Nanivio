@@ -128,7 +128,8 @@ export async function savePaystackOrder(reference: string, userId: string, paylo
 export async function getPaystackOrder(reference: string): Promise<any | null> {
   const { data, error } = await getDb().from('nanivio_paystack_orders').select('payload,status').eq('reference', reference).maybeSingle();
   if (error) throw new Error(`Unable to load Paystack order: ${error.message}`);
-  if (!data || data.status === 'FULFILLED') return null;
+  // Retain the original intent after fulfillment for ownership checks and safe retries.
+  if (!data) return null;
   return data.payload;
 }
 

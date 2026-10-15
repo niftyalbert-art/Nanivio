@@ -46,6 +46,15 @@ export const CommunicationMinutesModal: React.FC<CommunicationMinutesModalProps>
   const [isPaystackOpen, setIsPaystackOpen] = useState<boolean>(false);
 
   if (!isOpen) return null;
+  if (communicationMinutePackages.length === 0) return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 p-4">
+      <div className="max-w-md rounded-2xl border border-slate-700 bg-slate-900 p-6 text-slate-100">
+        <p role="status">Minute packages are currently unavailable. Refresh billing before starting a payment.</p>
+        <button type="button" onClick={() => void refreshBilling()} className="mt-4 mr-4 rounded-lg bg-emerald-500 px-4 py-2 text-slate-950">Refresh billing</button>
+        <button type="button" onClick={onClose} className="rounded-lg border border-slate-600 px-4 py-2">Close</button>
+      </div>
+    </div>
+  );
 
   const packages: CommunicationMinutePackage[] =
     communicationMinutePackages.length > 0
@@ -123,7 +132,7 @@ export const CommunicationMinutesModal: React.FC<CommunicationMinutesModalProps>
           },
         ];
 
-  const selectedPkg = packages.find((p) => p.id === selectedPkgId) || packages[1];
+  const selectedPkg = packages.find((p) => p.id === selectedPkgId) || packages[0];
   const pkgCost = currency === 'USD' ? selectedPkg.priceUSD : selectedPkg.priceGHS;
 
   // Check Communication Balance (Nanivio credit)

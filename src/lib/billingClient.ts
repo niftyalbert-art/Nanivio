@@ -198,6 +198,7 @@ export const billingClient = {
     if (!res.ok || !data.success) {
       throw new Error(data.error || 'Failed to verify Paystack payment');
     }
+    if (data.verified !== true) throw new Error('Paystack has not confirmed this payment.');
     return data;
   },
 

@@ -95,6 +95,8 @@ export const UniversalBillingHub: React.FC = () => {
   // Automatically handle incoming plan selection routed from elsewhere
   useEffect(() => {
     if (pendingBillingAction) {
+      if (pendingBillingAction.purpose !== 'MALVI_SUBSCRIPTION' && billingPlans.length === 0) return;
+      if (pendingBillingAction.purpose === 'MALVI_SUBSCRIPTION' && malviPlans.length === 0) return;
       if (pendingBillingAction.subTab) {
         setActiveSubTab(pendingBillingAction.subTab as any);
       }
@@ -107,13 +109,26 @@ export const UniversalBillingHub: React.FC = () => {
         const cycle = pendingBillingAction.cycle || 'MONTHLY';
 
         if (purpose === 'SUBSCRIPTION') {
+          const plan = billingPlans.find(p => p.tier === tier);
+          if (!plan) {
+            setCommunicationPlanStatus({ type:'error', message:'This communication plan is unavailable.' });
+            setPendingBillingAction(null);
+            return;
+          }
+          const price = cycle === 'ANNUAL' ? plan.priceAnnualGHS : plan.priceMonthlyGHS;
+          if (price > 0) {
+            setPaystackConfig({ purpose:'SUBSCRIPTION', planTier:tier, billingCycle:cycle, amount:price, currency:'GHS' });
+            setIsPaystackModalOpen(true);
+            setPendingBillingAction(null);
+            return;
+          }
           setUpgradingTier(tier);
           setCommunicationPlanStatus(null);
           void upgradeSubscriptionPlan(tier, cycle)
             .then(() => {
               setCommunicationPlanStatus({
                 type: 'success',
-                message: 'Communication plan allowance selected. No payment was collected and automatic renewal is off.',
+                message: 'Free communication plan selected. No payment was collected.',
               });
               setActiveSubTab('overview');
             })
@@ -124,7 +139,12 @@ export const UniversalBillingHub: React.FC = () => {
             .finally(() => setUpgradingTier(null));
         } else if (purpose === 'MALVI_SUBSCRIPTION') {
           const targetPlan = malviPlans.find((p) => p.tier === tier);
-          const price = cycle === 'ANNUAL' ? targetPlan?.priceAnnualGHS || 2200 : targetPlan?.priceMonthlyGHS || 220;
+          if (!targetPlan) {
+            setCommunicationPlanStatus({ type:'error', message:'This Malvi plan is unavailable.' });
+            setPendingBillingAction(null);
+            return;
+          }
+          const price = cycle === 'ANNUAL' ? targetPlan.priceAnnualGHS : targetPlan.priceMonthlyGHS;
           setPaystackConfig({
             purpose: 'MALVI_SUBSCRIPTION',
             planTier: tier,
@@ -204,13 +224,25 @@ export const UniversalBillingHub: React.FC = () => {
   };
 
   const handleUpgradePlan = async (tier: string) => {
+    const plan = billingPlans.find(p => p.tier === tier);
+    if (!plan) {
+      setCommunicationPlanStatus({ type:'error', message:'This plan is unavailable. Refresh and try again.' });
+      return;
+    }
+    const price = billingCycle === 'ANNUAL' ? plan.priceAnnualGHS : plan.priceMonthlyGHS;
+    if (price > 0) {
+      setCommunicationPlanStatus(null);
+      setPaystackConfig({ purpose:'SUBSCRIPTION', planTier:tier, billingCycle, amount:price, currency:'GHS' });
+      setIsPaystackModalOpen(true);
+      return;
+    }
     setUpgradingTier(tier);
     setCommunicationPlanStatus(null);
     try {
       await upgradeSubscriptionPlan(tier, billingCycle);
       setCommunicationPlanStatus({
         type: 'success',
-        message: 'Communication plan allowance selected. No payment was collected and automatic renewal is off.',
+        message: 'Free communication plan selected. No payment was collected.',
       });
     } catch (error) {
       setCommunicationPlanStatus({
@@ -884,13 +916,17 @@ export const UniversalBillingHub: React.FC = () => {
               </div>
             )}
             <p className="text-xs text-slate-400">
-              Selecting a communication plan assigns the catalog allowance for the chosen term once. It does not charge Nanivio credit or Paystack, create an invoice, auto-renew, or replenish minutes monthly.
+              Paid plans activate only after Paystack confirms payment. The selected allowance lasts for the purchased term. Renewal is manual; automatic charges are not enabled.
             </p>
 
             {/* Plans Grid */}
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-5">
               {billingPlans.map((plan) => {
-                const isCurrent = currentSub?.planId === plan.id || currentSub?.tier === plan.tier;
+                const price = billingCycle === 'ANNUAL' ? plan.priceAnnualGHS : plan.priceMonthlyGHS;
+                const isCurrent = (currentSub?.planId === plan.id || currentSub?.tier === plan.tier)
+                  && currentSub?.status === 'ACTIVE' && currentSub?.billingCycle === billingCycle
+                  && currentSub?.currentPeriodEnd > Date.now()
+                  && (price === 0 || Number(currentSub?.pricePaid) > 0);
 
                 return (
                   <div
@@ -921,7 +957,7 @@ export const UniversalBillingHub: React.FC = () => {
                       </div>
 
                       <div className="pt-2 border-t border-slate-800">
-                        <div className="text-sm font-semibold text-emerald-300">No payment collected</div>
+                        <div className="text-sm font-semibold text-emerald-300">{price === 0 ? 'Free' : `GH₵ ${formatBillingAmount(price)}`}</div>
                         <div className="text-xs text-slate-400">{billingCycle === 'ANNUAL' ? 'Allowance term: one year' : 'Allowance term: 30 days'}</div>
                       </div>
 
@@ -964,7 +1000,7 @@ export const UniversalBillingHub: React.FC = () => {
                           onClick={() => void handleUpgradePlan(plan.tier)}
                           className="w-full py-2.5 rounded-xl font-bold text-xs bg-emerald-500 hover:bg-emerald-400 text-slate-950 shadow-md shadow-emerald-500/20 transition flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-60"
                         >
-                          <span>{upgradingTier === plan.tier ? 'Selecting…' : 'Select allowance — no payment'}</span>
+                          <span>{upgradingTier === plan.tier ? 'Selecting…' : price > 0 ? 'Pay with Paystack' : 'Select free plan'}</span>
                         </button>
                       )}
                     </div>

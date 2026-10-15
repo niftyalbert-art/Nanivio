@@ -31,6 +31,13 @@ export async function activateSubscriptionFromWallet(payload: Record<string, unk
   return billingCommand('SUBSCRIPTION_FROM_WALLET', payload);
 }
 
+export async function activatePaystackSubscriptionPersistent(payload: Record<string, unknown>) {
+  const { data, error } = await db().rpc('nanivio_activate_paystack_subscription', { payload });
+  if (error) throw new Error(`Paid subscription activation failed: ${error.message}`);
+  if (!data?.success) throw new Error(data?.error || 'Paid subscription activation failed.');
+  return data;
+}
+
 export async function recordLangpretationUsagePersistent(payload: Record<string, unknown>) {
   if (!normalizedBillingEnabled()) throw new Error('Normalized billing database is not configured.');
   const request = { ...payload, eventId: payload.eventId || `use_${crypto.randomUUID()}` };

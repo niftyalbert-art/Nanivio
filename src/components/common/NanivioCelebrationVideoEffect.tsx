@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { Play, Volume2, VolumeX } from 'lucide-react';
+import { Play } from 'lucide-react';
 
 // Vite serves the existing upload in development and fingerprints it in builds.
 // Do not duplicate the video in public/ or recreate it with canvas effects.
@@ -9,7 +9,7 @@ const welcomeVideoUrl = new URL(
 ).href;
 
 interface NanivioCelebrationVideoEffectProps {
-  mode?: 'signup' | 'signin' | 'intro';
+  mode?: 'signup' | 'signin';
   onComplete: () => void;
 }
 
@@ -20,7 +20,6 @@ export const NanivioCelebrationVideoEffect: React.FC<NanivioCelebrationVideoEffe
   const videoRef = useRef<HTMLVideoElement>(null);
   const onCompleteRef = useRef(onComplete);
   const completedRef = useRef(false);
-  const [muted, setMuted] = useState(true);
   const [needsPlay, setNeedsPlay] = useState(false);
   const [hasError, setHasError] = useState(false);
   onCompleteRef.current = onComplete;
@@ -35,29 +34,28 @@ export const NanivioCelebrationVideoEffect: React.FC<NanivioCelebrationVideoEffe
     let active = true;
     const video = videoRef.current;
     if (video) {
+      video.muted = false;
+      video.volume = 1;
       video.play().catch(() => {
         if (active) setNeedsPlay(true);
       });
     }
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') complete();
-    };
-    window.addEventListener('keydown', handleKeyDown);
     return () => {
       active = false;
-      window.removeEventListener('keydown', handleKeyDown);
     };
   }, [complete]);
 
   const playVideo = () => {
-    videoRef.current?.play().catch(() => setNeedsPlay(true));
+    const video = videoRef.current;
+    if (!video) return;
+    video.muted = false;
+    video.volume = 1;
+    video.play().catch(() => setNeedsPlay(true));
   };
 
   const successMessage = mode === 'signup'
     ? 'Your account was created successfully.'
-    : mode === 'signin'
-      ? 'You signed in successfully.'
-      : 'Welcome to Nanivio.';
+    : 'You signed in successfully.';
 
   return (
     <section
@@ -65,7 +63,7 @@ export const NanivioCelebrationVideoEffect: React.FC<NanivioCelebrationVideoEffe
       className="fixed inset-0 z-[100] flex items-center justify-center overflow-hidden bg-black text-white"
     >
       <p className="sr-only" role="status">
-        {successMessage} You can skip the welcome video to continue.
+        {successMessage} The Nanivio signature plays with sound before you continue.
       </p>
 
       {hasError ? (
@@ -77,7 +75,10 @@ export const NanivioCelebrationVideoEffect: React.FC<NanivioCelebrationVideoEffe
           ref={videoRef}
           src={welcomeVideoUrl}
           autoPlay
-          muted={muted}
+          muted={false}
+          controls={false}
+          disablePictureInPicture
+          disableRemotePlayback
           playsInline
           preload="auto"
           aria-hidden="true"
@@ -95,32 +96,19 @@ export const NanivioCelebrationVideoEffect: React.FC<NanivioCelebrationVideoEffe
           className="relative z-10 flex items-center gap-2 rounded-full border border-white/40 bg-black/75 px-5 py-3 text-sm font-medium focus-visible:outline focus-visible:outline-2 focus-visible:outline-cyan-300"
         >
           <Play size={18} aria-hidden="true" />
-          Play welcome video
+          Play Nanivio signature
         </button>
       )}
 
-      <div className="absolute inset-x-0 bottom-6 z-10 flex items-center justify-between gap-3 px-5 pb-[env(safe-area-inset-bottom)]">
-        {!hasError && (
-          <button
-            type="button"
-            onClick={() => setMuted(value => !value)}
-            aria-label={muted ? 'Turn video sound on' : 'Mute video sound'}
-            aria-pressed={!muted}
-            className="flex min-h-11 items-center gap-2 rounded-full border border-white/30 bg-black/70 px-4 text-sm focus-visible:outline focus-visible:outline-2 focus-visible:outline-cyan-300"
-          >
-            {muted ? <VolumeX size={18} aria-hidden="true" /> : <Volume2 size={18} aria-hidden="true" />}
-            {muted ? 'Sound on' : 'Mute'}
-          </button>
-        )}
+      {hasError && (
         <button
           type="button"
-          autoFocus
           onClick={complete}
-          className="ml-auto min-h-11 rounded-full border border-white/30 bg-black/70 px-5 text-sm font-medium focus-visible:outline focus-visible:outline-2 focus-visible:outline-cyan-300"
+          className="absolute bottom-6 right-5 min-h-11 rounded-full border border-white/30 bg-black/70 px-5 text-sm font-medium focus-visible:outline focus-visible:outline-2 focus-visible:outline-cyan-300"
         >
-          {hasError ? 'Continue' : 'Skip video'}
+          Continue
         </button>
-      </div>
+      )}
     </section>
   );
 };

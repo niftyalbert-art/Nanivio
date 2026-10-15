@@ -1,6 +1,5 @@
-﻿import React, { useState, useCallback } from 'react';
+import React from 'react';
 import { NanivioProvider, useNanivio } from './context/NanivioContext';
-import { OpeningAnimation } from './components/OpeningAnimation';
 import { NanivioCelebrationVideoEffect } from './components/common/NanivioCelebrationVideoEffect';
 import { NanivioAuthScreen } from './components/auth/NanivioAuthScreen';
 import { Navbar } from './components/Navbar';
@@ -85,31 +84,8 @@ const AppOrchestrator: React.FC = () => {
   } = useNanivio();
   const isAdminRoute = typeof window !== 'undefined' && window.location.pathname === '/admin';
 
-  const [showIntro, setShowIntro] = useState<boolean>(() => {
-    try {
-      const seen = typeof window !== 'undefined' ? sessionStorage?.getItem('nanivio_intro_seen') : 'true';
-      return !seen;
-    } catch {
-      return false;
-    }
-  });
-
-  const handleIntroComplete = useCallback(() => {
-    try {
-      if (typeof window !== 'undefined') {
-        sessionStorage?.setItem('nanivio_intro_seen', 'true');
-      }
-    } catch {}
-    setShowIntro(false);
-  }, []);
-
-  // Phase 1: Nanivio Signature Opening Effect
-  if (showIntro) {
-    return <OpeningAnimation onComplete={handleIntroComplete} />;
-  }
-
-  // Phase 2: Active Cinematic Video Celebration for Sign In / Sign Up
-  if (activeCelebrationEffect?.show) {
+  // The signature belongs only to a successful authentication, never app startup.
+  if (isAuthenticated && activeCelebrationEffect?.show) {
     return (
       <NanivioCelebrationVideoEffect
         mode={activeCelebrationEffect.mode}
