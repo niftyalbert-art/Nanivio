@@ -48,14 +48,16 @@ task workspace only; they have **not** been merged into the Render-connected bra
 | Missed-call dialog fits a 390 x 844 viewport | Passed in Chromium mobile emulation | Not verified |
 | Khaya/Sunbird browser adapters send authenticated requests | Passed after repair | Not verified |
 | Unavailable translation is rejected rather than presented as success | Passed after repair | Endpoint reported untranslated input |
-| English-to-Twi endpoint produces actual translated output | Failed: no provider configured here | Failed: untranslated passthrough |
-| English-to-Luganda endpoint produces actual translated output | No provider configured here | Failed: untranslated passthrough |
+| English-to-Twi endpoint produces actual translated output | Passed after provider configuration and contract repairs | Failed: untranslated passthrough |
+| English-to-Luganda endpoint produces actual translated output | Blocked: configured URL returned speech synthesis, not translation | Failed: untranslated passthrough |
 | Authenticated quota meter can be read | Passed, HTTP 200 | Passed, HTTP 200 |
 | Genuine microphone/camera capture and remote media playback | Blocked: no input devices | Not verified |
 | Actual allowance consumption during genuine translated media | Not verified | Not verified |
 
-The final workspace API suite passed 25 of 26 assertions. The unsuccessful
-assertion was actual translation output. The final authenticated browser suite
+The updated workspace API suite passed 26 of 27 assertions, including real
+English-to-Twi output from Khaya. It now also tests Sunbird in the workspace; that
+provider's configured URL returned an audio-synthesis response rather than
+translation. The authenticated browser suite
 passed 15 of 16 assertions; the unavailable physical input devices were the
 remaining failed prerequisite. Render passed 23 of 26 assertions, with failures
 for disconnect cleanup and the two tested translation language pairs.
@@ -79,6 +81,44 @@ Some assertions cover the same workflow at different layers.
 4. **Repeatable evidence:** add explicitly opt-in real-provider checks using
    actual registration, sign-in forms, WebSockets, and Agora SDK channel joins.
    Keep generated evidence outside version control and deployment.
+5. **Provider contracts:** share Khaya/Sunbird HTTP clients between HTTP and
+   WebSocket paths. Add the missing Sunbird bearer header, honor its configured
+   URL, map English/Luganda/Swahili to its ISO 639-3 codes, map the app's Twi
+   code to Khaya's documented code, and accept Khaya's JSON-string translations.
+   Use bounded requests and safe diagnostics without logging keys, URLs, input
+   text, or upstream values. Do not send translation requests to known
+   non-translation paths on the official Sunbird host.
+6. **Stable development verification:** exclude workspace logs, agent metadata,
+   and generated test evidence from Vite watching. Workflow-log writes were
+   triggering full-page reloads during browser checks, interrupting media-device
+   enumeration and missed-call handling. These interrupted runs are retained as
+   evidence, not counted as passing device or call tests.
+
+## Translation follow-up after provider settings were supplied
+
+An actual authenticated English-to-Twi request now returned:
+
+> Hello. Ɛnnɛ yɛ 2026-10-15. Meda mo ase wɔ mmoa a mode maa mo no ho.
+
+The input was "Hello. Today is 2026-10-15. Thank you for your help." The response
+identified `khaya-ghana-nlp`, reported success, and was not cached. This is real
+provider output, not a claim of native-speaker translation-quality approval.
+The subsequent normal-sign-in browser run also confirmed that the actual Khaya
+adapter returned a successful provider translation. It retained correct failure
+handling for Sunbird, passed both accounts' real Agora audio/video joins and
+mobile layouts again, and listed only an audio-output device.
+
+Sunbird returned HTTP 200 but the response contained audio-synthesis fields
+such as `audio_url`, `voice`, `sample_rate`, and `duration_seconds`, not translated
+text. Those response values were not logged or saved. Its translation URL needs
+to point to the documented text-translation service:
+`https://api.sunbird.ai/tasks/translate`.
+Further calls to official non-translation paths are now rejected locally.
+No API key replacement has been shown necessary.
+
+Provider contract references:
+- https://khaya-sdk.readthedocs.io/en/latest/languages/
+- https://api.sunbird.ai/tutorial
 
 ## What the evidence does not prove
 
@@ -90,8 +130,9 @@ Some assertions cover the same workflow at different layers.
 - Render's configuration endpoint reports the translation services configured.
   Nevertheless, the tested translation endpoints returned the input unchanged,
   with `success: false` and `provider: untranslated-passthrough`.
-  We have not established whether the upstream cause is credentials, endpoint,
-  language mapping, timeout, or response parsing.
+  Those production failures have not been re-diagnosed with server-side access.
+  The workspace now has independently confirmed Khaya output and a Sunbird
+  endpoint mismatch; do not assume Render has the repaired code or configuration.
 - A readable quota meter does not prove consumption. The driver did not submit
   fabricated usage records to create a passing quota result.
 - GetStream's configuration flag is not a live private-chat or provider-delivery
@@ -101,11 +142,12 @@ Some assertions cover the same workflow at different layers.
 ## Validation
 
 - `npm run lint`: passed.
-- Billing/privacy/setup regression tests: 28 passed.
+- Billing/privacy/setup and pure translation-contract tests: 33 passed.
 - Dependency portability tests: 5 passed.
 - `npm run build`: passed; existing chunk-size/import warnings remain.
 - `git diff --check`: passed.
 - Managed workflow restarted after each coherent repair batch and started cleanly.
+- Development watch exclusions checked using Vite's normal configuration loader.
 
 ## Evidence files
 
@@ -123,9 +165,9 @@ as a current workspace failure.
 
 ## Remaining work
 
-1. Diagnose the actual translation provider response with valid test-provider
-   configuration and safe upstream diagnostics. Require real translated output,
-   not configuration flags or echoed input.
+1. Correct the Sunbird translation endpoint and require actual Luganda output.
+   Khaya's actual English-to-Twi output has now passed; other language pairs and
+   linguistic quality have not been comprehensively verified.
 2. Run a genuine two-device microphone/camera session, including actual remote
    audio/video playback and disconnect behavior on mobile.
 3. Compare authoritative allowance before and after real translated media,

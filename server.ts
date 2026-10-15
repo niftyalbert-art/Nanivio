@@ -40,6 +40,7 @@ import { getPersistentInvoice } from "./src/server/normalizedBillingRepository.t
 import { authDb } from "./src/server/authDb.ts";
 import * as persistentAuth from "./src/server/persistentAuth.ts";
 import { productionStatus } from "./src/server/productionStatus.ts";
+import { callKhayaEngine, callSunbirdEngine } from "./src/server/translationProviders.ts";
 import { createSetupPreview, rejectSetupRealtime } from "./src/server/setupPreview.ts";
 import { getServerSupabase } from "./src/server/supabaseServer.ts";
 import { otpService } from "./src/server/otpService.ts";
@@ -817,76 +818,6 @@ const GHANAIAN_LANGUAGES = new Set(["ak", "tw-ak", "fat", "ee", "gaa", "ha"]);
 const EAST_AFRICAN_LANGUAGES = new Set(["sw", "lg"]);
 const INTERNATIONAL_LANGUAGES = new Set(["en", "fr", "es", "ar", "de", "it", "pt", "zh", "ja", "ko"]);
 
-/**
- * 1. KHAYA AI (Ghana NLP) Specialized Engine
- * Dedicated to Ghanaian and West African languages:
- * Twi/Akan (ak), Akuapem Twi (tw-ak), Fante (fat), Ewe (ee), Ga (gaa), Hausa (ha)
- */
-async function callKhayaEngine(text: string, sourceLang: string, targetLang: string): Promise<{ text: string; provider: string } | null> {
-  const apiKey = process.env.KHAYA_API_KEY;
-  if (apiKey) {
-    try {
-      const response = await fetch(process.env.KHAYA_TRANSLATION_URL || "https://translation-api.ghananlp.org/v1/translate", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "Ocp-Apim-Subscription-Key": apiKey,
-        },
-        body: JSON.stringify({
-          in: text,
-          lang: `${sourceLang}-${targetLang}`,
-        }),
-        signal: AbortSignal.timeout(2800),
-      });
-      if (response.ok) {
-        const data = await response.json();
-        const translated = data?.translation || data?.out || data?.text;
-        if (translated && typeof translated === "string") {
-          return { text: translated.trim(), provider: "khaya-ghana-nlp" };
-        }
-      }
-    } catch (e) {
-      console.warn("[Nanivio Server] Khaya live upstream warning:", e);
-    }
-  }
-  return null;
-}
-
-/**
- * 2. SUNBIRD AI Specialized Engine
- * Dedicated to East African languages:
- * Swahili (sw), Luganda (lg)
- */
-async function callSunbirdEngine(text: string, sourceLang: string, targetLang: string): Promise<{ text: string; provider: string } | null> {
-  const apiKey = process.env.SUNBIRD_API_KEY;
-  if (apiKey) {
-    try {
-      const response = await fetch("https://api.sunbird.ai/tasks/nmt", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          source_language: sourceLang,
-          target_language: targetLang,
-          text: text,
-        }),
-        signal: AbortSignal.timeout(2800),
-      });
-      if (response.ok) {
-        const data = await response.json();
-        const translated = data?.output?.translated_text || data?.translated_text;
-        if (translated && typeof translated === "string") {
-          return { text: translated.trim(), provider: "sunbird-makerere" };
-        }
-      }
-    } catch (e) {
-      console.warn("[Nanivio Server] Sunbird live upstream warning:", e);
-    }
-  }
-  return null;
-}
-
 async function callAzureTranslator(text: string, sourceLang: string, targetLang: string): Promise<{ text: string; provider: string } | null> {
   const key = process.env.AZURE_TRANSLATOR_KEY;
   if (!key) return null;
@@ -924,8 +855,8 @@ async function translateWithProductionProviders(text: string, sourceLang: string
         if (fromEn) return { text: fromEn.text, provider:`${toEn.provider}+${fromEn.provider}`, pivotUsed:true };
       }
     }
-    if (sourceLang === 'en') return await callKhayaEngine(text, 'en', targetLang) || await callAzureTranslator(text,'en',targetLang);
-    if (targetLang === 'en') return await callKhayaEngine(text, sourceLang, 'en') || await callAzureTranslator(text,sourceLang,'en');
+    if (sourceLang === 'en') return await callAzureTranslator(text,'en',targetLang);
+    if (targetLang === 'en') return await callAzureTranslator(text,sourceLang,'en');
     return null;
   }
 
