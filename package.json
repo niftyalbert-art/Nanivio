@@ -7,10 +7,10 @@
     "dev": "tsx server.ts",
     "build": "vite build && esbuild server.ts --bundle --platform=node --format=cjs --packages=external --sourcemap --outfile=dist/server.cjs",
     "render-build": "npm run test:dependencies && npm ci --include=dev && npm run build",
-    "test:dependencies": "node --test tests/dependency-portability.test.mjs",
     "start": "node dist/server.cjs",
     "preview": "vite preview",
-    "lint": "tsc --noEmit"
+    "lint": "tsc --noEmit",
+    "test:dependencies": "node --test tests/dependency-portability.test.mjs"
   },
   "engines": {
     "node": ">=20.0.0"
