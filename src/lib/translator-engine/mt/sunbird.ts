@@ -1,5 +1,6 @@
 import { IMtProvider } from './interface';
 import { MtResult } from '../types';
+import { authClient } from '../../authClient';
 
 /**
  * Sunbird AI Provider
@@ -23,7 +24,10 @@ export class SunbirdMtProvider implements IMtProvider {
     try {
       const response = await fetch('/api/translate', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          ...(authClient.getToken() ? { Authorization: `Bearer ${authClient.getToken()}` } : {}),
+        },
         body: JSON.stringify({
           text,
           sourceLang,
@@ -34,13 +38,16 @@ export class SunbirdMtProvider implements IMtProvider {
 
       if (response.ok) {
         const data = await response.json();
+        if (data.success !== true || data.untranslated ||
+          typeof data.translatedText !== 'string' || !data.translatedText.trim()) {
+          throw new Error(data.error || 'Sunbird provider did not return a translation.');
+        }
         return {
           translatedText: data.translatedText || '',
           sourceLang,
           targetLang,
           provider: 'sunbird',
           latencyMs: Date.now() - start,
-          confidence: 0.94,
         };
       }
     } catch (e) {
