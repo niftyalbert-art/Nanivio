@@ -157,9 +157,9 @@ export class LanguageDetector {
       const fallbackLang = preferredLanguage || 'en';
       return {
         detectedLang: fallbackLang,
-        confidence: 0.7,
-        isReliable: true,
-        alternatives: [{ lang: fallbackLang, confidence: 0.7 }],
+        confidence: 0,
+        isReliable: false,
+        alternatives: [],
         executionMs: Math.round(performance.now() - start),
       };
     }

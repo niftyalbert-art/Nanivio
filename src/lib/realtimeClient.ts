@@ -285,6 +285,33 @@ class NanivioRealtimeClient {
     });
   }
 
+  public sendPrivateChatMessage(conversationId: string, channelId: string, message: any): Promise<string> {
+    if (!this.socket || this.socket.readyState !== WebSocket.OPEN || this.currentUser?.userId !== message.senderId) {
+      return Promise.reject(new Error('An authenticated chat connection is required.'));
+    }
+    const requestId = crypto.randomUUID();
+    return new Promise((resolve, reject) => {
+      const cleanup = () => { clearTimeout(timeout); offAck(); offError(); };
+      const offAck = this.on('chat:message_ack', data => {
+        if (data?.requestId !== requestId || data.channelId !== channelId) return;
+        cleanup();
+        resolve(data.savedMessageId);
+      });
+      const offError = this.on('chat:error', data => {
+        if (data?.requestId !== requestId) return;
+        cleanup();
+        reject(new Error(data.message || 'Private message was rejected.'));
+      });
+      const timeout = setTimeout(() => { cleanup(); reject(new Error('Private message acknowledgment timed out.')); }, 20000);
+      try {
+        this.socket!.send(JSON.stringify({ type: 'chat:message', payload: { requestId, conversationId, channelId, message } }));
+      } catch {
+        cleanup();
+        reject(new Error('Private message could not be sent.'));
+      }
+    });
+  }
+
   public sendChatReaction(channelId: string, messageId: string, reactionType: string) {
     this.send('chat:reaction', {
       channelId,

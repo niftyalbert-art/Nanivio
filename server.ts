@@ -26,15 +26,27 @@ import {
   addStreamMessage,
   toggleStreamReaction,
   getStreamEventLogs,
+  requireStreamChannelMember,
+  removeStreamChannelMember,
+  moderateStreamChannelMember,
 } from "./src/server/streamService.ts";
+import { requireActiveChatAccount, requireStreamWebhookSignature, StreamAccessError } from "./src/server/chatPrivacy.ts";
 import { billingDb } from "./src/server/billingDb.ts";
 import { purchaseCommunicationMinutesFromWalletPersistent, activateMalviSubscriptionFromWalletPersistent } from "./src/server/normalizedBillingRepository.ts";
 import { normalizedBillingEnabled, transferFintechToCommunication as persistentFintechToCommunication, transferPeerToPeer as persistentPeerToPeer, selectCommunicationPlanPersistent, purchaseCommunicationMinutesPersistent, activateMalviSubscriptionPersistent, recordLangpretationUsagePersistent, paystackTopUpPersistent, getPersistentPayment, getPersistentSubscription, getPersistentTransactions, getPersistentInvoices, getPersistentWallets, getPersistentCreditAccount, getPersistentUsageMeter, getPersistentMalviSubscription, getMalviCreditAccount, ensureMalviEntitlement, recordMalviUsagePersistent } from "./src/server/normalizedBillingRepository.ts";
 import { hydrateBillingDatabase, flushBillingDatabase, closeBillingPersistence, savePaystackOrder, getPaystackOrder, markPaystackOrderFulfilled, claimPaystackWebhook, isPersistentBillingConfigured, markBillingDatabaseDirty } from "./src/server/billingPersistence.ts";
 import { billingEngine } from "./src/server/billingEngine.ts";
+import { requireBillingAdmin, billingAdminActor, canRefund, ownsBillingRecord, ownsProviderEarnings, ownsBusinessBilling } from "./src/server/billingAccess.ts";
+import { getPersistentInvoice } from "./src/server/normalizedBillingRepository.ts";
 import { authDb } from "./src/server/authDb.ts";
 import * as persistentAuth from "./src/server/persistentAuth.ts";
 import { productionStatus } from "./src/server/productionStatus.ts";
+import { callKhayaEngine, callSunbirdEngine } from "./src/server/translationProviders.ts";
+import { translateWithProductionProviders, translationProviderConfigured } from "./src/server/translationRouter.ts";
+import { planTranslation, requireLanguage, speechProvider } from "./src/lib/translator-engine/languagePlan.ts";
+import { speechConfigured, SpeechProviderError, transcribeProviderAudio, synthesizeProviderAudio } from "./src/server/speechProviders.ts";
+import { recordTranslatedVoiceNoteUsage } from "./src/server/voiceNoteUsage.ts";
+import { createSetupPreview, rejectSetupRealtime } from "./src/server/setupPreview.ts";
 import { getServerSupabase } from "./src/server/supabaseServer.ts";
 import { otpService } from "./src/server/otpService.ts";
 import {
@@ -202,12 +214,16 @@ async function requireAdmin(req: express.Request, res: express.Response, next: e
 }
 
 async function requireAuthenticatedUser(req: express.Request, res: express.Response, next: express.NextFunction) {
-  const user = await getAuthUser(req);
-  if (!user) {
-    return res.status(401).json({ success: false, error: "Authentication required.", code: "AUTH_REQUIRED" });
+  try {
+    const user = await getAuthUser(req);
+    if (!user) {
+      return res.status(401).json({ success: false, error: "Authentication required.", code: "AUTH_REQUIRED" });
+    }
+    (req as any).authUser = user;
+    next();
+  } catch {
+    return res.status(503).json({ success: false, error: "Authentication is temporarily unavailable.", code: "AUTH_UNAVAILABLE" });
   }
-  (req as any).authUser = user;
-  next();
 }
 
 function authenticatedUserId(req: express.Request): string {
@@ -800,148 +816,22 @@ app.post("/api/admin/pricing/update", requireAdmin, (req, res) => {
 // ==========================================
 
 // In-memory high-speed cache for sub-10ms response times
-const serverTranslationCache = new Map<string, { translatedText: string; provider: string }>();
+const serverTranslationCache = new Map<string, { translatedText: string; provider: string; pivotUsed?:boolean; providerChain?:string[] }>();
 
 // Specialized language families
 const GHANAIAN_LANGUAGES = new Set(["ak", "tw-ak", "fat", "ee", "gaa", "ha"]);
 const EAST_AFRICAN_LANGUAGES = new Set(["sw", "lg"]);
 const INTERNATIONAL_LANGUAGES = new Set(["en", "fr", "es", "ar", "de", "it", "pt", "zh", "ja", "ko"]);
 
-/**
- * 1. KHAYA AI (Ghana NLP) Specialized Engine
- * Dedicated to Ghanaian and West African languages:
- * Twi/Akan (ak), Akuapem Twi (tw-ak), Fante (fat), Ewe (ee), Ga (gaa), Hausa (ha)
- */
-async function callKhayaEngine(text: string, sourceLang: string, targetLang: string): Promise<{ text: string; provider: string } | null> {
-  const apiKey = process.env.KHAYA_API_KEY;
-  if (apiKey) {
-    try {
-      const response = await fetch(process.env.KHAYA_TRANSLATION_URL || "https://translation-api.ghananlp.org/v1/translate", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "Ocp-Apim-Subscription-Key": apiKey,
-        },
-        body: JSON.stringify({
-          in: text,
-          lang: `${sourceLang}-${targetLang}`,
-        }),
-        signal: AbortSignal.timeout(2800),
-      });
-      if (response.ok) {
-        const data = await response.json();
-        const translated = data?.translation || data?.out || data?.text;
-        if (translated && typeof translated === "string") {
-          return { text: translated.trim(), provider: "khaya-ghana-nlp" };
-        }
-      }
-    } catch (e) {
-      console.warn("[Nanivio Server] Khaya live upstream warning:", e);
-    }
-  }
-  return null;
-}
-
-/**
- * 2. SUNBIRD AI Specialized Engine
- * Dedicated to East African languages:
- * Swahili (sw), Luganda (lg)
- */
-async function callSunbirdEngine(text: string, sourceLang: string, targetLang: string): Promise<{ text: string; provider: string } | null> {
-  const apiKey = process.env.SUNBIRD_API_KEY;
-  if (apiKey) {
-    try {
-      const response = await fetch("https://api.sunbird.ai/tasks/nmt", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          source_language: sourceLang,
-          target_language: targetLang,
-          text: text,
-        }),
-        signal: AbortSignal.timeout(2800),
-      });
-      if (response.ok) {
-        const data = await response.json();
-        const translated = data?.output?.translated_text || data?.translated_text;
-        if (translated && typeof translated === "string") {
-          return { text: translated.trim(), provider: "sunbird-makerere" };
-        }
-      }
-    } catch (e) {
-      console.warn("[Nanivio Server] Sunbird live upstream warning:", e);
-    }
-  }
-  return null;
-}
-
-async function callAzureTranslator(text: string, sourceLang: string, targetLang: string): Promise<{ text: string; provider: string } | null> {
-  const key = process.env.AZURE_TRANSLATOR_KEY;
-  if (!key) return null;
-  const endpoint = (process.env.AZURE_TRANSLATOR_ENDPOINT || 'https://api.cognitive.microsofttranslator.com').replace(/\/$/, '');
-  const region = process.env.AZURE_TRANSLATOR_REGION;
-  const azureCode = (c: string) => c === 'lg' ? 'lug' : c;
-  const params = new URLSearchParams({ 'api-version': '3.0', to: azureCode(targetLang) });
-  if (sourceLang !== 'auto') params.set('from', azureCode(sourceLang));
-  try {
-    const headers: Record<string,string> = { 'Ocp-Apim-Subscription-Key': key, 'Content-Type': 'application/json' };
-    if (region) headers['Ocp-Apim-Subscription-Region'] = region;
-    const r = await fetch(`${endpoint}/translate?${params}`, { method:'POST', headers, body:JSON.stringify([{ text }]), signal:AbortSignal.timeout(5000) });
-    if (!r.ok) return null;
-    const data = await r.json();
-    const translated = data?.[0]?.translations?.[0]?.text;
-    return translated ? { text: String(translated), provider:'azure-translator' } : null;
-  } catch (e) { console.warn('[Langpretation] Azure Translator error:', e); return null; }
-}
-
-async function translateWithProductionProviders(text: string, sourceLang: string, targetLang: string): Promise<{ text:string; provider:string; pivotUsed?:boolean } | null> {
-  if (sourceLang === targetLang) return { text, provider:'direct-passthrough' };
-  const ghana = GHANAIAN_LANGUAGES.has(sourceLang) || GHANAIAN_LANGUAGES.has(targetLang);
-  const east = EAST_AFRICAN_LANGUAGES.has(sourceLang) || EAST_AFRICAN_LANGUAGES.has(targetLang);
-  const international = INTERNATIONAL_LANGUAGES.has(sourceLang) && INTERNATIONAL_LANGUAGES.has(targetLang);
-
-  if (ghana) {
-    const direct = await callKhayaEngine(text, sourceLang, targetLang);
-    if (direct) return direct;
-    // Ghanaian languages not covered by Azure Translator are routed through English when both hops exist.
-    if (sourceLang !== 'en' && targetLang !== 'en') {
-      // African source -> English -> target, or international source -> English -> Ghanaian target.
-      const toEn = await callKhayaEngine(text, sourceLang, 'en') || await callAzureTranslator(text, sourceLang, 'en');
-      if (toEn) {
-        const fromEn = await callKhayaEngine(toEn.text, 'en', targetLang) || await callAzureTranslator(toEn.text, 'en', targetLang);
-        if (fromEn) return { text: fromEn.text, provider:`${toEn.provider}+${fromEn.provider}`, pivotUsed:true };
-      }
-    }
-    if (sourceLang === 'en') return await callKhayaEngine(text, 'en', targetLang) || await callAzureTranslator(text,'en',targetLang);
-    if (targetLang === 'en') return await callKhayaEngine(text, sourceLang, 'en') || await callAzureTranslator(text,sourceLang,'en');
-    return null;
-  }
-
-  if (east) {
-    const direct = await callSunbirdEngine(text, sourceLang, targetLang);
-    if (direct) return direct;
-    const azure = await callAzureTranslator(text, sourceLang, targetLang);
-    if (azure) return azure;
-    if (sourceLang !== 'en' && targetLang !== 'en') {
-      const toEn = await callSunbirdEngine(text, sourceLang, 'en') || await callAzureTranslator(text, sourceLang, 'en');
-      if (toEn) {
-        const fromEn = await callSunbirdEngine(toEn.text, 'en', targetLang) || await callAzureTranslator(toEn.text, 'en', targetLang);
-        if (fromEn) return { text:fromEn.text, provider:`${toEn.provider}+${fromEn.provider}`, pivotUsed:true };
-      }
-    }
-    return null;
-  }
-
-  if (international) return await callAzureTranslator(text, sourceLang, targetLang);
-  return await callAzureTranslator(text, sourceLang, targetLang);
-}
-
 // 1:1 Translation Endpoint via Live Multi-Provider Engine
 app.post("/api/translate", requireAuthenticatedUser, async (req, res) => {
   try {
-    const { text, sourceLang = "auto", targetLang = "en", preferredProvider } = req.body;
+    const start = Date.now();
+    const { text, sourceLang = "en", targetLang = "en" } = req.body;
+    if(typeof text!=='string'||text.length>5000)return res.status(400).json({success:false,error:'Translation text must be a string of at most 5000 characters.'});
+    let plan;
+    try{plan=planTranslation(sourceLang,targetLang);}catch{return res.status(400).json({success:false,error:'Choose a supported source and target language.'});}
+    if(!plan.supported)return res.status(422).json({success:false,untranslated:true,error:plan.reason});
     if (!text || !text.trim()) {
       return res.json({ success: true, translatedText: text, sourceLang, targetLang, provider: "none", latencyMs: 0 });
     }
@@ -969,13 +859,14 @@ app.post("/api/translate", requireAuthenticatedUser, async (req, res) => {
         targetLang,
         provider: cached.provider,
         cached: true,
-        latencyMs: 8,
+        latencyMs: Date.now()-start,
+        pivotUsed: cached.pivotUsed,
+        providerChain: cached.providerChain,
         timestamp: Date.now(),
       });
     }
 
-    const start = Date.now();
-    let result: { text: string; provider: string } | null = null;
+    let result: Awaited<ReturnType<typeof translateWithProductionProviders>> = null;
 
     const isGhanaian = GHANAIAN_LANGUAGES.has(sourceLang) || GHANAIAN_LANGUAGES.has(targetLang);
     const isEastAfrican = EAST_AFRICAN_LANGUAGES.has(sourceLang) || EAST_AFRICAN_LANGUAGES.has(targetLang);
@@ -987,7 +878,7 @@ app.post("/api/translate", requireAuthenticatedUser, async (req, res) => {
 
     // If completely unavailable, return honest untranslated status (NO FAKE PHRASES)
     if (!result || !result.text) {
-      return res.json({
+      return res.status(503).json({
         success: false,
         untranslated: true,
         translatedText: text,
@@ -1003,7 +894,7 @@ app.post("/api/translate", requireAuthenticatedUser, async (req, res) => {
     const provider = result.provider;
 
     // Store in high-speed server cache
-    serverTranslationCache.set(cacheKey, { translatedText, provider });
+    serverTranslationCache.set(cacheKey, { translatedText, provider, pivotUsed:result.pivotUsed, providerChain:result.providerChain });
     if (serverTranslationCache.size > 10000) {
       const oldestKey = serverTranslationCache.keys().next().value;
       if (oldestKey) serverTranslationCache.delete(oldestKey);
@@ -1015,6 +906,8 @@ app.post("/api/translate", requireAuthenticatedUser, async (req, res) => {
       sourceLang,
       targetLang,
       provider,
+      pivotUsed:result.pivotUsed,
+      providerChain:result.providerChain,
       latencyMs: Date.now() - start,
       timestamp: Date.now(),
     });
@@ -1027,12 +920,14 @@ app.post("/api/translate", requireAuthenticatedUser, async (req, res) => {
 app.post("/api/translate/fan-out", requireAuthenticatedUser, async (req, res) => {
   try {
     const { text, sourceLang = "en", targetLangs = [] } = req.body;
-    if (!text || !Array.isArray(targetLangs)) {
+    if (typeof text!=='string'||!text.trim()||text.length>5000||!Array.isArray(targetLangs)||targetLangs.length>18) {
       return res.status(400).json({ error: "Text and targetLangs array required" });
     }
 
     const uniqueLangs = Array.from(new Set(targetLangs)) as string[];
+    try{requireLanguage(sourceLang);uniqueLangs.forEach(requireLanguage);}catch{return res.status(400).json({success:false,error:'Unsupported language code.'});}
     const results: Record<string, string> = {};
+    const failures:Record<string,string>={};
 
     // Parallel multi-provider routing per target language
     await Promise.all(
@@ -1042,27 +937,19 @@ app.post("/api/translate/fan-out", requireAuthenticatedUser, async (req, res) =>
           return;
         }
 
-        const isGhanaian = GHANAIAN_LANGUAGES.has(lang);
-        const isEastAfrican = EAST_AFRICAN_LANGUAGES.has(lang);
-
-        let translatedObj: { text: string; provider: string } | null = null;
-        if (isGhanaian) {
-          translatedObj = await callKhayaEngine(text, sourceLang, lang);
-        } else if (isEastAfrican) {
-          translatedObj = await callSunbirdEngine(text, sourceLang, lang);
-        } else {
-          translatedObj = await translateWithProductionProviders(text, sourceLang, lang);
-        }
-
-
-        results[lang] = translatedObj?.text || text;
+        if(serverLanguageOverrides.get(sourceLang)?.active===false||serverLanguageOverrides.get(lang)?.active===false){failures[lang]='Language deactivated.';return;}
+        const translatedObj=await translateWithProductionProviders(text,sourceLang,lang).catch(()=>null);
+        if(translatedObj?.text)results[lang]=translatedObj.text;
+        else failures[lang]='Production translation unavailable for this pair.';
       })
     );
 
     res.json({
-      success: true,
+      success: Object.keys(failures).length===0,
+      partialSuccess:Object.keys(results).length>0&&Object.keys(failures).length>0,
+      failures,
       fanOutResults: results,
-      distinctTranslationsCount: Object.keys(results).length,
+      distinctTranslationsCount: Object.keys(results).filter(lang=>lang!==sourceLang).length,
       sourceLang,
     });
   } catch (error: any) {
@@ -1091,8 +978,11 @@ const handleLanguageMatrixRequest = async (_req: express.Request, res: express.R
   const enhancedList = baseList.map((item) => {
     const runtime = serverLanguageOverrides.get(item.code) || {};
     const row = persisted.get(item.code);
-    const dbOverride = row ? { active: row.active, provider: row.provider, capability: row.capability, mtProvider: row.mt_provider, ttsProvider: row.tts_provider, lastVerified: row.updated_at ? new Date(row.updated_at).getTime() : item.lastVerified } : {};
-    return { ...item, ...dbOverride, ...runtime };
+    // Administrative configuration is not evidence that an inference was verified.
+    return { ...item, active:runtime.active??row?.active??item.active,
+      speechRecognition:speechConfigured(item.code,'asr'),textToSpeech:speechConfigured(item.code,'tts'),
+      translation:item.translation&&translationProviderConfigured(item.defaultMtProvider as any),
+      lastVerified:null };
   });
 
   const fullCount = enhancedList.filter((l) => l.capability === "FULL" && l.active).length;
@@ -1150,75 +1040,25 @@ app.post("/api/langpretation/route", requireAuthenticatedUser, (req, res) => {
       });
     }
 
-    const isGhanaian = GHANAIAN_LANGUAGES.has(sourceLang) || GHANAIAN_LANGUAGES.has(targetLang);
-    const isEastAfrican = EAST_AFRICAN_LANGUAGES.has(sourceLang) || EAST_AFRICAN_LANGUAGES.has(targetLang);
-    const isJointPartial = srcCap.capability === "PARTIAL" || tgtCap.capability === "PARTIAL";
-    const providerConfigured = isGhanaian
-      ? Boolean(process.env.KHAYA_API_KEY && process.env.KHAYA_ASR_URL && process.env.KHAYA_TTS_URL)
-      : isEastAfrican
-        ? Boolean((process.env.SUNBIRD_API_KEY || process.env.AZURE_SPEECH_KEY) && (process.env.SUNBIRD_TTS_URL || process.env.AZURE_SPEECH_KEY))
-        : Boolean(process.env.AZURE_TRANSLATOR_KEY && process.env.AZURE_SPEECH_KEY && process.env.AZURE_SPEECH_REGION);
-    if (!providerConfigured) {
-      return res.json({ success:true, sourceLang, targetLang, mode, capabilityStatus:"UNAVAILABLE", asrProvider:srcCap.asrProvider, mtProvider:srcCap.mtProvider, ttsProvider:tgtCap.ttsProvider, realtimeStrategy:"TEXT_ONLY", fallbackProvider:"NONE", requiresPivot:false, canExecuteRealtimeAudio:false, canExecuteVoiceNote:false, reason:"No production translation provider is configured for this language route." });
-    }
-
-    let mtProvider = tgtCap.mtProvider || "Azure Translator";
-    let asrProvider = srcCap.asrProvider || "Azure Speech";
-    let ttsProvider = tgtCap.ttsProvider || "Azure Speech TTS";
-    let fallbackProvider = "NONE";
-    let requiresPivot = false;
-    let pivotLanguage: string | undefined;
-    let latency: number | null = null;
-
-    if (isGhanaian) {
-      mtProvider = "Khaya AI (Ghana NLP Engine)";
-      fallbackProvider = requiresPivot ? "CONFIGURED_PROVIDER_PIVOT" : "NONE";
-      const isCross = (GHANAIAN_LANGUAGES.has(sourceLang) && targetLang !== "en") ||
-                      (GHANAIAN_LANGUAGES.has(targetLang) && sourceLang !== "en");
-      if (isCross && !GHANAIAN_LANGUAGES.has(targetLang)) {
-        requiresPivot = true;
-        pivotLanguage = "en";
-        latency = null;
-      } else {
-        latency = null;
-      }
-    } else if (isEastAfrican) {
-      mtProvider = "Sunbird AI (Makerere University)";
-      fallbackProvider = requiresPivot ? "CONFIGURED_PROVIDER_PIVOT" : "NONE";
-      const isCross = (EAST_AFRICAN_LANGUAGES.has(sourceLang) && targetLang !== "en") ||
-                      (EAST_AFRICAN_LANGUAGES.has(targetLang) && sourceLang !== "en");
-      if (isCross) {
-        requiresPivot = true;
-        pivotLanguage = "en";
-        latency = null;
-      } else {
-        latency = null;
-      }
-    }
-
-    const strategy = isJointPartial || isGhanaian || isEastAfrican
-      ? (mode === "CALL" || mode === "VIDEO_CALL" ? "VAD_CHUNKED_TURN" : "PIPELINE_STT_MT_TTS")
-      : "STREAMING_FULL_DUPLEX";
-
+    const plan=planTranslation(sourceLang,targetLang);
+    const configured=plan.supported&&plan.hops.every(h=>translationProviderConfigured(h.provider));
+    const asrConfigured=speechConfigured(sourceLang,'asr'),ttsConfigured=speechConfigured(targetLang,'tts');
     res.json({
       success: true,
       sourceLang,
       targetLang,
       mode,
-      capabilityStatus: isJointPartial ? "PARTIAL" : "FULL",
-      asrProvider,
-      mtProvider,
-      ttsProvider,
-      realtimeStrategy: strategy,
-      fallbackProvider,
-      requiresPivot,
-      pivotLanguage,
-      canExecuteRealtimeAudio: true,
-      canExecuteVoiceNote: true,
-      estimatedLatencyMs: latency,
+      capabilityStatus:!configured?'UNAVAILABLE':'NOT_VERIFIED',
+      asrProvider:plan.asrProvider,mtProvider:plan.hops.map(h=>h.provider).join('+')||'UNAVAILABLE',ttsProvider:plan.ttsProvider,
+      realtimeStrategy:'PIPELINE_STT_MT_TTS',fallbackProvider:'NONE',
+      requiresPivot:plan.requiresPivot,pivotLanguage:plan.requiresPivot?'en':undefined,
+      translationConfigured:configured,asrConfigured,ttsConfigured,
+      canExecuteRealtimeAudio:configured&&asrConfigured&&ttsConfigured,
+      canExecuteVoiceNote:configured&&asrConfigured&&ttsConfigured,
+      estimatedLatencyMs:null,liveVerified:false,reason:plan.reason||(!configured?'Required translation provider credentials are missing.':null),
     });
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    res.status(400).json({ success:false,error:'Choose supported source and target languages.' });
   }
 });
 
@@ -1334,9 +1174,8 @@ app.post("/api/langpretation/voice-note/process", requireAuthenticatedUser, asyn
 // Khaya API v3 accepts raw audio bytes and returns a structured transcription.
 app.post("/api/langpretation/asr", requireAuthenticatedUser, async (req, res) => {
   try {
-    const apiKey = process.env.KHAYA_API_KEY;
-    const language = String(req.query.language || req.body?.language || "twi");
-    if (!apiKey) return res.status(503).json({ success:false, error:"KHAYA_API_KEY is not configured." });
+    const suppliedLanguage = String(req.query.language || req.body?.language || "ak");
+    const language=({twi:'ak',atw:'tw-ak',ewe:'ee',hau:'ha',eng:'en'} as Record<string,string>)[suppliedLanguage]||suppliedLanguage;
 
     const contentType = String(req.headers["content-type"] || "audio/wav");
     const chunks: Buffer[] = [];
@@ -1344,27 +1183,10 @@ app.post("/api/langpretation/asr", requireAuthenticatedUser, async (req, res) =>
     const audio = Buffer.concat(chunks);
     if (!audio.length) return res.status(400).json({ success:false, error:"Audio body is required." });
 
-    const url = process.env.KHAYA_ASR_URL || "https://translation-api.ghananlp.org/asr/v3/transcribe";
-    const upstream = await fetch(`${url}?language=${encodeURIComponent(language)}`, {
-      method: "POST",
-      headers: {
-        "Content-Type": contentType,
-        "Ocp-Apim-Subscription-Key": apiKey,
-      },
-      body: audio,
-      signal: AbortSignal.timeout(20000),
-    });
-    const raw = await upstream.text();
-    if (!upstream.ok) {
-      return res.status(502).json({ success:false, error:`Khaya ASR failed (${upstream.status})`, details:raw.slice(0,1000) });
-    }
-    let data:any;
-    try { data = JSON.parse(raw); } catch { data = { text: raw }; }
-    const text = data?.text || data?.transcript || data?.transcription || data?.result?.text || "";
-    if (!text) return res.status(502).json({ success:false, error:"Khaya ASR returned no transcription.", providerResponse:data });
-    res.json({ success:true, provider:"khaya-asr-v3", language, text:String(text), confidence:data?.confidence ?? data?.result?.confidence ?? null, raw:data });
+    const recognized=await transcribeProviderAudio(audio,language,contentType);
+    res.json({success:true,...recognized,language});
   } catch (err:any) {
-    res.status(500).json({ success:false, error:err?.message || "Khaya ASR failed" });
+    res.status(err instanceof SpeechProviderError?err.status:400).json({success:false,error:err instanceof SpeechProviderError?err.message:'Invalid speech request.'});
   }
 });
 
@@ -1372,41 +1194,26 @@ app.post("/api/langpretation/asr", requireAuthenticatedUser, async (req, res) =>
 // This endpoint intentionally accepts raw audio and never treats a client transcript as proof of speech.
 app.post("/api/langpretation/voice-note/process-audio", requireAuthenticatedUser, async (req, res) => {
   try {
+    if(!normalizedBillingEnabled())return res.status(503).json({success:false,error:'Persistent billing is required for translated voice notes.'});
     const sourceLang=String(req.query.sourceLang || req.headers["x-source-language"] || "en");
     const targetLang=String(req.query.targetLang || req.headers["x-target-language"] || "ak");
     const contentType=String(req.headers["content-type"] || "audio/wav");
     const chunks:Buffer[]=[]; for await (const chunk of req) chunks.push(Buffer.isBuffer(chunk)?chunk:Buffer.from(chunk));
     const audio=Buffer.concat(chunks); if(!audio.length) return res.status(400).json({success:false,error:"Raw audio body is required."});
 
-    let transcript=""; let asrProvider="";
-    const ghana=new Set(["ak","tw-ak","fat","ee","gaa","ha"]);
-    const east=new Set(["sw","lg"]);
-    if(ghana.has(sourceLang)) {
-      const key=process.env.KHAYA_API_KEY, url=process.env.KHAYA_ASR_URL;
-      if(!key||!url) return res.status(503).json({success:false,error:"Khaya ASR is not configured for this source language."});
-      const r=await fetch(`${url}?language=${encodeURIComponent(sourceLang)}`,{method:"POST",headers:{"Content-Type":contentType,"Ocp-Apim-Subscription-Key":key},body:audio,signal:AbortSignal.timeout(20000)});
-      const raw=await r.text(); if(!r.ok) return res.status(502).json({success:false,error:`Khaya ASR failed (${r.status})`});
-      let d:any; try{d=JSON.parse(raw)}catch{d={text:raw}}; transcript=String(d?.text||d?.transcript||d?.transcription||d?.result?.text||""); asrProvider="khaya-asr-v3";
-    } else if(east.has(sourceLang) && process.env.SUNBIRD_ASR_URL && process.env.SUNBIRD_API_KEY) {
-      const r=await fetch(process.env.SUNBIRD_ASR_URL,{method:"POST",headers:{"Content-Type":contentType,"Authorization":`Bearer ${process.env.SUNBIRD_API_KEY}`},body:audio,signal:AbortSignal.timeout(20000)});
-      const d:any=await r.json().catch(()=>({})); if(!r.ok) return res.status(502).json({success:false,error:`Sunbird ASR failed (${r.status})`}); transcript=String(d?.text||d?.transcript||d?.output?.text||""); asrProvider="sunbird-asr";
-    } else {
-      // Azure Speech SDK is the production international ASR. A browser microphone
-      // recognizer is not used as a fallback because it would bypass server billing and provider controls.
-      return res.status(503).json({success:false,error:"A production server-side ASR route is not configured for this source language."});
-    }
+    const recognized=await transcribeProviderAudio(audio,sourceLang,contentType);
+    const transcript=recognized.text,asrProvider=recognized.provider;
     if(!transcript.trim()) return res.status(502).json({success:false,error:"ASR returned no transcription."});
 
     const translated=sourceLang===targetLang ? {text:transcript,provider:"direct-passthrough"} : await translateWithProductionProviders(transcript,sourceLang,targetLang);
     if(!translated?.text) return res.status(503).json({success:false,error:"No production translation route is available for this language pair."});
 
-    // Reuse the real TTS implementation through an internal request-free helper is intentionally
-    // deferred to the existing synth endpoint; this endpoint returns the translated transcript
-    // plus a signed, authenticated next step instead of inventing audio.
-    const durationSeconds=Number(req.headers["x-audio-duration-seconds"]||0);
-    const usage=normalizedBillingEnabled() && durationSeconds>0 ? await recordLangpretationUsagePersistent({userId:authenticatedUserId(req),channel:"VOICE_NOTE",minutes:durationSeconds/60,sourceLang,targetLang,provider:`${asrProvider}+${translated.provider}`,audioSeconds:durationSeconds}) : null;
-    return res.json({success:true,sourceLang,targetLang,transcript,translatedTranscript:translated.text,asrProvider,translationProvider:translated.provider,usage,requiresSynthesis:true});
-  } catch(err:any){ return res.status(500).json({success:false,error:err.message||"Voice-note pipeline failed"}); }
+    const durationSeconds=recognized.durationSeconds;
+    if(!durationSeconds)throw new SpeechProviderError(400,'A WAV recording with measurable duration is required.');
+    const synthesized=await synthesizeProviderAudio(translated.text,targetLang);
+    const usage=await recordTranslatedVoiceNoteUsage(audio,{userId:authenticatedUserId(req),sourceLang,targetLang,provider:`${asrProvider}+${translated.provider}+${synthesized.provider}`},recordLangpretationUsagePersistent);
+    return res.json({success:true,sourceLang,targetLang,transcript,translatedTranscript:translated.text,asrProvider,translationProvider:translated.provider,...synthesized,usage,requiresSynthesis:false});
+  } catch(err:any){ return res.status(err instanceof SpeechProviderError?err.status:500).json({success:false,error:err instanceof SpeechProviderError?err.message:"Voice-note pipeline failed"}); }
 });
 
 // Malvi production voice input: raw PCM/WAV -> provider ASR. No browser transcript is trusted.
@@ -1420,93 +1227,42 @@ app.post("/api/malvi/voice/transcribe", requireAuthenticatedUser, async (req, re
     const audio = Buffer.concat(chunks);
     if (!audio.length) return res.status(400).json({ success:false, error:"Audio body is required." });
 
-    const ghana = new Set(["ak", "tw-ak", "fat", "ee", "gaa", "ha"]);
-    const east = new Set(["sw", "lg"]);
-    if (ghana.has(language)) {
-      const key = process.env.KHAYA_API_KEY;
-      const url = process.env.KHAYA_ASR_URL || "https://translation-api.ghananlp.org/asr/v3/transcribe";
-      if (!key) return res.status(503).json({success:false,error:"Khaya ASR is not configured for this Malvi language."});
-      const r = await fetch(`${url}?language=${encodeURIComponent(language)}`, { method:"POST", headers:{"Content-Type":contentType,"Ocp-Apim-Subscription-Key":key}, body:audio, signal:AbortSignal.timeout(20000) });
-      const raw = await r.text();
-      if (!r.ok) return res.status(502).json({success:false,error:`Khaya ASR failed (${r.status})`});
-      let d:any; try { d=JSON.parse(raw); } catch { d={text:raw}; }
-      const text=String(d?.text||d?.transcript||d?.transcription||d?.result?.text||"").trim();
-      if(!text) return res.status(502).json({success:false,error:"Khaya ASR returned no transcription."});
-      return res.json({success:true,text,language,provider:"khaya-asr-v3"});
-    }
-    if (east.has(language)) {
-      const url=process.env.SUNBIRD_ASR_URL, key=process.env.SUNBIRD_API_KEY;
-      if(!url||!key) return res.status(503).json({success:false,error:"Sunbird ASR is not configured for this Malvi language."});
-      const r=await fetch(url,{method:"POST",headers:{"Content-Type":contentType,"Authorization":`Bearer ${key}`},body:audio,signal:AbortSignal.timeout(20000)});
-      const d:any=await r.json().catch(()=>({}));
-      if(!r.ok) return res.status(502).json({success:false,error:`Sunbird ASR failed (${r.status})`});
-      const text=String(d?.text||d?.transcript||d?.output?.text||"").trim();
-      if(!text) return res.status(502).json({success:false,error:"Sunbird ASR returned no transcription."});
-      return res.json({success:true,text,language,provider:"sunbird-asr"});
-    }
-
-    const key=process.env.AZURE_SPEECH_KEY, region=process.env.AZURE_SPEECH_REGION;
-    if(!key||!region) return res.status(503).json({success:false,error:"Azure Speech credentials are not configured for Malvi international voice."});
-    const locale:Record<string,string>={en:"en-US",fr:"fr-FR",es:"es-ES",ar:"ar-SA",de:"de-DE",it:"it-IT",pt:"pt-BR",zh:"zh-CN",ja:"ja-JP",ko:"ko-KR"};
-    const loc=locale[language]; if(!loc) return res.status(400).json({success:false,error:`No production ASR locale configured for ${language}.`});
-    const endpoint=process.env.AZURE_SPEECH_STT_ENDPOINT || `https://${region}.stt.speech.microsoft.com/speech/recognition/conversation/cognitiveservices/v1`;
-    const u=new URL(endpoint); u.searchParams.set("language",loc); u.searchParams.set("format","detailed");
-    const r=await fetch(u,{method:"POST",headers:{"Ocp-Apim-Subscription-Key":key,"Content-Type":contentType},body:audio,signal:AbortSignal.timeout(20000)});
-    const raw=await r.text(); if(!r.ok) return res.status(502).json({success:false,error:`Azure Speech recognition failed (${r.status})`});
-    let d:any; try{d=JSON.parse(raw)}catch{d={}};
-    const text=String(d?.DisplayText || d?.NBest?.[0]?.Display || "").trim();
-    if(!text) return res.status(502).json({success:false,error:"Azure Speech returned no transcription."});
-    return res.json({success:true,text,language,provider:"azure-speech"});
-  } catch(err:any) { return res.status(500).json({success:false,error:err?.message||"Malvi voice transcription failed"}); }
+    const recognized=await transcribeProviderAudio(audio,language,contentType);
+    return res.json({success:true,...recognized,language});
+  } catch(err:any) { return res.status(err instanceof SpeechProviderError?err.status:400).json({success:false,error:err instanceof SpeechProviderError?err.message:'Invalid Malvi speech request.'}); }
 });
 
 // 5. Speech Synthesis Endpoint for Langpretation Audio Generation
+app.get("/api/langpretation/speech-readiness",requireAuthenticatedUser,(req,res)=>{
+  try{
+    const language=String(req.query.language||'en');requireLanguage(language);
+    res.json({success:true,language,provider:speechProvider(language),asrConfigured:speechConfigured(language,'asr'),ttsConfigured:speechConfigured(language,'tts'),liveVerified:false});
+  }catch{return res.status(400).json({success:false,error:'Unsupported speech language.'});}
+});
+app.post("/api/langpretation/transcribe",requireAuthenticatedUser,async(req,res)=>{
+  try{
+    const {language,audioBase64}=req.body;requireLanguage(language);
+    if(typeof audioBase64!=='string'||audioBase64.length>5600000||!/^[A-Za-z0-9+/]+={0,2}$/.test(audioBase64))return res.status(400).json({success:false,error:'A base64 WAV recording is required.'});
+    const audio=Buffer.from(audioBase64,'base64');
+    const recognized=await transcribeProviderAudio(audio,language,'audio/wav');
+    res.json({success:true,...recognized,language});
+  }catch(error){res.status(error instanceof SpeechProviderError?error.status:400).json({success:false,error:error instanceof SpeechProviderError?error.message:'Invalid speech recognition request.'});}
+});
 app.post("/api/langpretation/synthesize", requireAuthenticatedUser, async (req, res) => {
   try {
     const { text, language = "en", purpose = "LANGPRETATION" } = req.body;
     if (!text || !text.trim()) return res.status(400).json({ error: "Text string is required for speech synthesis" });
 
-    const africanGhana = new Set(["ak", "tw-ak", "fat", "ee", "gaa", "ha"]);
-    const africanEast = new Set(["sw", "lg"]);
-    let audioBase64: string | null = null;
-    let provider = '';
-    let contentType = 'audio/wav';
-
-    if (!africanGhana.has(language) && !africanEast.has(language)) {
-      const key = process.env.AZURE_SPEECH_KEY;
-      const region = process.env.AZURE_SPEECH_REGION;
-      if (!key || !region) return res.status(503).json({ success:false, error:'Azure Speech credentials are not configured.' });
-      const voiceMap: Record<string,string> = { en:'en-US-Ava:DragonHDLatestNeural', fr:'fr-FR-Vivienne:DragonHDLatestNeural', es:'es-ES-Ximena:DragonHDLatestNeural', ar:'ar-SA-ZariyahNeural', de:'de-DE-Seraphina:DragonHDLatestNeural', it:'it-IT-Isabella:DragonHDLatestNeural', pt:'pt-BR-Thalita:DragonHDLatestNeural', zh:'zh-CN-Xiaochen:DragonHDLatestNeural', ja:'ja-JP-Nanami:DragonHDLatestNeural', ko:'ko-KR-SunHiNeural' };
-      const localeMap: Record<string,string> = { en:'en-US', fr:'fr-FR', es:'es-ES', ar:'ar-SA', de:'de-DE', it:'it-IT', pt:'pt-BR', zh:'zh-CN', ja:'ja-JP', ko:'ko-KR' };
-      const voice = voiceMap[language];
-      const locale = localeMap[language];
-      if (!voice || !locale) return res.status(400).json({success:false,error:`No configured Azure voice for ${language}`});
-      const ssml = `<speak version="1.0" xml:lang="${locale}" xmlns="http://www.w3.org/2001/10/synthesis"><voice name="${voice}">${String(text).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')}</voice></speak>`;
-      const r = await fetch(`https://${region}.tts.speech.microsoft.com/cognitiveservices/v1`, { method:'POST', headers:{'Ocp-Apim-Subscription-Key':key,'Content-Type':'application/ssml+xml','X-Microsoft-OutputFormat':'riff-24khz-16bit-mono-pcm'}, body:ssml, signal:AbortSignal.timeout(15000) });
-      if (!r.ok) return res.status(502).json({success:false,error:`Azure Speech synthesis failed (${r.status})`});
-      audioBase64 = Buffer.from(await r.arrayBuffer()).toString('base64');
-      provider = 'azure-speech';
-      contentType = 'audio/wav';
-    } else {
-      const url = africanGhana.has(language) ? (process.env.KHAYA_TTS_URL || "https://translation-api.ghananlp.org/tts/v2/synthesize") : process.env.SUNBIRD_TTS_URL;
-      const apiKey = africanGhana.has(language) ? process.env.KHAYA_API_KEY : process.env.SUNBIRD_API_KEY;
-      if (!url || !apiKey) return res.status(503).json({success:false,error:`A real ${africanGhana.has(language) ? 'Khaya' : 'Sunbird'} TTS endpoint/key is not configured for ${language}.`});
-      const r = await fetch(url, {method:'POST',headers:{'Content-Type':'application/json','Ocp-Apim-Subscription-Key':apiKey},body:JSON.stringify({text, lang:language, language}),signal:AbortSignal.timeout(15000)});
-      if (!r.ok) return res.status(502).json({success:false,error:`African TTS provider failed (${r.status})`});
-      const ct=r.headers.get('content-type') || '';
-      if (ct.includes('audio')) { audioBase64=Buffer.from(await r.arrayBuffer()).toString('base64'); contentType=ct; }
-      else { const data=await r.json(); audioBase64=data?.audio_base64 || data?.audio || data?.data || null; contentType=data?.contentType || 'audio/wav'; }
-      if (!audioBase64) return res.status(502).json({success:false,error:'African TTS provider returned no audio payload.'});
-      provider = africanGhana.has(language) ? 'khaya-tts' : 'sunbird-tts';
-    }
+    const synthesized=await synthesizeProviderAudio(text,language);
+    const {audioBase64,provider,contentType}=synthesized;
 
     let usage = null;
     if (purpose === "MALVI") {
-      const estimatedSeconds = Math.max(1, Math.ceil(String(text).trim().split(/\s+/).length / 2.5));
-      usage = await recordMalviUsagePersistent(authenticatedUserId(req), estimatedSeconds, { sourceLang: language, targetLang: language, provider, purpose: "MALVI_VOICE_RESPONSE" });
+      if(!synthesized.durationSeconds)throw new SpeechProviderError(502,'Provider audio duration could not be measured for usage recording.');
+      usage = await recordMalviUsagePersistent(authenticatedUserId(req), synthesized.durationSeconds, { sourceLang: language, targetLang: language, provider, purpose: "MALVI_VOICE_RESPONSE" });
     }
     res.json({success:true,text,language,provider,audioBase64,contentType,timestamp:Date.now(),usage});
-  } catch (err:any) { res.status(500).json({success:false,error:err.message || 'Speech synthesis failed'}); }
+  } catch (err:any) { res.status(err instanceof SpeechProviderError?err.status:500).json({success:false,error:err instanceof SpeechProviderError?err.message:'Speech synthesis failed'}); }
 });
 
 // 5. Langpretation Usage & Telemetry Summary Endpoint
@@ -1711,13 +1467,13 @@ app.get("/api/agora/channels", requireAuthenticatedUser, (_req, res) => {
 // ==========================================
 // GETSTREAM (STREAM CHAT) API
 // ==========================================
-app.get("/api/stream/config", requireAuthenticatedUser, async (req, res) => {
+app.get("/api/stream/config", requireAuthenticatedUser, requireActiveChatAccount, async (req, res) => {
   const hasKey = !!process.env.STREAM_API_KEY; const hasSecret=!!process.env.STREAM_API_SECRET;
   const channels=hasKey&&hasSecret?await getActiveStreamChannels(authenticatedUserId(req)):[];
   res.json({status:hasKey&&hasSecret?"configured":"not_configured",apiKey:hasKey?`${process.env.STREAM_API_KEY!.substring(0,6)}...`:null,hasSecret,appId:process.env.STREAM_APP_ID||null,activeChannelsCount:channels.length});
 });
 
-app.post("/api/stream/token", requireAuthenticatedUser, (req, res) => {
+app.post("/api/stream/token", requireAuthenticatedUser, requireActiveChatAccount, (req, res) => {
   try {
     const authUser = (req as any).authUser;
     const { expirationSeconds } = req.body;
@@ -1741,49 +1497,67 @@ app.post("/api/stream/token", requireAuthenticatedUser, (req, res) => {
   }
 });
 
-app.get("/api/stream/channels", requireAuthenticatedUser, async (req, res) => {
+app.get("/api/stream/channels", requireAuthenticatedUser, requireActiveChatAccount, async (req, res) => {
   try { const channels = await getActiveStreamChannels(authenticatedUserId(req)); res.json({channels,totalChannels:channels.length}); }
   catch(error:any){ res.status(502).json({success:false,error:error.message||'GetStream unavailable'}); }
 });
 
-app.get("/api/stream/channels/:channelId", requireAuthenticatedUser, async (req, res) => {
-  const channel = await getStreamChannel(req.params.channelId);
-  if (!channel) {
-    return res.status(404).json({ error: "Stream channel not found" });
+app.get("/api/stream/channels/:channelId", requireAuthenticatedUser, requireActiveChatAccount, async (req, res) => {
+  try {
+    const channel = await getStreamChannel(req.params.channelId, authenticatedUserId(req));
+    if (!channel) return res.status(404).json({ success: false, error: "Stream channel not found" });
+    res.json({ success: true, channel });
+  } catch (error) {
+    res.status(error instanceof StreamAccessError ? error.status : 502)
+      .json({ success: false, error: error instanceof StreamAccessError ? error.message : "Stream channel unavailable." });
   }
-  res.json({ success: true, channel });
 });
 
-app.post("/api/stream/channels", requireAuthenticatedUser, async (req, res) => {
+app.post("/api/stream/channels", requireAuthenticatedUser, requireActiveChatAccount, async (req, res) => {
   try {
     const { id, type = "messaging", name, members = [], custom = {} } = req.body;
     if (!id || !name) {
       return res.status(400).json({ error: "Channel id and name required" });
     }
+    if (!Array.isArray(members) || members.length > 100 || type !== "messaging") {
+      return res.status(400).json({ success: false, error: "A private messaging channel supports up to 100 participants." });
+    }
+    const actor = (req as any).authUser;
+    // Resolve identities and profile metadata through Nanivio authentication
+    // records. Never let the request choose provider roles or pretend users exist.
+    const resolvedMembers = await Promise.all([...members, { userId: actor.id }].map(async (member: any) => {
+      if (!member || typeof member !== "object") throw new StreamAccessError("Invalid participant.", 400);
+      let user = member.userId === actor.id ? actor : await persistentAuth.findById(String(member.userId || ""));
+      if (!user && member.nvId) user = await persistentAuth.findByNvId(String(member.nvId));
+      if (!user || user.accountStatus !== "ACTIVE") throw new StreamAccessError("Every participant must be an active registered Nanivio account.", 400);
+      return { userId: user.id, name: user.displayName || user.firstName, avatar: user.avatar, nvId: user.nvId, language: user.preferredLanguage, role: 'member' as const };
+    }));
+    const uniqueMembers = [...new Map(resolvedMembers.map(member => [member.userId, member])).values()];
+    if (uniqueMembers.length > 100) return res.status(400).json({ success: false, error: "Too many participants." });
     const channel = await upsertStreamChannel({
       id,
       type,
       name,
-      members,
+      members: uniqueMembers,
       custom,
       updatedAt: Date.now(),
-    });
+    }, actor.id);
     res.json({ success: true, channel });
   } catch (error: any) {
-    res.status(500).json({ error: error.message });
+    res.status(error instanceof StreamAccessError ? error.status : 502).json({ success: false, error: error instanceof StreamAccessError ? error.message : "Unable to create private channel." });
   }
 });
 
-app.get("/api/stream/channels/:channelId/messages", requireAuthenticatedUser, async (req, res) => {
+app.get("/api/stream/channels/:channelId/messages", requireAuthenticatedUser, requireActiveChatAccount, async (req, res) => {
   try {
-    const messages = await getStreamMessages(req.params.channelId);
+    const messages = await getStreamMessages(req.params.channelId, authenticatedUserId(req));
     res.json({ success: true, messages, count: messages.length });
   } catch (error: any) {
-    res.status(500).json({ error: error.message });
+    res.status(error instanceof StreamAccessError ? error.status : 502).json({ success: false, error: error instanceof StreamAccessError ? error.message : "Messages unavailable." });
   }
 });
 
-app.post("/api/stream/channels/:channelId/messages", requireAuthenticatedUser, async (req, res) => {
+app.post("/api/stream/channels/:channelId/messages", requireAuthenticatedUser, requireActiveChatAccount, async (req, res) => {
   try {
     const { channelId } = req.params;
     const authUser = (req as any).authUser;
@@ -1792,6 +1566,7 @@ app.post("/api/stream/channels/:channelId/messages", requireAuthenticatedUser, a
     const { userAvatar, text, sourceLang = "auto", targetLang, attachments } = req.body;
 
     if (!text) return res.status(400).json({ error: "text is required" });
+    await requireStreamChannelMember(channelId, userId);
 
     // Auto-translate using Nanivio Multi-Provider Langpretation Engine (Khaya, Sunbird, Azure, NLLB)
     let translatedText: string | undefined;
@@ -1832,16 +1607,16 @@ app.post("/api/stream/channels/:channelId/messages", requireAuthenticatedUser, a
       attachments,
     });
 
-    // Real-time broadcast to all connected WebSocket clients
-    broadcastStreamChatMessage(newMessage);
+    // Fresh provider membership determines private realtime recipients.
+    await broadcastStreamChatMessage(newMessage);
 
     res.json({ success: true, message: newMessage });
   } catch (error: any) {
-    res.status(500).json({ error: error.message });
+    res.status(error instanceof StreamAccessError ? error.status : 502).json({ success: false, error: error instanceof StreamAccessError ? error.message : "Unable to send message." });
   }
 });
 
-app.post("/api/stream/channels/:channelId/reactions", requireAuthenticatedUser, async (req, res) => {
+app.post("/api/stream/channels/:channelId/reactions", requireAuthenticatedUser, requireActiveChatAccount, async (req, res) => {
   try {
     const { channelId } = req.params;
     const { messageId, reactionType } = req.body;
@@ -1858,20 +1633,42 @@ app.post("/api/stream/channels/:channelId/reactions", requireAuthenticatedUser, 
     }
 
     // Real-time broadcast of updated reaction
-    broadcastStreamReaction(channelId, updated);
+    await broadcastStreamReaction(channelId, updated);
 
     res.json({ success: true, message: updated });
   } catch (error: any) {
-    res.status(500).json({ error: error.message });
+    res.status(error instanceof StreamAccessError ? error.status : 502).json({ success: false, error: error instanceof StreamAccessError ? error.message : "Unable to update reaction." });
   }
 });
 
-app.get("/api/stream/logs", (_req, res) => {
+app.post("/api/stream/channels/:channelId/members/remove", requireAuthenticatedUser, requireActiveChatAccount, async (req, res) => {
+  try {
+    const memberId = req.body?.memberId;
+    if (typeof memberId !== "string" || !memberId) return res.status(400).json({ success: false, error: "memberId is required." });
+    await removeStreamChannelMember(req.params.channelId, authenticatedUserId(req), memberId);
+    res.json({ success: true, removedMemberId: memberId });
+  } catch (error) {
+    res.status(error instanceof StreamAccessError ? error.status : 502).json({ success: false, error: error instanceof StreamAccessError ? error.message : "Unable to remove participant." });
+  }
+});
+
+app.post("/api/stream/channels/:channelId/members/moderate", requireAuthenticatedUser, requireActiveChatAccount, async (req, res) => {
+  try {
+    const { memberId, action } = req.body || {};
+    if (typeof memberId !== "string" || !memberId || !["promote", "demote"].includes(action)) return res.status(400).json({ success: false, error: "A participant and valid moderator action are required." });
+    const channel = await moderateStreamChannelMember(req.params.channelId, authenticatedUserId(req), memberId, action);
+    res.json({ success: true, channel });
+  } catch (error) {
+    res.status(error instanceof StreamAccessError ? error.status : 502).json({ success: false, error: error instanceof StreamAccessError ? error.message : "Unable to update moderator." });
+  }
+});
+
+app.get("/api/stream/logs", requireAdmin, (_req, res) => {
   res.json({ logs: getStreamEventLogs() });
 });
 
 // REAL-TIME PRESENCE & USERS API
-app.get("/api/realtime/active-users", (_req, res) => {
+app.get("/api/realtime/active-users", requireAuthenticatedUser, requireActiveChatAccount, (_req, res) => {
   res.json({
     onlineUsers: getActiveConnectedUsersList(),
     count: getActiveConnectedUsersList().length,
@@ -2687,12 +2484,17 @@ app.get("/api/billing/invoices", requireAuthenticatedUser, async (req, res) => {
   try { const userId=authenticatedUserId(req); if(!normalizedBillingEnabled()) return res.status(503).json({success:false,error:"Persistent billing database is required."}); const invoices=await getPersistentInvoices(userId,100); res.json({success:true,invoices,count:invoices.length}); } catch(error:any){res.status(502).json({success:false,error:error.message});}
 });
 
-app.get("/api/billing/invoices/:invoiceId", (req, res) => {
-  const invoice = billingDb.invoices.find((i) => i.id === req.params.invoiceId);
-  if (!invoice) {
-    return res.status(404).json({ error: "Invoice not found" });
+app.get("/api/billing/invoices/:invoiceId", requireAuthenticatedUser, async (req, res) => {
+  try {
+    const user = (req as any).authUser;
+    if (!ownsBillingRecord(user, user.id)) return res.status(403).json({ success: false, error: "Active account required." });
+    if (!normalizedBillingEnabled()) return res.status(503).json({ success: false, error: "Persistent billing database is required." });
+    const invoice = await getPersistentInvoice(authenticatedUserId(req), String(req.params.invoiceId));
+    if (!invoice) return res.status(404).json({ success: false, error: "Invoice not found" });
+    return res.json({ success: true, invoice });
+  } catch {
+    return res.status(502).json({ success: false, error: "Unable to load invoice." });
   }
-  res.json({ success: true, invoice });
 });
 
 // 8. Subscription Plans & Upgrades
@@ -2770,7 +2572,8 @@ app.post("/api/billing/disputes/create", requireAuthenticatedUser, (req, res) =>
       return res.status(400).json({ error: "transactionId, reason, and userExplanation required" });
     }
 
-    const tx = billingDb.transactions.find((t) => t.transactionId === transactionId);
+    const tx = billingDb.transactions.find((t) => t.transactionId === transactionId &&
+      ownsBillingRecord((req as any).authUser, t.userId));
     if (!tx) {
       return res.status(404).json({ error: "Transaction not found" });
     }
@@ -2803,9 +2606,11 @@ app.post("/api/billing/disputes/create", requireAuthenticatedUser, (req, res) =>
 });
 
 // 11. Provider Earnings & Payout Summary
-app.get("/api/billing/provider/earnings", (req, res) => {
-  const { providerId = "exp_amina" } = req.query;
-  const earnings = billingDb.providerEarnings.get(providerId as string);
+app.get("/api/billing/provider/earnings", requireAuthenticatedUser, (req, res) => {
+  const user = (req as any).authUser;
+  const providerId = String(req.query.providerId || user.expertProfileId || user.id);
+  if (!ownsProviderEarnings(user, providerId)) return res.status(404).json({ success: false, error: "Provider not found" });
+  const earnings = billingDb.providerEarnings.get(providerId);
   if (!earnings) {
     return res.status(404).json({ error: "Provider not found" });
   }
@@ -2813,10 +2618,11 @@ app.get("/api/billing/provider/earnings", (req, res) => {
 });
 
 // 12. B2B Corporate Billing Account
-app.get("/api/billing/business", (req, res) => {
-  const { businessId = "biz_agro_trade" } = req.query;
-  const biz = billingDb.businessAccounts.get(businessId as string);
-  if (!biz) {
+app.get("/api/billing/business", requireAuthenticatedUser, (req, res) => {
+  const user = (req as any).authUser;
+  const businessId = String(req.query.businessId || user.businessProfileId || user.id);
+  const biz = billingDb.businessAccounts.get(businessId);
+  if (!ownsBusinessBilling(user, biz)) {
     return res.status(404).json({ error: "Business account not found" });
   }
   res.json({ success: true, business: biz });
@@ -2825,6 +2631,9 @@ app.get("/api/billing/business", (req, res) => {
 // ==========================================
 // ADMIN UNIVERSAL BILLING & OPERATIONS ENDPOINTS
 // ==========================================
+
+// Protect reads, writes, HEAD requests and future routes in this namespace.
+app.use("/api/admin/billing", requireAuthenticatedUser, requireBillingAdmin);
 
 // Admin Financial Overview
 app.get("/api/admin/billing/overview", (_req, res) => {
@@ -2851,7 +2660,8 @@ app.get("/api/admin/billing/pricing", (_req, res) => {
 
 app.post("/api/admin/billing/pricing/update-rule", (req, res) => {
   try {
-    const { ruleId, ratePerUnit, minimumCharge, platformCommissionPercent, adminUser = "super_admin@nanivio.tech" } = req.body;
+    const { ruleId, ratePerUnit, minimumCharge, platformCommissionPercent } = req.body;
+    const { adminUser, adminRole } = billingAdminActor(req);
     const activeVersion = billingDb.pricingVersions.find((v) => v.isActive);
     if (!activeVersion) return res.status(404).json({ error: "Active pricing version not found" });
 
@@ -2867,7 +2677,7 @@ app.post("/api/admin/billing/pricing/update-rule", (req, res) => {
       id: `aud_pr_${Date.now()}`,
       timestamp: Date.now(),
       adminUser,
-      adminRole: "SUPER_ADMIN",
+      adminRole,
       action: "UPDATE_PRICING_RULE",
       targetEntityType: "PRICING",
       targetEntityId: ruleId,
@@ -2890,7 +2700,8 @@ app.get("/api/admin/billing/emergency", (_req, res) => {
 
 app.post("/api/admin/billing/emergency/update", (req, res) => {
   try {
-    const { updates, adminUser = "super_admin@nanivio.tech", reason = "Emergency administrative protocol" } = req.body;
+    const { updates, reason = "Emergency administrative protocol" } = req.body;
+    const { adminUser, adminRole } = billingAdminActor(req);
     const prev = { ...billingDb.emergencyControls };
     Object.assign(billingDb.emergencyControls, updates);
 
@@ -2898,7 +2709,7 @@ app.post("/api/admin/billing/emergency/update", (req, res) => {
       id: `aud_em_${Date.now()}`,
       timestamp: Date.now(),
       adminUser,
-      adminRole: "SUPER_ADMIN",
+      adminRole,
       action: "EMERGENCY_BILLING_SWITCH",
       targetEntityType: "SYSTEM",
       targetEntityId: "emergencyControls",
@@ -2941,9 +2752,11 @@ app.post("/api/admin/billing/disputes/resolve", (req, res) => {
       resolution, // 'APPROVED' | 'PARTIALLY_COMPENSATED' | 'REJECTED'
       adminExplanation,
       refundAmount,
-      adminUser = "support_admin@nanivio.tech",
-      adminRole = "SUPPORT_ADMIN",
     } = req.body;
+    const { adminUser, adminRole } = billingAdminActor(req);
+    if ((resolution === "APPROVED" || resolution === "PARTIALLY_COMPENSATED") && Number(refundAmount) > 0 && !canRefund(adminRole)) {
+      return res.status(403).json({ success: false, error: "Finance administrator permission required for refunds.", code: "BILLING_FORBIDDEN" });
+    }
 
     const dispute = billingDb.disputes.find((d) => d.id === disputeId);
     if (!dispute) return res.status(404).json({ error: "Dispute not found" });
@@ -2962,7 +2775,7 @@ app.post("/api/admin/billing/disputes/resolve", (req, res) => {
         amount: refundAmount,
         reason: `Dispute Case ${dispute.caseNumber} resolved: ${adminExplanation}`,
         adminUser,
-        adminRole: "SUPER_ADMIN",
+        adminRole,
       });
     }
 
@@ -2970,7 +2783,7 @@ app.post("/api/admin/billing/disputes/resolve", (req, res) => {
       id: `aud_disp_${Date.now()}`,
       timestamp: Date.now(),
       adminUser,
-      adminRole: adminRole as AdminBillingRole,
+      adminRole,
       action: "RESOLVE_DISPUTE",
       targetEntityType: "DISPUTE",
       targetEntityId: disputeId,
@@ -2989,7 +2802,7 @@ app.post("/api/admin/billing/disputes/resolve", (req, res) => {
 // Admin Process Direct Refund
 app.post("/api/admin/billing/refunds/process", (req, res) => {
   try {
-    const result = billingEngine.processRefund(req.body);
+    const result = billingEngine.processRefund({ ...req.body, ...billingAdminActor(req) });
     if (!result.success) {
       return res.status(400).json({ error: result.error });
     }
@@ -3002,7 +2815,7 @@ app.post("/api/admin/billing/refunds/process", (req, res) => {
 // Admin Manual Balance Adjustment
 app.post("/api/admin/billing/adjustments/create", (req, res) => {
   try {
-    const result = billingEngine.createAdminAdjustment(req.body);
+    const result = billingEngine.createAdminAdjustment({ ...req.body, ...billingAdminActor(req) });
     if (!result.success) {
       return res.status(400).json({ error: result.error });
     }
@@ -3051,7 +2864,8 @@ app.get("/api/admin/billing/user/:userId", (req, res) => {
 // Admin Payment Gateway Active Toggle
 app.post("/api/admin/billing/gateways/toggle", (req, res) => {
   try {
-    const { gatewayId, isActive, adminUser = "super_admin@nanivio.tech" } = req.body;
+    const { gatewayId, isActive } = req.body;
+    const { adminUser, adminRole } = billingAdminActor(req);
     const gw = billingDb.paymentGateways.find((g) => g.id === gatewayId);
     if (!gw) return res.status(404).json({ error: "Gateway not found" });
 
@@ -3061,7 +2875,7 @@ app.post("/api/admin/billing/gateways/toggle", (req, res) => {
       id: `aud_gw_${Date.now()}`,
       timestamp: Date.now(),
       adminUser,
-      adminRole: "SUPER_ADMIN",
+      adminRole,
       action: "TOGGLE_PAYMENT_GATEWAY",
       targetEntityType: "SYSTEM",
       targetEntityId: gatewayId,
@@ -3080,7 +2894,8 @@ app.post("/api/admin/billing/gateways/toggle", (req, res) => {
 // Admin Mobile Money Country Toggle
 app.post("/api/admin/billing/momo/countries/toggle", (req, res) => {
   try {
-    const { countryId, isActive, adminUser = "super_admin@nanivio.tech" } = req.body;
+    const { countryId, isActive } = req.body;
+    const { adminUser, adminRole } = billingAdminActor(req);
     const country = billingDb.mobileMoneyCountries.find((c) => c.id === countryId);
     if (!country) return res.status(404).json({ error: "Country not found" });
 
@@ -3090,7 +2905,7 @@ app.post("/api/admin/billing/momo/countries/toggle", (req, res) => {
       id: `aud_cntry_${Date.now()}`,
       timestamp: Date.now(),
       adminUser,
-      adminRole: "SUPER_ADMIN",
+      adminRole,
       action: "TOGGLE_MOMO_COUNTRY",
       targetEntityType: "SYSTEM",
       targetEntityId: countryId,
@@ -3120,8 +2935,8 @@ app.post("/api/admin/billing/momo/accounts", (req, res) => {
       minimumDeposit = 10,
       maximumDeposit = 20000,
       isActive = true,
-      adminUser = "finance_admin@nanivio.tech",
     } = req.body;
+    const { adminUser, adminRole } = billingAdminActor(req);
 
     const country = billingDb.mobileMoneyCountries.find((c) => c.id === countryId);
     const network = billingDb.mobileMoneyNetworks.find((n) => n.id === networkId);
@@ -3170,7 +2985,7 @@ app.post("/api/admin/billing/momo/accounts", (req, res) => {
       id: `aud_momo_acc_${Date.now()}`,
       timestamp: Date.now(),
       adminUser,
-      adminRole: "FINANCE_ADMIN",
+      adminRole,
       action: id ? "UPDATE_MOMO_RECEIVING_ACCOUNT" : "CREATE_MOMO_RECEIVING_ACCOUNT",
       targetEntityType: "SYSTEM",
       targetEntityId: account.id,
@@ -3719,7 +3534,7 @@ RESPONSE SCHEMA (Return strictly JSON):
 
 
 // Stream Chat Webhook & Message Langpretation Bridge
-app.post("/api/stream/webhook", async (req, res) => {
+app.post("/api/stream/webhook", requireStreamWebhookSignature, async (req, res) => {
   try {
     const event = req.body;
     // Intercept message.new event to translate into target language
@@ -3779,7 +3594,19 @@ app.post("/api/services/rental/book", (req, res) => {
 });
 
 async function startServer() {
+  const isProduction =
+    process.env.NODE_ENV === "production" ||
+    (typeof __filename !== "undefined" && (__filename.includes("dist") || __filename.endsWith(".cjs")));
+
   if (!isPersistentBillingConfigured()) {
+    if (!isProduction) {
+      const setupServer = http.createServer(createSetupPreview());
+      rejectSetupRealtime(setupServer);
+      setupServer.listen(PORT, "0.0.0.0", () => {
+        console.warn(`[Nanivio] Development setup preview running on port ${PORT}. Supabase is missing; application APIs and realtime are disabled.`);
+      });
+      return;
+    }
     throw new Error("SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY are required. Nanivio will not start with in-memory financial state.");
   }
   await hydrateBillingDatabase(billingDb);
@@ -3792,10 +3619,6 @@ async function startServer() {
   // Determine production environment:
   // - Explicit NODE_ENV=production
   // - Running from dist bundle (e.g. node dist/server.cjs on Render)
-  const isProduction =
-    process.env.NODE_ENV === "production" ||
-    (typeof __filename !== "undefined" && (__filename.includes("dist") || __filename.endsWith(".cjs")));
-
   if (isProduction) {
     const distPath = path.join(process.cwd(), "dist");
     app.use(express.static(distPath));
@@ -3825,8 +3648,3 @@ async function startServer() {
 }
 
 startServer();
-
-
-
-
-

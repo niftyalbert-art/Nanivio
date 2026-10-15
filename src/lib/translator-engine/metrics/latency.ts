@@ -7,11 +7,11 @@ export interface QualityMetricsReport {
   p99LatencyMs: number;
   jitterMs: number;
   idealPercentage: number;
-  qualityRatingScore: number; // 0.0 - 5.0 scale
-  estimatedBleuScore: number; // 0 - 100
+  qualityRatingScore: number | null; // Requires independent reference/quality review.
+  estimatedBleuScore: number | null;
   cacheHitCount: number;
   fallbackCount: number;
-  errorRate: number;
+  errorRate: number | null;
 }
 
 /**
@@ -51,13 +51,13 @@ export class LatencyMetricsTracker {
   }
 
   public getAverageLatency(): number {
-    if (this.turns.length === 0) return 920; // default benchmark sub-1s
+    if (this.turns.length === 0) return null;
     const sum = this.turns.reduce((acc, t) => acc + t.totalLatencyMs, 0);
     return Math.round(sum / this.turns.length);
   }
 
   public getIdealPercentage(): number {
-    if (this.turns.length === 0) return 96;
+    if (this.turns.length === 0) return null;
     const idealCount = this.turns.filter((t) => t.latencyGrade === 'ideal').length;
     return Math.round((idealCount / this.turns.length) * 100);
   }
@@ -74,16 +74,16 @@ export class LatencyMetricsTracker {
     if (this.turns.length === 0) {
       return {
         totalTurns: 0,
-        averageLatencyMs: 0,
-        p95LatencyMs: 0,
-        p99LatencyMs: 0,
-        jitterMs: 0,
-        idealPercentage: 0,
-        qualityRatingScore: 0,
-        estimatedBleuScore: 0,
+        averageLatencyMs: null,
+        p95LatencyMs: null,
+        p99LatencyMs: null,
+        jitterMs: null,
+        idealPercentage: null,
+        qualityRatingScore: null,
+        estimatedBleuScore: null,
         cacheHitCount: this.cacheHits,
         fallbackCount: this.fallbackCount,
-        errorRate: 0.0,
+        errorRate: null,
       };
     }
 
@@ -101,7 +101,7 @@ export class LatencyMetricsTracker {
     for (let i = 1; i < this.turns.length; i++) {
       totalJitter += Math.abs(this.turns[i].totalLatencyMs - this.turns[i - 1].totalLatencyMs);
     }
-    const jitter = this.turns.length > 1 ? Math.round(totalJitter / (this.turns.length - 1)) : 35;
+    const jitter = this.turns.length > 1 ? Math.round(totalJitter / (this.turns.length - 1)) : 0;
 
     return {
       totalTurns: this.turns.length,
@@ -110,11 +110,11 @@ export class LatencyMetricsTracker {
       p99LatencyMs: p99,
       jitterMs: jitter,
       idealPercentage: this.getIdealPercentage(),
-      qualityRatingScore: 4.85,
-      estimatedBleuScore: 44.2,
+      qualityRatingScore: null,
+      estimatedBleuScore: null,
       cacheHitCount: this.cacheHits,
       fallbackCount: this.fallbackCount,
-      errorRate: 0.005,
+      errorRate: null,
     };
   }
 }

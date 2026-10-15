@@ -192,7 +192,6 @@ export const ChatView: React.FC = () => {
   };
 
   const handleVoiceSend = async (payload: any) => {
-    setIsRecordingVoice(false);
     if (payload && typeof payload === 'object' && payload.duration) {
       await sendVoiceNote(
         payload.duration,
@@ -206,6 +205,7 @@ export const ChatView: React.FC = () => {
     } else {
       await sendVoiceNote(payload || 3, 'Voice note');
     }
+    setIsRecordingVoice(false);
   };
 
   const handleTogglePlayVoice = (msg: ChatMessage) => {
@@ -1315,7 +1315,11 @@ export const ChatView: React.FC = () => {
                           </span>
                           {isMe && (
                             <span>
-                              {msg.status === 'read' ? (
+                              {msg.status === 'failed' ? (
+                                <span className="text-red-400 font-sans" title="Private channel membership or the chat connection could not be verified.">Not sent</span>
+                              ) : msg.status === 'sending' ? (
+                                <span className="font-sans">Sending…</span>
+                              ) : msg.status === 'read' ? (
                                 <CheckCheck className="w-3.5 h-3.5 text-emerald-400" title="Read" />
                               ) : msg.status === 'delivered' ? (
                                 <CheckCheck className="w-3.5 h-3.5 text-slate-400" title="Delivered" />

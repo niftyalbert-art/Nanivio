@@ -11,6 +11,8 @@ import { AsrSubsystem } from './asr/subsystem';
 import { TtsSubsystem } from './tts/subsystem';
 import { VoiceActivityDetector } from './audio/vad';
 import { AudioSegmenter } from './audio/segmentation';
+import { authenticatedFetch } from '../authenticatedFetch';
+import { requireLanguage } from './languagePlan';
 
 /**
  * Nanivio Central Translator Engine
@@ -104,17 +106,19 @@ export class NanivioTranslatorEngine {
   // ==========================================================================
   public async translateText(text: string, sourceLang: string, targetLang: string): Promise<MtResult> {
     const start = Date.now();
+    requireLanguage(sourceLang); requireLanguage(targetLang);
     if (!text || !text.trim() || sourceLang === targetLang) {
       return { translatedText:text, sourceLang, targetLang, provider:'local', latencyMs:Date.now()-start };
     }
     const cached = this.cache.get(text, sourceLang, targetLang);
-    if (cached) return { ...cached, cached:true };
+    if (cached) { this.metrics.recordCacheHit(); return { ...cached, cached:true, latencyMs:Date.now()-start }; }
     try {
-      const response = await fetch('/api/translate', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({text,sourceLang,targetLang,preferredProvider:'azure'})});
+      const response = await authenticatedFetch('/api/translate', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({text,sourceLang,targetLang})});
       const data = await response.json();
-      if (!response.ok || data.untranslated || !data.translatedText) throw new Error(data.error || 'Production translation unavailable');
-      const result: MtResult = {translatedText:data.translatedText,sourceLang,targetLang,provider:(data.provider==='khaya-ghana-nlp'?'khaya':data.provider==='sunbird-makerere'?'sunbird':'azure'),latencyMs:Date.now()-start,confidence:data.confidence ?? .95,pivotUsed:!!data.pivotUsed};
+      if (!response.ok || data.success !== true || data.untranslated || typeof data.translatedText !== 'string' || !data.translatedText.trim()) throw new Error(data.error || 'Production translation unavailable');
+      const result: MtResult = {translatedText:data.translatedText,sourceLang,targetLang,provider:data.provider,providerChain:data.providerChain,latencyMs:Date.now()-start,pivotUsed:!!data.pivotUsed};
       this.cache.set(text,sourceLang,targetLang,result);
+      this.metrics.recordTurn({id:crypto.randomUUID(),speakerId:'',speakerName:'',speakerLang:sourceLang,receiverLang:targetLang,translatedText:result.translatedText,asrLatencyMs:null,mtLatencyMs:result.latencyMs,ttsLatencyMs:null,totalLatencyMs:result.latencyMs,latencyGrade:LatencyMetricsTracker.classifyLatency(result.latencyMs),provider:result.provider,timestamp:Date.now()});
       return result;
     } catch (e) {
       console.warn('[Nanivio Engine] Production translation failed:',e);
