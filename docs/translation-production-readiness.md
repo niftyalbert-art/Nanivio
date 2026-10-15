@@ -39,8 +39,10 @@ the deployed Render application has received or verified these changes.
 
 - TypeScript check.
 - Production frontend and server build; existing bundle-size warnings remain.
-- 45 regression tests, including exhaustive 324-combination planning consistency,
+- 46 regression tests after syncing with the main project, including exhaustive 324-combination planning consistency,
   authentication boundaries, privacy and billing-access regression checks.
+- The sync preserves both credential-filtering implementations and the main
+  project's public-profile allowlists and persistent application identities.
 - Zero disagreements between the matrix and both browser planners.
 - New speech endpoints reject unauthenticated requests with HTTP 401.
 - Running mobile-width public preview renders; authentication remains enabled.

@@ -235,10 +235,12 @@ test('actual service and realtime paths enforce membership and private fan-out, 
 
 test('actual registration, persistence, historical read and review code all sanitize application payloads', () => {
   const auth = source('src/server/persistentAuth.ts');
-  assert.match(auth, /payload:redactApplicationSecrets\(application\)/);
-  for (const type of ['Expert', 'Business', 'Driver']) assert.match(auth, new RegExp(`register${type}.*application=redactApplicationSecrets`));
-  assert.match(auth, /redactApplicationSecrets\(r\.payload\)/);
-  assert.match(auth, /const payload=redactApplicationSecrets\(\{\.\.\.\(data\.payload/);
+  assert.match(auth, /return sanitizeApplicationFields\(redactApplicationSecrets\(value\)\)/,
+    'Every persistence sanitizer composes both main-project and task credential protections.');
+  assert.match(auth, /payload:sanitizeApplication\(\{\.\.\.application,userId:id,nvId\}\)/);
+  for (const type of ['Expert', 'Business', 'Driver']) assert.match(auth, new RegExp(`register${type}.*application=sanitizeApplication`));
+  assert.match(auth, /sanitizeApplication\(r\.payload\)/);
+  assert.match(auth, /const payload=sanitizeApplication\(\{\.\.\.\(data\.payload/);
   assert.match(auth, /password:input\.password/, 'The real authentication provider still receives the separate password input.');
   assert.doesNotMatch(auth, /payload:application[,}]/);
 });
