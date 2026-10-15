@@ -114,7 +114,6 @@ const AppOrchestrator: React.FC = () => {
       <NanivioCelebrationVideoEffect
         mode={activeCelebrationEffect.mode}
         onComplete={clearCelebrationEffect}
-        autoCloseDuration={3300}
       />
     );
   }
