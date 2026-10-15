@@ -39,7 +39,7 @@ the deployed Render application has received or verified these changes.
 
 - TypeScript check.
 - Production frontend and server build; existing bundle-size warnings remain.
-- 46 regression tests after syncing with the main project, including exhaustive 324-combination planning consistency,
+- 51 regression tests after syncing with the main project and correcting voice-note billing, including exhaustive 324-combination planning consistency,
   authentication boundaries, privacy and billing-access regression checks.
 - The sync preserves both credential-filtering implementations and the main
   project's public-profile allowlists and persistent application identities.
@@ -60,6 +60,12 @@ the deployed Render application has received or verified these changes.
   approved. No generated device stream was substituted.
 - Development watching excludes runtime caches and documentation, in addition
   to tooling logs, so those writes do not reload an active verification call.
+- Voice-note message delivery no longer performs a second debit or a second
+  translation/synthesis pass. Only the authenticated processing endpoint
+  records usage, with an account/language/audio-bound event ID for retries.
+  Unit regressions cover the actual client encoder, 30 seconds = 0.5 minutes,
+  validated PCM/float WAV byte rates, single-event submission, and allowance
+  arithmetic with duplicate-event handling. These are not live balance evidence.
 
 Planning tests are not live translation tests. The matrix does not mark
 unmeasured pairs as live verified.

@@ -19,7 +19,7 @@ interface VoiceNoteRecorderProps {
   targetLang?: string;
   targetUserName?: string;
   onCancel: () => void;
-  onSend: (payload: VoiceNoteSendPayload) => void;
+  onSend: (payload: VoiceNoteSendPayload) => void | Promise<void>;
 }
 
 export const VoiceNoteRecorder: React.FC<VoiceNoteRecorderProps> = ({
@@ -202,7 +202,7 @@ export const VoiceNoteRecorder: React.FC<VoiceNoteRecorderProps> = ({
       const translatedAudioUrl=URL.createObjectURL(new Blob([audio],{type:recognized.contentType||'audio/wav'}));
 
       setIsProcessing(false);
-      onSend({
+      await onSend({
         duration: durationSec,
         transcript: verifiedTranscript,
         audioBlobUrl: originalAudioBlobUrl,

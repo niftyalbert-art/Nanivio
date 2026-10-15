@@ -2755,25 +2755,12 @@ export const NanivioProvider: React.FC<{ children: React.ReactNode }> = ({ child
     let voiceNoteProvider = 'direct-passthrough';
 
     if (shouldLangpretate) {
-      try {
-        if (!translatedTranscriptParam) {
-          const engine = NanivioTranslatorEngine.getInstance();
-          const mtResult = await engine.translateText(transcript, myLanguage, resolvedTargetLang);
-          if (mtResult && mtResult.translatedText) {
-            finalTranslatedTranscript = mtResult.translatedText;
-            voiceNoteProvider = mtResult.provider;
-          }
-        }
-        if (!finalTranslatedAudioUrl && finalTranslatedTranscript) {
-          const synth = await NanivioTtsAudioGenerator.generatePlayableWavBlob(finalTranslatedTranscript, resolvedTargetLang);
-          finalTranslatedAudioUrl = synth.url;
-        }
-
-        const minsUsed = Number((duration / 60).toFixed(2)) || 0.1;
-        recordLangpretationUsage('VOICE_NOTE', minsUsed, myLanguage, resolvedTargetLang).catch(() => {});
-      } catch (err) {
-        console.warn('Voice note translation failed:', err);
+      if (!translatedTranscriptParam?.trim() || !translatedAudioUrl) {
+        throw new Error('The server voice-note pipeline must complete before sending a translated recording.');
       }
+      voiceNoteProvider = 'server-voice-note-pipeline';
+      // Processing already persisted usage. Refresh the display, never debit again.
+      refreshBilling().catch(() => console.warn('Unable to refresh the voice-note usage display.'));
     }
 
     const voiceNoteData: VoiceNoteData = {
