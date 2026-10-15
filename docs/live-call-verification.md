@@ -49,15 +49,16 @@ task workspace only; they have **not** been merged into the Render-connected bra
 | Khaya/Sunbird browser adapters send authenticated requests | Passed after repair | Not verified |
 | Unavailable translation is rejected rather than presented as success | Passed after repair | Endpoint reported untranslated input |
 | English-to-Twi endpoint produces actual translated output | Passed after provider configuration and contract repairs | Failed: untranslated passthrough |
-| English-to-Luganda endpoint produces actual translated output | Blocked: configured URL returned speech synthesis, not translation | Failed: untranslated passthrough |
+| English-to-Luganda endpoint produces actual translated output | Blocked: documented translation route timed out | Failed: untranslated passthrough |
 | Authenticated quota meter can be read | Passed, HTTP 200 | Passed, HTTP 200 |
 | Genuine microphone/camera capture and remote media playback | Blocked: no input devices | Not verified |
 | Actual allowance consumption during genuine translated media | Not verified | Not verified |
 
 The updated workspace API suite passed 26 of 27 assertions, including real
 English-to-Twi output from Khaya. It now also tests Sunbird in the workspace; that
-provider's configured URL returned an audio-synthesis response rather than
-translation. The authenticated browser suite
+provider's original configured URL returned an audio-synthesis response rather
+than translation. After correcting the official service route, actual translation
+requests timed out instead. The authenticated browser suite
 passed 15 of 16 assertions; the unavailable physical input devices were the
 remaining failed prerequisite. Render passed 23 of 26 assertions, with failures
 for disconnect cleanup and the two tested translation language pairs.
@@ -87,7 +88,8 @@ Some assertions cover the same workflow at different layers.
    code to Khaya's documented code, and accept Khaya's JSON-string translations.
    Use bounded requests and safe diagnostics without logging keys, URLs, input
    text, or upstream values. Do not send translation requests to known
-   non-translation paths on the official Sunbird host.
+   non-translation paths on the official Sunbird host; explicitly select the
+   documented text-MT route instead. Preserve custom proxy configuration.
 6. **Stable development verification:** exclude workspace logs, agent metadata,
    and generated test evidence from Vite watching. Workflow-log writes were
    triggering full-page reloads during browser checks, interrupting media-device
@@ -108,13 +110,31 @@ adapter returned a successful provider translation. It retained correct failure
 handling for Sunbird, passed both accounts' real Agora audio/video joins and
 mobile layouts again, and listed only an audio-output device.
 
-Sunbird returned HTTP 200 but the response contained audio-synthesis fields
+Sunbird initially returned HTTP 200 but the response contained audio-synthesis fields
 such as `audio_url`, `voice`, `sample_rate`, and `duration_seconds`, not translated
 text. Those response values were not logged or saved. Its translation URL needs
 to point to the documented text-translation service:
 `https://api.sunbird.ai/tasks/translate`.
-Further calls to official non-translation paths are now rejected locally.
-No API key replacement has been shown necessary.
+The setting confirmation still left the application seeing an official
+non-translation route. The text client now explicitly selects the documented
+translation route in that case, discarding speech-operation query parameters.
+It does not rewrite custom proxy hosts.
+
+Actual requests to the documented translation route did not return output within
+10 seconds, or within a separate 25-second diagnostic allowance. No authentication
+or inference-error status was available before these timeouts, so the underlying
+provider-side cause is not established. Do not claim a working translation
+subscription, valid MT authorization, or low-latency in-call interpretation.
+The normal application request allowance remains bounded at 10 seconds rather
+than retaining an unproven longer wait. No more repeated timeout probes are needed
+without new provider status or evidence.
+
+The public Sunbird schema and documentation both returned HTTP 200. Its current
+schema confirms `POST /tasks/translate` with OAuth2 bearer authentication, and
+does not list the previous `/tasks/nllb_translate` operation. Official-host
+translation requests therefore use the current documented path, including when
+the configured path is a legacy route. Reachable documentation does not establish
+that the inference service is available or that this account has MT access.
 
 Provider contract references:
 - https://khaya-sdk.readthedocs.io/en/latest/languages/
@@ -131,8 +151,9 @@ Provider contract references:
   Nevertheless, the tested translation endpoints returned the input unchanged,
   with `success: false` and `provider: untranslated-passthrough`.
   Those production failures have not been re-diagnosed with server-side access.
-  The workspace now has independently confirmed Khaya output and a Sunbird
-  endpoint mismatch; do not assume Render has the repaired code or configuration.
+  The workspace now has independently confirmed Khaya output and Sunbird
+  translation-route timeouts after addressing an endpoint mismatch; do not
+  assume Render has the repaired code or configuration.
 - A readable quota meter does not prove consumption. The driver did not submit
   fabricated usage records to create a passing quota result.
 - GetStream's configuration flag is not a live private-chat or provider-delivery
@@ -142,7 +163,7 @@ Provider contract references:
 ## Validation
 
 - `npm run lint`: passed.
-- Billing/privacy/setup and pure translation-contract tests: 33 passed.
+- Billing/privacy/setup and pure translation-contract tests: 35 passed.
 - Dependency portability tests: 5 passed.
 - `npm run build`: passed; existing chunk-size/import warnings remain.
 - `git diff --check`: passed.
@@ -165,7 +186,8 @@ as a current workspace failure.
 
 ## Remaining work
 
-1. Correct the Sunbird translation endpoint and require actual Luganda output.
+1. Establish availability and MT access for Sunbird's documented translation
+   service, then require actual Luganda output within the application's budget.
    Khaya's actual English-to-Twi output has now passed; other language pairs and
    linguistic quality have not been comprehensively verified.
 2. Run a genuine two-device microphone/camera session, including actual remote
