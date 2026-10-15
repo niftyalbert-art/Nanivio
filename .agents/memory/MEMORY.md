@@ -11,3 +11,5 @@
 - [Large sandbox arguments](sandbox-arguments.md) — split unusually long strings before the isolated execution boundary; a parse failure is not an authorization failure.
 - [Portable package lockfiles](portable-package-locks.md) — keep external builds independent of workspace-private download hosts without disabling package screening.
 - [Preview proxy checks](preview-proxy-checks.md) — workspace proxy errors can coexist with a healthy app; distinguish local server checks from public reachability.
+- [Provider readiness evidence](provider-readiness.md) — configured credentials and HTTP 200 do not prove that the intended provider service actually ran.
+- [Development watcher noise](development-watcher-noise.md) — workspace log writes can reload authenticated pages and interrupt live-call verification.

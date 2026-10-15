@@ -76,7 +76,16 @@ export default defineConfig(() => {
       // Do not modifyâfile watching is disabled to prevent flickering during agent edits.
       hmr: process.env.DISABLE_HMR !== 'true',
       // Disable file watching when DISABLE_HMR is true to save CPU during agent edits.
-      watch: process.env.DISABLE_HMR === 'true' ? null : {},
+      watch: process.env.DISABLE_HMR === 'true' ? null : {
+        // Workspace logs and verification evidence are not application sources.
+        // Watching them reloads signed-in pages during otherwise idle calls.
+        ignored: [
+          '**/.local/**',
+          '**/.agents/**',
+          '**/generated-artifacts/**',
+          '**/scripts/live-call-checks/**',
+        ],
+      },
     },
   };
 });

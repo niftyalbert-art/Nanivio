@@ -61,9 +61,13 @@ export async function runBrowserChecks({ accounts, origin, outputDirectory }) {
         const requests=[];
         window.fetch=async(...args)=>{
           const response=await actualFetch(...args);
-          if(String(args[0]).includes('/api/translate'))requests.push({
-            status:response.status,authenticated:Boolean(args[1]?.headers?.Authorization)
-          });
+          if(String(args[0]).includes('/api/translate')){
+            const body=await response.clone().json();
+            requests.push({
+              status:response.status,authenticated:Boolean(args[1]?.headers?.Authorization),
+              provider:body.provider,success:body.success===true,untranslated:body.untranslated===true
+            });
+          }
           return response;
         };
         let returnedTranslation=false;
@@ -78,13 +82,24 @@ export async function runBrowserChecks({ accounts, origin, outputDirectory }) {
       check(`${provider}: real adapter request includes authentication`,
         result.requests.length === 1 && result.requests[0].authenticated &&
         result.requests[0].status !== 401, result);
-      check(`${provider}: unavailable provider is not presented as a successful translation`,
-        result.returnedTranslation === false);
+      check(`${provider}: adapter accurately propagates the real provider outcome`,
+        result.requests.length === 1 &&
+        result.returnedTranslation === (result.requests[0].success && !result.requests[0].untranslated), result);
     }
     phase = 'devices';
-    const deviceKinds = await pages[0].evaluate(`navigator.mediaDevices.enumerateDevices().then(d=>d.map(x=>x.kind))`);
+    let deviceKinds = null;
+    try {
+      deviceKinds = await pages[0].evaluate(`Promise.race([
+        navigator.mediaDevices.enumerateDevices().then(d=>d.map(x=>x.kind)),
+        new Promise(resolve=>setTimeout(()=>resolve(null),5000))
+      ])`);
+    } catch {
+      // A missing media API or denied enumeration is a failed prerequisite,
+      // not a reason to fabricate devices or skip independent signaling checks.
+    }
     check('Physical microphone and camera are available to this test browser',
-      deviceKinds.includes('audioinput') && deviceKinds.includes('videoinput'), { deviceKinds, syntheticMediaUsed: false });
+      Boolean(deviceKinds?.includes('audioinput') && deviceKinds?.includes('videoinput')),
+      { deviceKinds, deviceEnumerationUnavailable: deviceKinds === null, syntheticMediaUsed: false });
 
     phase = 'missed-call';
     const a = peer(origin, accounts[0]);

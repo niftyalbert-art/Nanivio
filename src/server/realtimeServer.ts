@@ -17,6 +17,7 @@ import {
 import { authDb } from './authDb.ts';
 import * as persistentAuth from './persistentAuth.ts';
 import { channelRecipients, normalizeChannelId } from './chatPrivacy.ts';
+import { callKhayaEngine as khaya, callSunbirdEngine as sunbird } from './translationProviders.ts';
 
 export interface ConnectedUser {
   socket: WebSocket;
@@ -162,8 +163,6 @@ async function callProductionTranslation(text:string, sourceLang:string, targetL
   const endpoint=(process.env.AZURE_TRANSLATOR_ENDPOINT||'https://api.cognitive.microsofttranslator.com').replace(/\/$/,'');
   const region=process.env.AZURE_TRANSLATOR_REGION;
   const azure=async(input:string,a:string,b:string)=>{ if(!key)return null; const params=new URLSearchParams({'api-version':'3.0',to:b}); if(a!=='auto')params.set('from',a); const h:any={'Ocp-Apim-Subscription-Key':key,'Content-Type':'application/json'}; if(region)h['Ocp-Apim-Subscription-Region']=region; const r=await fetch(`${endpoint}/translate?${params}`,{method:'POST',headers:h,body:JSON.stringify([{text:input}]),signal:AbortSignal.timeout(5000)}); if(!r.ok)return null; const d:any=await r.json(); const t=d?.[0]?.translations?.[0]?.text; return t?{text:String(t),provider:'azure-translator'}:null; };
-  const khaya=async(input:string,a:string,b:string)=>{ const k=process.env.KHAYA_API_KEY; if(!k)return null; const r=await fetch(process.env.KHAYA_TRANSLATION_URL||'https://translation-api.ghananlp.org/v1/translate',{method:'POST',headers:{'Content-Type':'application/json','Ocp-Apim-Subscription-Key':k},body:JSON.stringify({in:input,lang:`${a}-${b}`}),signal:AbortSignal.timeout(5000)}); if(!r.ok)return null; const d:any=await r.json(); const t=d?.translation||d?.out||d?.text; return t?{text:String(t).trim(),provider:'khaya-ghana-nlp'}:null; };
-  const sunbird=async(input:string,a:string,b:string)=>{ const k=process.env.SUNBIRD_API_KEY; if(!k)return null; const r=await fetch(process.env.SUNBIRD_TRANSLATION_URL||'https://api.sunbird.ai/tasks/nmt',{method:'POST',headers:{'Content-Type':'application/json','Authorization':`Bearer ${k}`},body:JSON.stringify({source_language:a,target_language:b,text:input}),signal:AbortSignal.timeout(5000)}); if(!r.ok)return null; const d:any=await r.json(); const t=d?.output?.translated_text||d?.translated_text; return t?{text:String(t).trim(),provider:'sunbird-makerere'}:null; };
   const direct=ghana.has(sourceLang)||ghana.has(targetLang)?await khaya(text,sourceLang,targetLang):east.has(sourceLang)||east.has(targetLang)?await sunbird(text,sourceLang,targetLang):await azure(text,sourceLang,targetLang);
   if(direct)return direct;
   if(sourceLang!=='en'&&targetLang!=='en'){

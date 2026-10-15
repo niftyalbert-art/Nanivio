@@ -142,7 +142,7 @@ export async function runChecks({ accounts, origin, originName, request }) {
       Boolean(translation.data.translatedText) && !translation.data.untranslated,
       { status: translation.status, provider: translation.data.provider,
         translatedText: translation.data.translatedText, cached: translation.data.cached === true });
-    if (originName === 'render') {
+    {
       const sunbird = await request(origin, '/api/translate', localAccounts[0], {
         text: 'Good morning. Thank you for your help.', sourceLang: 'en', targetLang: 'lg',
       });
