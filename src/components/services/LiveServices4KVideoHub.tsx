@@ -422,150 +422,6 @@ export const LiveServices4KVideoHub: React.FC = () => {
         )}
       </div>
       {/* ============================================================= */}
-      <div
-        ref={screenContainerRef}
-        className="relative rounded-3xl overflow-hidden bg-slate-950 border border-emerald-500/40 shadow-2xl shadow-emerald-500/10 group select-none"
-      >
-        {/* 4K Top Status Overlay Bar */}
-        <div className="absolute top-0 inset-x-0 z-30 p-3 sm:p-4 bg-gradient-to-b from-black/90 via-black/50 to-transparent flex items-center justify-between gap-3 pointer-events-auto">
-          {/* Left: Live Badges & Resolution */}
-          <div className="flex items-center gap-2 flex-wrap">
-            <span className="px-3 py-1 rounded-full bg-rose-600/90 text-white font-mono font-extrabold text-xs flex items-center gap-1.5 shadow-lg shadow-rose-600/40 animate-pulse">
-              <span className="w-2 h-2 rounded-full bg-white animate-ping" />
-              <span>LIVE 4K</span>
-            </span>
-
-            <span className="px-2.5 py-1 rounded-full bg-emerald-500/20 text-emerald-300 font-mono font-bold text-[11px] border border-emerald-500/40 flex items-center gap-1">
-              <Radio className="w-3.5 h-3.5 text-emerald-400 animate-pulse" />
-              <span>{selectedChannel.resolution}</span>
-            </span>
-
-            <span className="hidden sm:inline-flex px-2 py-0.5 rounded bg-slate-800/80 text-slate-300 font-mono text-[11px] border border-slate-700">
-              {selectedChannel.fps} FPS â€¢ {selectedChannel.bitrateMbps} Mbps HDR10
-            </span>
-          </div>
-
-          {/* Right: Live Audience Counter & Channel Select */}
-          <div className="flex items-center gap-2">
-            <div className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-black/60 backdrop-blur-md border border-white/10 text-xs text-white font-mono shadow-md">
-              <Eye className="w-3.5 h-3.5 text-emerald-400" />
-              <span>{viewerCount.toLocaleString()} watching</span>
-            </div>
-
-            <button
-              onClick={toggleFullscreen}
-              className="p-2 rounded-xl bg-black/60 hover:bg-black/90 text-white border border-white/15 transition-colors cursor-pointer"
-              title={isFullscreen ? 'Exit Fullscreen' : 'View Full 4K Screen'}
-            >
-              <Maximize2 className="w-4 h-4" />
-            </button>
-          </div>
-        </div>
-
-        {/* Real 4K Video Player with Loop & Controls */}
-        <div className="relative aspect-video w-full bg-black flex items-center justify-center overflow-hidden">
-          <video
-            ref={videoRef}
-            src={selectedChannel.videoUrl}
-            poster={selectedChannel.posterUrl}
-            autoPlay
-            playsInline
-            loop
-            muted={isMuted}
-            className="w-full h-full object-cover"
-          />
-
-          {/* Ambient Video Vignette for Ultra Contrast */}
-          <div className="absolute inset-0 bg-gradient-to-t from-[#070b14] via-transparent to-transparent pointer-events-none opacity-80" />
-
-          {/* Center Play/Pause Overlay Indicator on Hover */}
-          <button
-            onClick={togglePlay}
-            className="absolute inset-0 m-auto w-16 h-16 rounded-full bg-emerald-500/80 hover:bg-emerald-400 text-slate-950 flex items-center justify-center shadow-2xl opacity-0 group-hover:opacity-100 transition-all hover:scale-110 cursor-pointer pointer-events-auto"
-            title={isPlaying ? 'Pause 4K Broadcast' : 'Play 4K Broadcast'}
-          >
-            {isPlaying ? <Pause className="w-8 h-8 fill-slate-950" /> : <Play className="w-8 h-8 ml-1 fill-slate-950" />}
-          </button>
-        </div>
-
-        {/* 4K Bottom Broadcast HUD Bar */}
-        <div className="p-4 sm:p-5 bg-gradient-to-r from-[#070d18] via-[#091426] to-[#08101e] border-t border-slate-800 space-y-3">
-          <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
-            <div className="space-y-1">
-              <div className="flex items-center gap-2">
-                <span className="text-xs uppercase font-mono font-bold text-emerald-400">
-                  {selectedChannel.category}
-                </span>
-                <span className="text-slate-500">â€¢</span>
-                <span className="text-xs text-slate-400 font-mono">Channel Verified</span>
-              </div>
-              <h2 className="text-base sm:text-lg font-black text-white leading-tight">
-                {selectedChannel.name}
-              </h2>
-              <p className="text-xs text-slate-300 max-w-2xl leading-relaxed">
-                {selectedChannel.description}
-              </p>
-            </div>
-
-            {/* Video Action Controls: Mute, Volume, Channel Picker */}
-            <div className="flex items-center gap-2 shrink-0 flex-wrap">
-              <button
-                onClick={toggleMute}
-                className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 text-xs font-bold transition-all cursor-pointer"
-                title={isMuted ? 'Unmute Audio' : 'Mute Audio'}
-              >
-                {isMuted ? <VolumeX className="w-4 h-4 text-rose-400" /> : <Volume2 className="w-4 h-4 text-emerald-400" />}
-                <span>{isMuted ? 'Unmute' : 'Audio ON'}</span>
-              </button>
-
-              {/* Channel Selector Dropdown */}
-              <div className="relative">
-                <select
-                  value={selectedChannel.id}
-                  onChange={(e) => {
-                    const chan = LIVE_4K_CHANNELS.find((c) => c.id === e.target.value);
-                    if (chan) handleSelectChannel(chan);
-                  }}
-                  className="px-3 py-2 rounded-xl bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 text-xs font-bold font-mono focus:outline-none cursor-pointer"
-                  title="Switch 4K Live Broadcast Channel"
-                >
-                  {LIVE_4K_CHANNELS.map((chan) => (
-                    <option key={chan.id} value={chan.id} className="bg-slate-900 text-white">
-                      {chan.name}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            </div>
-          </div>
-
-          {/* Quick Channel Pill Switches */}
-          <div className="flex items-center gap-2 overflow-x-auto scrollbar-none pt-2 border-t border-slate-800/80">
-            <span className="text-[11px] font-mono uppercase tracking-wider text-slate-400 shrink-0 flex items-center gap-1">
-              <Tv className="w-3.5 h-3.5 text-cyan-400" />
-              <span>4K Channels:</span>
-            </span>
-            {LIVE_4K_CHANNELS.map((chan) => {
-              const isSelected = chan.id === selectedChannel.id;
-              return (
-                <button
-                  key={chan.id}
-                  onClick={() => handleSelectChannel(chan)}
-                  className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all shrink-0 cursor-pointer ${
-                    isSelected
-                      ? 'bg-emerald-500 text-slate-950 shadow-md shadow-emerald-500/20'
-                      : 'bg-slate-900 text-slate-300 hover:text-white hover:bg-slate-800 border border-slate-800'
-                  }`}
-                >
-                  {chan.category}
-                </button>
-              );
-            })}
-          </div>
-        </div>
-      </div>
-
-      {/* ============================================================= */}
       {/* 2. LIVE BUSINESS ADS & SPONSORED SHOWCASE (INTERACTIVE CAROUSEL) */}
       {/* ============================================================= */}
       <div
@@ -580,9 +436,9 @@ export const LiveServices4KVideoHub: React.FC = () => {
             <span className="w-2.5 h-2.5 rounded-full bg-amber-400 animate-ping" />
             <span className="px-3 py-1 rounded-full bg-amber-500/20 text-amber-300 text-xs font-extrabold uppercase tracking-wider border border-amber-500/40 flex items-center gap-1.5">
               <Sparkles className="w-3.5 h-3.5" />
-              <span>{currentPromo.badgeLabel}</span>
+              <span>{currentPromo?.badgeLabel ?? 'No featured businesses available'}</span>
             </span>
-            <span className="text-xs text-slate-400 hidden sm:inline">â€¢ {currentPromo.category}</span>
+            {currentPromo && <span className="text-xs text-slate-400 hidden sm:inline">• {currentPromo.category}</span>}
           </div>
 
           {/* Carousel Controls (Prev / Next & Dots) */}
@@ -603,6 +459,7 @@ export const LiveServices4KVideoHub: React.FC = () => {
             </div>
 
             <button
+              disabled={activePromos.length < 2}
               onClick={() => setActiveSlideIndex((prev) => (prev - 1 + activePromos.length) % activePromos.length)}
               className="p-1 rounded-lg bg-slate-800/80 hover:bg-slate-700 text-slate-300 hover:text-white"
               title="Previous Ad"
@@ -610,6 +467,7 @@ export const LiveServices4KVideoHub: React.FC = () => {
               <ChevronLeft className="w-4 h-4" />
             </button>
             <button
+              disabled={activePromos.length < 2}
               onClick={() => setActiveSlideIndex((prev) => (prev + 1) % activePromos.length)}
               className="p-1 rounded-lg bg-slate-800/80 hover:bg-slate-700 text-slate-300 hover:text-white"
               title="Next Ad"

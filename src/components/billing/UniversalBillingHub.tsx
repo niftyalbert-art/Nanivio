@@ -43,6 +43,7 @@ import {
   BusinessBillingAccount,
 } from '../../types/billing';
 import { billingClient } from '../../lib/billingClient';
+import { billingNumber, formatBillingAmount } from '../../lib/billingPresentation';
 import { PaystackTopUpModal } from './PaystackTopUpModal';
 import { TransferValueModal } from './TransferValueModal';
 import { UniversalFlowTracer } from './UniversalFlowTracer';
@@ -225,7 +226,7 @@ export const UniversalBillingHub: React.FC = () => {
     setUpgradingTier(tier);
     const targetPlan = malviPlans.find((p) => p.tier === tier);
     const priceGHS = billingCycle === 'ANNUAL' ? targetPlan?.priceAnnualGHS || 0 : targetPlan?.priceMonthlyGHS || 0;
-    const commBalance = billingSummary?.accounts?.communication?.available || 0;
+    const commBalance = billingNumber(billingSummary?.accounts?.communicationAccount?.wallets?.find(w => w.currency === 'GHS')?.available) ?? 0;
 
     if (tier === 'free') {
       try {
@@ -293,6 +294,10 @@ export const UniversalBillingHub: React.FC = () => {
   };
 
   const currentSub = billingSummary?.subscription;
+  const communicationWallet = billingSummary?.accounts?.communicationAccount?.wallets?.find(w => w.currency === 'GHS');
+  const fintechWallet = billingSummary?.accounts?.fintechAccount?.wallets?.find(w => w.currency === 'GHS');
+  const communicationAvailable = communicationWallet?.available ?? (billingSummary ? 0 : undefined);
+  const fintechAvailable = fintechWallet?.available ?? (billingSummary ? 0 : undefined);
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col font-sans pb-16 w-full max-w-full overflow-x-hidden">
@@ -463,10 +468,10 @@ export const UniversalBillingHub: React.FC = () => {
                   </span>
                 </div>
                 <div className="text-2xl font-black text-slate-100 font-mono tracking-tight">
-                  GH₵ {billingSummary?.accounts?.communication?.available?.toLocaleString('en-US', { minimumFractionDigits: 2 }) || '3,450.00'}
+                  GH₵ {formatBillingAmount(communicationAvailable)}
                 </div>
                 <div className="mt-3 flex items-center justify-between text-[11px] text-slate-400 border-t border-slate-800/80 pt-2.5">
-                  <span>Reserved: GH₵ {billingSummary?.accounts?.communication?.reserved?.toFixed(2) || '0.00'}</span>
+                  <span>Reserved: GH₵ {formatBillingAmount(communicationWallet?.reserved ?? (billingSummary ? 0 : undefined))}</span>
                   <button
                     onClick={() => setIsPaystackModalOpen(true)}
                     className="text-emerald-400 font-bold hover:underline"
@@ -485,10 +490,10 @@ export const UniversalBillingHub: React.FC = () => {
                   </span>
                 </div>
                 <div className="text-2xl font-black text-slate-100 font-mono tracking-tight">
-                  GH₵ {billingSummary?.accounts?.fintech?.available?.toLocaleString('en-US', { minimumFractionDigits: 2 }) || '1,255.50'}
+                  GH₵ {formatBillingAmount(fintechAvailable)}
                 </div>
                 <div className="mt-3 flex items-center justify-between text-[11px] text-slate-400 border-t border-slate-800/80 pt-2.5">
-                  <span>Withdrawable: GH₵ {billingSummary?.accounts?.fintech?.available?.toFixed(2) || '1,255.50'}</span>
+                  <span>Withdrawable: GH₵ {formatBillingAmount(fintechAvailable)}</span>
                   <button
                     onClick={() => {
                       setTransferModalMode('P2P');
@@ -508,7 +513,7 @@ export const UniversalBillingHub: React.FC = () => {
                   <span className="font-mono text-[10px] px-2 py-0.5 rounded bg-slate-800 text-slate-300">$ USD</span>
                 </div>
                 <div className="text-2xl font-black text-slate-100 font-mono tracking-tight">
-                  $ {(billingSummary?.wallets?.find((w) => w.currency === 'USD')?.available || 380.0).toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                  $ {formatBillingAmount(billingSummary?.wallets?.find((w) => w.currency === 'USD')?.available ?? (billingSummary ? 0 : undefined))}
                 </div>
                 <div className="mt-3 flex items-center justify-between text-[11px] text-slate-400 border-t border-slate-800/60 pt-2.5">
                   <span>International Billing</span>
@@ -523,7 +528,7 @@ export const UniversalBillingHub: React.FC = () => {
                   <span className="font-mono text-[10px] px-2 py-0.5 rounded bg-purple-500/20 text-purple-300 border border-purple-500/30">Bonus</span>
                 </div>
                 <div className="text-2xl font-black text-purple-300 font-mono tracking-tight">
-                  GH₵ {(billingSummary?.promotionalCredits?.reduce((acc, c) => acc + (c.isActive ? c.remainingAmount : 0), 0) || 50.0).toFixed(2)}
+                  GH₵ {formatBillingAmount(billingSummary ? billingSummary.promotionalCredits?.reduce((acc, c) => acc + (c.isActive ? billingNumber(c.remainingAmount) ?? 0 : 0), 0) ?? 0 : undefined)}
                 </div>
                 <div className="mt-3 flex items-center justify-between text-[11px] text-slate-400 border-t border-slate-800/60 pt-2.5">
                   <span>Auto-applied first</span>
@@ -733,7 +738,7 @@ export const UniversalBillingHub: React.FC = () => {
                           </div>
                           <div className="text-right">
                             <div className="text-xs font-bold font-mono text-slate-100">
-                              {tx.currency} {tx.total.toFixed(2)}
+                              {tx.currency} {formatBillingAmount(tx.total)}
                             </div>
                             <span
                               className={`text-[10px] font-semibold px-2 py-0.2 rounded-full ${
@@ -1830,8 +1835,8 @@ export const UniversalBillingHub: React.FC = () => {
           refreshBilling();
         }}
         defaultMode={transferModalMode}
-        communicationBalance={billingSummary?.accounts?.communication?.available || 3450}
-        fintechBalance={billingSummary?.accounts?.fintech?.available || 1255.5}
+        communicationBalance={billingNumber(communicationAvailable) ?? 0}
+        fintechBalance={billingNumber(fintechAvailable) ?? 0}
         currency="GHS"
       />
     </div>

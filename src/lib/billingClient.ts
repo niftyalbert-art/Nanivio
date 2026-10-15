@@ -1,4 +1,5 @@
 import { authClient } from './authClient';
+import { normalizeBillingTransaction } from './billingPresentation';
 
 import {
   BillingTransaction,
@@ -89,7 +90,11 @@ export const billingClient = {
   async getSummary(userId?: string): Promise<UserBillingSummaryResponse> {
     const res = await fetch(`/api/billing/summary`, { headers: billingHeaders() });
     if (!res.ok) throw new Error('Failed to fetch billing summary');
-    return res.json();
+    const summary = await res.json();
+    return {
+      ...summary,
+      recentTransactions: (summary.recentTransactions ?? []).map(normalizeBillingTransaction),
+    };
   },
 
   // 1B. Fetch Dedicated User Financial Accounts (Communication + Fintech)

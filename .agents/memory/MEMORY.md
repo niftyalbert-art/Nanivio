@@ -15,3 +15,4 @@
 - [Development watcher noise](development-watcher-noise.md) — workspace log writes can reload authenticated pages and interrupt live-call verification.
 - [Post-merge runtime freshness](post-merge-runtime.md) — successful setup reconciliation does not prove the running process picked up reinstalled dependencies.
 - [Feature access boundary](feature-access-boundary.md) — ordinary users need readable capabilities; denied settings requests must not appear as administrator shutdowns.
+- [Billing display contracts](billing-display-contracts.md) — normalize persisted rows for display; distinguish zero from unknown and never show demonstration balances as funds.
