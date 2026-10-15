@@ -15,3 +15,7 @@ language pair. Never count echoed untranslated text, audio metadata, configurati
 flags, or pure contract tests as live translation evidence. Diagnose failures
 using bounded structural metadata and fixed reason codes, not credentials or
 raw upstream payloads.
+
+Do not infer invalid credentials, exhausted quota, or a particular provider-side
+failure from a timeout alone. Public documentation being reachable does not
+establish that inference is available within the application's latency budget.

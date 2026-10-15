@@ -141,7 +141,8 @@ export async function runChecks({ accounts, origin, originName, request }) {
       translation.status === 200 && translation.data.success === true &&
       Boolean(translation.data.translatedText) && !translation.data.untranslated,
       { status: translation.status, provider: translation.data.provider,
-        translatedText: translation.data.translatedText, cached: translation.data.cached === true });
+        translatedText: translation.data.translatedText, cached: translation.data.cached === true,
+        latencyMs: translation.data.latencyMs });
     {
       const sunbird = await request(origin, '/api/translate', localAccounts[0], {
         text: 'Good morning. Thank you for your help.', sourceLang: 'en', targetLang: 'lg',
@@ -150,7 +151,8 @@ export async function runChecks({ accounts, origin, originName, request }) {
         sunbird.status === 200 && sunbird.data.success === true &&
         Boolean(sunbird.data.translatedText) && !sunbird.data.untranslated,
         { status: sunbird.status, provider: sunbird.data.provider,
-          translatedText: sunbird.data.translatedText, cached: sunbird.data.cached === true });
+          translatedText: sunbird.data.translatedText, cached: sunbird.data.cached === true,
+          latencyMs: sunbird.data.latencyMs });
     }
     const meterAfter = await request(origin, '/api/billing/langpretation/meter', localAccounts[0]);
     check('Authenticated quota meter is readable',

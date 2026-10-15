@@ -46,6 +46,20 @@ function responseShape(data: any) {
   };
 }
 
+export function translationEndpoint(provider: 'khaya' | 'sunbird', endpoint: string): URL {
+  const url = new URL(endpoint);
+  if (provider === 'sunbird' && url.hostname === 'api.sunbird.ai' &&
+      url.pathname !== '/tasks/translate') {
+    // Text MT must not be sent to the official speech-synthesis operation.
+    // Custom proxy endpoints are untouched; corrections are explicit in logs.
+    console.warn('[Nanivio translation]', provider, 'using-official-translation-endpoint');
+    url.pathname = '/tasks/translate';
+    url.search = '';
+    url.hash = '';
+  }
+  return url;
+}
+
 async function requestTranslation(
   provider: 'khaya' | 'sunbird',
   endpoint: string,
@@ -53,14 +67,9 @@ async function requestTranslation(
   body: Record<string, string>,
 ): Promise<ProviderTranslation | null> {
   try {
-    const url = new URL(endpoint);
+    const url = translationEndpoint(provider, endpoint);
     if (url.protocol !== 'https:') {
       console.warn('[Nanivio translation]', provider, 'invalid-endpoint');
-      return null;
-    }
-    if (provider === 'sunbird' && url.hostname === 'api.sunbird.ai' &&
-        !['/tasks/translate', '/tasks/nllb_translate', '/tasks/nmt'].includes(url.pathname.replace(/\/$/, ''))) {
-      console.warn('[Nanivio translation]', provider, 'non-translation-endpoint');
       return null;
     }
     const response = await fetch(url, {
