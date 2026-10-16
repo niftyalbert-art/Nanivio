@@ -1,17 +1,28 @@
 import crypto from 'node:crypto';
 import { AssistantError, getAssistantStore, IDLE_MS, MAX_SESSION_MS, type AssistantSessionRecord, type AssistantStore } from './redisStore.ts';
+import { getLiveBrainProviderConfig } from './brainProviderConfig.ts';
 
 const API = 'https://api.liveavatar.com';
 export const AI_DISCLOSURE = "Hello, I'm Malvi, Nanivio's interactive AI assistant, not a human.";
 export const ownerKey = (userId: string) => crypto.createHash('sha256').update(userId).digest('hex');
 
 export function liveAvatarSetup() {
+  const brain = getLiveBrainProviderConfig();
   const missing = [
     ...(!process.env.HEYGEN_API_KEY ? ['HEYGEN_API_KEY'] : []),
     ...(!process.env.AVATAR_ID ? ['AVATAR_ID'] : []),
     ...(!process.env.REDIS_URL ? ['REDIS_URL'] : []),
+    ...brain.missing,
   ];
-  return { configured: missing.length === 0, missing, mode: 'LITE' as const, idleSeconds: 60, maximumInitializationsPerHour: 10, brainConnected: false };
+  return {
+    configured: missing.length === 0,
+    missing,
+    mode: 'LITE' as const,
+    idleSeconds: 60,
+    maximumInitializationsPerHour: 10,
+    brainConnected: brain.configured,
+    brainProvider: brain.selectedProvider,
+  };
 }
 
 export async function liveAvatarRequest(path: string, body: unknown, fetcher = fetch) {

@@ -6,6 +6,7 @@ export interface LiveAvatarReadiness {
   missing: string[];
   brainConnected: boolean;
   welcomeVoiceConfigured: boolean;
+  brainProvider?: 'gemini' | 'openai' | null;
 }
 
 export async function assistantRequest(path: string, body?: unknown, keepalive = false) {

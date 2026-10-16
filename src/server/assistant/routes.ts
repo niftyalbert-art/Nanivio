@@ -3,6 +3,8 @@ import { AssistantError } from './redisStore.ts';
 import { AI_DISCLOSURE, liveAvatarService, liveAvatarSetup } from './liveAvatarService.ts';
 import { speechConfigured, synthesizeProviderAudio } from '../speechProviders.ts';
 import { wavToPcm24k } from './pcm.ts';
+import { getLiveBrainProviderConfig } from './brainProviderConfig.ts';
+import { malviLiveBrainController } from './liveBrain.ts';
 
 type Auth = (req: Request, res: Response, next: NextFunction) => unknown;
 export function registerAssistantRoutes(app: Express, auth: Auth, enabled: () => boolean, startSweeper = true) {
@@ -24,7 +26,13 @@ export function registerAssistantRoutes(app: Express, auth: Auth, enabled: () =>
     }
   };
   app.get('/api/assistant/status', auth, run(async (_req, res) => {
-    res.json({ success: true, ...liveAvatarSetup(), enabled: enabled(), welcomeVoiceConfigured: speechConfigured('en', 'tts') });
+    res.json({
+      success: true,
+      ...liveAvatarSetup(),
+      enabled: enabled(),
+      welcomeVoiceConfigured: speechConfigured('en', 'tts'),
+      brainProviders: getLiveBrainProviderConfig(),
+    });
   }));
   app.post('/api/assistant/session', auth, run(async (req, res) => {
     if (!enabled()) throw new AssistantError(403, 'MALVI_DISABLED', 'Malvi is currently disabled by the administrator.');
@@ -47,6 +55,7 @@ export function registerAssistantRoutes(app: Express, auth: Auth, enabled: () =>
     res.json({ success: true, text: AI_DISCLOSURE, pcm24k, sampleRate: 24000, format: 'pcm_s16le', channels: 1 });
   }));
   app.post('/api/assistant/session/:id/end', auth, run(async (req, res) => {
+    await malviLiveBrainController.stopSession(userId(req), validId(req));
     await liveAvatarService.stop(userId(req), validId(req));
     res.json({ success: true });
   }));

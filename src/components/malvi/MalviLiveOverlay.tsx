@@ -1,6 +1,6 @@
 import React, { useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
-import { AlertCircle, AudioLines, Check, LoaderCircle, MicOff, X } from 'lucide-react';
+import { AlertCircle, AudioLines, Check, LoaderCircle, Mic, MicOff, X } from 'lucide-react';
 import { MALVI_PROFILE } from '../../lib/malviIdentity';
 
 export interface MalviLiveOverlayProps {
@@ -14,6 +14,11 @@ export interface MalviLiveOverlayProps {
   onPlayAudio: () => void;
   audioBlocked: boolean;
   caption?: string;
+  brainReady: boolean;
+  microphoneOn: boolean;
+  microphoneError: string;
+  brainProvider: 'gemini' | 'openai' | null;
+  onToggleMicrophone: () => void;
 }
 
 const formatTime = (seconds: number) => {
@@ -34,6 +39,11 @@ export const MalviLiveOverlay: React.FC<MalviLiveOverlayProps> = ({
   onPlayAudio,
   audioBlocked,
   caption,
+  brainReady,
+  microphoneOn,
+  microphoneError,
+  brainProvider,
+  onToggleMicrophone,
 }) => {
   const dialogRef = useRef<HTMLDivElement>(null);
   const closeButtonRef = useRef<HTMLButtonElement>(null);
@@ -189,6 +199,22 @@ export const MalviLiveOverlay: React.FC<MalviLiveOverlayProps> = ({
           <p id="malvi-live-disclosure" className="max-w-lg rounded-xl bg-[#10201f]/60 px-3 py-2 text-center text-[11px] leading-relaxed text-[#e0e8e2]/80 backdrop-blur-md">
             AI disclosure · Malvi is an interactive AI assistant.
           </p>
+          <button
+            type="button"
+            onClick={onToggleMicrophone}
+            disabled={!brainReady || phase !== 'connected'}
+            aria-pressed={microphoneOn}
+            className="inline-flex min-h-12 items-center gap-2 rounded-full bg-[#d6e6d9] px-5 text-sm font-semibold text-[#18352f] transition-colors hover:bg-[#e3eee3] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white disabled:cursor-not-allowed disabled:opacity-55"
+          >
+            {microphoneOn ? <MicOff size={18} /> : <Mic size={18} />}
+            {microphoneOn ? 'Turn microphone off' : brainReady ? 'Start talking' : 'Connecting Malvi’s brain…'}
+          </button>
+          <p className="max-w-lg text-center text-[11px] leading-relaxed text-[#e0e8e2]/80">
+            {microphoneOn
+              ? `Microphone on · audio is sent to ${brainProvider === 'openai' ? 'OpenAI GPT-Live' : 'Gemini Live'} through Nanivio.`
+              : 'Your microphone stays off until you choose Start talking.'}
+          </p>
+          {microphoneError && <p role="alert" className="max-w-lg text-center text-xs text-[#ffe0d4]">{microphoneError}</p>}
           <div className="flex flex-wrap items-center justify-center gap-2">
             <div className="flex items-center gap-2 rounded-full border border-white/15 bg-[#10201f]/65 px-3.5 py-2.5 text-xs text-[#f1f3eb] backdrop-blur-md sm:hidden">
               <span className="text-[#c0d1c8]/75">Idle session</span>

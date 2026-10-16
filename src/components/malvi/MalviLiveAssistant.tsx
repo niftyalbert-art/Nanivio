@@ -3,6 +3,7 @@ import { AlertCircle, ArrowUpRight, Mic, MicOff, Video } from 'lucide-react';
 import { useNanivio } from '../../context/NanivioContext';
 import { assistantRequest, deliverMalviAudio, type LiveAvatarReadiness } from '../../lib/malviLiveClient';
 import { startLocalMalviWakeWord } from '../../lib/localMalviWakeWord';
+import { realtimeClient } from '../../lib/realtimeClient';
 import { MalviLiveOverlay } from './MalviLiveOverlay';
 import type { LiveAvatarSession } from '@heygen/liveavatar-web-sdk';
 
@@ -29,23 +30,45 @@ export const MalviLiveAssistantProvider: React.FC<{ children: React.ReactNode }>
   const [caption, setCaption] = useState('');
   const [secondsRemaining, setSecondsRemaining] = useState(60);
   const [audioBlocked, setAudioBlocked] = useState(false);
+  const [brainReady, setBrainReady] = useState(false);
+  const [microphoneOn, setMicrophoneOn] = useState(false);
+  const [microphoneError, setMicrophoneError] = useState('');
   const [wakeArmed, setWakeArmed] = useState(false);
   const [wakeChecking, setWakeChecking] = useState(false);
   const videoRef = useRef<HTMLVideoElement>(null);
   const mediaReady = useRef(false);
   const sdk = useRef<LiveAvatarSession | null>(null);
   const sessionId = useRef<string | null>(null);
+  const micStream = useRef<MediaStream | null>(null);
+  const micContext = useRef<AudioContext | null>(null);
+  const micSource = useRef<MediaStreamAudioSourceNode | null>(null);
+  const micProcessor = useRef<AudioWorkletNode | null>(null);
   const stopWake = useRef<(() => void) | null>(null);
   const generation = useRef(0);
   const deadline = useRef(0);
   const busy = useRef(false);
   const mounted = useRef(true);
+  const stopMicrophone = useCallback(() => {
+    const id = sessionId.current;
+    if (id) realtimeClient.send('malvi:brain_audio_end', { sessionId: id });
+    micProcessor.current?.disconnect();
+    micSource.current?.disconnect();
+    micStream.current?.getTracks().forEach((track) => track.stop());
+    if (micContext.current && micContext.current.state !== 'closed') void micContext.current.close();
+    micProcessor.current = null;
+    micSource.current = null;
+    micStream.current = null;
+    micContext.current = null;
+    setMicrophoneOn(false);
+  }, []);
   const disarmWake = useCallback(() => {
     stopWake.current?.(); stopWake.current = null; setWakeArmed(false);
   }, []);
 
   const cleanup = useCallback(async () => {
     const live = sdk.current, id = sessionId.current;
+    stopMicrophone();
+    if (id) realtimeClient.send('malvi:brain_stop', { sessionId: id });
     sdk.current = null; sessionId.current = null; deadline.current = 0; mediaReady.current = false;
     const video = videoRef.current;
     if (video) { video.pause(); video.srcObject = null; }
@@ -53,12 +76,12 @@ export const MalviLiveAssistantProvider: React.FC<{ children: React.ReactNode }>
       live ? live.stop() : Promise.resolve(),
       id ? assistantRequest(`/session/${id}/end`, {}, true) : Promise.resolve(),
     ]);
-  }, []);
+  }, [stopMicrophone]);
 
   const close = useCallback(() => {
     generation.current++; busy.current = false; disarmWake();
     void cleanup();
-    setPhase('idle'); setError(null); setAudioBlocked(false);
+    setPhase('idle'); setError(null); setAudioBlocked(false); setBrainReady(false);
   }, [cleanup, disarmWake]);
   const fail = useCallback((message: string) => {
     generation.current++; busy.current = false; void cleanup();
@@ -78,6 +101,89 @@ export const MalviLiveAssistantProvider: React.FC<{ children: React.ReactNode }>
     try { setReadiness(await assistantRequest('/status')); setNotice(''); }
     catch (err) { setNotice(err instanceof Error ? err.message : 'Live avatar readiness is unavailable.'); }
   }, []);
+  useEffect(() => {
+    const isCurrent = (payload: any) => Boolean(payload?.sessionId && payload.sessionId === sessionId.current);
+    const offReady = realtimeClient.on('malvi:brain_ready', (payload) => {
+      if (isCurrent(payload)) {
+        setBrainReady(true);
+        setCaption(`Malvi is ready using ${payload.provider === 'openai' ? 'OpenAI GPT-Live' : 'Gemini Live'}. Turn on the microphone when you’re ready.`);
+      }
+    });
+    const offAudio = realtimeClient.on('malvi:brain_audio', (payload) => {
+      if (!isCurrent(payload) || !sdk.current) return;
+      try {
+        deliverMalviAudio(sdk.current, payload);
+        if (payload.greeting) setCaption('Malvi is ready to talk. Turn on the microphone when you’re ready.');
+      } catch {
+        setMicrophoneError('Malvi’s voice audio could not be played.');
+      }
+    });
+    const offCaption = realtimeClient.on('malvi:brain_caption', (payload) => {
+      if (isCurrent(payload) && typeof payload.text === 'string') setCaption(payload.text);
+    });
+    const offActivity = realtimeClient.on('malvi:brain_activity', (payload) => {
+      if (isCurrent(payload) && Number.isFinite(payload.idleDeadline)) deadline.current = payload.idleDeadline;
+    });
+    const offError = realtimeClient.on('malvi:brain_error', (payload) => {
+      if (isCurrent(payload) && typeof payload.message === 'string') {
+        setMicrophoneError(payload.message);
+        setBrainReady(false);
+        stopMicrophone();
+      }
+    });
+    return () => { offReady(); offAudio(); offCaption(); offActivity(); offError(); };
+  }, [stopMicrophone]);
+
+  const toggleMicrophone = useCallback(async () => {
+    if (microphoneOn) { stopMicrophone(); return; }
+    const id = sessionId.current;
+    if (!id || !brainReady) return;
+    setMicrophoneError('');
+    let stream: MediaStream | null = null;
+    let context: AudioContext | null = null;
+    try {
+      if (!navigator.mediaDevices?.getUserMedia || typeof AudioContext === 'undefined' || !('audioWorklet' in AudioContext.prototype)) {
+        throw new Error('This browser does not support live microphone streaming.');
+      }
+      stream = await navigator.mediaDevices.getUserMedia({
+        audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true, autoGainControl: true },
+      });
+      context = new AudioContext({ sampleRate: 16000 });
+      if (context.sampleRate !== 16000) throw new Error('This browser could not start a 16 kHz audio stream.');
+      await context.resume();
+      await context.audioWorklet.addModule('/audio/malvi-pcm-processor.js');
+      if (sessionId.current !== id || !mounted.current) {
+        stream.getTracks().forEach((track) => track.stop());
+        await context.close();
+        return;
+      }
+      const source = context.createMediaStreamSource(stream);
+      const processor = new AudioWorkletNode(context, 'malvi-pcm-processor');
+      const silentOutput = context.createGain();
+      silentOutput.gain.value = 0;
+      processor.port.onmessage = (event) => {
+        if (sessionId.current === id && typeof event.data === 'string') {
+          realtimeClient.send('malvi:brain_audio', { sessionId: id, audio: event.data });
+        }
+      };
+      source.connect(processor);
+      processor.connect(silentOutput);
+      silentOutput.connect(context.destination);
+      micStream.current = stream;
+      micContext.current = context;
+      micSource.current = source;
+      micProcessor.current = processor;
+      setMicrophoneOn(true);
+      setCaption('Microphone is on. Your speech is sent to the selected Nanivio brain provider.');
+    } catch (error) {
+      stream?.getTracks().forEach((track) => track.stop());
+      context?.close().catch(() => {});
+      micStream.current?.getTracks().forEach((track) => track.stop());
+      micContext.current?.close().catch(() => {});
+      setMicrophoneError(error instanceof Error ? error.message : 'Microphone access could not start.');
+      setMicrophoneOn(false);
+    }
+  }, [brainReady, microphoneOn, stopMicrophone]);
   useEffect(() => { void refresh(); }, [refresh, currentUser?.id]);
   useEffect(() => {
     mounted.current = true;
@@ -91,7 +197,8 @@ export const MalviLiveAssistantProvider: React.FC<{ children: React.ReactNode }>
     if (busy.current || sdk.current) return;
     busy.current = true;
     const run = ++generation.current;
-    disarmWake(); setError(null); setCaption('Connecting your live avatar. Conversation will be connected in the brain upgrade.');
+    disarmWake(); setError(null); setCaption('Connecting your live avatar and selected brain provider.');
+    setBrainReady(false); setMicrophoneError(''); setMicrophoneOn(false);
     setSecondsRemaining(60); setAudioBlocked(false); setPhase('connecting');
     try {
       // No token exchange, SDK download, WebRTC, or provider audio before activation.
@@ -118,19 +225,30 @@ export const MalviLiveAssistantProvider: React.FC<{ children: React.ReactNode }>
       const welcome = () => {
         if (!welcomed && streamReady && sessionStarted && run === generation.current) {
           welcomed = true;
-          void assistantRequest(`/session/${info.id}/welcome`, {}).then(audio => {
-            if (run !== generation.current) return;
-            deliverMalviAudio(live, audio); setCaption(audio.text);
-          }).catch(err => {
-            if (run === generation.current) setCaption(err instanceof Error ? err.message : 'The backend welcome voice is unavailable.');
-          });
+          const startBrain = () => {
+            if (run === generation.current) realtimeClient.send('malvi:brain_start', { sessionId: info.id });
+          };
+          if (!readiness?.welcomeVoiceConfigured) {
+            setCaption('The AI disclosure is shown on screen. Starting Malvi’s selected live brain.');
+            startBrain();
+          } else {
+            void assistantRequest(`/session/${info.id}/welcome`, {}).then(audio => {
+              if (run !== generation.current) return;
+              deliverMalviAudio(live, audio); setCaption(audio.text); startBrain();
+            }).catch(err => {
+              if (run === generation.current) {
+                setCaption(err instanceof Error ? err.message : 'The backend welcome voice is unavailable.');
+                startBrain();
+              }
+            });
+          }
         }
       };
       live.on(SessionEvent.SESSION_STREAM_READY, () => {
         if (run !== generation.current) return;
         streamReady = true;
         setPhase('connected');
-        setCaption('Live visual session. The conversational brain will be connected next.');
+        setCaption('Live visual session connected. Starting the selected brain provider.');
         mediaReady.current = true;
         attachVideo(videoRef.current);
         welcome();
@@ -159,7 +277,7 @@ export const MalviLiveAssistantProvider: React.FC<{ children: React.ReactNode }>
     } catch (err) {
       if (run === generation.current) fail(err instanceof Error ? err.message : 'Unable to connect the live avatar.');
     }
-  }, [attachVideo, close, disarmWake, fail]);
+  }, [attachVideo, close, disarmWake, fail, readiness?.welcomeVoiceConfigured]);
 
   const armWake = useCallback(async () => {
     if (wakeChecking || wakeArmed || busy.current || sdk.current) return;
@@ -205,6 +323,11 @@ export const MalviLiveAssistantProvider: React.FC<{ children: React.ReactNode }>
         videoRef={videoRef} onVideoElement={attachVideo} phase={phase} error={error} secondsRemaining={secondsRemaining}
         onClose={close} onInterrupt={interrupt} audioBlocked={audioBlocked} caption={caption}
         onPlayAudio={() => { void videoRef.current?.play().then(() => setAudioBlocked(false)).catch(() => setAudioBlocked(true)); }}
+        brainReady={brainReady}
+        microphoneOn={microphoneOn}
+        microphoneError={microphoneError}
+        brainProvider={readiness?.brainProvider || null}
+        onToggleMicrophone={() => void toggleMicrophone()}
       />}
     </LiveContext.Provider>
   );
@@ -221,7 +344,7 @@ export const MalviLiveControls: React.FC = () => {
         <div className="max-w-xl">
           <p className="text-xs font-semibold uppercase tracking-[.2em] text-emerald-300">Nanivio · LiveAvatar LITE</p>
           <h2 className="mt-2 text-xl font-semibold text-white">Meet Malvi, face to face</h2>
-          <p className="mt-2 text-sm leading-relaxed text-slate-300">A real video connection with your Nanivio AI assistant. The portrait below is a preview, not a live stream. The conversational brain is the next upgrade.</p>
+          <p className="mt-2 text-sm leading-relaxed text-slate-300">A live video connection with your Nanivio AI assistant. The server-selected brain provider handles conversation; turn on the microphone only when you are ready to speak.</p>
         </div>
         <span className="rounded-full border border-emerald-300/20 px-3 py-1.5 text-xs text-emerald-200">Video only after activation</span>
       </div>

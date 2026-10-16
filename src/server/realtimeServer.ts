@@ -19,6 +19,7 @@ import * as persistentAuth from './persistentAuth.ts';
 import { channelRecipients, normalizeChannelId } from './chatPrivacy.ts';
 import { callKhayaEngine as khaya, callSunbirdEngine as sunbird } from './translationProviders.ts';
 import { translateWithProductionProviders as callProductionTranslation } from './translationRouter.ts';
+import { malviLiveBrainController } from './assistant/liveBrain.ts';
 
 export interface ConnectedUser {
   socket: WebSocket;
@@ -415,6 +416,36 @@ export function setupRealtimeServer(httpServer: HttpServer) {
             break;
           }
 
+          case 'malvi:brain_start': {
+            if (typeof payload?.sessionId !== 'string' || !/^[a-f0-9-]{36}$/i.test(payload.sessionId)) {
+              socket.send(JSON.stringify({ type: 'malvi:brain_error', payload: { message: 'Invalid live session.' } }));
+              break;
+            }
+            await malviLiveBrainController.start(socket, currentUser.userId, payload.sessionId);
+            break;
+          }
+
+          case 'malvi:brain_audio': {
+            if (typeof payload?.sessionId === 'string') {
+              await malviLiveBrainController.audio(socket, currentUser.userId, payload.sessionId, payload.audio);
+            }
+            break;
+          }
+
+          case 'malvi:brain_audio_end': {
+            if (typeof payload?.sessionId === 'string') {
+              malviLiveBrainController.endAudio(socket, currentUser.userId, payload.sessionId);
+            }
+            break;
+          }
+
+          case 'malvi:brain_stop': {
+            if (typeof payload?.sessionId === 'string') {
+              await malviLiveBrainController.stopSession(currentUser.userId, payload.sessionId);
+            }
+            break;
+          }
+
           // -------------------------------------------------------------
           // 2. LIVE CALL INITIATION (CALLER -> RECEIVER)
           // -------------------------------------------------------------
@@ -801,6 +832,7 @@ export function setupRealtimeServer(httpServer: HttpServer) {
     socket.on('close', () => {
       clearInterval(pingInterval);
       allSockets.delete(socket);
+      malviLiveBrainController.closeSocket(socket);
 
       if (currentUser) {
         removeConnectedUser(currentUser);
