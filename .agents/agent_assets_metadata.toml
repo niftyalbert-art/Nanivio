@@ -84,3 +84,17 @@ mtime_ms = 1792029249062
 storage_uri = "gcs://replit-rams-assets-sisko/rams/assets/repl:8a53f482-19ae-49f0-ab16-31b527f92091/2faa366b-0f07-4637-b9c2-4f9383a674f3/6529d8f4-9cbd-42e1-b1f7-14f8519c4ee7"
 storage_version_token = "1792029398302018"
 content_type = "text/markdown"
+
+[[outputs]]
+id = "RZw5h9BK_uOOoNItj9Ywi"
+uri = "file://generated-artifacts/malvi-liveavatar-1080x1920.png"
+type = "image"
+title = "Malvi — enhanced LiveAvatar portrait"
+description = "1080 × 1920 PNG in 9:16 portrait format. AI-enhanced from the supplied front-facing image, with the original file preserved. Prepared for LiveAvatar upload; provider acceptance and live-avatar creation are still required."
+logical_id = "74a5ab7a-229a-4bf0-9683-6b97e5ab1f06"
+content_hash = "sha256:8bef5c2783adc94b5f1e71ed3dd9e1e8c62cf8dcfbb2c4fa4584938468125e70"
+size = 2048674
+mtime_ms = 1792166028254
+storage_uri = "gcs://replit-rams-assets-sisko/rams/assets/repl:8a53f482-19ae-49f0-ab16-31b527f92091/74a5ab7a-229a-4bf0-9683-6b97e5ab1f06/17d4a84f-34bd-46f3-96a4-40c34ed360c5"
+storage_version_token = "1792166060200931"
+content_type = "image/png"
