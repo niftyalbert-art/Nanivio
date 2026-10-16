@@ -1,4 +1,4 @@
-import { GoogleGenAI, Modality } from '@google/genai';
+import { GoogleGenAI, Modality, type Session } from '@google/genai';
 import OpenAI from 'openai';
 import { LiveWS } from 'openai/resources/live/ws';
 import type { WebSocket } from 'ws';
@@ -6,6 +6,8 @@ import { AI_DISCLOSURE, liveAvatarService } from './liveAvatarService.ts';
 import { getLiveBrainProviderConfig, type LiveBrainProviderId } from './brainProviderConfig.ts';
 import { MALVI_SYSTEM_PROMPT } from './malviSystemPrompt.ts';
 import { IDLE_MS } from './redisStore.ts';
+import { createReferenceToolRunner, REFERENCE_TOOL_NAME, REFERENCE_TOOL_DESCRIPTION, REFERENCE_TOOL_PARAMETERS } from './referenceTools.ts';
+import { createGeminiReferenceBridge, createOpenAIReferenceBridge } from './referenceToolBridges.ts';
 
 type BrainEvent = (type: string, payload: Record<string, unknown>) => void;
 type BrainConnection = {
@@ -25,6 +27,7 @@ type BrainConnection = {
   audioBuffer: Buffer[];
   transcript: string;
   isFirstTurn: boolean;
+  research: ReturnType<typeof createReferenceToolRunner>;
 };
 
 const MAX_INPUT_BYTES = 12_000;
@@ -106,7 +109,8 @@ async function connectGemini(
 ) {
   const provider = getLiveBrainProviderConfig().providers.gemini;
   const client = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY! });
-  const session = await client.live.connect({
+  const handleReferences = createGeminiReferenceBridge(connection.research, response => session.sendToolResponse(response), () => connection.closed);
+  const session: Session = await client.live.connect({
     model: provider.model,
     config: {
       responseModalities: [Modality.AUDIO],
@@ -114,10 +118,14 @@ async function connectGemini(
       speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: 'Kore' } } },
       inputAudioTranscription: {},
       outputAudioTranscription: {},
+      tools: [{ functionDeclarations: [{
+        name: REFERENCE_TOOL_NAME, description: REFERENCE_TOOL_DESCRIPTION, parametersJsonSchema: REFERENCE_TOOL_PARAMETERS,
+      }] }],
     },
     callbacks: {
       onmessage(message) {
         if (connection.closed || socket.readyState !== socket.OPEN) return;
+        void handleReferences(message).catch(() => onFailure('The reference tool response could not reach the selected brain.'));
         const serverContent = message.serverContent;
         for (const part of serverContent?.modelTurn?.parts || []) {
           if (part.inlineData?.data && part.inlineData.mimeType?.startsWith('audio/pcm')) {
@@ -170,11 +178,13 @@ async function connectOpenAI(
 ) {
   const provider = getLiveBrainProviderConfig().providers.openai;
   const live = new LiveWS(new OpenAI({ apiKey: process.env.OPENAI_API_KEY!, maxRetries: 0 }));
+  const handleReferences = createOpenAIReferenceBridge(connection.research, event => live.send(event), () => connection.closed);
   let started = false;
   let outputTimer: ReturnType<typeof setTimeout> | null = null;
   const timeout = setTimeout(() => onFailure('The selected live voice provider did not become ready.'), 12_000);
   live.on('event', (event: any) => {
     if (!event || connection.closed || socket.readyState !== socket.OPEN) return;
+    void handleReferences(event).catch(() => onFailure('The reference tool response could not reach the selected brain.'));
     if (event.type === 'session.started') {
       if (!started) {
         started = true;
@@ -209,6 +219,15 @@ async function connectOpenAI(
         model: provider.model,
         instructions: MALVI_SYSTEM_PROMPT,
         audio: { format: { type: 'audio/pcm', rate: 24000 }, output: { voice: process.env.MALVI_OPENAI_VOICE || 'marin' } },
+        delegation: {
+          type: 'responses',
+          responses: {
+            ...(process.env.MALVI_OPENAI_REASONING_MODEL ? { model: process.env.MALVI_OPENAI_REASONING_MODEL } : {}),
+            instructions: MALVI_SYSTEM_PROMPT,
+            tools: [{ type: 'function', name: REFERENCE_TOOL_NAME, description: REFERENCE_TOOL_DESCRIPTION, parameters: REFERENCE_TOOL_PARAMETERS, strict: true }],
+            tool_choice: 'auto', parallel_tool_calls: false,
+          },
+        },
       },
     } as any);
   });
@@ -254,6 +273,10 @@ function createConnection(socket: WebSocket, userId: string, sessionId: string):
     audioBuffer: [],
     transcript: '',
     isFirstTurn: true,
+    research: createReferenceToolRunner(
+      payload => send(socket, 'malvi:brain_sources', { sessionId, ...payload }),
+      () => connection.closed,
+    ),
   };
   const providerConfig = getLiveBrainProviderConfig();
   if (!providerConfig.configured || !providerConfig.selectedProvider) {

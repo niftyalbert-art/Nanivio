@@ -1,7 +1,7 @@
 import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
 import { AlertCircle, ArrowUpRight, Mic, MicOff, Video } from 'lucide-react';
 import { useNanivio } from '../../context/NanivioContext';
-import { assistantRequest, deliverMalviAudio, type LiveAvatarReadiness } from '../../lib/malviLiveClient';
+import { assistantRequest, deliverMalviAudio, parseMalviReferenceCitations, type MalviReferenceCitation, type LiveAvatarReadiness } from '../../lib/malviLiveClient';
 import { startLocalMalviWakeWord } from '../../lib/localMalviWakeWord';
 import { realtimeClient } from '../../lib/realtimeClient';
 import { MalviLiveOverlay } from './MalviLiveOverlay';
@@ -33,6 +33,9 @@ export const MalviLiveAssistantProvider: React.FC<{ children: React.ReactNode }>
   const [brainReady, setBrainReady] = useState(false);
   const [microphoneOn, setMicrophoneOn] = useState(false);
   const [microphoneError, setMicrophoneError] = useState('');
+  const [referenceStatus, setReferenceStatus] = useState('idle');
+  const [references, setReferences] = useState<MalviReferenceCitation[]>([]);
+  const [unavailableSources, setUnavailableSources] = useState<string[]>([]);
   const [wakeArmed, setWakeArmed] = useState(false);
   const [wakeChecking, setWakeChecking] = useState(false);
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -124,6 +127,14 @@ export const MalviLiveAssistantProvider: React.FC<{ children: React.ReactNode }>
     const offActivity = realtimeClient.on('malvi:brain_activity', (payload) => {
       if (isCurrent(payload) && Number.isFinite(payload.idleDeadline)) deadline.current = payload.idleDeadline;
     });
+    const offSources = realtimeClient.on('malvi:brain_sources', (payload) => {
+      if (!isCurrent(payload)) return;
+      if (['searching', 'complete', 'empty', 'unavailable'].includes(payload.status)) setReferenceStatus(payload.status);
+      setReferences(parseMalviReferenceCitations(payload.results));
+      setUnavailableSources(Array.isArray(payload.unavailable)
+        ? payload.unavailable.filter((source: unknown) => ['Wikipedia', 'Wikidata', 'arXiv', 'PubMed'].includes(String(source)))
+        : []);
+    });
     const offError = realtimeClient.on('malvi:brain_error', (payload) => {
       if (isCurrent(payload) && typeof payload.message === 'string') {
         setMicrophoneError(payload.message);
@@ -131,7 +142,7 @@ export const MalviLiveAssistantProvider: React.FC<{ children: React.ReactNode }>
         stopMicrophone();
       }
     });
-    return () => { offReady(); offAudio(); offCaption(); offActivity(); offError(); };
+    return () => { offReady(); offAudio(); offCaption(); offActivity(); offSources(); offError(); };
   }, [stopMicrophone]);
 
   const toggleMicrophone = useCallback(async () => {
@@ -199,6 +210,7 @@ export const MalviLiveAssistantProvider: React.FC<{ children: React.ReactNode }>
     const run = ++generation.current;
     disarmWake(); setError(null); setCaption('Connecting your live avatar and selected brain provider.');
     setBrainReady(false); setMicrophoneError(''); setMicrophoneOn(false);
+    setReferenceStatus('idle'); setReferences([]); setUnavailableSources([]);
     setSecondsRemaining(60); setAudioBlocked(false); setPhase('connecting');
     try {
       // No token exchange, SDK download, WebRTC, or provider audio before activation.
@@ -327,6 +339,7 @@ export const MalviLiveAssistantProvider: React.FC<{ children: React.ReactNode }>
         microphoneOn={microphoneOn}
         microphoneError={microphoneError}
         brainProvider={readiness?.brainProvider || null}
+        references={references} referenceStatus={referenceStatus} unavailableSources={unavailableSources}
         onToggleMicrophone={() => void toggleMicrophone()}
       />}
     </LiveContext.Provider>

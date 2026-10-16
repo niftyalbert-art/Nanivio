@@ -13,6 +13,21 @@ Set `MALVI_BRAIN_PROVIDER` to `gemini` or `openai`. Optional model overrides are
 
 Only the selected provider receives microphone audio. There is no automatic cross-provider failover or fan-out. The mic remains off until the user turns it on; mic audio is sent over Nanivio's authenticated WebSocket and does not go to HeyGen. The LITE avatar receives only generated PCM16 mono audio at 24 kHz.
 
+## Automatic reference lookup
+
+The selected live brain has a read-only `search_reference_sources` tool:
+
+- **General reference:** Wikipedia article introductions and Wikidata entity labels/descriptions.
+- **Scientific literature:** arXiv abstracts and PubMed article metadata/abstracts.
+
+The brain is instructed to choose a relevant group automatically, without requiring a separate search request. It must not look up greetings, private account details, Nanivio policies, or secrets. Short topic keywords—not audio or the full conversation—go to the selected public reference APIs. The live interface discloses this and shows reference links, dates where available, limitations, and unavailable sources. Returned links are server-constructed and client-restricted to the four approved hosts.
+
+Gemini uses Live function declarations and explicit tool responses. OpenAI uses Live Responses delegation, a single custom function, completed nested output-item events, and explicit result/continuation messages. `MALVI_OPENAI_REASONING_MODEL` optionally chooses the OpenAI Responses backend model; otherwise the API's default is used. This is still one selected provider, not cross-provider fallback. No other external actions or search services are exposed.
+
+Requests use fixed HTTPS endpoints, bounded bodies, timeouts, per-source request pacing (including arXiv and NCBI limits), short bounded in-memory caching, in-flight deduplication, and a per-session lookup guard. Full papers and PDFs are not fetched. Retrieved text is untrusted evidence, never instructions or authorization. An arXiv preprint is not automatically peer-reviewed; PubMed indexing is not endorsement or personalized medical advice. The interface calls these **reference results**, not proof that every result supports every spoken claim.
+
+Adapter and tool-protocol tests use fixtures. These tests do not establish model selection quality, scientific correctness, or successful live-provider operation. A real end-to-end test still requires the configured brain and avatar.
+
 ## Current integration boundary
 
 The text chat already has a separate Gemini generation path. The LITE session now has a live-audio provider adapter for Gemini and OpenAI, a selected-provider readiness check, authenticated audio routing, explicit mic controls, idle expiry, and 16-to-24 kHz conversion for OpenAI. The live system prompt does not authorize payments, account edits, bookings, or other tools.

@@ -2,6 +2,7 @@ import React, { useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { AlertCircle, AudioLines, Check, LoaderCircle, Mic, MicOff, X } from 'lucide-react';
 import { MALVI_PROFILE } from '../../lib/malviIdentity';
+import type { MalviReferenceCitation } from '../../lib/malviLiveClient';
 
 export interface MalviLiveOverlayProps {
   videoRef: React.RefObject<HTMLVideoElement | null>;
@@ -19,6 +20,9 @@ export interface MalviLiveOverlayProps {
   microphoneError: string;
   brainProvider: 'gemini' | 'openai' | null;
   onToggleMicrophone: () => void;
+  references: MalviReferenceCitation[];
+  referenceStatus: string;
+  unavailableSources: string[];
 }
 
 const formatTime = (seconds: number) => {
@@ -44,6 +48,9 @@ export const MalviLiveOverlay: React.FC<MalviLiveOverlayProps> = ({
   microphoneError,
   brainProvider,
   onToggleMicrophone,
+  references,
+  referenceStatus,
+  unavailableSources,
 }) => {
   const dialogRef = useRef<HTMLDivElement>(null);
   const closeButtonRef = useRef<HTMLButtonElement>(null);
@@ -193,11 +200,39 @@ export const MalviLiveOverlay: React.FC<MalviLiveOverlayProps> = ({
               {caption}
             </p>
           )}
+          {phase === 'connected' && referenceStatus !== 'idle' && (
+            <div className="w-full max-w-md rounded-2xl border border-white/15 bg-[#10201f]/85 px-4 py-3 text-left text-xs backdrop-blur-md">
+              <p role="status" className="text-[#e6f0e7]">
+                {referenceStatus === 'searching' ? 'Checking relevant reference sources…'
+                  : references.length ? `${references.length} reference results retrieved`
+                  : referenceStatus === 'unavailable' ? 'Reference lookup unavailable. No sources were verified.'
+                  : 'No reference results were returned.'}
+              </p>
+              {unavailableSources.length > 0 && <p className="mt-1 text-amber-200">Unavailable: {unavailableSources.join(', ')}</p>}
+              {references.length > 0 && (
+                <details className="mt-2">
+                  <summary className="cursor-pointer font-medium underline underline-offset-4">View reference links and limitations</summary>
+                  <ul className="mt-3 max-h-36 space-y-3 overflow-y-auto pr-2">
+                    {references.map((reference, index) => (
+                      <li key={`${reference.url}-${index}`}>
+                        <a href={reference.url} target="_blank" rel="noopener noreferrer" className="font-medium text-emerald-200 underline underline-offset-2">
+                          {reference.title}
+                        </a>
+                        <p className="mt-1 text-white/70">{reference.source}{reference.published ? ` · ${reference.published}` : ''}</p>
+                        <p className="mt-1 text-white/60">{reference.caveat}</p>
+                      </li>
+                    ))}
+                  </ul>
+                </details>
+              )}
+            </div>
+          )}
         </div>
 
         <footer className="flex flex-col items-center gap-3 p-4 pb-[max(1rem,env(safe-area-inset-bottom))] sm:p-7">
           <p id="malvi-live-disclosure" className="max-w-lg rounded-xl bg-[#10201f]/60 px-3 py-2 text-center text-[11px] leading-relaxed text-[#e0e8e2]/80 backdrop-blur-md">
             AI disclosure · Malvi is an interactive AI assistant.
+            {' '}Relevant topic queries may be sent automatically to Wikipedia/Wikidata or arXiv/PubMed for reference lookup.
           </p>
           <button
             type="button"
