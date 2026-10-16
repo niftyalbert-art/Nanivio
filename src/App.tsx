@@ -21,12 +21,14 @@ import { NVNumberView } from './components/nvnumber/NVNumberView';
 import { NanivioRidePreview } from './components/ride/NanivioRidePreview';
 import { MalviView } from './components/malvi/MalviView';
 import { MalviFloatingWidget } from './components/malvi/MalviFloatingWidget';
+import { MalviLiveAssistantProvider } from './components/malvi/MalviLiveAssistant';
 import { ErrorBoundary } from './components/common/ErrorBoundary';
 
 const MainLayout: React.FC = () => {
   const { activeTab, incomingCall, acceptIncomingCall, declineIncomingCall } = useNanivio();
 
   return (
+    <MalviLiveAssistantProvider>
     <div className="min-h-screen bg-[#070d18] text-slate-100 flex flex-col selection:bg-emerald-500/30 selection:text-emerald-200 w-full max-w-full overflow-x-hidden relative">
       <Navbar />
 
@@ -71,6 +73,7 @@ const MainLayout: React.FC = () => {
       <LanguageSelectorModal />
       <NewUserInstallPrompt />
     </div>
+    </MalviLiveAssistantProvider>
   );
 };
 

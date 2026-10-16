@@ -18,3 +18,4 @@
 - [Feature access boundary](feature-access-boundary.md) — ordinary users need readable capabilities; denied settings requests must not appear as administrator shutdowns.
 - [Billing display contracts](billing-display-contracts.md) — normalize persisted rows for display; distinguish zero from unknown and never show demonstration balances as funds.
 - [Malvi upgrade direction](malvi-upgrade-direction.md) — responses, visuals, and brain are being upgraded; the user specified “Heygen lite mode.”
+- [Browser wait predicates](browser-wait-predicates.md) — CDP waits must return booleans, not DOM elements that cannot be serialized by value.

@@ -2,6 +2,7 @@ modules = ["nodejs-24"]
 
 [nix]
 channel = "stable-25_05"
+packages = ["redis"]
 
 [workflows]
 runButton = "Project"
@@ -30,6 +31,10 @@ outputType = "webview"
 [[ports]]
 localPort = 5000
 externalPort = 5000
+
+[[ports]]
+localPort = 5103
+externalPort = 3001
 
 [[ports]]
 localPort = 24678

@@ -1,0 +1,34 @@
+OBJECTIVE & CORE ARCHITECTURE:
+We are building a high-performance, full-screen Visual AI Assistant inside our communication application using a "Hybrid Architecture." The app will feature our "Nanivio signature AI image." 
+
+Instead of basic image-mimic/puppet tech, we are implementing a real-time WebRTC live video streaming engine. We will "Rent the Face" using the HeyGen Interactive Avatar SDK (LITE Mode) to handle video rendering and lip-syncing, while we "Own the Brain" by routing all LLM logic and voice generation through our own secure backend. 
+
+TECHNICAL STACK & CORE PROTOCOLS:
+1. FRONTEND: Built using Web tech (React / Next.js) or cross-platform mobile frameworks. It must utilize the official '@heygen/liveavatar-web-sdk' (which manages underlying WebRTC connections via LiveKit).
+2. BACKEND API: A secure server (Node.js/Express or Python/FastAPI) that interfaces with the HeyGen API endpoints. The server must handle generating ephemeral session tokens so our HEYGEN_API_KEY is never exposed to the client side.
+3. STREAMING MODE: Force 'mode: "lite"' in all HeyGen session payload initializations. Our backend will manage the conversational LLM brain and voice, feeding the text/audio response tokens straight into the open WebRTC session for real-time visual playback.
+
+STEP-BY-STEP IMPLEMENTATION WORKFLOW REQUIRED:
+
+STEP 1: LOCAL EDGE WAKE-WORD DETECTION (COST PROTECTION)
+- Integrate an on-device local wake-word listening engine (e.g., 'livekit-wakeword' or a highly optimized client-side Web Audio API script). 
+- The application MUST listen for the assistant's name ("Nanivio") strictly locally on the user's client hardware. 
+- PROHIBITION: Do not stream audio or request video feeds from HeyGen while the app is waiting or sitting idle. The network handshake must only trigger AFTER the wake-word is verified locally.
+
+STEP 2: SECURE HANDSHAKE & FULL-SCREEN UI TRANSITION
+- Once the wake-word is triggered, the client app calls our secure backend endpoint '/api/assistant/session'.
+- The backend makes a POST request to 'https://liveavatar.com' containing our target environment variables (HEYGEN_API_KEY, AVATAR_ID for our Nanivio asset, quality: "high", and mode: "lite").
+- The backend returns the ephemeral session token and SDP offer to the client.
+- The client app must instantly transition the UI into a smooth, immersive full-screen viewport overlay where the incoming WebRTC video track completely fills the user's screen.
+
+STEP 3: CONVERSED RESPONSES & PROPRIETARY BRAIN
+- Build an independent streaming pipeline for the AI "Brain". Route user audio inputs through a low-latency LLM pipeline (e.g., OpenAI API or custom LangChain setup) paired with a real-time voice provider (like ElevenLabs).
+- Pipe this custom audio/text response straight into the active HeyGen LiveAvatar WebRTC connection channel so the Nanivio character lip-syncs naturally to our proprietary brain's outputs.
+
+STEP 4: MASSIVE SCALE SECURITY & COST-CONTROL GUARDRAILS
+- AUTOMATIC IDLE TIMEOUT: Implement a client-side and backend-verified countdown timer. If the user does not speak or provide input for 60 consecutive seconds, automatically invoke the '.endSession()' command and close the WebRTC peer connection.
+- RATE LIMITING: Implement a Redis-based rate-limiter on our backend session endpoint. Restrict individual users to a maximum of 10 session initializations per hour to prevent API spam attacks or infinite connection loops.
+- COMPLIANCE: Ensure the assistant's very first spoken welcome greeting includes an explicit, legally compliant disclosure stating it is an interactive AI assistant, satisfying AI Act transparency frameworks.
+
+DELIVERABLE:
+Provide the full repository file structure, including the client-side full-screen UI layout, the backend WebRTC token-exchange architecture, the 60-second auto-disconnect system script, and the Redis rate-limiting middleware.

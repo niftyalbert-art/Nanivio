@@ -51,6 +51,7 @@ import { speechConfigured, SpeechProviderError, transcribeProviderAudio, synthes
 import { recordTranslatedVoiceNoteUsage } from "./src/server/voiceNoteUsage.ts";
 import { createSetupPreview, rejectSetupRealtime } from "./src/server/setupPreview.ts";
 import { getServerSupabase } from "./src/server/supabaseServer.ts";
+import { registerAssistantRoutes } from "./src/server/assistant/routes.ts";
 import { otpService } from "./src/server/otpService.ts";
 import {
   telecomGateway,
@@ -109,6 +110,7 @@ const adminFeatureSwitches = {
   freeCallsForAllUsers: process.env.NANIVIO_FREE_CALLS === 'true',
   audioCallsEnabled: audioCallingEnabled(),
   videoCallsEnabled: videoCallingEnabled(),
+  malviAiAssistantEnabled: process.env.NANIVIO_MALVI_ENABLED !== 'false',
   liveAdsEnabled: process.env.NANIVIO_LIVE_ADS_ENABLED === 'true',
   liveServicesEnabled: process.env.NANIVIO_LIVE_SERVICES_ENABLED === 'true',
   expertsEnabled: process.env.NANIVIO_EXPERTS_ENABLED === 'true',
@@ -3172,6 +3174,8 @@ app.post("/api/malvi/action/execute", requireAuthenticatedUser, (req, res) => {
 });
 
 // Master Malvi Conversational & Contextual Intelligence Endpoint
+registerAssistantRoutes(app, requireAuthenticatedUser, () => Boolean(adminFeatureSwitches.malviAiAssistantEnabled));
+
 app.post("/api/malvi/chat", requireAuthenticatedUser, async (req, res) => {
   try {
     const {

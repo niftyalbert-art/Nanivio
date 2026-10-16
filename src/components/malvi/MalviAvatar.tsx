@@ -1,7 +1,7 @@
 import React from 'react';
-import { Sparkles, Mic, Volume2, Loader2, CheckCircle2, AlertCircle } from 'lucide-react';
+import { Sparkles, Mic, Volume2, Loader2, AlertCircle } from 'lucide-react';
 import { MalviAvatarState } from '../../types';
-import malviImage from '../../assets/images/malvi_avatar.jpg';
+import { MALVI_PORTRAIT } from '../../lib/malviIdentity';
 
 interface MalviAvatarProps {
   state?: MalviAvatarState;
@@ -30,15 +30,15 @@ export const MalviAvatar: React.FC<MalviAvatarProps> = ({
   };
 
   const ringGlowMap = {
-    idle: 'ring-cyan-500/40 shadow-cyan-500/20',
-    listening: 'ring-emerald-400 shadow-emerald-500/40 animate-pulse',
-    thinking: 'ring-purple-400 shadow-purple-500/40 animate-pulse',
-    speaking: 'ring-cyan-400 shadow-cyan-400/50',
-    interrupted: 'ring-amber-400 shadow-amber-500/40',
-    processing: 'ring-amber-400 shadow-amber-500/30',
-    success: 'ring-emerald-400 shadow-emerald-500/50',
-    warning: 'ring-amber-500 shadow-amber-500/40',
-    error: 'ring-rose-500 shadow-rose-500/40',
+    idle: 'ring-teal-700/50 shadow-teal-950/30',
+    listening: 'ring-teal-400 shadow-teal-900/40',
+    thinking: 'ring-indigo-300 shadow-indigo-950/40',
+    speaking: 'ring-teal-300 shadow-teal-900/40',
+    interrupted: 'ring-amber-300 shadow-amber-950/30',
+    processing: 'ring-amber-300 shadow-amber-950/30',
+    success: 'ring-emerald-300 shadow-emerald-950/40',
+    warning: 'ring-amber-400 shadow-amber-950/30',
+    error: 'ring-rose-400 shadow-rose-950/40',
   };
 
   return (
@@ -48,43 +48,20 @@ export const MalviAvatar: React.FC<MalviAvatarProps> = ({
         interactive ? 'cursor-pointer group' : ''
       } ${className}`}
     >
-      {/* Dynamic Animated Pulse Rings for Listening / Speaking / Thinking */}
-      {state === 'listening' && (
-        <span className="absolute inset-0 rounded-full bg-emerald-500/30 animate-ping duration-1000 scale-125" />
-      )}
-      {state === 'speaking' && (
-        <span className="absolute inset-0 rounded-full bg-cyan-500/25 animate-ping duration-700 scale-110" />
-      )}
-      {state === 'thinking' && (
-        <span className="absolute -inset-1.5 rounded-full border-2 border-dashed border-purple-400/80 animate-spin duration-3000" />
-      )}
-
-      {/* Main Avatar Container with gentle living breathing motion */}
+      {/* This portrait is a still identity image; real motion appears only in the live session overlay. */}
       <div
-        className={`relative ${sizeMap[size]} rounded-full overflow-hidden ring-2 ${ringGlowMap[state]} shadow-lg transition-all duration-300 bg-slate-950 flex items-center justify-center`}
+        className={`relative ${sizeMap[size]} rounded-full overflow-hidden ring-2 ${ringGlowMap[state]} shadow-lg transition-colors duration-300 bg-[#132d31] flex items-center justify-center`}
       >
         <img
-          src={malviImage || '/malvi_avatar.jpg'}
-          alt="Malvi — Nanivio AI Assistant"
-          referrerPolicy="no-referrer"
-          onError={(e) => {
-            (e.target as HTMLImageElement).src = '/malvi_avatar.jpg';
-          }}
-          className={`w-full h-full object-cover object-center group-hover:scale-105 transition-transform duration-700 ${
-            state === 'speaking' ? 'scale-105' : 'scale-100'
-          }`}
+          src={MALVI_PORTRAIT}
+          alt="Malvi, Nanivio's AI assistant"
+          className="h-full w-full object-cover object-[50%_35%]"
         />
-
-        {/* Subtle organic breathing respiration overlay */}
-        <div className="absolute inset-0 bg-cyan-400/5 pointer-events-none animate-pulse duration-[3000ms]" />
-
-        {/* Overlay subtle gradient highlight */}
-        <div className="absolute inset-0 bg-gradient-to-t from-slate-950/40 via-transparent to-transparent pointer-events-none" />
 
         {/* State Overlays */}
         {state === 'thinking' && (
-          <div className="absolute inset-0 bg-purple-950/40 backdrop-blur-[1px] flex items-center justify-center">
-            <Loader2 className="w-5 h-5 text-purple-200 animate-spin" />
+          <div className="absolute inset-0 flex items-center justify-center bg-[#102628]/55 backdrop-blur-[1px]">
+            <Loader2 className="h-5 w-5 text-[#d8eee5] animate-spin" />
           </div>
         )}
       </div>
@@ -92,24 +69,24 @@ export const MalviAvatar: React.FC<MalviAvatarProps> = ({
       {/* State Status Badge */}
       {showBadge && (
         <div
-          className={`absolute -bottom-0.5 -right-0.5 rounded-full p-1 border-2 border-slate-950 flex items-center justify-center shadow-md transition-all ${
+          className={`absolute -bottom-0.5 -right-0.5 rounded-full p-1 border-2 border-[#132d31] flex items-center justify-center shadow-md transition-colors ${
             state === 'listening'
-              ? 'bg-emerald-500 text-slate-950 scale-110'
+              ? 'bg-[#a7d9c3] text-[#173b36]'
               : state === 'speaking'
-              ? 'bg-cyan-500 text-slate-950 scale-110'
+              ? 'bg-[#b5d8d0] text-[#173b36]'
               : state === 'thinking'
-              ? 'bg-purple-500 text-white animate-spin'
+              ? 'bg-[#d1c7e8] text-[#30274a]'
               : state === 'error'
-              ? 'bg-rose-500 text-white'
+              ? 'bg-[#e7b7b1] text-[#4b2525]'
               : state === 'warning'
-              ? 'bg-amber-500 text-slate-950'
-              : 'bg-gradient-to-tr from-cyan-500 to-emerald-400 text-slate-950'
+              ? 'bg-[#e9d29d] text-[#42351b]'
+              : 'bg-[#d3e6d9] text-[#173b36]'
           }`}
         >
           {state === 'listening' ? (
             <Mic className="w-2.5 h-2.5" />
           ) : state === 'speaking' ? (
-            <Volume2 className="w-2.5 h-2.5 animate-bounce" />
+            <Volume2 className="w-2.5 h-2.5" />
           ) : state === 'thinking' ? (
             <Loader2 className="w-2.5 h-2.5" />
           ) : state === 'error' ? (
