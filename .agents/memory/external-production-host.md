@@ -12,3 +12,8 @@ Inspecting only this fork's deployment status would not diagnose that service.
 **How to apply:** Use redacted logs and setting names from the actual Render
 service when diagnosing it. Do not assume a workspace-secret update changes
 Render's environment, and do not repurpose the live Supabase project as staging.
+
+The owner confirmed that the Supabase project named “Malvi nanivio upgrades”
+matches the live Render service's `SUPABASE_URL`, after privately comparing them.
+This confirmation does not identify the target of workspace credentials or grant
+permission to change production accounts.
