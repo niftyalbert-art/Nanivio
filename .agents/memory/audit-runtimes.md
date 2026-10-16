@@ -14,3 +14,15 @@ The isolated API execution environment is not the workspace shell; a runtime ins
 **Why:** Node subprocess validation in the API sandbox had no usable executable path, while the same validation succeeded through the workspace shell callback.
 
 **How to apply:** Run language-runtime checks through the workspace shell tools. When API data needs validation, chain temporary input-file creation with a workspace shell check instead of trying to install or discover another runtime inside the API sandbox.
+
+Distinguish connection-client configuration failures from invalid user credentials
+before requesting replacement secrets.
+
+**Why:** A PostgreSQL URI supplied through `PGDATABASE` was interpreted as a
+literal database name on the default host in this environment. That failure did
+not mean the supplied URI or its credentials were invalid.
+
+**How to apply:** Validate the URI shape without printing it, then use explicit
+libpq connection fields or a connection-string argument. If an error mentions an
+unexpected default host, check client parameter handling before asking the user
+to regenerate or replace credentials.

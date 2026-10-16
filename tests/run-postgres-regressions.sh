@@ -13,6 +13,8 @@ psql_command=(psql -h "$temp_db" -p 6543 -U postgres -d postgres -v ON_ERROR_STO
 "${psql_command[@]}" -f migrations/007_communication_plan_entitlements.sql
 "${psql_command[@]}" -f migrations/009_billing_malvi_expression_fix.sql
 "${psql_command[@]}" -f tests/communication-plan-entitlements.sql
+PGHOST="$temp_db" PGPORT=6543 PGUSER=postgres PGDATABASE=postgres \
+  node tests/communication-plan-concurrency.mjs
 "${psql_command[@]}" -f tests/wallet-minute-purchase.sql
 
 # The application table uses the existing profile's text primary key; no auth
