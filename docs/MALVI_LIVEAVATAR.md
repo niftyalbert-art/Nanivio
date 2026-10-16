@@ -42,6 +42,17 @@ attached_assets/
   These supplied PNGs are the app's identity/poster; simply uploading an image
   into this repository does not train or provision a provider avatar. Do not
   substitute a public/sample face.
+- LiveAvatar supports creating a custom **image avatar** from a single PNG/JPEG;
+  a two-minute recording is not mandatory for that route. Create it in the
+  LiveAvatar platform, not the separate HeyGen video-avatar product. Custom
+  creation requires an available paid LiveAvatar avatar slot.
+  The provider's current image guide requires minimum 1080p and a 9:16 or 16:9
+  aspect ratio. Prefer a clear, front-facing, neutral-mouth chest-up portrait.
+  The supplied originals are only 247x331 and 242x332; use a higher-resolution
+  source or explicitly approved enhancement before provider upload. Upscaling
+  alone does not recover missing detail or guarantee acceptance.
+  See https://help.heygen.com/en/articles/9612935-liveavatar-custom-avatar-creation-guide
+  and https://docs.liveavatar.com/docs/core-concepts/avatars.
 - `REDIS_URL`: a shared Redis service reachable by every application instance.
   Use a private or TLS-protected connection and keep credentials in secrets.
 - `NANIVIO_MALVI_ENABLED=false` explicitly disables the assistant. Administrators

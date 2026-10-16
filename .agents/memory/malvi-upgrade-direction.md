@@ -25,3 +25,9 @@ Treat SDK microphone settings as a privacy boundary, not just an audio setting.
 **Why:** The official SDK's default-muted voice component still acquires and publishes a microphone. Muting alone does not satisfy independently owned input capture.
 
 **How to apply:** Recheck capture behavior when updating the SDK; the renderer must not publish the user's microphone to the provider-managed voice component.
+
+Use the LiveAvatar image-avatar creation route when preparing Malvi from the supplied still portraits; do not insist on training video as the only option.
+
+**Why:** The user supplied still images, and the official LiveAvatar documentation confirms photo-based custom avatars support LITE with independently supplied audio. Ordinary HeyGen video avatars are not interchangeable with LiveAvatar assets.
+
+**How to apply:** Verify current source-image requirements and paid avatar-slot availability before provisioning. Do not claim that bundled app images alone create a provider avatar, or that enlarging a low-resolution portrait guarantees acceptance.
