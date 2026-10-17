@@ -8,11 +8,11 @@ The user intends changes to Malvi's responses, visuals, and brain, and specified
 
 **How to apply:** Preserve this direction when scoping the upgrade. The user subsequently supplied the hybrid architecture described below.
 
-Malvi uses the supplied Nanivio signature portraits as her identity. Live visuals must use HeyGen LiveAvatar LITE/WebRTC, not photo puppetry. Nanivio independently owns the backend reasoning and voice pipeline.
+Malvi uses the supplied Nanivio signature portraits as her identity. Preserve the HeyGen LiveAvatar LITE/WebRTC integration while developing a separate Nanivio-owned avatar engine. Nanivio independently owns the backend reasoning and voice pipeline.
 
-**Why:** The user explicitly chose “Rent the Face” / “Own the Brain” and asked to implement the visual layer before continuing with the brain.
+**Why:** The user originally chose “Rent the Face” / “Own the Brain” and subsequently approved keeping HeyGen while continuing development of an independent engine.
 
-**How to apply:** Keep rendering separate from reasoning, tools, and TTS. Do not substitute a public/sample avatar for the custom Malvi identity or present a static poster as a live stream.
+**How to apply:** Keep rendering separate from reasoning, tools, and TTS. Develop the independent engine separately rather than replacing the HeyGen path before measured quality and latency tests. Do not substitute a public/sample avatar for the custom Malvi identity or present a static poster as a live stream.
 
 Wake-word detection for “Nanivio” must remain strictly on-device. No provider audio/video or session initialization while idle. Sessions must close after 60 seconds without user input, with a Redis-backed limit of 10 initializations per hour and an AI disclosure in the first spoken greeting.
 
