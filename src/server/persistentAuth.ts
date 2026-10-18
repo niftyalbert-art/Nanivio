@@ -1,4 +1,5 @@
 import crypto from 'crypto';
+import { otpService } from './otpService';
 import { sanitizeApplication as sanitizeApplicationFields, publicApplicationProfile, redactApplicationSecrets } from './applicationPrivacy';
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import type { NanivioUser, PersonalSignUpData, ExpertSignUpData, BusinessSignUpData, DriverSignUpData, AuthSession, ExpertApplication, BusinessApplication, DriverVerificationApplication } from '../types/auth';
@@ -56,6 +57,11 @@ async function issueSession(email:string,password:string,user:NanivioUser):Promi
 }
 async function createAccount(input:any,role:any,application?:any){
   const email=input.email.trim().toLowerCase(); if(!email||!input.password) throw new Error('Email and password are required.');
+  const phone = otpService.normalizePhoneNumber(input.phoneNumber, input.callingCode, input.country);
+  if (!otpService.validateVerifiedToken(input.verificationToken, phone)) {
+    throw new Error('Verify your phone number before creating an account. If verification expired, request a new code.');
+  }
+  input = { ...input, phoneNumber: phone };
   const db=serverDb();
   const existing=await db.from('nanivio_users').select('id').eq('email',email).maybeSingle(); if(existing.error) throw new Error(existing.error.message); if(existing.data) throw new Error(`An account with email ${email} already exists. Please sign in instead.`);
   const {data,error}=await db.auth.admin.createUser({email,password:input.password,email_confirm:true,user_metadata:{first_name:input.firstName,last_name:input.lastName,role}});

@@ -206,21 +206,13 @@ async function runAudit() {
   );
 
   // -----------------------------------------------------------------
-  // 9. Twilio Verify / Phone OTP Backend Verification
+  // 9. Phone OTP Backend Verification (offline; never send paid SMS from an audit)
   // -----------------------------------------------------------------
   console.log('\n--- 9. PHONE OTP SERVICE VERIFICATION ---');
   const testPhone = '+233244123456';
-  if (process.env.TWILIO_ACCOUNT_SID && process.env.TWILIO_AUTH_TOKEN && process.env.TWILIO_VERIFY_SERVICE_SID) {
-    const otpSendResult = await otpService.sendOtp(testPhone, 'sms');
-    assert(otpSendResult.success && otpSendResult.isTwilioVerify === true, 'OTP send uses production Twilio Verify', `Phone: ${testPhone}`);
-    let invalidCaught = false;
-    try { await otpService.verifyOtp(testPhone, '000000'); } catch { invalidCaught = true; }
-    assert(invalidCaught, 'OTP verify rejects incorrect code', 'Incorrect code rejected by Twilio Verify');
-  } else {
-    let providerBlocked = false;
-    try { await otpService.sendOtp(testPhone, 'sms'); } catch { providerBlocked = true; }
-    assert(providerBlocked, 'OTP refuses insecure sandbox fallback when Twilio is not configured', 'No fake OTP was generated or exposed');
-  }
+  let unrequestedBlocked = false;
+  try { await otpService.verifyOtp(testPhone, '000000'); } catch { unrequestedBlocked = true; }
+  assert(unrequestedBlocked, 'OTP refuses verification without a provider-backed request', 'No messages sent; detailed Prelude cases run in prelude-verification.test.ts');
 
   console.log('\n===============================================================');
   console.log(`AUDIT COMPLETE: ${passedTests}/${totalTests} TESTS PASSED CLEANLY (100%)`);

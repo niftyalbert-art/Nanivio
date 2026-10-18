@@ -1,284 +1,133 @@
 import crypto from 'crypto';
+import { normalizeSignupPhone } from '../lib/phoneNumber';
 
-interface OtpRecord {
-  phoneNumber: string;
-  hashedCode: string;
-  salt: string;
+interface PendingVerification {
+  id: string;
   expiresAt: number;
   attempts: number;
-  maxAttempts: number;
-  lastSentAt: number;
-  isTwilioVerify: boolean;
 }
 
-interface VerificationStatusRecord {
-  phoneNumber: string;
-  verifiedAt: number;
-  expiresAt: number;
-  verificationToken: string;
-}
+/** Process-local, fail-closed state. Restarting requires a fresh verification.
+ * Multiple replicas require shared atomic storage before horizontal scaling. */
+export class OtpService {
+  private pending = new Map<string, PendingVerification>();
+  private proofs = new Map<string, { phone: string; expiresAt: number }>();
+  private history = new Map<string, number[]>();
+  private cooldowns = new Map<string, number>();
+  private busy = new Set<string>();
 
-class OtpService {
-  private otps: Map<string, OtpRecord> = new Map();
-  // Store verified phone tokens valid for 15 minutes to attach to registration / phone update
-  private verifiedTokens: Map<string, VerificationStatusRecord> = new Map();
-  // Request rate limiting per IP or phone
-  private sendHistory: Map<string, number[]> = new Map();
+  constructor(
+    private request: typeof fetch = fetch,
+    private now: () => number = Date.now,
+    private apiKey: () => string | undefined = () => process.env.PRELUDE_API_KEY,
+  ) {}
 
-  private RESEND_COOLDOWN_SEC = 45;
-  private OTP_EXPIRATION_SEC = 300; // 5 minutes
-  private MAX_VERIFICATION_ATTEMPTS = 5;
-  private MAX_SENDS_PER_HOUR = 6;
-  private VERIFICATION_TOKEN_LIFETIME_MS = 15 * 60 * 1000; // 15 mins
+  public normalizePhoneNumber(phone: unknown, callingCode?: string, country?: string): string {
+    return normalizeSignupPhone(phone, callingCode, country);
+  }
 
-  // Normalize phone number to strict international E.164 format
-  public normalizePhoneNumber(phone: string, defaultCallingCode = '+233'): string {
-    let clean = phone.trim().replace(/[\s\-()]/g, '');
-    if (!clean.startsWith('+')) {
-      if (clean.startsWith('0')) {
-        clean = defaultCallingCode + clean.slice(1);
-      } else {
-        clean = defaultCallingCode + clean;
-      }
+  private prune() {
+    const now = this.now();
+    for (const [key, value] of this.pending) if (value.expiresAt <= now) this.pending.delete(key);
+    for (const [key, value] of this.proofs) if (value.expiresAt <= now) this.proofs.delete(key);
+    for (const [key, until] of this.cooldowns) if (until <= now) this.cooldowns.delete(key);
+    for (const [key, times] of this.history) {
+      const recent = times.filter(t => t > now - 3_600_000);
+      if (recent.length) this.history.set(key, recent); else this.history.delete(key);
     }
-    return clean;
   }
 
-  // Rate limiter: check how many OTP requests for this key (IP or phone) in last 60 minutes
-  private checkRateLimit(key: string): { allowed: boolean; retryAfter?: number } {
-    const now = Date.now();
-    const timestamps = this.sendHistory.get(key) || [];
-    const validTimestamps = timestamps.filter((t) => now - t < 60 * 60 * 1000);
-    this.sendHistory.set(key, validTimestamps);
-
-    if (validTimestamps.length >= this.MAX_SENDS_PER_HOUR) {
-      const oldest = validTimestamps[0];
-      const retryAfterSec = Math.ceil((oldest + 60 * 60 * 1000 - now) / 1000);
-      return { allowed: false, retryAfter: Math.max(1, retryAfterSec) };
+  private async call(path: string, body: object): Promise<any> {
+    const key = this.apiKey();
+    if (!key) throw new Error('Phone verification is unavailable. The administrator must configure Prelude.');
+    let response: Response;
+    try {
+      response = await this.request(`https://api.prelude.dev/v2/${path}`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json', Accept: 'application/json' },
+        body: JSON.stringify(body),
+        signal: AbortSignal.timeout(15_000),
+      });
+    } catch {
+      throw new Error('Phone verification could not reach the provider. Please try again later.');
     }
-    return { allowed: true };
+    if (!response.ok) {
+      // Do not expose upstream bodies: they may include phone numbers or account details.
+      if (response.status === 429) throw new Error('Too many verification requests. Please try again later.');
+      throw new Error('Phone verification is unavailable or the request was declined. Please try again later.');
+    }
+    try { return await response.json(); }
+    catch { throw new Error('Phone verification returned an invalid response. Please try again later.'); }
   }
 
-  private recordSend(key: string) {
-    const timestamps = this.sendHistory.get(key) || [];
-    timestamps.push(Date.now());
-    this.sendHistory.set(key, timestamps);
-  }
-
-  // Hash the OTP with per-record salt (Never store plaintext OTP)
-  private hashOtp(code: string, salt: string): string {
-    return crypto.createHmac('sha256', salt).update(code.trim()).digest('hex');
-  }
-
-  /**
-   * Send SMS Phone OTP using Twilio Verify API if configured,
-   * or robust secure cryptographic sandbox with server-side delivery logging.
-   */
-  public async sendOtp(
-    rawPhone: string,
-    channel: 'sms' | 'whatsapp' = 'sms',
-    clientIp = 'unknown'
-  ): Promise<{
-    success: boolean;
-    message: string;
-    cooldownSeconds: number;
-    channel: string;
-    isTwilioVerify: boolean;
-  }> {
+  public async sendOtp(rawPhone: unknown, channel: string = 'sms', clientIp = 'unknown') {
     const phone = this.normalizePhoneNumber(rawPhone);
-    if (!phone || phone.length < 8) {
-      throw new Error('Invalid phone number format. Please provide a valid international phone number.');
+    if (channel !== 'sms') throw new Error('Signup verification currently supports SMS only.');
+    this.prune();
+    if (this.busy.has(phone)) throw new Error('A verification request is already in progress.');
+    const until = this.cooldowns.get(phone) || 0;
+    if (until > this.now()) throw new Error(`Please wait ${Math.ceil((until - this.now()) / 1000)}s before requesting a new code.`);
+    const keys = [`phone:${phone}`, `ip:${clientIp}`];
+    for (const key of keys) {
+      const limit = key.startsWith('phone:') ? 6 : 120;
+      if ((this.history.get(key)?.length || 0) >= limit) throw new Error('Too many verification requests. Please try again later.');
     }
-
-    // Check rate limit on phone and IP
-    const phoneLimit = this.checkRateLimit(`phone:${phone}`);
-    if (!phoneLimit.allowed) {
-      throw new Error(`Too many verification requests for this number. Please wait ${phoneLimit.retryAfter} seconds.`);
-    }
-    if (clientIp !== 'unknown') {
-      const ipLimit = this.checkRateLimit(`ip:${clientIp}`);
-      if (!ipLimit.allowed) {
-        throw new Error(`Rate limit exceeded for your network. Please wait ${ipLimit.retryAfter} seconds.`);
+    // Reserve before awaiting the provider, including failed requests, to prevent concurrent SMS floods.
+    for (const key of keys) this.history.set(key, [...(this.history.get(key) || []), this.now()]);
+    this.cooldowns.set(phone, this.now() + 45_000);
+    this.busy.add(phone);
+    try {
+      const data = await this.call('verification', {
+        target: { type: 'phone_number', value: phone },
+        options: { method: 'message', preferred_channel: 'sms', code_size: 6 },
+      });
+      if (!['success', 'retry'].includes(data?.status) || typeof data?.id !== 'string' || !data.id) {
+        throw new Error('The provider could not start phone verification for this number.');
       }
-    }
-
-    // Check resend cooldown
-    const existing = this.otps.get(phone);
-    const now = Date.now();
-    if (existing && now - existing.lastSentAt < this.RESEND_COOLDOWN_SEC * 1000) {
-      const remainingCooldown = Math.ceil((existing.lastSentAt + this.RESEND_COOLDOWN_SEC * 1000 - now) / 1000);
-      throw new Error(`Please wait ${remainingCooldown}s before requesting a new code.`);
-    }
-
-    const twilioAccountSid = process.env.TWILIO_ACCOUNT_SID;
-    const twilioAuthToken = process.env.TWILIO_AUTH_TOKEN;
-    const twilioVerifyServiceSid = process.env.TWILIO_VERIFY_SERVICE_SID;
-
-    let isTwilioVerify = false;
-
-    // If real Twilio Verify Service SID is available, call Twilio Verify API
-    if (twilioAccountSid && twilioAuthToken && twilioVerifyServiceSid) {
-      try {
-        const authHeader = 'Basic ' + Buffer.from(`${twilioAccountSid}:${twilioAuthToken}`).toString('base64');
-        const endpoint = `https://verify.twilio.com/v2/Services/${twilioVerifyServiceSid}/Verifications`;
-        const body = new URLSearchParams();
-        body.append('To', phone);
-        body.append('Channel', channel);
-
-        const twilioRes = await fetch(endpoint, {
-          method: 'POST',
-          headers: {
-            Authorization: authHeader,
-            'Content-Type': 'application/x-www-form-urlencoded',
-          },
-          body: body.toString(),
-        });
-
-        const twilioData = await twilioRes.json();
-        if (!twilioRes.ok) {
-          throw new Error(twilioData.message || `Twilio Verify error (${twilioRes.status})`);
-        }
-
-        isTwilioVerify = true;
-        this.recordSend(`phone:${phone}`);
-        if (clientIp !== 'unknown') this.recordSend(`ip:${clientIp}`);
-
-        this.otps.set(phone, {
-          phoneNumber: phone,
-          hashedCode: '',
-          salt: '',
-          expiresAt: now + this.OTP_EXPIRATION_SEC * 1000,
-          attempts: 0,
-          maxAttempts: this.MAX_VERIFICATION_ATTEMPTS,
-          lastSentAt: now,
-          isTwilioVerify: true,
-        });
-
-        return {
-          success: true,
-          message: `Verification code sent via SMS to ${phone}.`,
-          cooldownSeconds: this.RESEND_COOLDOWN_SEC,
-          channel,
-          isTwilioVerify: true,
-        };
-      } catch (err: any) {
-        console.warn(`[Twilio Verify Gateway Warning]: ${err.message}. Falling back to secure server OTP delivery.`);
-      }
-    }
-
-    throw new Error('Phone verification provider is not configured. Configure Twilio Verify before enabling production OTP delivery.');
+      const existing = this.pending.get(phone);
+      // A resend in the same provider window must not reset expiry or the attempt budget.
+      this.pending.set(phone, existing?.id === data.id ? existing : {
+        id: data.id, expiresAt: this.now() + 300_000, attempts: 0,
+      });
+      const channel = Array.isArray(data.channels) && typeof data.channels[0] === 'string' ? data.channels[0] : 'sms';
+      return { success: true, message: `Verification code requested (${channel}). Enter it when it arrives.`,
+        cooldownSeconds: 45, channel, provider: 'prelude' };
+    } finally { this.busy.delete(phone); }
   }
 
-  /**
-   * Verify phone OTP code against Twilio Verify or cryptographic hash
-   */
-  public async verifyOtp(
-    rawPhone: string,
-    code: string
-  ): Promise<{
-    success: boolean;
-    message: string;
-    verifiedPhone: string;
-    verificationToken: string;
-  }> {
+  public async verifyOtp(rawPhone: unknown, code: unknown) {
     const phone = this.normalizePhoneNumber(rawPhone);
-    const cleanCode = code.trim();
-
-    if (!cleanCode || cleanCode.length < 4 || cleanCode.length > 8) {
-      throw new Error('Please enter a valid 6-digit verification code.');
-    }
-
-    const record = this.otps.get(phone);
-    if (!record) {
-      throw new Error('No pending verification code found for this phone number. Please request a new code.');
-    }
-
-    const now = Date.now();
-    if (now > record.expiresAt) {
-      this.otps.delete(phone);
-      throw new Error('Verification code has expired. Please request a new one.');
-    }
-
-    if (record.attempts >= record.maxAttempts) {
-      this.otps.delete(phone);
-      throw new Error('Maximum verification attempts exceeded. Please request a new code.');
-    }
-
-    record.attempts += 1;
-
-    // 1. If sent via real Twilio Verify service
-    if (record.isTwilioVerify) {
-      const twilioAccountSid = process.env.TWILIO_ACCOUNT_SID;
-      const twilioAuthToken = process.env.TWILIO_AUTH_TOKEN;
-      const twilioVerifyServiceSid = process.env.TWILIO_VERIFY_SERVICE_SID;
-
-      if (twilioAccountSid && twilioAuthToken && twilioVerifyServiceSid) {
-        const authHeader = 'Basic ' + Buffer.from(`${twilioAccountSid}:${twilioAuthToken}`).toString('base64');
-        const endpoint = `https://verify.twilio.com/v2/Services/${twilioVerifyServiceSid}/VerificationCheck`;
-        const body = new URLSearchParams();
-        body.append('To', phone);
-        body.append('Code', cleanCode);
-
-        const twilioRes = await fetch(endpoint, {
-          method: 'POST',
-          headers: {
-            Authorization: authHeader,
-            'Content-Type': 'application/x-www-form-urlencoded',
-          },
-          body: body.toString(),
-        });
-
-        const twilioData = await twilioRes.json();
-        if (!twilioRes.ok || twilioData.status !== 'approved') {
-          const remaining = record.maxAttempts - record.attempts;
-          if (remaining <= 0) {
-            this.otps.delete(phone);
-            throw new Error('Invalid code. Maximum attempts reached. Request a new code.');
-          }
-          throw new Error(`Invalid verification code. ${remaining} attempt(s) remaining.`);
-        }
+    if (typeof code !== 'string' || !/^\d{6}$/.test(code.trim())) throw new Error('Enter the 6-digit verification code.');
+    this.prune();
+    if (this.busy.has(phone)) throw new Error('A verification request is already in progress.');
+    const record = this.pending.get(phone);
+    if (!record) throw new Error('No active verification. Request a new code.');
+    if (record.attempts >= 5) throw new Error('Maximum verification attempts reached. Please wait for the code to expire.');
+    record.attempts++;
+    this.busy.add(phone);
+    try {
+      const data = await this.call('verification/check', {
+        target: { type: 'phone_number', value: phone }, code: code.trim(),
+      });
+      if (data?.status !== 'success' || data?.id !== record.id || record.expiresAt <= this.now()) {
+        throw new Error('Invalid or expired verification code.');
       }
-    } else {
-      this.otps.delete(phone);
-      throw new Error('OTP record is not backed by the production verification provider.');
-    }
-
-    // Successfully verified! Clear OTP record to prevent replay attacks
-    this.otps.delete(phone);
-
-    // Issue cryptographic proof token bound to this verified phone
-    const verificationToken = `vtok_${crypto.randomBytes(24).toString('hex')}`;
-    this.verifiedTokens.set(verificationToken, {
-      phoneNumber: phone,
-      verifiedAt: now,
-      expiresAt: now + this.VERIFICATION_TOKEN_LIFETIME_MS,
-      verificationToken,
-    });
-
-    return {
-      success: true,
-      message: 'Phone number verified successfully.',
-      verifiedPhone: phone,
-      verificationToken,
-    };
+      this.pending.delete(phone);
+      // Only the latest successful verification for this phone may be used.
+      for (const [key, proof] of this.proofs) if (proof.phone === phone) this.proofs.delete(key);
+      const verificationToken = `vtok_${crypto.randomBytes(32).toString('hex')}`;
+      this.proofs.set(verificationToken, { phone, expiresAt: this.now() + 900_000 });
+      return { success: true, message: 'Phone number verified.', verifiedPhone: phone, verificationToken };
+    } finally { this.busy.delete(phone); }
   }
 
-  /**
-   * Validate that a phone number has been verified by checking its token.
-   * Consumes token once validated to prevent replay.
-   */
-  public validateVerifiedToken(verificationToken: string, expectedPhone: string): boolean {
-    const record = this.verifiedTokens.get(verificationToken);
-    if (!record) return false;
-    if (Date.now() > record.expiresAt) {
-      this.verifiedTokens.delete(verificationToken);
-      return false;
-    }
-    const cleanExpected = this.normalizePhoneNumber(expectedPhone);
-    if (record.phoneNumber !== cleanExpected) return false;
-
-    // Consume token
-    this.verifiedTokens.delete(verificationToken);
+  /** Synchronous consume prevents concurrent registrations from reusing one proof. */
+  public validateVerifiedToken(token: unknown, expectedPhone: unknown): boolean {
+    this.prune();
+    if (typeof token !== 'string') return false;
+    const proof = this.proofs.get(token);
+    if (!proof || proof.phone !== this.normalizePhoneNumber(expectedPhone)) return false;
+    this.proofs.delete(token);
     return true;
   }
 }

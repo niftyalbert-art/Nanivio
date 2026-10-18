@@ -2,6 +2,7 @@
 import http from "http";
 import path from "path";
 import crypto from "crypto";
+import proxyaddr from "proxy-addr";
 import { GoogleGenAI, FunctionDeclaration, Type } from "@google/genai";
 import dotenv from "dotenv";
 import {
@@ -80,6 +81,10 @@ dotenv.config();
 
 const app = express();
 const PORT = Number(process.env.PORT) || 3000;
+// Scope proxy trust to OTP abuse controls; never accept arbitrary X-Forwarded-For.
+const otpProxyTrust = proxyaddr.compile(
+  (process.env.AUTH_TRUSTED_PROXY_CIDRS || '').split(',').map(v => v.trim()).filter(Boolean),
+);
 
 app.use(express.json({
   limit: "15mb",
@@ -241,9 +246,10 @@ function authenticatedUserId(req: express.Request): string {
 
 // Phone OTP verification (Twilio Verify / Cryptographic Sandbox)
 app.post("/api/auth/phone/otp/send", async (req, res) => {
+  res.setHeader('Cache-Control', 'no-store');
   try {
     const { phoneNumber, channel } = req.body;
-    const clientIp = (req.headers["x-forwarded-for"] as string) || req.socket.remoteAddress || "unknown";
+    const clientIp = proxyaddr(req, otpProxyTrust) || "unknown";
     const result = await otpService.sendOtp(phoneNumber, channel || "sms", clientIp);
     return res.json(result);
   } catch (err: any) {
@@ -252,6 +258,7 @@ app.post("/api/auth/phone/otp/send", async (req, res) => {
 });
 
 app.post("/api/auth/phone/otp/verify", async (req, res) => {
+  res.setHeader('Cache-Control', 'no-store');
   try {
     const { phoneNumber, code } = req.body;
     const result = await otpService.verifyOtp(phoneNumber, code);
@@ -270,6 +277,7 @@ app.post("/api/auth/register/personal", async (req, res) => {
       displayName,
       email,
       phoneNumber,
+      verificationToken,
       country,
       callingCode,
       preferredLanguage,
@@ -294,6 +302,7 @@ app.post("/api/auth/register/personal", async (req, res) => {
       displayName,
       email,
       phoneNumber,
+      verificationToken,
       country,
       callingCode,
       preferredLanguage,

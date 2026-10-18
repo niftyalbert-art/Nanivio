@@ -83,8 +83,7 @@ export class AuthClient {
     message: string;
     cooldownSeconds: number;
     channel: string;
-    isTwilioVerify: boolean;
-    demoCode?: string;
+    provider: 'prelude';
   }> {
     const res = await fetch('/api/auth/phone/otp/send', {
       method: 'POST',

@@ -37,6 +37,8 @@ import { getAllLanguages } from '../../i18n/languages';
 import { NANIVIO_COMPANY } from '../../lib/nanivioVision';
 import { getAuthText } from '../../i18n/authTranslations';
 import { authClient } from '../../lib/authClient';
+import { normalizeSignupPhone } from '../../lib/phoneNumber';
+import { PhoneVerification, type PhoneProof } from './PhoneVerification';
 
 interface NanivioAuthScreenProps {
   onSuccess?: () => void;
@@ -93,69 +95,17 @@ export const NanivioAuthScreen: React.FC<NanivioAuthScreenProps> = ({ onSuccess 
   const [personalPassword, setPersonalPassword] = useState('');
   const [personalConfirmPassword, setPersonalConfirmPassword] = useState('');
 
-  // Phone OTP Verification State (Twilio Verify & Carrier Switch)
-  const [phoneOtpCode, setPhoneOtpCode] = useState('');
-  const [isSendingOtp, setIsSendingOtp] = useState(false);
-  const [isVerifyingOtp, setIsVerifyingOtp] = useState(false);
-  const [otpSent, setOtpSent] = useState(false);
-  const [otpCooldown, setOtpCooldown] = useState(0);
-  const [phoneVerified, setPhoneVerified] = useState(false);
-  const [verifiedToken, setVerifiedToken] = useState<string | null>(null);
-  const [otpSandboxCode, setOtpSandboxCode] = useState<string | null>(null);
-  const [otpNotice, setOtpNotice] = useState<string | null>(null);
-
-  // Phone OTP countdown
-  React.useEffect(() => {
-    if (otpCooldown <= 0) return;
-    const t = setInterval(() => setOtpCooldown(prev => (prev > 0 ? prev - 1 : 0)), 1000);
-    return () => clearInterval(t);
-  }, [otpCooldown]);
-
-  const handleSendPhoneOtp = async (phone: string, callingCode: string) => {
-    if (!phone || phone.trim().length < 5) {
-      setErrorMessage('Please provide a valid phone number to verify.');
-      return;
-    }
-    const cleanNumber = phone.trim().replace(/^0+/, '');
-    const fullPhone = phone.startsWith('+') ? phone.trim() : `${callingCode}${cleanNumber}`;
+  const [phoneProof, setPhoneProof] = useState<PhoneProof | null>(null);
+  const proofFor = (phone: string, callingCode: string, country: string) => {
     try {
-      setIsSendingOtp(true);
-      setErrorMessage(null);
-      setOtpNotice(null);
-      const res = await authClient.sendPhoneOtp(fullPhone, 'sms');
-      setOtpSent(true);
-      setOtpCooldown(res.cooldownSeconds || 45);
-      if (res.demoCode) {
-        setOtpSandboxCode(res.demoCode);
-      }
-      setOtpNotice(res.message);
-    } catch (err: any) {
-      setErrorMessage(err.message || 'Failed to dispatch verification code.');
-    } finally {
-      setIsSendingOtp(false);
-    }
+      return phoneProof?.phone === normalizeSignupPhone(phone, callingCode, country) ? phoneProof.token : undefined;
+    } catch { return undefined; }
   };
-
-  const handleVerifyPhoneOtp = async (phone: string, callingCode: string) => {
-    if (!phoneOtpCode.trim()) {
-      setErrorMessage('Please enter the 6-digit verification code.');
-      return;
-    }
-    const cleanNumber = phone.trim().replace(/^0+/, '');
-    const fullPhone = phone.startsWith('+') ? phone.trim() : `${callingCode}${cleanNumber}`;
-    try {
-      setIsVerifyingOtp(true);
-      setErrorMessage(null);
-      const res = await authClient.verifyPhoneOtp(fullPhone, phoneOtpCode);
-      setPhoneVerified(true);
-      setVerifiedToken(res.verificationToken);
-      setOtpNotice('Phone number verified successfully.');
-    } catch (err: any) {
-      setErrorMessage(err.message || 'Invalid or expired verification code.');
-    } finally {
-      setIsVerifyingOtp(false);
-    }
-  };
+  const verificationPanel = (phone: string, callingCode: string, country: string) => (
+    <PhoneVerification key={`${activeTab}:${phone}:${callingCode}:${country}`}
+      phone={phone} callingCode={callingCode} country={country}
+      verified={!!proofFor(phone, callingCode, country)} onVerified={setPhoneProof} />
+  );
 
   // Expert Sign Up Form State
   const [expertStep, setExpertStep] = useState<1 | 2 | 3>(1);
@@ -271,6 +221,8 @@ export const NanivioAuthScreen: React.FC<NanivioAuthScreenProps> = ({ onSuccess 
       setErrorMessage('Passwords do not match. Please verify.');
       return;
     }
+    const verificationToken = proofFor(personalPhone, personalCallingCode, personalCountry);
+    if (!verificationToken) { setErrorMessage('Verify your phone number before completing signup.'); return; }
 
     try {
       setIsLoading(true);
@@ -280,6 +232,7 @@ export const NanivioAuthScreen: React.FC<NanivioAuthScreenProps> = ({ onSuccess 
         displayName: `${personalFirst.trim()} ${personalLast.trim()}`,
         email: personalEmail.trim(),
         phoneNumber: personalPhone.trim(),
+        verificationToken,
         country: personalCountry,
         state: personalState.trim() || 'Greater Accra',
         city: personalCity.trim() || 'Accra',
@@ -291,6 +244,7 @@ export const NanivioAuthScreen: React.FC<NanivioAuthScreenProps> = ({ onSuccess 
       });
       if (onSuccess) onSuccess();
     } catch (err: any) {
+      setPhoneProof(null);
       setErrorMessage(err.message || 'Personal registration failed.');
     } finally {
       setIsLoading(false);
@@ -305,6 +259,8 @@ export const NanivioAuthScreen: React.FC<NanivioAuthScreenProps> = ({ onSuccess 
       setErrorMessage('Please fill in your credentials and professional title.');
       return;
     }
+    const verificationToken = proofFor(expertPhone, expertCallingCode, expertCountry);
+    if (!verificationToken) { setErrorMessage('Verify your phone number before completing signup.'); return; }
 
     try {
       setIsLoading(true);
@@ -315,6 +271,7 @@ export const NanivioAuthScreen: React.FC<NanivioAuthScreenProps> = ({ onSuccess 
           displayName: `${expertTitle.startsWith('Dr.') ? '' : ''}${expertFirst.trim()} ${expertLast.trim()}`,
           email: expertEmail.trim(),
           phoneNumber: expertPhone.trim(),
+          verificationToken,
           country: expertCountry,
           state: expertState.trim() || 'Greater Accra',
           city: expertCity.trim() || 'Accra',
@@ -342,6 +299,7 @@ export const NanivioAuthScreen: React.FC<NanivioAuthScreenProps> = ({ onSuccess 
       });
       if (onSuccess) onSuccess();
     } catch (err: any) {
+      setPhoneProof(null);
       setErrorMessage(err.message || 'Expert registration failed.');
     } finally {
       setIsLoading(false);
@@ -361,6 +319,8 @@ export const NanivioAuthScreen: React.FC<NanivioAuthScreenProps> = ({ onSuccess 
       setErrorMessage('Please complete your driver details, plate number, and login credentials.');
       return;
     }
+    const verificationToken = proofFor(bizPhone, bizCallingCode, bizCountry);
+    if (!verificationToken) { setErrorMessage('Verify your phone number before completing signup.'); return; }
 
     try {
       setIsLoading(true);
@@ -397,6 +357,7 @@ export const NanivioAuthScreen: React.FC<NanivioAuthScreenProps> = ({ onSuccess 
           displayName: effectiveBizName,
           email: bizEmail.trim(),
           phoneNumber: bizPhone.trim(),
+          verificationToken,
           country: bizCountry,
           state: bizState.trim() || 'Greater Accra',
           city: bizCity.trim() || 'Accra',
@@ -432,6 +393,7 @@ export const NanivioAuthScreen: React.FC<NanivioAuthScreenProps> = ({ onSuccess 
       });
       if (onSuccess) onSuccess();
     } catch (err: any) {
+      setPhoneProof(null);
       setErrorMessage(err.message || 'Registration failed.');
     } finally {
       setIsLoading(false);
@@ -792,57 +754,7 @@ const handleAdminSignIn = async (e: React.FormEvent) => {
 
               {/* Phone OTP Verification */}
               <div className="pt-1">
-                {phoneVerified ? (
-                  <div className="flex items-center gap-2 px-3 py-2 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-300 text-xs">
-                    <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
-                    <span className="font-medium">Phone number verified via Carrier SMS</span>
-                  </div>
-                ) : (
-                  <div className="space-y-2 p-2.5 rounded-xl bg-slate-950/60 border border-slate-800">
-                    <div className="flex items-center justify-between gap-2">
-                      <span className="text-[11px] text-slate-400">SMS Carrier Verification:</span>
-                      <button
-                        type="button"
-                        onClick={() => handleSendPhoneOtp(personalPhone, personalCallingCode)}
-                        disabled={isSendingOtp || otpCooldown > 0 || !personalPhone.trim()}
-                        className="px-2.5 py-1 text-[11px] font-medium rounded-lg bg-slate-800 hover:bg-slate-700 text-emerald-300 disabled:opacity-50 transition-colors"
-                      >
-                        {isSendingOtp ? 'Sending...' : otpCooldown > 0 ? `Resend in ${otpCooldown}s` : otpSent ? 'Resend SMS' : 'Verify via SMS'}
-                      </button>
-                    </div>
-
-                    {otpSent && (
-                      <div className="space-y-2 pt-1 border-t border-slate-800/80">
-                        {otpSandboxCode && (
-                          <div className="text-[10px] bg-emerald-500/10 border border-emerald-500/20 text-emerald-300 px-2.5 py-1 rounded-lg">
-                            Preview Sandbox Code: <strong className="font-mono text-white">{otpSandboxCode}</strong>
-                          </div>
-                        )}
-                        <div className="flex items-center gap-2">
-                          <input
-                            type="text"
-                            maxLength={6}
-                            value={phoneOtpCode}
-                            onChange={(e) => setPhoneOtpCode(e.target.value.replace(/\D/g, ''))}
-                            placeholder="Enter 6-digit OTP"
-                            className="flex-1 px-2.5 py-1.5 bg-slate-900 border border-slate-700 rounded-lg text-xs text-white font-mono tracking-widest text-center focus:outline-none focus:border-emerald-500"
-                          />
-                          <button
-                            type="button"
-                            onClick={() => handleVerifyPhoneOtp(personalPhone, personalCallingCode)}
-                            disabled={isVerifyingOtp || phoneOtpCode.length < 4}
-                            className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-xs font-semibold disabled:opacity-50 transition-colors"
-                          >
-                            {isVerifyingOtp ? 'Verifying...' : 'Confirm'}
-                          </button>
-                        </div>
-                        {otpNotice && (
-                          <p className="text-[10px] text-slate-400">{otpNotice}</p>
-                        )}
-                      </div>
-                    )}
-                  </div>
-                )}
+                {verificationPanel(personalPhone, personalCallingCode, personalCountry)}
               </div>
             </div>
 
@@ -1066,6 +978,7 @@ const handleAdminSignIn = async (e: React.FormEvent) => {
                       className="flex-1 px-3 py-2 bg-slate-950/80 border border-slate-800 rounded-xl text-xs text-white"
                     />
                   </div>
+                  {verificationPanel(expertPhone, expertCallingCode, expertCountry)}
                 </div>
 
                 {/* Location Fields */}
@@ -1408,6 +1321,7 @@ const handleAdminSignIn = async (e: React.FormEvent) => {
                       className="flex-1 px-3 py-2 bg-slate-950/80 border border-slate-800 rounded-xl text-xs text-white"
                     />
                   </div>
+                  {verificationPanel(bizPhone, bizCallingCode, bizCountry)}
                 </div>
 
                 {/* Location Fields */}
@@ -1610,6 +1524,7 @@ const handleAdminSignIn = async (e: React.FormEvent) => {
                         className="flex-1 px-2.5 py-2 bg-slate-950/80 border border-slate-800 rounded-xl text-xs text-white"
                       />
                     </div>
+                    {verificationPanel(bizPhone, bizCallingCode, bizCountry)}
                   </div>
                 </div>
 
