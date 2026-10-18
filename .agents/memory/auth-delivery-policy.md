@@ -14,3 +14,9 @@ Prelude's strict `channels` request option requires separate provider enablement
 **Why:** The provider's API documentation distinguishes `preferred_channel` from the account-gated strict channel list.
 
 **How to apply:** Use the standard preference on new accounts, report the actual returned channel, and verify provider entitlement before introducing a strict channel list.
+
+For signup phone verification, technical provider errors should appear only in protected administrator diagnostics and server logs. Signup users should receive a simple retry message.
+
+**Why:** The user explicitly approved keeping technical details away from signup users and requested that the same diagnostics appear in the admin dashboard.
+
+**How to apply:** Preserve the public/admin separation when changing error handling. Never include API keys, phone numbers, verification codes or raw provider response bodies in the diagnostic feed.

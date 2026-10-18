@@ -39,14 +39,25 @@ A successful send response means a request was accepted, **not** that a handset
 received it. Only a successful check for the matching provider verification ID
 can issue a signup proof.
 
-Rejected HTTP requests display a safe diagnostic such as
-`Prelude 401/invalid_api_key` or `Prelude 400/insufficient_balance`.
-Only explicitly allowlisted provider codes are shown; unknown or non-JSON
-responses retain the HTTP status with `unknown_error`. The app never forwards
-the provider's free-text error message, phone, credentials or request body.
-Render logs include the HTTP status, allowlisted code and, when supplied,
-a validated UUID request ID for provider support. An absent verification record
-or a zero balance alone does not identify the rejection reason.
+Signup users see only: “We couldn't verify your phone right now. Please try
+again later.” Technical provider details are not included in public OTP errors.
+Administrators can open **Admin → Audit Logs & Security → Phone verification
+diagnostics** to refresh the recent provider failures. The server-protected
+`GET /api/admin/phone-verification/diagnostics` endpoint requires existing admin
+authorization and returns `Cache-Control: private, no-store`.
+
+The protected dashboard and Render logs include a timestamp, send/check step,
+HTTP status, allowlisted provider code, safe explanation and, when supplied,
+a validated UUID request ID for provider support. Missing configuration, network
+failures, malformed responses and blocked sends are recorded too.
+The app never forwards the provider's free-text error message, phone,
+credentials, verification code or request body. Unknown/non-JSON HTTP failures
+retain the HTTP status with `unknown_error`. An absent verification record or a
+zero balance alone does not identify the rejection reason.
+
+The dashboard stores at most 100 events from the last 24 hours **in this server
+process only**. It clears on restart and is not a durable audit ledger or a
+cross-instance history. Empty history is not evidence of successful delivery.
 
 For `invalid_api_key`/`invalid_bearer_token`, check the v2 key for the matching
 Prelude app in Render and redeploy. For `insufficient_balance` during a sandbox
@@ -58,6 +69,7 @@ Automated tests inject provider responses and never send real SMS:
 
 ```sh
 node --import tsx --test tests/prelude-verification.test.ts
+node --import tsx --test tests/prelude-errors.test.ts tests/phone-verification-admin.test.ts
 npm run lint
 npm run build
 npm run test:dependencies

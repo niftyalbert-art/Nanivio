@@ -54,6 +54,7 @@ import { createSetupPreview, rejectSetupRealtime } from "./src/server/setupPrevi
 import { getServerSupabase } from "./src/server/supabaseServer.ts";
 import { registerAssistantRoutes } from "./src/server/assistant/routes.ts";
 import { otpService } from "./src/server/otpService.ts";
+import { createPhoneVerificationAdminRouter } from "./src/server/phoneVerificationAdminRouter.ts";
 import {
   telecomGateway,
   CARRIER_ROUTING_TABLE,
@@ -246,7 +247,9 @@ function authenticatedUserId(req: express.Request): string {
 // AUTHENTICATION API ENDPOINTS
 // ----------------------------------------------------------------------------
 
-// Phone OTP verification (Twilio Verify / Cryptographic Sandbox)
+// Phone OTP verification (Prelude Verify)
+app.use("/api/admin/phone-verification", createPhoneVerificationAdminRouter(requireAdmin));
+
 app.post("/api/auth/phone/otp/send", async (req, res) => {
   res.setHeader('Cache-Control', 'no-store');
   try {

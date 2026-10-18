@@ -6,9 +6,18 @@ const region = 'Phone verification is not enabled for this destination. Contact 
 const request = 'Phone verification configuration was rejected by the provider. Contact support.';
 const retry = 'Too many verification requests. Please try again later.';
 
-// Only documented, explicitly approved codes may reach the client or logs.
+export const PUBLIC_PHONE_VERIFICATION_ERROR =
+  "We couldn't verify your phone right now. Please try again later.";
+
+// Only explicitly approved codes may reach protected admin diagnostics or logs.
 // Never forward upstream messages, parameters, targets, headers or request bodies.
 const messages: Readonly<Record<string, string>> = Object.freeze({
+  not_configured: 'The administrator must configure PRELUDE_API_KEY on this server.',
+  network_error: 'The server could not reach Prelude before the request failed or timed out.',
+  invalid_response: 'Prelude returned a malformed or unexpected verification response.',
+  blocked: 'Prelude blocked this verification. Review the provider verification details and fraud settings.',
+  challenged: 'Prelude requires a challenged verification flow that this signup flow does not support.',
+  shadow_blocked: 'Prelude returned a shadow-blocked verification. This signup flow fails closed.',
   invalid_api_key: authentication,
   invalid_bearer_token: authentication,
   missing_api_key: authentication,
@@ -52,6 +61,7 @@ export interface PreludeFailureDiagnostic {
   status: number;
   code: string;
   requestId?: string;
+  operation?: 'send' | 'check';
 }
 
 export function describePreludeFailure(status: number, payload: unknown): {
