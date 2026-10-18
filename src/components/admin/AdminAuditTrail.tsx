@@ -16,6 +16,7 @@ import {
 import { useNanivio } from '../../context/NanivioContext';
 import { AuditLogEntry } from '../../types/auth';
 import { AdminPhoneVerificationDiagnostics } from './AdminPhoneVerificationDiagnostics';
+import { formatAdminAuditDetails } from '../../lib/adminAuditDisplay';
 
 export const AdminAuditTrail: React.FC = () => {
   const {
@@ -36,6 +37,7 @@ export const AdminAuditTrail: React.FC = () => {
     setIsLoading(true);
     try {
       await fetchAdminAuditLogs(
+        100,
         searchTargetNvId || undefined,
         selectedActionType === 'ALL' ? undefined : selectedActionType
       );
@@ -216,12 +218,12 @@ export const AdminAuditTrail: React.FC = () => {
 
                     {/* Performed By */}
                     <td className="p-3.5 text-slate-300 whitespace-nowrap">
-                      <span className="text-amber-300 font-semibold">{log.performedBy}</span>
+                      <span className="text-amber-300 font-semibold">{log.adminName || log.adminNvId || 'System'}</span>
                     </td>
 
                     {/* Details */}
-                    <td className="p-3.5 text-slate-300 max-w-xs font-sans text-xs">
-                      {log.details}
+                    <td className="p-3.5 text-slate-300 max-w-xs font-sans text-xs whitespace-pre-wrap break-words">
+                      {formatAdminAuditDetails(log.details)}
                     </td>
 
                     {/* Context / IP */}
