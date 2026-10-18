@@ -1,5 +1,6 @@
 import crypto from 'crypto';
 import { normalizeSignupPhone } from '../lib/phoneNumber';
+import { describePreludeFailure, type PreludeFailureDiagnostic } from './preludeErrors';
 
 interface PendingVerification {
   id: string;
@@ -20,6 +21,8 @@ export class OtpService {
     private request: typeof fetch = fetch,
     private now: () => number = Date.now,
     private apiKey: () => string | undefined = () => process.env.PRELUDE_API_KEY,
+    private reportFailure: (diagnostic: PreludeFailureDiagnostic) => void =
+      diagnostic => console.warn('[Prelude Verify] Request rejected', diagnostic),
   ) {}
 
   public normalizePhoneNumber(phone: unknown, callingCode?: string, country?: string): string {
@@ -52,9 +55,11 @@ export class OtpService {
       throw new Error('Phone verification could not reach the provider. Please try again later.');
     }
     if (!response.ok) {
-      // Do not expose upstream bodies: they may include phone numbers or account details.
-      if (response.status === 429) throw new Error('Too many verification requests. Please try again later.');
-      throw new Error('Phone verification is unavailable or the request was declined. Please try again later.');
+      let payload: unknown;
+      try { payload = await response.json(); } catch { /* Non-JSON errors still have a safe HTTP diagnostic. */ }
+      const failure = describePreludeFailure(response.status, payload);
+      this.reportFailure(failure.diagnostic);
+      throw new Error(failure.message);
     }
     try { return await response.json(); }
     catch { throw new Error('Phone verification returned an invalid response. Please try again later.'); }

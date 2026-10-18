@@ -39,6 +39,21 @@ A successful send response means a request was accepted, **not** that a handset
 received it. Only a successful check for the matching provider verification ID
 can issue a signup proof.
 
+Rejected HTTP requests display a safe diagnostic such as
+`Prelude 401/invalid_api_key` or `Prelude 400/insufficient_balance`.
+Only explicitly allowlisted provider codes are shown; unknown or non-JSON
+responses retain the HTTP status with `unknown_error`. The app never forwards
+the provider's free-text error message, phone, credentials or request body.
+Render logs include the HTTP status, allowlisted code and, when supplied,
+a validated UUID request ID for provider support. An absent verification record
+or a zero balance alone does not identify the rejection reason.
+
+For `invalid_api_key`/`invalid_bearer_token`, check the v2 key for the matching
+Prelude app in Render and redeploy. For `insufficient_balance` during a sandbox
+test, check the exact number is registered as sandboxed in that same app before
+assuming a top-up is necessary. Review Routes for region/channel restrictions.
+Configuration/unknown errors need investigation rather than repeated send clicks.
+
 Automated tests inject provider responses and never send real SMS:
 
 ```sh
