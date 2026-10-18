@@ -13,3 +13,9 @@ Keep large transfer payloads transient and retain only verified progress across 
 **Why:** Retaining multiple payload representations can exceed notebook state limits and reset local progress, without undoing writes already accepted by GitHub.
 
 **How to apply:** Upload bounded batches, retain hashes instead of redundant payload copies, and reconcile the remote state before retrying an interrupted write.
+
+If segmented raw source still fails with a replay error, encode the UTF-8 bytes as base64 before crossing the boundary, segment the encoding, and use the Git blob API's base64 encoding.
+
+**Why:** Segmented source containing extensive embedded code failed before its request ran, while the base64 transfer succeeded with the exact expected blob hash. This was not a permission error.
+
+**How to apply:** Verify the uploaded blob and final tree/commit hashes, and recheck the remote branch before a non-forced reference update. Do not assume an interrupted batch made no writes.
