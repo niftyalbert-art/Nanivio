@@ -7,6 +7,7 @@ import { OtpService } from '../src/server/otpService';
 import { normalizeSignupPhone } from '../src/lib/phoneNumber';
 import { PhoneVerification } from '../src/components/auth/PhoneVerification';
 import * as auth from '../src/server/persistentAuth';
+import { PUBLIC_PHONE_VERIFICATION_ERROR } from '../src/server/preludeErrors';
 
 const phone = '+12025550123';
 const otherPhone = '+442079460018';
@@ -26,7 +27,7 @@ function fixture() {
       status: String(url).endsWith('/check') ? checkStatus : sendStatus, id, channels: ['sms'],
     }), { status });
   }) as typeof fetch;
-  const service = new OtpService(request, () => now, () => configured ? 'test-only-not-a-credential' : undefined);
+  const service = new OtpService(request, () => now, () => configured ? 'test-only-not-a-credential' : undefined, () => {});
   return {
     service, calls,
     advance: (ms: number) => { now += ms; },
@@ -73,7 +74,7 @@ test('Prelude receives server-side Bearer auth and SMS preference; proof require
 test('missing credentials, upstream denial, malformed responses, blocks and network errors fail closed', async () => {
   const missing = fixture();
   missing.configured(false);
-  await assert.rejects(() => missing.service.sendOtp(phone), /configure Prelude/);
+  await assert.rejects(() => missing.service.sendOtp(phone), { message: PUBLIC_PHONE_VERIFICATION_ERROR });
   assert.equal(missing.calls.length, 0);
   for (const code of [401, 403, 429, 500]) {
     const f = fixture();
@@ -84,13 +85,13 @@ test('missing credentials, upstream denial, malformed responses, blocks and netw
   for (const status of ['blocked', 'challenged', 'shadow_blocked', 'unknown']) {
     const f = fixture();
     f.sendStatus(status);
-    await assert.rejects(() => f.service.sendOtp(phone), /could not start/);
+    await assert.rejects(() => f.service.sendOtp(phone), { message: PUBLIC_PHONE_VERIFICATION_ERROR });
   }
   const invalid = new OtpService(async () => new Response('not json'), Date.now, () => 'test');
-  await assert.rejects(() => invalid.sendOtp(phone), /invalid response/);
+  await assert.rejects(() => invalid.sendOtp(phone), { message: PUBLIC_PHONE_VERIFICATION_ERROR });
   const network = fixture();
   network.networkError();
-  await assert.rejects(() => network.service.sendOtp(phone), /could not reach/);
+  await assert.rejects(() => network.service.sendOtp(phone), { message: PUBLIC_PHONE_VERIFICATION_ERROR });
 });
 
 test('wrong, expired, mismatched and unconfigured checks cannot issue proofs', async () => {
@@ -107,7 +108,7 @@ test('wrong, expired, mismatched and unconfigured checks cannot issue proofs', a
   const missing = fixture();
   await missing.service.sendOtp(phone);
   missing.configured(false);
-  await assert.rejects(() => missing.service.verifyOtp(phone, '123456'), /configure Prelude/);
+  await assert.rejects(() => missing.service.verifyOtp(phone, '123456'), { message: PUBLIC_PHONE_VERIFICATION_ERROR });
   const expired = fixture();
   await expired.service.sendOtp(phone);
   expired.advance(300_000);

@@ -15,6 +15,7 @@ import {
 } from 'lucide-react';
 import { useNanivio } from '../../context/NanivioContext';
 import { AuditLogEntry } from '../../types/auth';
+import { AdminPhoneVerificationDiagnostics } from './AdminPhoneVerificationDiagnostics';
 
 export const AdminAuditTrail: React.FC = () => {
   const {
@@ -68,6 +69,7 @@ export const AdminAuditTrail: React.FC = () => {
 
   return (
     <div className="space-y-5 animate-in fade-in duration-200">
+      <AdminPhoneVerificationDiagnostics />
       {/* Header & Controls */}
       <div className="bg-[#0c1424] border border-slate-800 rounded-3xl p-5 shadow-xl space-y-4">
         <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">

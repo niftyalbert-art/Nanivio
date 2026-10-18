@@ -1,5 +1,7 @@
 import crypto from 'crypto';
 import { normalizeSignupPhone } from '../lib/phoneNumber';
+import { describePreludeFailure, PUBLIC_PHONE_VERIFICATION_ERROR, type PreludeFailureDiagnostic } from './preludeErrors';
+import { reportPreludeFailure } from './phoneVerificationDiagnostics';
 
 interface PendingVerification {
   id: string;
@@ -20,6 +22,7 @@ export class OtpService {
     private request: typeof fetch = fetch,
     private now: () => number = Date.now,
     private apiKey: () => string | undefined = () => process.env.PRELUDE_API_KEY,
+    private reportFailure: (diagnostic: PreludeFailureDiagnostic) => void = reportPreludeFailure,
   ) {}
 
   public normalizePhoneNumber(phone: unknown, callingCode?: string, country?: string): string {
@@ -37,9 +40,16 @@ export class OtpService {
     }
   }
 
+  private providerFailure(status: number, payload: unknown, operation: 'send' | 'check'): Error {
+    const failure = describePreludeFailure(status, payload);
+    this.reportFailure({ ...failure.diagnostic, operation });
+    return new Error(PUBLIC_PHONE_VERIFICATION_ERROR);
+  }
+
   private async call(path: string, body: object): Promise<any> {
+    const operation = path.endsWith('/check') ? 'check' : 'send';
     const key = this.apiKey();
-    if (!key) throw new Error('Phone verification is unavailable. The administrator must configure Prelude.');
+    if (!key) throw this.providerFailure(0, { code: 'not_configured' }, operation);
     let response: Response;
     try {
       response = await this.request(`https://api.prelude.dev/v2/${path}`, {
@@ -49,15 +59,15 @@ export class OtpService {
         signal: AbortSignal.timeout(15_000),
       });
     } catch {
-      throw new Error('Phone verification could not reach the provider. Please try again later.');
+      throw this.providerFailure(0, { code: 'network_error' }, operation);
     }
     if (!response.ok) {
-      // Do not expose upstream bodies: they may include phone numbers or account details.
-      if (response.status === 429) throw new Error('Too many verification requests. Please try again later.');
-      throw new Error('Phone verification is unavailable or the request was declined. Please try again later.');
+      let payload: unknown;
+      try { payload = await response.json(); } catch { /* Non-JSON errors still have a safe HTTP diagnostic. */ }
+      throw this.providerFailure(response.status, payload, operation);
     }
     try { return await response.json(); }
-    catch { throw new Error('Phone verification returned an invalid response. Please try again later.'); }
+    catch { throw this.providerFailure(response.status, { code: 'invalid_response' }, operation); }
   }
 
   public async sendOtp(rawPhone: unknown, channel: string = 'sms', clientIp = 'unknown') {
@@ -82,7 +92,9 @@ export class OtpService {
         options: { method: 'message', preferred_channel: 'sms', code_size: 6 },
       });
       if (!['success', 'retry'].includes(data?.status) || typeof data?.id !== 'string' || !data.id) {
-        throw new Error('The provider could not start phone verification for this number.');
+        const code = ['blocked', 'challenged', 'shadow_blocked'].includes(data?.status)
+          ? data.status : 'invalid_response';
+        throw this.providerFailure(200, { code, request_id: data?.request_id }, 'send');
       }
       const existing = this.pending.get(phone);
       // A resend in the same provider window must not reset expiry or the attempt budget.

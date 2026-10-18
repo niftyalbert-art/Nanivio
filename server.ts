@@ -53,6 +53,7 @@ import { recordTranslatedVoiceNoteUsage } from "./src/server/voiceNoteUsage.ts";
 import { createSetupPreview, rejectSetupRealtime } from "./src/server/setupPreview.ts";
 import { getServerSupabase } from "./src/server/supabaseServer.ts";
 import { otpService } from "./src/server/otpService.ts";
+import { createPhoneVerificationAdminRouter } from "./src/server/phoneVerificationAdminRouter.ts";
 import {
   telecomGateway,
   CARRIER_ROUTING_TABLE,
@@ -244,7 +245,9 @@ function authenticatedUserId(req: express.Request): string {
 // AUTHENTICATION API ENDPOINTS
 // ----------------------------------------------------------------------------
 
-// Phone OTP verification (Twilio Verify / Cryptographic Sandbox)
+// Phone OTP verification (Prelude Verify)
+app.use("/api/admin/phone-verification", createPhoneVerificationAdminRouter(requireAdmin));
+
 app.post("/api/auth/phone/otp/send", async (req, res) => {
   res.setHeader('Cache-Control', 'no-store');
   try {

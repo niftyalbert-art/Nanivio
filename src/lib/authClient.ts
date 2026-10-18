@@ -15,6 +15,7 @@ import type {
   AccountStatus,
   VerificationStatus,
 } from '../types/auth';
+import type { PhoneVerificationDiagnostics } from '../types/phoneVerification';
 
 const TOKEN_KEY = 'nanivio_auth_token';
 const USER_KEY = 'nanivio_auth_user';
@@ -73,7 +74,7 @@ export class AuthClient {
     return headers;
   }
 
-  // --- Phone OTP Operations (Twilio Verify & Carrier Backbone) ---
+  // --- Phone OTP Operations (Prelude Verify) ---
 
   public async sendPhoneOtp(
     phoneNumber: string,
@@ -478,6 +479,19 @@ export class AuthClient {
       throw new Error(data.error || 'Failed to fetch audit logs.');
     }
     return data.logs || [];
+  }
+
+  public async getPhoneVerificationDiagnostics(signal?: AbortSignal): Promise<PhoneVerificationDiagnostics> {
+    const res = await fetch('/api/admin/phone-verification/diagnostics', {
+      headers: this.getHeaders(),
+      cache: 'no-store',
+      signal,
+    });
+    const data = await res.json();
+    if (!res.ok || !data.success || !data.diagnostics) {
+      throw new Error(data.error || 'Phone verification diagnostics could not be loaded.');
+    }
+    return data.diagnostics;
   }
 
   public async getLiveVerifiedExperts(): Promise<ExpertApplication[]> {
