@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { describePreludeFailure, type PreludeFailureDiagnostic } from './preludeErrors';
+import { describeInfobipFailure, type InfobipFailureDiagnostic } from './infobipErrors';
 import type { PhoneVerificationDiagnosticEvent, PhoneVerificationDiagnostics } from '../types/phoneVerification';
 
 /** Bounded, non-PII operational history, not a durable audit ledger. */
@@ -13,16 +14,18 @@ export class PhoneVerificationDiagnosticStore {
     this.startedAt = new Date(now()).toISOString();
   }
 
-  record(input: PreludeFailureDiagnostic): void {
+  record(input: PreludeFailureDiagnostic | InfobipFailureDiagnostic): void {
     // Re-sanitize at the storage boundary rather than trusting injected callers.
     const status = Number.isInteger(input.status) && input.status >= 100 && input.status <= 599
       ? input.status : 0;
-    const safe = describePreludeFailure(status, { code: input.code, request_id: input.requestId });
+    const safe = input.provider === 'infobip'
+      ? describeInfobipFailure(status, input.code, input.requestId)
+      : describePreludeFailure(status, { code: input.code, request_id: input.requestId });
     this.prune();
     this.events.unshift({
       id: randomUUID(),
       createdAt: new Date(this.now()).toISOString(),
-      provider: 'prelude',
+      provider: safe.diagnostic.provider,
       operation: input.operation === 'check' ? 'check' : 'send',
       status,
       code: safe.diagnostic.code,
@@ -52,8 +55,12 @@ export class PhoneVerificationDiagnosticStore {
 export const phoneVerificationDiagnostics = new PhoneVerificationDiagnosticStore();
 
 export function reportPreludeFailure(diagnostic: PreludeFailureDiagnostic): void {
+  reportPhoneVerificationFailure(diagnostic);
+}
+
+export function reportPhoneVerificationFailure(diagnostic: PreludeFailureDiagnostic | InfobipFailureDiagnostic): void {
   phoneVerificationDiagnostics.record(diagnostic);
   // Log only the sanitized event fields, never the raw provider response.
   const safe = phoneVerificationDiagnostics.snapshot().events[0];
-  if (safe) console.warn('[Prelude Verify] Request rejected', safe);
+  if (safe) console.warn(safe.provider === 'infobip' ? '[Infobip Verify] Request rejected' : '[Prelude Verify] Request rejected', safe);
 }

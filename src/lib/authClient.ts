@@ -74,7 +74,7 @@ export class AuthClient {
     return headers;
   }
 
-  // --- Phone OTP Operations (Prelude Verify) ---
+  // --- Phone OTP Operations (Infobip 2FA) ---
 
   public async sendPhoneOtp(
     phoneNumber: string,
@@ -84,7 +84,7 @@ export class AuthClient {
     message: string;
     cooldownSeconds: number;
     channel: string;
-    provider: 'prelude';
+    provider: 'infobip';
   }> {
     const res = await fetch('/api/auth/phone/otp/send', {
       method: 'POST',

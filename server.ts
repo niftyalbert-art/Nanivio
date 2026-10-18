@@ -247,7 +247,7 @@ function authenticatedUserId(req: express.Request): string {
 // AUTHENTICATION API ENDPOINTS
 // ----------------------------------------------------------------------------
 
-// Phone OTP verification (Prelude Verify)
+// Phone OTP verification (Infobip 2FA)
 app.use("/api/admin/phone-verification", createPhoneVerificationAdminRouter(requireAdmin));
 
 app.post("/api/auth/phone/otp/send", async (req, res) => {
