@@ -1,0 +1,80 @@
+# Prelude signup phone verification
+
+## Scope
+
+Prelude Verify replaces Twilio Verify for signup phone ownership checks.
+Existing Supabase authentication remains in place. This change does not connect
+Resend or alter password recovery, billing, calling or Malvi.
+
+All personal, expert, business and driver registration endpoints require a
+phone-bound, single-use verification proof. The signup UI exposes code entry for
+personal, expert, standard business and Nanivio Drive enrollment.
+
+## Configuration
+
+1. Create a **v2 API key** under **Settings → API Keys** in the Prelude dashboard.
+2. Store it as server-side `PRELUDE_API_KEY` in Replit Secrets for development.
+3. Separately add `PRELUDE_API_KEY` to the existing Render service's environment
+   before publishing this code there. Git does not transfer secrets.
+4. Confirm production access, destination coverage, account balance and sending
+   limits in Prelude. Default templates avoid requiring a custom sender at launch.
+5. Restart the relevant service after changing its environment.
+
+The key must never appear in browser code, a `VITE_` variable, source control,
+API responses or logs. Twilio credentials are no longer used by signup OTP;
+legacy telecom features, if used, are separate.
+
+## Delivery and testing
+
+The server uses `https://api.prelude.dev/v2/verification` and
+`/verification/check`, with Bearer authentication. It requests six-digit message
+verification and prefers SMS. The UI reports the channel returned by Prelude.
+
+Prelude may use other messaging channels enabled on the account when SMS routes
+are unavailable. To require SMS exclusively, confirm dashboard routing with
+Prelude. Its API's strict `channels` option requires separate enablement; do not
+assume it is available on a newly registered account.
+
+A successful send response means a request was accepted, **not** that a handset
+received it. Only a successful check for the matching provider verification ID
+can issue a signup proof.
+
+Automated tests inject provider responses and never send real SMS:
+
+```sh
+node --import tsx --test tests/prelude-verification.test.ts
+npm run lint
+npm run build
+npm run test:dependencies
+```
+
+Before production, use a Prelude dashboard test number for a complete send/check/
+signup test, then an explicitly authorized real destination to check handset
+delivery. Test numbers simulate verification and do not establish real delivery.
+Confirm incorrect-code, changed-phone, expired-code, resend and duplicate-submit
+behavior. Test destinations in the intended launch markets.
+
+## Limits and deployment constraints
+
+- Resend cooldown: 45 seconds.
+- Code window: at most five minutes locally; provider expiry also applies.
+- Five code-check attempts per active window. Retrying the same provider window
+  cannot reset its local attempt count or deadline.
+- Six send attempts per number per hour, including failed provider calls.
+- 120 send attempts per source IP per hour.
+- Successful proof: fifteen minutes, bound to E.164 phone, consumed once.
+- Registration errors after proof consumption require re-verifying the phone.
+  The UI clears the proof on failed registration.
+- International parsing uses country metadata, including significant leading
+  zeros and national trunk prefixes, not a Ghana-only prefix rule.
+
+State and locks are **process-local**, as in the previous implementation.
+Run a **single application process/replica** until shared atomic verification,
+rate-limit and proof storage is implemented. A restart invalidates pending codes
+and proofs; request a new verification. There is no insecure recovery fallback.
+
+OTP source-IP resolution trusts only reverse-proxy CIDRs explicitly configured in
+`AUTH_TRUSTED_PROXY_CIDRS`. Obtain those ranges from the hosting configuration;
+do not blindly trust `X-Forwarded-For` or use a universal CIDR. Without configured
+proxy trust, users behind the same hosting proxy share its IP allowance. Provider
+fraud controls and spend limits should also be enabled in Prelude.

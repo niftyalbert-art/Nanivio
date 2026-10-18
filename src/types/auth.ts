@@ -231,6 +231,7 @@ export interface PersonalSignUpData {
   displayName: string;
   email: string;
   phoneNumber: string;
+  verificationToken?: string;
   country: string;
   state?: string; // State / Region / Province
   city?: string; // City / Town
