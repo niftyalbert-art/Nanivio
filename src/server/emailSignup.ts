@@ -1,6 +1,8 @@
 import crypto from 'node:crypto';
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import { normalizeSignupPhone } from '../lib/phoneNumber';
+import { assertSignupEmailConfigured, sendSignupEmail } from './signupEmailDelivery';
+export { sendSignupEmail } from './signupEmailDelivery';
 
 export function normalizeSignupEmail(raw: unknown): string {
   if (typeof raw !== 'string' || raw.length > 254 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(raw.trim())) {
@@ -63,32 +65,6 @@ export const emailSignupStore: EmailSignupStore = {
   }),
 };
 
-export async function sendSignupEmail(email: string, code: string) {
-  const key = process.env.RESEND_API_KEY;
-  const from = process.env.RESEND_FROM_EMAIL;
-  if (!key || !from) throw new Error('Email verification is not configured yet. Please contact support.');
-  try {
-    const response = await fetch('https://api.resend.com/emails', {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' },
-      redirect: 'error',
-      signal: AbortSignal.timeout(15_000),
-      body: JSON.stringify({
-        from, to: [email], subject: 'Your Nanivio verification code',
-        text: `Your Nanivio email verification code is ${code}.\n\nIt expires in 10 minutes. Do not share this code. If you did not request it, you can ignore this email.`,
-      }),
-    });
-    if (!response.ok) {
-      console.error('[Signup email] Delivery rejected', { status: response.status });
-      throw new Error('delivery_rejected');
-    }
-    const result = await response.json();
-    if (typeof result.id !== 'string' || !result.id) throw new Error('invalid_delivery_response');
-  } catch {
-    throw new Error('We could not send your verification email. Please try again later.');
-  }
-}
-
 export class EmailSignupService {
   constructor(
     private store: EmailSignupStore = emailSignupStore,
@@ -112,9 +88,7 @@ export class EmailSignupService {
   async send(input: SignupIdentity, ip: string) {
     const { email, phone } = this.identity(input);
     // Validate delivery configuration before reserving counters, never report a fake send.
-    if (this.deliver === sendSignupEmail && (!process.env.RESEND_API_KEY || !process.env.RESEND_FROM_EMAIL)) {
-      throw new Error('Email verification is not configured yet. Please contact support.');
-    }
+    if (this.deliver === sendSignupEmail) assertSignupEmailConfigured();
     await this.store.assertAvailable(email, phone);
     const code = crypto.randomInt(0, 1_000_000).toString().padStart(6, '0');
     const id = crypto.randomUUID();

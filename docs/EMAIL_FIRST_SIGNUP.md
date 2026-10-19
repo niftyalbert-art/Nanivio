@@ -22,6 +22,11 @@
    `RESEND_API_KEY` and `RESEND_FROM_EMAIL` (for example, `Nanivio <verify@your-domain>`).
    The from address must be authorized by Resend; no invented fallback sender is used.
    Configure the production Render service separately from the development workspace.
+   On Render use `RESEND_TRANSPORT=direct` (the default).
+   This Replit workspace can instead use `RESEND_TRANSPORT=connector` with the attached
+   Resend connection and `RESEND_FROM_EMAIL=Nanivio <verify@naniviio.com>`; the connector
+   injects credentials server-side. Do not copy Replit identity tokens to Render.
+   Each request selects exactly one transport; errors never trigger cross-transport retries.
 4. Keep `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `SUPABASE_ANON_KEY`, and
    `SESSION_SECRET` configured. Use the same session secret across server instances.
    No credentials belong in Vite/client variables.
