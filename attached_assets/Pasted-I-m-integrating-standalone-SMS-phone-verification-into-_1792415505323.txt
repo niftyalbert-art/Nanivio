@@ -1,0 +1,49 @@
+I’m integrating standalone SMS phone verification into Nanivio. POST /v3/phone/send/ returns HTTP 403. My API key has Sessions write permission, no IP restriction, and no workflow or session-status restrictions.
+
+My organization has never topped up, and the minimum top-up shown is $50.
+
+Can you confirm whether the first-top-up requirement is blocking my organization?
+Will topping up enable SMS verification to UAE (+971) numbers, or is additional approval required?
+Can I get trial credit, a smaller initial top-up, or a sandbox test before paying $50?
+If you cannot check my account, please connect me with a human support agent.
+
+I can check your account data, so let me look at the actual state rather than guess at the cause.
+
+Let me check the documented behaviour around the first top-up requirement and phone verification availability before answering.
+
+I checked your account and the documentation. Here are the direct answers.
+Is the first-top-up requirement blocking you?
+
+Yes — almost certainly. Your organization's details:
+Fact	Value
+Balance	$0.00
+Top-up history	empty — never topped up
+Phone verification usage	0
+Applications	Nanivio (Sandbox), My Application
+
+The docs are explicit: "As an anti-abuse measure, phone verification is disabled until your organization's first top-up (403)." Your 403 is the default response before that first top-up — not an API key problem. Your key's Sessions-write permission and the absence of IP/status restrictions are consistent with that: this 403 is the org-level gate, not a credential failure.
+Will topping up enable SMS to UAE (+971)?
+
+Yes — the +971 SMS channel is priced and enabled in your account. The UAE appears in your phone usage summary with SMS at $0.1042 per message, alongside WhatsApp ($0.0546), Telegram and Viber. No separate approval step appears anywhere in your account data for the UAE.
+
+One caveat I want to be straight about: I can confirm the channel is configured and priced for your org. I cannot promise from the documentation that no country-specific carrier approval ever applies — if UAE delivery turns out to be restricted at the carrier level, that would surface as a Blocked send with a reason, not as a silent failure.
+Trial credit, smaller top-up, or sandbox test?
+
+    Trial credit: no trial-credit mechanism appears in your account or in the documentation. I can't offer you one.
+    Smaller initial top-up: no — the documented minimum is a hard $50, self-serve top-ups range $50–$2,000, and the API rejects anything below $50. Your console showing $50 is correct.
+    Sandbox test — yes, this is your real option. This is the meaningful one:
+
+Copy
+
+POST https://verification.didit.me/v3/phone/send/
+x-api-key: <SANDBOX APP API KEY>
+{ "phone_number": "+971501234567", "options": { "preferred_channel": "sms" } }
+
+Use the Nanivio (Sandbox) application's key (not My Application). Sandbox keys skip the delivery and billing path entirely — the endpoint returns a static Success with a random request_id, no message is sent, nothing is persisted, and no credits are consumed. Then POST /v3/phone/check/ with code 123456 returns a static Approved.
+
+Important: whether the sandbox path bypasses the first-top-up gate is something I could not confirm from the documentation. The docs tie the $50 gate to the organization and state sandbox keys skip delivery/billing — they don't say the 403 gate is lifted for sandbox. Try it; if it also returns 403, the gate is org-wide and the $50 is genuinely unavoidable.
+
+Also worth knowing: the free monthly tier (500/month for ID Verification, Passive Liveness, Face Match, Device & IP Analysis) does not cover phone verification — phone verification bills per delivered message. The allow_free_usage: true flag on your account relates to that free tier, not to phone. So the $50 top-up is the actual path to live SMS.
+Your "connect me with a human" request
+
+I can check your account — I did — so let me first offer what I found rather than escalate immediately, since the answer above may resolve it. But you asked directly, so tell me and I'll hand this conversation to the human support team.
