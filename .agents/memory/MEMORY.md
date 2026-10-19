@@ -22,4 +22,5 @@
 - [Browser wait predicates](browser-wait-predicates.md) — CDP waits must return booleans, not DOM elements that cannot be serialized by value.
 - [External production hosting](external-production-host.md) — the user’s live app is on Render; this fork’s Replit deployment state does not describe it.
 - [Supabase owner-run assessments](supabase-owner-run-assessments.md) — use one result set; the SQL editor may show only the final SELECT.
-- [Authentication delivery](auth-delivery-policy.md) — Twilio verifies signup mobile numbers; Resend delivers “Forgot password” reset verification.
+- [Authentication delivery](auth-delivery-policy.md) — Didit is selected for signup phone verification; Resend is reserved for password-reset verification.
+- [Didit phone API restrictions](didit-phone-restrictions.md) — phone-specific 403 meanings differ from generic API-key docs; read the full endpoint Markdown.
