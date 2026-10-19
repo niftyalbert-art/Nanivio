@@ -48,7 +48,7 @@ export function PhoneVerificationDiagnosticsView({ diagnostics, loading, error, 
             {diagnostics.events.map(event => <li key={event.id} className="p-3 rounded-xl border border-slate-700 bg-slate-950/70 space-y-2">
               <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-slate-400">
                 <time dateTime={event.createdAt}>{new Date(event.createdAt).toLocaleString()}</time>
-                <span>{event.provider === 'didit' ? 'Didit' : event.provider === 'infobip' ? 'Infobip' : 'Prelude'} · {event.operation === 'check' ? 'Check code' : 'Send code'}</span>
+                <span>{event.provider === 'didit' ? 'Didit' : 'Prelude'} · {event.operation === 'check' ? 'Check code' : 'Send code'}</span>
                 <span>{event.status ? `HTTP ${event.status}` : 'No HTTP response'}</span>
               </div>
               <p className="font-mono text-xs text-amber-300 break-all">{event.code}</p>

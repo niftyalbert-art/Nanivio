@@ -1,6 +1,5 @@
 import { randomUUID } from 'node:crypto';
 import { describePreludeFailure, type PreludeFailureDiagnostic } from './preludeErrors';
-import { describeInfobipFailure, type InfobipFailureDiagnostic } from './infobipErrors';
 import { describeDiditFailure, type DiditFailureDiagnostic } from './diditErrors';
 import type { PhoneVerificationDiagnosticEvent, PhoneVerificationDiagnostics } from '../types/phoneVerification';
 
@@ -15,14 +14,12 @@ export class PhoneVerificationDiagnosticStore {
     this.startedAt = new Date(now()).toISOString();
   }
 
-  record(input: PreludeFailureDiagnostic | InfobipFailureDiagnostic | DiditFailureDiagnostic): void {
+  record(input: PreludeFailureDiagnostic | DiditFailureDiagnostic): void {
     // Re-sanitize at the storage boundary rather than trusting injected callers.
     const status = Number.isInteger(input.status) && input.status >= 100 && input.status <= 599
       ? input.status : 0;
     const safe = input.provider === 'didit'
       ? describeDiditFailure(status, input.code, input.requestId)
-      : input.provider === 'infobip'
-      ? describeInfobipFailure(status, input.code, input.requestId)
       : describePreludeFailure(status, { code: input.code, request_id: input.requestId });
     this.prune();
     this.events.unshift({
@@ -61,10 +58,10 @@ export function reportPreludeFailure(diagnostic: PreludeFailureDiagnostic): void
   reportPhoneVerificationFailure(diagnostic);
 }
 
-export function reportPhoneVerificationFailure(diagnostic: PreludeFailureDiagnostic | InfobipFailureDiagnostic | DiditFailureDiagnostic): void {
+export function reportPhoneVerificationFailure(diagnostic: PreludeFailureDiagnostic | DiditFailureDiagnostic): void {
   phoneVerificationDiagnostics.record(diagnostic);
   // Log only the sanitized event fields, never the raw provider response.
   const safe = phoneVerificationDiagnostics.snapshot().events[0];
-  const label = safe?.provider === 'didit' ? 'Didit' : safe?.provider === 'infobip' ? 'Infobip' : 'Prelude';
+  const label = safe?.provider === 'didit' ? 'Didit' : 'Prelude';
   if (safe) console.warn(`[${label} Verify] Request rejected`, safe);
 }

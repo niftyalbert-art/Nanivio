@@ -1,7 +1,7 @@
 export interface PhoneVerificationDiagnosticEvent {
   id: string;
   createdAt: string;
-  provider: 'prelude' | 'infobip' | 'didit';
+  provider: 'prelude' | 'didit';
   operation: 'send' | 'check';
   status: number;
   code: string;
