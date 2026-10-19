@@ -19,3 +19,9 @@ If segmented raw source still fails with a replay error, encode the UTF-8 bytes 
 **Why:** Segmented source containing extensive embedded code failed before its request ran, while the base64 transfer succeeded with the exact expected blob hash. This was not a permission error.
 
 **How to apply:** Verify the uploaded blob and final tree/commit hashes, and recheck the remote branch before a non-forced reference update. Do not assume an interrupted batch made no writes.
+
+Large unsegmented base64 strings can also surface as a proxy HTTP 400 “malformed request,” rather than a parse error.
+
+**Why:** The same Git blob succeeded with its expected hash after its base64 payload was split into smaller strings at the isolated-execution boundary.
+
+**How to apply:** Segment large encodings before passing them into isolated functions, join them only inside that function, and verify returned hashes before updating a branch.
