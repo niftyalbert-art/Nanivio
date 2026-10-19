@@ -1,6 +1,6 @@
 # Prelude signup phone verification
 
-> Retired from live signup. See [Infobip signup verification](INFOBIP_SIGNUP_VERIFICATION.md)
+> Retired from live signup. See [Didit signup verification](DIDIT_SIGNUP_VERIFICATION.md)
 > for the current provider and environment requirements. The instructions below
 > describe the retained legacy adapter, not the active application setup.
 

@@ -2,11 +2,7 @@ import { PUBLIC_PHONE_VERIFICATION_ERROR } from './preludeErrors';
 import { describeInfobipFailure, type InfobipFailureDiagnostic } from './infobipErrors';
 import { reportPhoneVerificationFailure } from './phoneVerificationDiagnostics';
 
-export interface PhoneOtpProvider {
-  readonly name: 'infobip';
-  send(phone: string): Promise<{ id: string; channel: 'sms' }>;
-  check(id: string, phone: string, code: string): Promise<boolean>;
-}
+import type { PhoneOtpProvider } from './phoneOtpProvider';
 
 export interface InfobipOtpConfiguration {
   apiKey?: string;

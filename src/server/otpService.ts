@@ -2,7 +2,8 @@ import crypto from 'crypto';
 import { normalizeSignupPhone } from '../lib/phoneNumber';
 import { describePreludeFailure, PUBLIC_PHONE_VERIFICATION_ERROR, type PreludeFailureDiagnostic } from './preludeErrors';
 import { reportPreludeFailure } from './phoneVerificationDiagnostics';
-import { InfobipOtpProvider, type PhoneOtpProvider } from './infobipOtpProvider';
+import { DiditOtpProvider } from './diditOtpProvider';
+import type { PhoneOtpProvider } from './phoneOtpProvider';
 
 interface PendingVerification {
   id: string;
@@ -25,7 +26,7 @@ export class OtpService {
     private apiKey: () => string | undefined = () => process.env.PRELUDE_API_KEY,
     private reportFailure: (diagnostic: PreludeFailureDiagnostic) => void = reportPreludeFailure,
     // Legacy constructor arguments remain for existing adapter regression tests.
-    // The live singleton explicitly selects Infobip below; errors never trigger fallback.
+    // The live singleton explicitly selects Didit below; errors never trigger fallback.
     private provider?: PhoneOtpProvider,
   ) {}
 
@@ -119,7 +120,7 @@ export class OtpService {
     if (this.busy.has(phone)) throw new Error('A verification request is already in progress.');
     const record = this.pending.get(phone);
     if (!record) throw new Error('No active verification. Request a new code.');
-    if (record.attempts >= 5) throw new Error('Maximum verification attempts reached. Please wait for the code to expire.');
+    if (record.attempts >= (this.provider?.maxAttempts ?? 5)) throw new Error('Maximum verification attempts reached. Please wait for the code to expire.');
     record.attempts++;
     this.busy.add(phone);
     try {
@@ -151,5 +152,5 @@ export class OtpService {
   }
 }
 
-// Only Infobip powers application signup. Retained Prelude credentials are unused.
-export const otpService = new OtpService(undefined, undefined, undefined, undefined, new InfobipOtpProvider());
+// Only Didit powers application signup. Retained legacy credentials are unused.
+export const otpService = new OtpService(undefined, undefined, undefined, undefined, new DiditOtpProvider());

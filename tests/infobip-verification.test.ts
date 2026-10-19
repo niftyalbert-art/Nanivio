@@ -233,10 +233,10 @@ test('Infobip diagnostics remain sanitized and render the correct provider in th
   }
 });
 
-test('application singleton selects Infobip independently of retained Prelude credentials', () => {
+test('archived Infobip adapter is not selected by application signup', () => {
   const source = readFileSync(new URL('../src/server/otpService.ts', import.meta.url), 'utf8');
-  assert.match(source, /export const otpService = new OtpService\(undefined, undefined, undefined, undefined, new InfobipOtpProvider\(\)\)/);
+  assert.doesNotMatch(source, /new InfobipOtpProvider/);
   const client = readFileSync(new URL('../src/lib/authClient.ts', import.meta.url), 'utf8');
-  assert.match(client, /provider: 'infobip'/);
+  assert.match(client, /provider: 'didit'/);
   assert.doesNotMatch(client, /process\.env\.INFOBIP|Authorization:.*App /);
 });

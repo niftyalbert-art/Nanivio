@@ -1,6 +1,10 @@
 # Infobip signup phone verification
 
-Infobip 2FA is the live signup SMS provider, replacing Prelude. Existing accounts,
+> Not selected for application signup. The user rejected Infobip.
+> Do not request Infobip credentials or follow this archived setup for deployment.
+> See [Didit signup verification](DIDIT_SIGNUP_VERIFICATION.md) instead.
+
+The archived Infobip adapter was prepared to replace Prelude. Existing accounts,
 Supabase authentication, signup forms and verification-proof requirements are
 unchanged. There is no automatic fallback to Prelude. Its retained adapter exists
 only for legacy regression coverage and is not selected by application signup.
