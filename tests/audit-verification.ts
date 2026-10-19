@@ -1,5 +1,10 @@
 /**
  * Comprehensive Server-Authoritative Billing & Phone OTP Verification Audit Suite
+ *
+ * This suite exercises the in-memory engine, not the normalized database RPCs.
+ * For persistent entitlement verification, see:
+ *   bash tests/run-postgres-regressions.sh
+ *   docs/communication-entitlement-verification.md (separate staging Supabase)
  * 
  * Verifies:
  * 1. Server-authoritative quota deduction on 60s boundaries in billingDb.userSubscriptions.
