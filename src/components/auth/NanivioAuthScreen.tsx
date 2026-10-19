@@ -4,28 +4,18 @@ import {
   ShieldCheck,
   User,
   Sparkles,
-  CheckCircle2,
   Lock,
   Mail,
-  Phone,
   ArrowRight,
   Briefcase,
   Building2,
   AlertCircle,
   Eye,
   EyeOff,
-  Copy,
   Check,
   Globe,
-  Radio,
-  FileText,
-  KeyRound,
-  DollarSign,
   Award,
   HelpCircle,
-  Fingerprint,
-  MapPin,
-  Navigation,
   Car,
 } from 'lucide-react';
 import { useNanivio } from '../../context/NanivioContext';
@@ -34,11 +24,10 @@ import { SUPPORTED_LANGUAGES, RideServiceTier } from '../../types';
 import { SupportedLanguageCode } from '../../types';
 import { CountryCallingCodeSelector } from '../common/CountryCallingCodeSelector';
 import { getAllLanguages } from '../../i18n/languages';
-import { NANIVIO_COMPANY } from '../../lib/nanivioVision';
 import { getAuthText } from '../../i18n/authTranslations';
 import { authClient } from '../../lib/authClient';
 import { normalizeSignupPhone } from '../../lib/phoneNumber';
-import { PhoneVerification, type PhoneProof } from './PhoneVerification';
+import { EmailVerification, type EmailProof } from './EmailVerification';
 
 interface NanivioAuthScreenProps {
   onSuccess?: () => void;
@@ -50,13 +39,10 @@ export const NanivioAuthScreen: React.FC<NanivioAuthScreenProps> = ({ onSuccess 
     signUpPersonal,
     signUpExpert,
     signUpBusiness,
-    quickSwitchDemoUser,
     signInWithAdminToken,
     authMode,
-    setAuthMode,
     appLanguage,
     setAppLanguage,
-    myLanguage,
     setMyLanguage,
   } = useNanivio();
 
@@ -74,7 +60,6 @@ export const NanivioAuthScreen: React.FC<NanivioAuthScreenProps> = ({ onSuccess 
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  const [copiedNvId, setCopiedNvId] = useState(false);
 
   // Sign In Form State
   const [signInIdentifier, setSignInIdentifier] = useState('');
@@ -85,27 +70,43 @@ export const NanivioAuthScreen: React.FC<NanivioAuthScreenProps> = ({ onSuccess 
   const [personalLast, setPersonalLast] = useState('');
   const [personalEmail, setPersonalEmail] = useState('');
   const [personalPhone, setPersonalPhone] = useState('');
-  const [personalCountry, setPersonalCountry] = useState('Ghana');
-  const [personalState, setPersonalState] = useState('Greater Accra');
-  const [personalCity, setPersonalCity] = useState('Accra');
-  const [personalConstituency, setPersonalConstituency] = useState('Ayawaso West Wuogon');
-  const [personalDistrict, setPersonalDistrict] = useState('Ayawaso West Municipal');
-  const [personalCallingCode, setPersonalCallingCode] = useState('+233');
-  const [personalLang, setPersonalLang] = useState<SupportedLanguageCode>('ak');
+  const [personalCountry, setPersonalCountry] = useState('');
+  const [personalCallingCode, setPersonalCallingCode] = useState('');
+  const [personalLang, setPersonalLang] = useState<SupportedLanguageCode>('en');
   const [personalPassword, setPersonalPassword] = useState('');
   const [personalConfirmPassword, setPersonalConfirmPassword] = useState('');
 
-  const [phoneProof, setPhoneProof] = useState<PhoneProof | null>(null);
-  const proofFor = (phone: string, callingCode: string, country: string) => {
+  const [emailProof, setEmailProof] = useState<EmailProof | null>(null);
+  const proofFor = (email: string, phone: string, callingCode: string, country: string) => {
     try {
-      return phoneProof?.phone === normalizeSignupPhone(phone, callingCode, country) ? phoneProof.token : undefined;
+      return emailProof?.email === email.trim().toLowerCase()
+        && emailProof.phone === normalizeSignupPhone(phone, callingCode, country)
+        && emailProof.expiresAt > Date.now() ? emailProof.token : undefined;
     } catch { return undefined; }
   };
-  const verificationPanel = (phone: string, callingCode: string, country: string) => (
-    <PhoneVerification key={`${activeTab}:${phone}:${callingCode}:${country}`}
-      phone={phone} callingCode={callingCode} country={country}
-      verified={!!proofFor(phone, callingCode, country)} onVerified={setPhoneProof} />
+  const verificationPanel = (email: string, phone: string, callingCode: string, country: string) => (
+    <EmailVerification
+      key={`${activeTab}:${email}:${phone}:${callingCode}:${country}`}
+      email={email} phone={phone} callingCode={callingCode} country={country}
+      verified={!!proofFor(email, phone, callingCode, country)} onVerified={setEmailProof} />
   );
+
+  const validateSignupContact = (
+    email: string, phone: string, callingCode: string, country: string, password: string,
+  ): string | null => {
+    if (!email.trim() || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) {
+      return 'Enter a valid email address.';
+    }
+    if (!country.trim() || !callingCode.trim()) return 'Choose your country and international calling code.';
+    if (!phone.trim()) return 'Enter your phone number.';
+    if (password.length < 8) return 'Password must be at least 8 characters long.';
+    try {
+      normalizeSignupPhone(phone, callingCode, country);
+    } catch {
+      return 'Enter a valid phone number for the selected country.';
+    }
+    return null;
+  };
 
   // Expert Sign Up Form State
   const [expertStep, setExpertStep] = useState<1 | 2 | 3>(1);
@@ -113,18 +114,14 @@ export const NanivioAuthScreen: React.FC<NanivioAuthScreenProps> = ({ onSuccess 
   const [expertLast, setExpertLast] = useState('');
   const [expertEmail, setExpertEmail] = useState('');
   const [expertPhone, setExpertPhone] = useState('');
-  const [expertCountry, setExpertCountry] = useState('Ghana');
-  const [expertState, setExpertState] = useState('Greater Accra');
-  const [expertCity, setExpertCity] = useState('Accra');
-  const [expertConstituency, setExpertConstituency] = useState('Ayawaso West Wuogon');
-  const [expertDistrict, setExpertDistrict] = useState('Ayawaso West Municipal');
-  const [expertCallingCode, setExpertCallingCode] = useState('+233');
+  const [expertCountry, setExpertCountry] = useState('');
+  const [expertCallingCode, setExpertCallingCode] = useState('');
   const [expertLang, setExpertLang] = useState<SupportedLanguageCode>('en');
   const [expertPassword, setExpertPassword] = useState('');
   const [expertTitle, setExpertTitle] = useState('');
   const [expertCategory, setExpertCategory] = useState('Healthcare & Medicine');
   const [expertBio, setExpertBio] = useState('');
-  const [expertExperience, setExpertExperience] = useState(8);
+  const [expertExperience, setExpertExperience] = useState(0);
   const [expertLicense, setExpertLicense] = useState('');
   const [expertRateGHS, setExpertRateGHS] = useState(12.0);
   const [expertRateUSD, setExpertRateUSD] = useState(0.85);
@@ -136,16 +133,11 @@ export const NanivioAuthScreen: React.FC<NanivioAuthScreenProps> = ({ onSuccess 
   const [bizStep, setBizStep] = useState<1 | 2>(1);
   const [bizName, setBizName] = useState('');
   const [bizType, setBizType] = useState('Private Limited Company (LTD)');
-  const [bizCategory, setBizCategory] = useState('Agri-Business & Export Logistics');
+  const [bizCategory, setBizCategory] = useState('');
   const [bizEmail, setBizEmail] = useState('');
   const [bizPhone, setBizPhone] = useState('');
-  const [bizCountry, setBizCountry] = useState('Ghana');
-  const [bizState, setBizState] = useState('Greater Accra');
-  const [bizCity, setBizCity] = useState('Accra');
-  const [bizConstituency, setBizConstituency] = useState('Ayawaso West Wuogon');
-  const [bizDistrict, setBizDistrict] = useState('Ayawaso West Municipal');
-  const [bizCallingCode, setBizCallingCode] = useState('+233');
-  const [bizLocation, setBizLocation] = useState('Accra, Ghana');
+  const [bizCountry, setBizCountry] = useState('');
+  const [bizCallingCode, setBizCallingCode] = useState('');
   const [bizDesc, setBizDesc] = useState('');
   const [bizRepName, setBizRepName] = useState('');
   const [bizRepTitle, setBizRepTitle] = useState('Managing Director');
@@ -154,17 +146,17 @@ export const NanivioAuthScreen: React.FC<NanivioAuthScreenProps> = ({ onSuccess 
 
   // Nanivio Drive Specifics (Uba Driver)
   const [driverLicenseNumber, setDriverLicenseNumber] = useState('');
-  const [driverVehicleMake, setDriverVehicleMake] = useState('Toyota');
-  const [driverVehicleModel, setDriverVehicleModel] = useState('Corolla Sedan');
-  const [driverVehicleYear, setDriverVehicleYear] = useState(2023);
-  const [driverVehicleColor, setDriverVehicleColor] = useState('Silver Metallic');
-  const [driverPlateNumber, setDriverPlateNumber] = useState('GN 4821-24');
+  const [driverVehicleMake, setDriverVehicleMake] = useState('');
+  const [driverVehicleModel, setDriverVehicleModel] = useState('');
+  const [driverVehicleYear, setDriverVehicleYear] = useState(0);
+  const [driverVehicleColor, setDriverVehicleColor] = useState('');
+  const [driverPlateNumber, setDriverPlateNumber] = useState('');
   const [driverServiceTier, setDriverServiceTier] = useState<RideServiceTier>('standard');
-  const [driverSeats, setDriverSeats] = useState(4);
-  const [driverHasAC, setDriverHasAC] = useState(true);
-  const [driverOffersRental, setDriverOffersRental] = useState(true);
-  const [driverRentalRatePerDay, setDriverRentalRatePerDay] = useState(380);
-  const [driverSpokenLangs, setDriverSpokenLangs] = useState<SupportedLanguageCode[]>(['ak', 'en']);
+  const [driverSeats, setDriverSeats] = useState(0);
+  const [driverHasAC, setDriverHasAC] = useState(false);
+  const [driverOffersRental, setDriverOffersRental] = useState(false);
+  const [driverRentalRatePerDay, setDriverRentalRatePerDay] = useState(0);
+  const [driverSpokenLangs, setDriverSpokenLangs] = useState<SupportedLanguageCode[]>([]);
 
   // Admin Gateway State
   const [adminIdentifier, setAdminIdentifier] = useState('');
@@ -177,12 +169,6 @@ export const NanivioAuthScreen: React.FC<NanivioAuthScreenProps> = ({ onSuccess 
 
   const clearMessages = () => {
     setErrorMessage(null);
-  };
-
-  const handleCopy = (text: string) => {
-    navigator.clipboard.writeText(text);
-    setCopiedNvId(true);
-    setTimeout(() => setCopiedNvId(false), 2000);
   };
 
   // 1. Submit Sign In
@@ -209,20 +195,23 @@ export const NanivioAuthScreen: React.FC<NanivioAuthScreenProps> = ({ onSuccess 
   const handlePersonalSignUp = async (e: React.FormEvent) => {
     e.preventDefault();
     clearMessages();
-    if (!personalFirst.trim() || !personalLast.trim() || !personalEmail.trim() || !personalPassword) {
+    if (!personalFirst.trim() || !personalLast.trim()) {
       setErrorMessage('Please complete all required fields.');
       return;
     }
-    if (personalPassword.length < 6) {
-      setErrorMessage('Password must be at least 6 characters long.');
+    const contactError = validateSignupContact(
+      personalEmail, personalPhone, personalCallingCode, personalCountry, personalPassword,
+    );
+    if (contactError) {
+      setErrorMessage(contactError);
       return;
     }
     if (personalPassword !== personalConfirmPassword) {
       setErrorMessage('Passwords do not match. Please verify.');
       return;
     }
-    const verificationToken = proofFor(personalPhone, personalCallingCode, personalCountry);
-    if (!verificationToken) { setErrorMessage('Verify your phone number before completing signup.'); return; }
+    const verificationToken = proofFor(personalEmail, personalPhone, personalCallingCode, personalCountry);
+    if (!verificationToken) { setErrorMessage('Verify your email before completing signup.'); return; }
 
     try {
       setIsLoading(true);
@@ -234,17 +223,13 @@ export const NanivioAuthScreen: React.FC<NanivioAuthScreenProps> = ({ onSuccess 
         phoneNumber: personalPhone.trim(),
         verificationToken,
         country: personalCountry,
-        state: personalState.trim() || 'Greater Accra',
-        city: personalCity.trim() || 'Accra',
-        constituency: personalConstituency.trim() || 'Ayawaso West Wuogon',
-        districtOrMunicipality: personalDistrict.trim() || 'Ayawaso West Municipal',
         callingCode: personalCallingCode,
         preferredLanguage: personalLang,
         password: personalPassword,
       });
       if (onSuccess) onSuccess();
     } catch (err: any) {
-      setPhoneProof(null);
+      setEmailProof(null);
       setErrorMessage(err.message || 'Personal registration failed.');
     } finally {
       setIsLoading(false);
@@ -255,12 +240,19 @@ export const NanivioAuthScreen: React.FC<NanivioAuthScreenProps> = ({ onSuccess 
   const handleExpertSignUp = async (e: React.FormEvent) => {
     e.preventDefault();
     clearMessages();
-    if (!expertFirst || !expertEmail || !expertPassword || !expertTitle) {
+    if (!expertFirst.trim() || !expertLast.trim() || !expertTitle.trim()) {
       setErrorMessage('Please fill in your credentials and professional title.');
       return;
     }
-    const verificationToken = proofFor(expertPhone, expertCallingCode, expertCountry);
-    if (!verificationToken) { setErrorMessage('Verify your phone number before completing signup.'); return; }
+    const contactError = validateSignupContact(
+      expertEmail, expertPhone, expertCallingCode, expertCountry, expertPassword,
+    );
+    if (contactError) {
+      setErrorMessage(contactError);
+      return;
+    }
+    const verificationToken = proofFor(expertEmail, expertPhone, expertCallingCode, expertCountry);
+    if (!verificationToken) { setErrorMessage('Verify your email before completing signup.'); return; }
 
     try {
       setIsLoading(true);
@@ -273,33 +265,29 @@ export const NanivioAuthScreen: React.FC<NanivioAuthScreenProps> = ({ onSuccess 
           phoneNumber: expertPhone.trim(),
           verificationToken,
           country: expertCountry,
-          state: expertState.trim() || 'Greater Accra',
-          city: expertCity.trim() || 'Accra',
-          constituency: expertConstituency.trim() || 'Ayawaso West Wuogon',
-          districtOrMunicipality: expertDistrict.trim() || 'Ayawaso West Municipal',
           callingCode: expertCallingCode,
           preferredLanguage: expertLang,
           password: expertPassword,
         },
         title: expertTitle.trim(),
         category: expertCategory,
-        specialties: [expertCategory, 'Cross-Border Consultations', 'Multilingual Care'],
-        bio: expertBio || 'Certified Nanivio global expert specializing in real-time multilingual services.',
-        experienceYears: Number(expertExperience) || 5,
+        specialties: [expertCategory],
+        bio: expertBio.trim(),
+        experienceYears: Number(expertExperience) || 0,
         services: ['1:1 Audio Consultation', '1:1 Video Consultation', 'Priority Chat'],
         consultationTypes: ['audio', 'video', 'chat'],
         ratePerMinGHS: Number(expertRateGHS) || 12.0,
         ratePerMinUSD: Number(expertRateUSD) || 0.85,
-        workingHours: 'Mon-Sat: 08:00 - 19:00 GMT',
-        qualifications: ['Certified Professional Credential', 'National Board Accredited'],
-        licenses: expertLicense || 'Verified Council License',
-        documentNames: ['license_certificate.pdf', 'national_id.pdf'],
+        workingHours: '',
+        qualifications: [],
+        licenses: expertLicense.trim(),
+        documentNames: [],
         payoutMethod: expertPayoutMethod,
-        payoutAccount: expertPayoutAccount || 'Primary Mobile Money Account',
+        payoutAccount: expertPayoutAccount.trim(),
       });
       if (onSuccess) onSuccess();
     } catch (err: any) {
-      setPhoneProof(null);
+      setEmailProof(null);
       setErrorMessage(err.message || 'Expert registration failed.');
     } finally {
       setIsLoading(false);
@@ -311,16 +299,28 @@ export const NanivioAuthScreen: React.FC<NanivioAuthScreenProps> = ({ onSuccess 
     e.preventDefault();
     clearMessages();
     const isDrive = bizCategoryType === 'nanivio_drive';
-    if (!isDrive && (!bizName || !bizEmail || !bizPassword || !bizRepName)) {
+    if (!isDrive && (!bizName.trim() || !bizRepName.trim())) {
       setErrorMessage('Please fill in organization details and authorized representative.');
       return;
     }
-    if (isDrive && (!bizEmail || !bizPassword || !bizRepName || !driverPlateNumber)) {
-      setErrorMessage('Please complete your driver details, plate number, and login credentials.');
+    const contactError = validateSignupContact(
+      bizEmail, bizPhone, bizCallingCode, bizCountry, bizPassword,
+    );
+    if (contactError) {
+      setErrorMessage(contactError);
       return;
     }
-    const verificationToken = proofFor(bizPhone, bizCallingCode, bizCountry);
-    if (!verificationToken) { setErrorMessage('Verify your phone number before completing signup.'); return; }
+    if (isDrive && (
+      !bizRepName.trim() || !driverLicenseNumber.trim() || !driverVehicleMake.trim()
+      || !driverVehicleModel.trim() || !driverVehicleYear || !driverVehicleColor.trim()
+      || !driverPlateNumber.trim() || !driverSeats
+      || (driverOffersRental && !driverRentalRatePerDay)
+    )) {
+      setErrorMessage('Complete your driver, vehicle, and registration details before continuing.');
+      return;
+    }
+    const verificationToken = proofFor(bizEmail, bizPhone, bizCallingCode, bizCountry);
+    if (!verificationToken) { setErrorMessage('Verify your email before completing signup.'); return; }
 
     try {
       setIsLoading(true);
@@ -335,34 +335,30 @@ export const NanivioAuthScreen: React.FC<NanivioAuthScreenProps> = ({ onSuccess 
 
       const driverDetails = isDrive
         ? {
-            licenseNumber: driverLicenseNumber || 'DL-GH-2024-9912',
+            licenseNumber: driverLicenseNumber,
             vehicleMake: driverVehicleMake,
             vehicleModel: driverVehicleModel,
-            vehicleYear: Number(driverVehicleYear) || 2023,
+            vehicleYear: Number(driverVehicleYear),
             vehicleColor: driverVehicleColor,
             plateNumber: driverPlateNumber,
             serviceTier: driverServiceTier,
-            seats: Number(driverSeats) || 4,
+            seats: Number(driverSeats),
             hasAC: driverHasAC,
             offersCarRental: driverOffersRental,
-            rentalDailyRateGHS: driverOffersRental ? Number(driverRentalRatePerDay) || 380 : undefined,
+            rentalDailyRateGHS: driverOffersRental ? Number(driverRentalRatePerDay) : undefined,
             spokenLanguages: driverSpokenLangs,
           }
         : undefined;
 
       await signUpBusiness({
         personal: {
-          firstName: names[0] || 'Authorized',
-          lastName: names.slice(1).join(' ') || 'Representative',
+          firstName: names[0] || '',
+          lastName: names.slice(1).join(' '),
           displayName: effectiveBizName,
           email: bizEmail.trim(),
           phoneNumber: bizPhone.trim(),
           verificationToken,
           country: bizCountry,
-          state: bizState.trim() || 'Greater Accra',
-          city: bizCity.trim() || 'Accra',
-          constituency: bizConstituency.trim() || 'Ayawaso West Wuogon',
-          districtOrMunicipality: bizDistrict.trim() || 'Ayawaso West Municipal',
           callingCode: bizCallingCode,
           preferredLanguage: 'en',
           password: bizPassword,
@@ -371,14 +367,10 @@ export const NanivioAuthScreen: React.FC<NanivioAuthScreenProps> = ({ onSuccess 
         businessType: effectiveType,
         category: effectiveCategory,
         country: bizCountry,
-        state: bizState.trim() || 'Greater Accra',
-        city: bizCity.trim() || 'Accra',
-        constituency: bizConstituency.trim() || 'Ayawaso West Wuogon',
-        districtOrMunicipality: bizDistrict.trim() || 'Ayawaso West Municipal',
-        location: bizLocation || `${bizCity.trim() || 'Accra'}, ${bizCountry}`,
+        location: '',
         description: isDrive
-          ? `Verified Nanivio Drive Partner. Vehicle: ${driverVehicleMake} ${driverVehicleModel} (${driverPlateNumber}). Spoken languages: ${driverSpokenLangs.join(', ')}.`
-          : (bizDesc || 'Verified commercial entity operating on the Nanivio Global Infrastructure.'),
+          ? `Driver partner application. Vehicle: ${driverVehicleMake} ${driverVehicleModel} (${driverPlateNumber}). Spoken languages: ${driverSpokenLangs.join(', ')}.`
+          : bizDesc.trim(),
         contactEmail: bizEmail.trim(),
         contactPhone: bizPhone.trim(),
         services: isDrive
@@ -386,14 +378,14 @@ export const NanivioAuthScreen: React.FC<NanivioAuthScreenProps> = ({ onSuccess 
           : ['Enterprise Multi-lingual Rail', 'Trade Settlement & Escrow'],
         operatingHours: isDrive ? 'Active On-Demand 24/7' : 'Mon-Fri: 08:00 - 17:30 GMT',
         authorizedRepresentativeTitle: isDrive ? 'Owner & Registered Driver' : bizRepTitle,
-        verificationDocuments: isDrive ? ['driver_license.pdf', 'roadworthy_cert.pdf'] : ['cert_of_incorporation.pdf', 'tax_certificate.pdf'],
-        payoutAccount: bizPayoutAccount || 'Primary Mobile Money (Instant Daily Payout)',
+        verificationDocuments: [],
+        payoutAccount: bizPayoutAccount.trim(),
         isNanivioDrive: isDrive,
         driverDetails,
       });
       if (onSuccess) onSuccess();
     } catch (err: any) {
-      setPhoneProof(null);
+      setEmailProof(null);
       setErrorMessage(err.message || 'Registration failed.');
     } finally {
       setIsLoading(false);
@@ -436,9 +428,7 @@ const handleAdminSignIn = async (e: React.FormEvent) => {
       });
       const data = await res.json();
       if (data.success) {
-        setRecoveryMessage(
-          `Recovery link generated for ${data.maskedEmail}. Demo Reset Token: ${data.resetToken.slice(0, 8)}...`
-        );
+        setRecoveryMessage(data.message || 'Your recovery request was received. Follow the instructions provided by the service.');
       } else {
         setRecoveryMessage(data.error || 'Account not found.');
       }
@@ -450,22 +440,22 @@ const handleAdminSignIn = async (e: React.FormEvent) => {
   };
 
   return (
-    <div className="min-h-screen bg-[#070d18] text-slate-100 flex flex-col items-center justify-center p-4 sm:p-6 relative overflow-hidden selection:bg-emerald-500/30 selection:text-emerald-200">
+    <div className="nanivio-auth min-h-[100dvh] text-slate-100 flex flex-col items-center justify-center p-4 sm:p-6 relative overflow-x-hidden overflow-y-auto selection:bg-emerald-200 selection:text-emerald-900">
       {/* Ambient background gradients */}
       <div className="absolute top-1/4 -left-48 w-96 h-96 bg-emerald-600/10 rounded-full blur-3xl pointer-events-none" />
-      <div className="absolute bottom-1/4 -right-48 w-96 h-96 bg-cyan-600/10 rounded-full blur-3xl pointer-events-none" />
+      <div className="absolute bottom-1/4 -right-48 w-96 h-96 bg-emerald-600/10 rounded-full blur-3xl pointer-events-none" />
       <div className="absolute top-0 inset-x-0 h-px bg-gradient-to-r from-transparent via-emerald-500/30 to-transparent pointer-events-none" />
 
       {/* Header & Nanivio Identity */}
       <div className="w-full max-w-xl mx-auto text-center mb-6 z-10 space-y-3">
         <div className="flex flex-wrap items-center justify-center gap-2">
-          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-slate-900/90 border border-emerald-500/30 text-emerald-300 text-xs font-semibold shadow-inner">
-            <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-            <span>{NANIVIO_COMPANY.companyName}</span>
+          <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-white border border-emerald-100 text-emerald-800 text-xs font-semibold shadow-sm">
+            <span className="w-2 h-2 rounded-full bg-emerald-600" />
+            <span>Nanivio · Connect across borders</span>
           </div>
 
           {/* Global App Interface Language Selector on Auth Screen - Live & Responsive */}
-          <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-slate-900/90 border border-slate-700/80 text-xs text-slate-300 shadow-md">
+          <div className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-white border border-[#e1ebe3] text-xs text-slate-700 shadow-sm">
             <Globe className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
             <span className="text-[11px] text-slate-400">{authTxt.languageLabel}</span>
             <select
@@ -478,12 +468,12 @@ const handleAdminSignIn = async (e: React.FormEvent) => {
                 setMyLanguage(newCode as any);
                 setPersonalLang(newCode as any);
               }}
-              className="bg-transparent text-emerald-300 font-semibold text-xs border-none outline-none cursor-pointer pr-1"
+              className="bg-transparent text-emerald-800 font-semibold text-xs border-none outline-none cursor-pointer pr-1"
             >
               {getAllLanguages()
                 .filter((l) => l.ui)
                 .map((l) => (
-                  <option key={l.code} value={l.code} className="bg-slate-900 text-white">
+                  <option key={l.code} value={l.code} className="bg-white text-slate-900">
                     {l.flag} {l.name} ({l.nativeName})
                   </option>
                 ))}
@@ -492,16 +482,16 @@ const handleAdminSignIn = async (e: React.FormEvent) => {
         </div>
 
         <div className="pt-1 flex justify-center">
-          <NanivioLogo size="lg" showTagline={true} />
+          <NanivioLogo size="lg" showTagline={false} />
         </div>
 
         <p className="text-xs text-slate-400 max-w-md mx-auto leading-relaxed">
-          {authTxt.tagline || NANIVIO_COMPANY.officialTagline}
+          Message, call and share services with people around the world.
         </p>
       </div>
 
       {/* Main Authentication Card */}
-      <div className="w-full max-w-xl mx-auto bg-[#0c1524] border border-slate-800/90 rounded-3xl p-6 sm:p-8 shadow-2xl backdrop-blur-xl z-10 space-y-6">
+      <div className="w-full max-w-xl mx-auto bg-white border border-[#e0ebe2] rounded-[28px] p-5 sm:p-8 shadow-[0_22px_70px_rgba(28,82,50,0.10)] z-10 space-y-6">
         {/* Navigation Selector for Account Entry Options */}
         <div className="grid grid-cols-4 gap-1 p-1 bg-slate-950/80 rounded-2xl border border-slate-800 text-[11px] sm:text-xs font-semibold w-full overflow-hidden">
           <button
@@ -587,7 +577,7 @@ const handleAdminSignIn = async (e: React.FormEvent) => {
         {activeTab === 'signin' && (
           <form onSubmit={handleSignInSubmit} className="space-y-4">
             <div className="space-y-1">
-              <label className="text-xs font-semibold text-slate-300 flex items-center justify-between">
+                <label htmlFor="input-signin-identifier" className="text-xs font-semibold text-slate-300 flex items-center justify-between">
                 <span>{authTxt.identifierLabel}</span>
                 <span className="text-[10px] text-slate-500 font-mono">{authTxt.identifierSubLabel}</span>
               </label>
@@ -607,7 +597,7 @@ const handleAdminSignIn = async (e: React.FormEvent) => {
 
             <div className="space-y-1">
               <div className="flex items-center justify-between">
-                <label className="text-xs font-semibold text-slate-300">{authTxt.passwordLabel}</label>
+                <label htmlFor="input-signin-password" className="text-xs font-semibold text-slate-300">{authTxt.passwordLabel}</label>
                 <button
                   type="button"
                   onClick={() => setIsRecoveryOpen(true)}
@@ -629,6 +619,7 @@ const handleAdminSignIn = async (e: React.FormEvent) => {
                 <button
                   type="button"
                   onClick={() => setShowPassword(!showPassword)}
+                  aria-label={showPassword ? 'Hide password' : 'Show password'}
                   className="absolute right-3 top-2.5 text-slate-500 hover:text-slate-300"
                 >
                   {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
@@ -669,24 +660,24 @@ const handleAdminSignIn = async (e: React.FormEvent) => {
         {/* ------------------------------------------------------------- */}
         {activeTab === 'personal' && (
           <form onSubmit={handlePersonalSignUp} className="space-y-4">
-            <div className="p-3 rounded-2xl bg-slate-950/60 border border-emerald-500/20 flex items-center justify-between">
+            <div className="p-3 rounded-2xl bg-emerald-50 border border-emerald-100 flex items-center justify-between">
               <div className="flex items-center gap-2.5">
                 <div className="w-8 h-8 rounded-xl bg-emerald-500/20 flex items-center justify-center text-emerald-400 font-bold">
                   NV
                 </div>
                 <div>
-                  <div className="text-[10px] text-slate-400 font-mono">Permanent ID Preview</div>
-                  <div className="text-xs font-bold text-emerald-300 font-mono">0486XXXXXX (0486 + 6 digits)</div>
+                  <div className="text-[10px] text-slate-500 font-mono">ACCOUNT ID</div>
+                  <div className="text-xs font-semibold text-emerald-800">Assigned after registration</div>
                 </div>
               </div>
-              <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
-                Instant Issuance
+              <span className="text-[10px] px-2 py-0.5 rounded-full bg-white text-emerald-800 border border-emerald-200">
+                Nanivio identity
               </span>
             </div>
 
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1">
-                <label className="text-xs font-semibold text-slate-300">{authTxt.firstNameLabel}</label>
+                <label htmlFor="input-personal-firstname" className="text-xs font-semibold text-slate-300">{authTxt.firstNameLabel}</label>
                 <input
                   id="input-personal-firstname"
                   type="text"
@@ -699,7 +690,7 @@ const handleAdminSignIn = async (e: React.FormEvent) => {
               </div>
 
               <div className="space-y-1">
-                <label className="text-xs font-semibold text-slate-300">{authTxt.lastNameLabel}</label>
+                <label htmlFor="input-personal-lastname" className="text-xs font-semibold text-slate-300">{authTxt.lastNameLabel}</label>
                 <input
                   id="input-personal-lastname"
                   type="text"
@@ -713,7 +704,7 @@ const handleAdminSignIn = async (e: React.FormEvent) => {
             </div>
 
             <div className="space-y-1">
-              <label className="text-xs font-semibold text-slate-300">{authTxt.emailLabel}</label>
+              <label htmlFor="input-personal-email" className="text-xs font-semibold text-slate-300">{authTxt.emailLabel}</label>
               <input
                 id="input-personal-email"
                 type="email"
@@ -728,94 +719,40 @@ const handleAdminSignIn = async (e: React.FormEvent) => {
             <div className="space-y-1">
               <div className="flex items-center justify-between">
                 <label className="text-xs font-semibold text-slate-300">{authTxt.phoneLabel}</label>
-                <span className="text-[10px] text-emerald-400 font-medium">All 240+ Countries</span>
+                <span className="text-[10px] text-emerald-700 font-medium">International number</span>
               </div>
               <div className="flex items-center gap-2">
-                <CountryCallingCodeSelector
-                  value={personalCallingCode}
-                  selectedCountryName={personalCountry}
-                  onChange={(dialCode, countryName) => {
-                    setPersonalCallingCode(dialCode);
-                    if (countryName) setPersonalCountry(countryName);
-                  }}
-                />
+                <div className={`country-selector-choice ${personalCountry ? '' : 'country-unselected'}`}>
+                  <CountryCallingCodeSelector
+                    id="personal-country-selector"
+                    value={personalCallingCode}
+                    selectedCountryName={personalCountry}
+                    onChange={(dialCode, countryName) => {
+                      setPersonalCallingCode(dialCode);
+                      if (countryName) setPersonalCountry(countryName);
+                    }}
+                  />
+                </div>
+                  {!personalCountry && <span className="sr-only">Country selection required</span>}
                 <input
                   id="input-personal-phone"
                   type="tel"
                   value={personalPhone}
                   onChange={(e) => setPersonalPhone(e.target.value)}
-                  placeholder="Phone (e.g. 024 412 3456)"
+                  placeholder="Your phone number"
+                  autoComplete="tel-national"
+                  aria-label="Phone number"
+                  required
                   className="flex-1 px-3 py-2 bg-slate-950/80 border border-slate-800 rounded-xl text-xs text-white focus:outline-none focus:border-emerald-500/70"
                 />
               </div>
-              <p className="text-[10px] text-slate-400">
-                Country: <strong className="text-emerald-400 font-semibold">{personalCountry}</strong> ({personalCallingCode})
+              <p className="text-[11px] text-slate-500" aria-live="polite">
+                {personalCountry ? <>Country: <strong className="text-emerald-700 font-semibold">{personalCountry}</strong> · {personalCallingCode}</> : 'Choose your country from the calling-code selector.'}
               </p>
 
               {/* Phone OTP Verification */}
               <div className="pt-1">
-                {verificationPanel(personalPhone, personalCallingCode, personalCountry)}
-              </div>
-            </div>
-
-            {/* Location & Electoral Geometry for Google Maps Live Services */}
-            <div className="p-3 rounded-2xl bg-slate-950/70 border border-slate-800/80 space-y-2.5">
-              <div className="flex items-center justify-between">
-                <span className="text-xs font-semibold text-emerald-300 flex items-center gap-1.5">
-                  <MapPin className="w-3.5 h-3.5 text-emerald-400" />
-                  <span>Location &amp; Live Map Coordinates</span>
-                </span>
-                <span className="text-[10px] text-slate-400">Google Map Ready</span>
-              </div>
-
-              <div className="grid grid-cols-2 gap-2">
-                <div className="space-y-1">
-                  <label className="text-[11px] font-medium text-slate-400">State / Region</label>
-                  <input
-                    id="input-personal-state"
-                    type="text"
-                    value={personalState}
-                    onChange={(e) => setPersonalState(e.target.value)}
-                    placeholder="e.g. Greater Accra"
-                    className="w-full px-2.5 py-1.5 bg-slate-900/90 border border-slate-700/80 rounded-lg text-xs text-white focus:outline-none focus:border-emerald-500"
-                  />
-                </div>
-                <div className="space-y-1">
-                  <label className="text-[11px] font-medium text-slate-400">City / Town</label>
-                  <input
-                    id="input-personal-city"
-                    type="text"
-                    value={personalCity}
-                    onChange={(e) => setPersonalCity(e.target.value)}
-                    placeholder="e.g. Accra"
-                    className="w-full px-2.5 py-1.5 bg-slate-900/90 border border-slate-700/80 rounded-lg text-xs text-white focus:outline-none focus:border-emerald-500"
-                  />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-2">
-                <div className="space-y-1">
-                  <label className="text-[11px] font-medium text-slate-400">Constituency</label>
-                  <input
-                    id="input-personal-constituency"
-                    type="text"
-                    value={personalConstituency}
-                    onChange={(e) => setPersonalConstituency(e.target.value)}
-                    placeholder="e.g. Ayawaso West Wuogon"
-                    className="w-full px-2.5 py-1.5 bg-slate-900/90 border border-slate-700/80 rounded-lg text-xs text-white focus:outline-none focus:border-emerald-500"
-                  />
-                </div>
-                <div className="space-y-1">
-                  <label className="text-[11px] font-medium text-slate-400">District / Municipality</label>
-                  <input
-                    id="input-personal-district"
-                    type="text"
-                    value={personalDistrict}
-                    onChange={(e) => setPersonalDistrict(e.target.value)}
-                    placeholder="e.g. Ayawaso West Municipal"
-                    className="w-full px-2.5 py-1.5 bg-slate-900/90 border border-slate-700/80 rounded-lg text-xs text-white focus:outline-none focus:border-emerald-500"
-                  />
-                </div>
+                {verificationPanel(personalEmail, personalPhone, personalCallingCode, personalCountry)}
               </div>
             </div>
 
@@ -845,20 +782,21 @@ const handleAdminSignIn = async (e: React.FormEvent) => {
 
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1">
-                <label className="text-xs font-semibold text-slate-300">{authTxt.createPasswordLabel}</label>
+                  <label htmlFor="input-personal-password" className="text-xs font-semibold text-slate-300">{authTxt.createPasswordLabel}</label>
                 <input
                   id="input-personal-password"
                   type="password"
                   value={personalPassword}
                   onChange={(e) => setPersonalPassword(e.target.value)}
-                  placeholder="Min 6 characters"
+                  placeholder="At least 8 characters"
+                  minLength={8}
                   required
                   className="w-full px-3 py-2 bg-slate-950/80 border border-slate-800 rounded-xl text-xs text-white focus:outline-none focus:border-emerald-500/70"
                 />
               </div>
 
               <div className="space-y-1">
-                <label className="text-xs font-semibold text-slate-300">{authTxt.confirmPasswordLabel}</label>
+                  <label htmlFor="input-personal-password-confirm" className="text-xs font-semibold text-slate-300">{authTxt.confirmPasswordLabel}</label>
                 <input
                   id="input-personal-password-confirm"
                   type="password"
@@ -953,8 +891,9 @@ const handleAdminSignIn = async (e: React.FormEvent) => {
                     type="email"
                     value={expertEmail}
                     onChange={(e) => setExpertEmail(e.target.value)}
-                    placeholder="amina.mensah@nanivio.com"
+                      placeholder="you@example.com"
                     required
+                      autoComplete="email"
                     className="w-full px-3 py-2 bg-slate-950/80 border border-slate-800 rounded-xl text-xs text-white"
                   />
                 </div>
@@ -962,67 +901,30 @@ const handleAdminSignIn = async (e: React.FormEvent) => {
                 <div className="space-y-1">
                   <label className="text-xs font-semibold text-slate-300">Country Calling Code & Phone</label>
                   <div className="flex items-center gap-2">
-                    <CountryCallingCodeSelector
-                      value={expertCallingCode}
-                      selectedCountryName={expertCountry}
-                      onChange={(dialCode, countryName) => {
-                        setExpertCallingCode(dialCode);
-                        if (countryName) setExpertCountry(countryName);
-                      }}
-                    />
+                    <div className={`country-selector-choice ${expertCountry ? '' : 'country-unselected'}`}>
+                      <CountryCallingCodeSelector
+                        id="expert-country-selector"
+                        value={expertCallingCode}
+                        selectedCountryName={expertCountry}
+                        onChange={(dialCode, countryName) => {
+                          setExpertCallingCode(dialCode);
+                          if (countryName) setExpertCountry(countryName);
+                        }}
+                      />
+                    </div>
                     <input
                       type="tel"
                       value={expertPhone}
                       onChange={(e) => setExpertPhone(e.target.value)}
-                      placeholder="Phone (e.g. 24 498 7654)"
+                      placeholder="Your phone number"
+                      required
+                      autoComplete="tel-national"
+                      aria-label="Professional phone number"
                       className="flex-1 px-3 py-2 bg-slate-950/80 border border-slate-800 rounded-xl text-xs text-white"
                     />
                   </div>
-                  {verificationPanel(expertPhone, expertCallingCode, expertCountry)}
-                </div>
-
-                {/* Location Fields */}
-                <div className="grid grid-cols-2 gap-2 p-2.5 rounded-xl bg-slate-950/60 border border-slate-800/80">
-                  <div className="space-y-1">
-                    <label className="text-[11px] font-medium text-slate-400">State / Region</label>
-                    <input
-                      type="text"
-                      value={expertState}
-                      onChange={(e) => setExpertState(e.target.value)}
-                      placeholder="e.g. Greater Accra"
-                      className="w-full px-2 py-1.5 bg-slate-900 border border-slate-700/70 rounded-lg text-xs text-white"
-                    />
-                  </div>
-                  <div className="space-y-1">
-                    <label className="text-[11px] font-medium text-slate-400">City / Town</label>
-                    <input
-                      type="text"
-                      value={expertCity}
-                      onChange={(e) => setExpertCity(e.target.value)}
-                      placeholder="e.g. Accra"
-                      className="w-full px-2 py-1.5 bg-slate-900 border border-slate-700/70 rounded-lg text-xs text-white"
-                    />
-                  </div>
-                  <div className="space-y-1">
-                    <label className="text-[11px] font-medium text-slate-400">Constituency</label>
-                    <input
-                      type="text"
-                      value={expertConstituency}
-                      onChange={(e) => setExpertConstituency(e.target.value)}
-                      placeholder="e.g. Ayawaso West Wuogon"
-                      className="w-full px-2 py-1.5 bg-slate-900 border border-slate-700/70 rounded-lg text-xs text-white"
-                    />
-                  </div>
-                  <div className="space-y-1">
-                    <label className="text-[11px] font-medium text-slate-400">District / Municipality</label>
-                    <input
-                      type="text"
-                      value={expertDistrict}
-                      onChange={(e) => setExpertDistrict(e.target.value)}
-                      placeholder="e.g. Ayawaso West Municipal"
-                      className="w-full px-2 py-1.5 bg-slate-900 border border-slate-700/70 rounded-lg text-xs text-white"
-                    />
-                  </div>
+                  {verificationPanel(expertEmail, expertPhone, expertCallingCode, expertCountry)}
+                  {!expertCountry && <p className="text-[11px] text-amber-700">Choose your country from the calling-code selector.</p>}
                 </div>
 
                 <div className="space-y-1">
@@ -1031,8 +933,9 @@ const handleAdminSignIn = async (e: React.FormEvent) => {
                     type="password"
                     value={expertPassword}
                     onChange={(e) => setExpertPassword(e.target.value)}
-                    placeholder="Password (minimum 6 characters)"
+                    placeholder="At least 8 characters"
                     required
+                    minLength={8}
                     className="w-full px-3 py-2 bg-slate-950/80 border border-slate-800 rounded-xl text-xs text-white"
                   />
                 </div>
@@ -1235,7 +1138,7 @@ const handleAdminSignIn = async (e: React.FormEvent) => {
                 </div>
                 <div className="text-[10px] text-slate-400">
                   {bizCategoryType === 'nanivio_drive'
-                    ? 'Live Car Driver & Uba Fleet Registration'
+                    ? 'Driver and vehicle registration'
                     : `Step ${bizStep} of 2 Â· Permanent Business NV ID`}
                 </div>
               </div>
@@ -1284,10 +1187,22 @@ const handleAdminSignIn = async (e: React.FormEvent) => {
                       type="text"
                       value={bizCategory}
                       onChange={(e) => setBizCategory(e.target.value)}
-                      placeholder="Agri-Business & Export Logistics"
+                      placeholder="Industry or sector"
                       className="w-full px-3 py-2 bg-slate-950/80 border border-slate-800 rounded-xl text-xs text-white"
                     />
                   </div>
+                </div>
+
+                <div className="space-y-1">
+                  <label htmlFor="input-business-description" className="text-xs font-semibold text-slate-300">Business description <span className="font-normal text-slate-500">(optional)</span></label>
+                  <textarea
+                    id="input-business-description"
+                    value={bizDesc}
+                    onChange={(e) => setBizDesc(e.target.value)}
+                    placeholder="Describe your organization and the services it offers."
+                    rows={3}
+                    className="w-full px-3 py-2 bg-slate-950/80 border border-slate-800 rounded-xl text-xs text-white"
+                  />
                 </div>
 
                 <div className="space-y-1">
@@ -1296,8 +1211,9 @@ const handleAdminSignIn = async (e: React.FormEvent) => {
                     type="email"
                     value={bizEmail}
                     onChange={(e) => setBizEmail(e.target.value)}
-                    placeholder="contact@ghanacocoadirect.com"
+                    placeholder="contact@example.com"
                     required
+                    autoComplete="email"
                     className="w-full px-3 py-2 bg-slate-950/80 border border-slate-800 rounded-xl text-xs text-white"
                   />
                 </div>
@@ -1305,67 +1221,30 @@ const handleAdminSignIn = async (e: React.FormEvent) => {
                 <div className="space-y-1">
                   <label className="text-xs font-semibold text-slate-300">Official Phone & Calling Code</label>
                   <div className="flex items-center gap-2">
-                    <CountryCallingCodeSelector
-                      value={bizCallingCode}
-                      selectedCountryName={bizCountry}
-                      onChange={(dialCode, countryName) => {
-                        setBizCallingCode(dialCode);
-                        if (countryName) setBizCountry(countryName);
-                      }}
-                    />
+                    <div className={`country-selector-choice ${bizCountry ? '' : 'country-unselected'}`}>
+                      <CountryCallingCodeSelector
+                        id="business-country-selector"
+                        value={bizCallingCode}
+                        selectedCountryName={bizCountry}
+                        onChange={(dialCode, countryName) => {
+                          setBizCallingCode(dialCode);
+                          if (countryName) setBizCountry(countryName);
+                        }}
+                      />
+                    </div>
                     <input
                       type="tel"
                       value={bizPhone}
                       onChange={(e) => setBizPhone(e.target.value)}
-                      placeholder="Phone (e.g. 30 255 5666)"
+                      placeholder="Your phone number"
+                      required
+                      autoComplete="tel-national"
+                      aria-label="Business phone number"
                       className="flex-1 px-3 py-2 bg-slate-950/80 border border-slate-800 rounded-xl text-xs text-white"
                     />
                   </div>
-                  {verificationPanel(bizPhone, bizCallingCode, bizCountry)}
-                </div>
-
-                {/* Location Fields */}
-                <div className="grid grid-cols-2 gap-2 p-2.5 rounded-xl bg-slate-950/60 border border-slate-800/80">
-                  <div className="space-y-1">
-                    <label className="text-[11px] font-medium text-slate-400">State / Region</label>
-                    <input
-                      type="text"
-                      value={bizState}
-                      onChange={(e) => setBizState(e.target.value)}
-                      placeholder="e.g. Greater Accra"
-                      className="w-full px-2 py-1.5 bg-slate-900 border border-slate-700/70 rounded-lg text-xs text-white"
-                    />
-                  </div>
-                  <div className="space-y-1">
-                    <label className="text-[11px] font-medium text-slate-400">City / Town</label>
-                    <input
-                      type="text"
-                      value={bizCity}
-                      onChange={(e) => setBizCity(e.target.value)}
-                      placeholder="e.g. Accra"
-                      className="w-full px-2 py-1.5 bg-slate-900 border border-slate-700/70 rounded-lg text-xs text-white"
-                    />
-                  </div>
-                  <div className="space-y-1">
-                    <label className="text-[11px] font-medium text-slate-400">Constituency</label>
-                    <input
-                      type="text"
-                      value={bizConstituency}
-                      onChange={(e) => setBizConstituency(e.target.value)}
-                      placeholder="e.g. Ayawaso West Wuogon"
-                      className="w-full px-2 py-1.5 bg-slate-900 border border-slate-700/70 rounded-lg text-xs text-white"
-                    />
-                  </div>
-                  <div className="space-y-1">
-                    <label className="text-[11px] font-medium text-slate-400">District / Municipality</label>
-                    <input
-                      type="text"
-                      value={bizDistrict}
-                      onChange={(e) => setBizDistrict(e.target.value)}
-                      placeholder="e.g. Ayawaso West Municipal"
-                      className="w-full px-2 py-1.5 bg-slate-900 border border-slate-700/70 rounded-lg text-xs text-white"
-                    />
-                  </div>
+                  {verificationPanel(bizEmail, bizPhone, bizCallingCode, bizCountry)}
+                  {!bizCountry && <p className="text-[11px] text-amber-700">Choose your country from the calling-code selector.</p>}
                 </div>
 
                 <button
@@ -1389,7 +1268,7 @@ const handleAdminSignIn = async (e: React.FormEvent) => {
                       type="text"
                       value={bizRepName}
                       onChange={(e) => setBizRepName(e.target.value)}
-                      placeholder="Yaw Ofori"
+                      placeholder="Full legal name"
                       required
                       className="w-full px-3 py-2 bg-slate-950/80 border border-slate-800 rounded-xl text-xs text-white"
                     />
@@ -1412,8 +1291,9 @@ const handleAdminSignIn = async (e: React.FormEvent) => {
                     type="password"
                     value={bizPassword}
                     onChange={(e) => setBizPassword(e.target.value)}
-                    placeholder="Min 6 characters"
+                    placeholder="At least 8 characters"
                     required
+                    minLength={8}
                     className="w-full px-3 py-2 bg-slate-950/80 border border-slate-800 rounded-xl text-xs text-white"
                   />
                 </div>
@@ -1424,7 +1304,7 @@ const handleAdminSignIn = async (e: React.FormEvent) => {
                     type="text"
                     value={bizPayoutAccount}
                     onChange={(e) => setBizPayoutAccount(e.target.value)}
-                    placeholder="Ecobank Ghana: 1441002981019 or Corporate MoMo"
+                    placeholder="Bank or payout account details"
                     className="w-full px-3 py-2 bg-slate-950/80 border border-slate-800 rounded-xl text-xs text-white"
                   />
                 </div>
@@ -1461,7 +1341,7 @@ const handleAdminSignIn = async (e: React.FormEvent) => {
                 <div className="p-2.5 rounded-xl bg-emerald-950/30 border border-emerald-500/30 text-xs text-emerald-200 flex items-center gap-2">
                   <Sparkles className="w-4 h-4 text-emerald-400 shrink-0" />
                   <span>
-                    Sign up as an active Nanivio Car Driver &amp; Uba Fleet partner. Earn instant daily payouts with live Google Map routing.
+                    Add your driver and vehicle details for review. No location is required during registration.
                   </span>
                 </div>
 
@@ -1484,7 +1364,7 @@ const handleAdminSignIn = async (e: React.FormEvent) => {
                       type="text"
                       value={driverLicenseNumber}
                       onChange={(e) => setDriverLicenseNumber(e.target.value)}
-                      placeholder="e.g. DL-GH-2024-9912"
+                      placeholder="License number as issued"
                       required
                       className="w-full px-3 py-2 bg-slate-950/80 border border-slate-800 rounded-xl text-xs text-white"
                     />
@@ -1492,39 +1372,43 @@ const handleAdminSignIn = async (e: React.FormEvent) => {
                 </div>
 
                 {/* Phone and Email */}
-                <div className="grid grid-cols-2 gap-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div className="space-y-1">
                     <label className="text-xs font-semibold text-slate-300">Email Address</label>
                     <input
                       type="email"
                       value={bizEmail}
                       onChange={(e) => setBizEmail(e.target.value)}
-                      placeholder="driver@nanivio.com"
+                    placeholder="you@example.com"
                       required
                       className="w-full px-3 py-2 bg-slate-950/80 border border-slate-800 rounded-xl text-xs text-white"
                     />
                   </div>
                   <div className="space-y-1">
-                    <label className="text-xs font-semibold text-slate-300">Driver Phone (MoMo Line)</label>
+                    <label className="text-xs font-semibold text-slate-300">Driver phone number</label>
                     <div className="flex items-center gap-1.5">
-                      <CountryCallingCodeSelector
-                        value={bizCallingCode}
-                        selectedCountryName={bizCountry}
-                        onChange={(dialCode, countryName) => {
-                          setBizCallingCode(dialCode);
-                          if (countryName) setBizCountry(countryName);
-                        }}
-                      />
+                      <div className={`country-selector-choice ${bizCountry ? '' : 'country-unselected'}`}>
+                        <CountryCallingCodeSelector
+                          id="driver-country-selector"
+                          value={bizCallingCode}
+                          selectedCountryName={bizCountry}
+                          onChange={(dialCode, countryName) => {
+                            setBizCallingCode(dialCode);
+                            if (countryName) setBizCountry(countryName);
+                          }}
+                        />
+                      </div>
                       <input
                         type="tel"
                         value={bizPhone}
                         onChange={(e) => setBizPhone(e.target.value)}
-                        placeholder="024 498 7654"
+                        placeholder="Your phone number"
                         required
                         className="flex-1 px-2.5 py-2 bg-slate-950/80 border border-slate-800 rounded-xl text-xs text-white"
                       />
                     </div>
-                    {verificationPanel(bizPhone, bizCallingCode, bizCountry)}
+                    {verificationPanel(bizEmail, bizPhone, bizCallingCode, bizCountry)}
+                    {!bizCountry && <p className="text-[11px] text-amber-700">Choose your country from the calling-code selector.</p>}
                   </div>
                 </div>
 
@@ -1535,14 +1419,15 @@ const handleAdminSignIn = async (e: React.FormEvent) => {
                     <span>Vehicle &amp; Fleet Specifications</span>
                   </span>
 
-                  <div className="grid grid-cols-3 gap-2">
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                     <div className="space-y-1">
                       <label className="text-[11px] font-medium text-slate-400">Make</label>
                       <input
                         type="text"
                         value={driverVehicleMake}
                         onChange={(e) => setDriverVehicleMake(e.target.value)}
-                        placeholder="Toyota"
+                        placeholder="Vehicle make"
+                        required
                         className="w-full px-2 py-1.5 bg-slate-900 border border-slate-700 rounded-lg text-xs text-white"
                       />
                     </div>
@@ -1552,7 +1437,8 @@ const handleAdminSignIn = async (e: React.FormEvent) => {
                         type="text"
                         value={driverVehicleModel}
                         onChange={(e) => setDriverVehicleModel(e.target.value)}
-                        placeholder="Corolla"
+                        placeholder="Vehicle model"
+                        required
                         className="w-full px-2 py-1.5 bg-slate-900 border border-slate-700 rounded-lg text-xs text-white"
                       />
                     </div>
@@ -1562,19 +1448,23 @@ const handleAdminSignIn = async (e: React.FormEvent) => {
                         type="number"
                         value={driverVehicleYear}
                         onChange={(e) => setDriverVehicleYear(Number(e.target.value))}
+                        min={1950}
+                        max={new Date().getFullYear()}
+                        required
                         className="w-full px-2 py-1.5 bg-slate-900 border border-slate-700 rounded-lg text-xs text-white"
                       />
                     </div>
                   </div>
 
-                  <div className="grid grid-cols-3 gap-2">
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                     <div className="space-y-1">
                       <label className="text-[11px] font-medium text-slate-400">Color</label>
                       <input
                         type="text"
                         value={driverVehicleColor}
                         onChange={(e) => setDriverVehicleColor(e.target.value)}
-                        placeholder="Silver Metallic"
+                        placeholder="Vehicle color"
+                        required
                         className="w-full px-2 py-1.5 bg-slate-900 border border-slate-700 rounded-lg text-xs text-white"
                       />
                     </div>
@@ -1584,9 +1474,21 @@ const handleAdminSignIn = async (e: React.FormEvent) => {
                         type="text"
                         value={driverPlateNumber}
                         onChange={(e) => setDriverPlateNumber(e.target.value)}
-                        placeholder="GN 4821-24"
+                        placeholder="Vehicle plate number"
                         required
                         className="w-full px-2 py-1.5 bg-slate-900 border border-slate-700 rounded-lg text-xs text-emerald-300 font-mono font-bold"
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-[11px] font-medium text-slate-400">Seats</label>
+                      <input
+                        type="number"
+                        value={driverSeats || ''}
+                        onChange={(e) => setDriverSeats(Number(e.target.value))}
+                        min={1}
+                        max={8}
+                        required
+                        className="w-full px-2 py-1.5 bg-slate-900 border border-slate-700 rounded-lg text-xs text-white"
                       />
                     </div>
                     <div className="space-y-1">
@@ -1636,69 +1538,14 @@ const handleAdminSignIn = async (e: React.FormEvent) => {
                           type="number"
                           value={driverRentalRatePerDay}
                           onChange={(e) => setDriverRentalRatePerDay(Number(e.target.value))}
+                          min={1}
+                          required
                           className="w-24 px-2 py-1 bg-slate-950 border border-slate-600 rounded text-xs text-emerald-400 font-mono font-bold"
                         />
                         <span className="text-[10px] text-slate-400">/day</span>
                       </div>
                     </div>
                   )}
-                </div>
-
-                {/* Location Across Google Map */}
-                <div className="p-3 rounded-2xl bg-slate-950/80 border border-slate-800 space-y-2.5">
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs font-semibold text-emerald-300 flex items-center gap-1.5">
-                      <MapPin className="w-3.5 h-3.5 text-emerald-400" />
-                      <span>Driver Operating Territory</span>
-                    </span>
-                    <span className="text-[10px] text-slate-400">Google Map Matching</span>
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-2">
-                    <div className="space-y-1">
-                      <label className="text-[11px] font-medium text-slate-400">State / Region</label>
-                      <input
-                        type="text"
-                        value={bizState}
-                        onChange={(e) => setBizState(e.target.value)}
-                        placeholder="Greater Accra"
-                        className="w-full px-2 py-1.5 bg-slate-900 border border-slate-700 rounded-lg text-xs text-white"
-                      />
-                    </div>
-                    <div className="space-y-1">
-                      <label className="text-[11px] font-medium text-slate-400">City / Town</label>
-                      <input
-                        type="text"
-                        value={bizCity}
-                        onChange={(e) => setBizCity(e.target.value)}
-                        placeholder="Accra"
-                        className="w-full px-2 py-1.5 bg-slate-900 border border-slate-700 rounded-lg text-xs text-white"
-                      />
-                    </div>
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-2">
-                    <div className="space-y-1">
-                      <label className="text-[11px] font-medium text-slate-400">Constituency</label>
-                      <input
-                        type="text"
-                        value={bizConstituency}
-                        onChange={(e) => setBizConstituency(e.target.value)}
-                        placeholder="Ayawaso West Wuogon"
-                        className="w-full px-2 py-1.5 bg-slate-900 border border-slate-700 rounded-lg text-xs text-white"
-                      />
-                    </div>
-                    <div className="space-y-1">
-                      <label className="text-[11px] font-medium text-slate-400">District / Municipality</label>
-                      <input
-                        type="text"
-                        value={bizDistrict}
-                        onChange={(e) => setBizDistrict(e.target.value)}
-                        placeholder="Ayawaso West Municipal"
-                        className="w-full px-2 py-1.5 bg-slate-900 border border-slate-700 rounded-lg text-xs text-white"
-                      />
-                    </div>
-                  </div>
                 </div>
 
                 {/* Spoken Languages across Nanivio App */}
@@ -1758,7 +1605,7 @@ const handleAdminSignIn = async (e: React.FormEvent) => {
                       type="text"
                       value={bizPayoutAccount}
                       onChange={(e) => setBizPayoutAccount(e.target.value)}
-                      placeholder="MTN MoMo: 0244987654"
+                      placeholder="Payout account details"
                       required
                       className="w-full px-3 py-2 bg-slate-950/80 border border-slate-800 rounded-xl text-xs text-white"
                     />
@@ -1849,7 +1696,7 @@ const handleAdminSignIn = async (e: React.FormEvent) => {
           <div className="pt-3 border-t border-slate-800/80 flex items-center justify-center text-[11px] text-slate-500">
             <div className="flex items-center gap-1.5">
               <Lock className="w-3 h-3 text-slate-600" />
-              <span>Nanivio Security Engine v2.5 â€¢ Protected & Encrypted</span>
+              <span>Never share your password or verification code.</span>
             </div>
           </div>
         )}

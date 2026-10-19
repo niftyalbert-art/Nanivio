@@ -164,7 +164,7 @@ export const NanivioLogo: React.FC<NanivioLogoProps> = ({
       {!compact && (
         <div className="flex flex-col">
           <div className="flex items-center tracking-wider font-extrabold text-white text-base leading-none">
-            <span className="bg-gradient-to-r from-white via-slate-100 to-slate-200 bg-clip-text text-transparent">
+            <span className="nanivio-wordmark bg-gradient-to-r from-white via-slate-100 to-slate-200 bg-clip-text text-transparent">
               NANIVI
             </span>
             {/* The 'O' with gradient cyan-to-violet ring */}

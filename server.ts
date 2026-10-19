@@ -53,6 +53,7 @@ import { recordTranslatedVoiceNoteUsage } from "./src/server/voiceNoteUsage.ts";
 import { createSetupPreview, rejectSetupRealtime } from "./src/server/setupPreview.ts";
 import { getServerSupabase } from "./src/server/supabaseServer.ts";
 import { otpService } from "./src/server/otpService.ts";
+import { emailSignupService } from "./src/server/emailSignup.ts";
 import { createPhoneVerificationAdminRouter } from "./src/server/phoneVerificationAdminRouter.ts";
 import {
   telecomGateway,
@@ -248,26 +249,29 @@ function authenticatedUserId(req: express.Request): string {
 // Phone OTP verification (Didit)
 app.use("/api/admin/phone-verification", createPhoneVerificationAdminRouter(requireAdmin));
 
-app.post("/api/auth/phone/otp/send", async (req, res) => {
+app.post(["/api/auth/phone/otp/send", "/api/auth/phone/otp/verify"], (_req, res) => {
+  res.setHeader('Cache-Control', 'no-store');
+  return res.status(410).json({ success: false, error: 'Signup now uses email verification. No SMS will be sent.' });
+});
+
+app.post("/api/auth/email/otp/send", async (req, res) => {
   res.setHeader('Cache-Control', 'no-store');
   try {
-    const { phoneNumber, channel } = req.body;
     const clientIp = proxyaddr(req, otpProxyTrust) || "unknown";
-    const result = await otpService.sendOtp(phoneNumber, channel || "sms", clientIp);
+    const result = await emailSignupService.send(req.body, clientIp);
     return res.json(result);
   } catch (err: any) {
-    return res.status(400).json({ success: false, error: err.message || "Failed to send verification code." });
+    return res.status(400).json({ success: false, error: err.message || "Unable to send verification email." });
   }
 });
 
-app.post("/api/auth/phone/otp/verify", async (req, res) => {
+app.post("/api/auth/email/otp/verify", async (req, res) => {
   res.setHeader('Cache-Control', 'no-store');
   try {
-    const { phoneNumber, code } = req.body;
-    const result = await otpService.verifyOtp(phoneNumber, code);
+    const result = await emailSignupService.verify(req.body, req.body.code);
     return res.json(result);
   } catch (err: any) {
-    return res.status(400).json({ success: false, error: err.message || "Failed to verify code." });
+    return res.status(400).json({ success: false, error: err.message || "Unable to verify email." });
   }
 });
 

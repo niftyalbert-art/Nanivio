@@ -2,5 +2,9 @@ import React from 'react';
 import { CommunicationSpaceView } from './CommunicationSpaceView';
 
 export const CallsView: React.FC = () => {
-  return <CommunicationSpaceView />;
+  return (
+    <div className="calls-view">
+      <CommunicationSpaceView />
+    </div>
+  );
 };

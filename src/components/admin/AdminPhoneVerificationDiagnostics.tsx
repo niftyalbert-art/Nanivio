@@ -21,7 +21,7 @@ export function PhoneVerificationDiagnosticsView({ diagnostics, loading, error, 
             Phone verification diagnostics
           </h2>
           <p className="text-xs text-slate-400 mt-1">
-            Didit is the signup SMS provider. Provider errors are visible only to administrators.
+            Signup uses email verification. Paid signup SMS is disabled; historical SMS provider errors remain administrator-only.
             Signup users receive a simple retry message.
           </p>
         </div>
