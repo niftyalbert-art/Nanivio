@@ -21,7 +21,8 @@ export function PhoneVerificationDiagnosticsView({ diagnostics, loading, error, 
             Phone verification diagnostics
           </h2>
           <p className="text-xs text-slate-400 mt-1">
-            Prelude errors are visible only to administrators. Signup users receive a simple retry message.
+            Didit is the signup SMS provider. Provider errors are visible only to administrators.
+            Signup users receive a simple retry message.
           </p>
         </div>
         <button type="button" onClick={onRefresh} disabled={loading}
@@ -47,7 +48,7 @@ export function PhoneVerificationDiagnosticsView({ diagnostics, loading, error, 
             {diagnostics.events.map(event => <li key={event.id} className="p-3 rounded-xl border border-slate-700 bg-slate-950/70 space-y-2">
               <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-slate-400">
                 <time dateTime={event.createdAt}>{new Date(event.createdAt).toLocaleString()}</time>
-                <span>Prelude · {event.operation === 'check' ? 'Check code' : 'Send code'}</span>
+                <span>{event.provider === 'didit' ? 'Didit' : 'Prelude'} · {event.operation === 'check' ? 'Check code' : 'Send code'}</span>
                 <span>{event.status ? `HTTP ${event.status}` : 'No HTTP response'}</span>
               </div>
               <p className="font-mono text-xs text-amber-300 break-all">{event.code}</p>

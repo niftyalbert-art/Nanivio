@@ -2,6 +2,8 @@ import crypto from 'crypto';
 import { normalizeSignupPhone } from '../lib/phoneNumber';
 import { describePreludeFailure, PUBLIC_PHONE_VERIFICATION_ERROR, type PreludeFailureDiagnostic } from './preludeErrors';
 import { reportPreludeFailure } from './phoneVerificationDiagnostics';
+import { DiditOtpProvider } from './diditOtpProvider';
+import type { PhoneOtpProvider } from './phoneOtpProvider';
 
 interface PendingVerification {
   id: string;
@@ -23,6 +25,9 @@ export class OtpService {
     private now: () => number = Date.now,
     private apiKey: () => string | undefined = () => process.env.PRELUDE_API_KEY,
     private reportFailure: (diagnostic: PreludeFailureDiagnostic) => void = reportPreludeFailure,
+    // Legacy constructor arguments remain for existing adapter regression tests.
+    // The live singleton explicitly selects Didit below; errors never trigger fallback.
+    private provider?: PhoneOtpProvider,
   ) {}
 
   public normalizePhoneNumber(phone: unknown, callingCode?: string, country?: string): string {
@@ -87,7 +92,8 @@ export class OtpService {
     this.cooldowns.set(phone, this.now() + 45_000);
     this.busy.add(phone);
     try {
-      const data = await this.call('verification', {
+      const sent = this.provider ? await this.provider.send(phone) : undefined;
+      const data = this.provider ? { id: sent?.id, status: 'success', channels: [sent?.channel] } : await this.call('verification', {
         target: { type: 'phone_number', value: phone },
         options: { method: 'message', preferred_channel: 'sms', code_size: 6 },
       });
@@ -103,7 +109,7 @@ export class OtpService {
       });
       const channel = Array.isArray(data.channels) && typeof data.channels[0] === 'string' ? data.channels[0] : 'sms';
       return { success: true, message: `Verification code requested (${channel}). Enter it when it arrives.`,
-        cooldownSeconds: 45, channel, provider: 'prelude' };
+        cooldownSeconds: 45, channel, provider: this.provider?.name ?? 'prelude' };
     } finally { this.busy.delete(phone); }
   }
 
@@ -114,13 +120,15 @@ export class OtpService {
     if (this.busy.has(phone)) throw new Error('A verification request is already in progress.');
     const record = this.pending.get(phone);
     if (!record) throw new Error('No active verification. Request a new code.');
-    if (record.attempts >= 5) throw new Error('Maximum verification attempts reached. Please wait for the code to expire.');
+    if (record.attempts >= (this.provider?.maxAttempts ?? 5)) throw new Error('Maximum verification attempts reached. Please wait for the code to expire.');
     record.attempts++;
     this.busy.add(phone);
     try {
-      const data = await this.call('verification/check', {
-        target: { type: 'phone_number', value: phone }, code: code.trim(),
-      });
+      const data = this.provider
+        ? { status: await this.provider.check(record.id, phone, code.trim()) ? 'success' : 'failure', id: record.id }
+        : await this.call('verification/check', {
+          target: { type: 'phone_number', value: phone }, code: code.trim(),
+        });
       if (data?.status !== 'success' || data?.id !== record.id || record.expiresAt <= this.now()) {
         throw new Error('Invalid or expired verification code.');
       }
@@ -144,4 +152,5 @@ export class OtpService {
   }
 }
 
-export const otpService = new OtpService();
+// Only Didit powers application signup. Retained legacy credentials are unused.
+export const otpService = new OtpService(undefined, undefined, undefined, undefined, new DiditOtpProvider());
