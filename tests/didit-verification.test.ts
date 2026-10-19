@@ -214,7 +214,8 @@ test('Didit operational diagnostics are sanitized and render in the protected ad
   const html = renderToStaticMarkup(React.createElement(PhoneVerificationDiagnosticsView, {
     diagnostics: snapshot, loading: false, error: '', onRefresh: () => {},
   }));
-  assert.match(html, /Didit is the signup SMS provider/);
+  assert.match(html, /Signup uses email verification/);
+  assert.match(html, /Paid signup SMS is disabled/);
   assert.match(html, /Didit ·/);
   assert.match(html, /HTTP 403/);
   for (const code of [privateValue, 'toString', '__proto__']) {

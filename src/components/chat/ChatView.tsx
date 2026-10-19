@@ -336,9 +336,9 @@ export const ChatView: React.FC = () => {
     });
 
   return (
-    <div className="max-w-7xl mx-auto flex flex-col gap-3 p-2 sm:p-4">
+    <div className="max-w-[1600px] mx-auto flex flex-col gap-4 p-2 sm:p-5 lg:p-6">
       {/* Top Protocol & View Switcher + New Direct Chat Trigger */}
-      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between bg-[#0c1424] border border-slate-800 rounded-2xl p-3 shadow-sm gap-3">
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between bg-white border border-[#e1eae3] rounded-2xl p-3.5 shadow-[0_8px_24px_rgba(29,73,47,0.04)] gap-3">
         <div className="flex items-center gap-2 flex-wrap">
           <button
             id="tab-btn-direct-chat"
@@ -467,11 +467,11 @@ export const ChatView: React.FC = () => {
       {activeTab === 'stream_channels' ? (
         <StreamChatInterface />
       ) : (
-        <div className="h-[calc(100vh-8.5rem)] flex flex-col md:flex-row gap-4">
+        <div className="nv-chat-workspace flex flex-col md:flex-row gap-4">
           {/* Left Sidebar: Conversations List */}
-          <div className={`w-full md:w-80 lg:w-96 bg-[#0c1424] border border-slate-800 rounded-2xl flex flex-col overflow-hidden shrink-0 ${showMobileChatThread ? 'hidden md:flex' : 'flex'}`}>
+          <div className={`w-full md:w-[340px] lg:w-[380px] bg-white border border-[#e1eae3] rounded-2xl flex flex-col overflow-hidden shrink-0 ${showMobileChatThread ? 'hidden md:flex' : 'flex'}`}>
             {/* Header, Actions & Search */}
-            <div className="p-3.5 border-b border-slate-800 space-y-2.5">
+            <div className="p-4 border-b border-[#e8eee9] space-y-3">
               <div className="flex items-center justify-between">
                 <h1 className="text-base font-bold text-white flex items-center gap-2">
                   <span>Chats &amp; Groups</span>
@@ -683,7 +683,7 @@ export const ChatView: React.FC = () => {
 
           {/* Right Main Chat Thread */}
           {activeConv ? (
-            <div className={`flex-1 bg-[#0c1424] border border-slate-800 rounded-2xl flex flex-col overflow-hidden ${showMobileChatThread ? 'flex' : 'hidden md:flex'}`}>
+            <div className={`flex-1 min-w-0 bg-white border border-[#e1eae3] rounded-2xl flex flex-col overflow-hidden ${showMobileChatThread ? 'flex' : 'hidden md:flex'}`}>
               {/* Active Conversation Header */}
               <div className="p-3 sm:p-4 border-b border-slate-800 bg-slate-900/50 flex items-center justify-between gap-2">
                 <div className="flex items-center gap-2 sm:gap-3 min-w-0">
@@ -747,13 +747,6 @@ export const ChatView: React.FC = () => {
                       )}
                     </div>
                     <div className="flex items-center gap-1.5 text-xs text-slate-400 truncate">
-                      {userSettings?.privacy?.onlineStatus !== false && (
-                        <span className="text-emerald-400 flex items-center gap-1 shrink-0 text-[13px] font-medium">
-                          <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-                          Online
-                        </span>
-                      )}
-                      <span>•</span>
                       <span className="text-[12.5px] text-slate-300 truncate">
                         Language: <strong className="text-white">{myLangInfo.name}</strong>
                       </span>

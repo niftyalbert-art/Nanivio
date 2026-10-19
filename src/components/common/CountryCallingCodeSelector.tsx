@@ -40,8 +40,7 @@ export const CountryCallingCodeSelector: React.FC<Props> = ({
           (c) => c.name.toLowerCase() === selectedCountryName.toLowerCase()
         )
       : undefined) ||
-    ALL_COUNTRY_CALLING_CODES.find((c) => c.dialCode === value) ||
-    ALL_COUNTRY_CALLING_CODES[0];
+    ALL_COUNTRY_CALLING_CODES.find((c) => c.dialCode === value);
 
   const filteredCodes = ALL_COUNTRY_CALLING_CODES.filter((c) => {
     const term = searchTerm.toLowerCase();
@@ -66,8 +65,10 @@ export const CountryCallingCodeSelector: React.FC<Props> = ({
         className="h-10 px-2.5 py-1.5 bg-slate-950/90 hover:bg-slate-900 border border-slate-800 hover:border-slate-700 rounded-xl text-xs text-white flex items-center justify-between gap-1.5 min-w-[105px] transition-all cursor-pointer"
         title="Select country calling code"
       >
-        <span className="text-base leading-none">{selectedItem.flag}</span>
-        <span className="font-mono font-bold text-emerald-400 text-xs">{selectedItem.dialCode}</span>
+        {selectedItem ? <>
+          <span className="text-base leading-none">{selectedItem.flag}</span>
+          <span className="font-mono font-bold text-emerald-400 text-xs">{selectedItem.dialCode}</span>
+        </> : <span className="font-semibold text-xs">Select country</span>}
         <ChevronDown className={`w-3.5 h-3.5 text-slate-400 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
       </button>
 
@@ -94,7 +95,7 @@ export const CountryCallingCodeSelector: React.FC<Props> = ({
               <div className="p-3 text-center text-xs text-slate-500">No country found</div>
             ) : (
               filteredCodes.map((c) => {
-                const isSelected = c.code === selectedItem.code && c.dialCode === value;
+                const isSelected = c.code === selectedItem?.code && c.dialCode === value;
                 return (
                   <button
                     key={`${c.code}-${c.dialCode}`}

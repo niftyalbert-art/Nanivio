@@ -1,5 +1,6 @@
 import crypto from 'crypto';
 import { otpService } from './otpService';
+import { emailSignupService, emailSignupStore, normalizeSignupEmail } from './emailSignup';
 import { sanitizeApplication as sanitizeApplicationFields, publicApplicationProfile, redactApplicationSecrets } from './applicationPrivacy';
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import type { NanivioUser, PersonalSignUpData, ExpertSignUpData, BusinessSignUpData, DriverSignUpData, AuthSession, ExpertApplication, BusinessApplication, DriverVerificationApplication } from '../types/auth';
@@ -44,8 +45,12 @@ async function createProfile(authUserId:string, input:any, role:any, application
   const db=serverDb(); const nvId=await uniqueNvId(db); const id=authUserId;
   const now=new Date().toISOString();
   const row={id,auth_user_id:authUserId,nv_id:nvId,name:input.displayName||`${input.firstName} ${input.lastName}`,role,first_name:input.firstName,last_name:input.lastName,display_name:input.displayName||`${input.firstName} ${input.lastName}`,email:input.email.trim().toLowerCase(),phone:cleanPhone(input.phoneNumber),country:input.country||'',state:input.state||null,city:input.city||null,constituency:input.constituency||null,district_or_municipality:input.districtOrMunicipality||null,calling_code:input.callingCode||'',my_language:input.preferredLanguage||'en',app_language:input.preferredLanguage||'en',avatar:input.avatar||'',status:'ACTIVE',verification_status:role==='PERSONAL'?'UNVERIFIED':'PENDING',created_at:now,updated_at:now};
-  const {data,error}=await db.from('nanivio_users').insert(row).select('*').single();
-  if(error) throw new Error(`Unable to persist Nanivio profile: ${error.message}`);
+  const {data,error}=await db.from('nanivio_users').insert({
+    ...row, email_verified_at: now, phone_verified_at: null,
+  }).select('*').single();
+  if(error) throw new Error(error.code === '23505'
+    ? 'This email or phone number is already registered. Please sign in instead.'
+    : 'Unable to persist your account. Please contact support.');
   if(application){ const a={id:application.id||crypto.randomUUID(),user_id:id,application_type:role,payload:sanitizeApplication({...application,userId:id,nvId}),status:'PENDING',created_at:now,updated_at:now}; const ar=await db.from('nanivio_user_applications').insert(a); if(ar.error) throw new Error(`Unable to persist application: ${ar.error.message}`); }
   return rowToUser(data);
 }
@@ -56,18 +61,30 @@ async function issueSession(email:string,password:string,user:NanivioUser):Promi
   return {token:data.session.access_token,user,expiresAt:Date.now()+data.session.expires_in*1000};
 }
 async function createAccount(input:any,role:any,application?:any){
-  const email=input.email.trim().toLowerCase(); if(!email||!input.password) throw new Error('Email and password are required.');
-  const phone = otpService.normalizePhoneNumber(input.phoneNumber, input.callingCode, input.country);
-  if (!otpService.validateVerifiedToken(input.verificationToken, phone)) {
-    throw new Error('Verify your phone number before creating an account. If verification expired, request a new code.');
+  const email=normalizeSignupEmail(input.email);
+  if(typeof input.password !== 'string' || input.password.length < 8) throw new Error('Use a password with at least 8 characters.');
+  if (typeof input.country !== 'string' || !input.country.trim() || typeof input.callingCode !== 'string' || !input.callingCode.trim()) {
+    throw new Error('Choose your country and international calling code.');
   }
-  input = { ...input, phoneNumber: phone };
+  const phone = otpService.normalizePhoneNumber(input.phoneNumber, input.callingCode, input.country);
+  await emailSignupStore.assertAvailable(email, phone);
+  await emailSignupService.consumeProof(input.verificationToken, email, phone);
+  // Geography is optional profile data, never invented during signup.
+  input = { ...input, email, phoneNumber: phone, city: undefined, constituency: undefined, districtOrMunicipality: undefined };
   const db=serverDb();
   const existing=await db.from('nanivio_users').select('id').eq('email',email).maybeSingle(); if(existing.error) throw new Error(existing.error.message); if(existing.data) throw new Error(`An account with email ${email} already exists. Please sign in instead.`);
   const {data,error}=await db.auth.admin.createUser({email,password:input.password,email_confirm:true,user_metadata:{first_name:input.firstName,last_name:input.lastName,role}});
   if(error||!data.user) throw new Error(error?.message||'Unable to create authentication account.');
   try { const user=await createProfile(data.user.id,input,role,application); const session=await issueSession(email,input.password,user); return {user,session}; }
-  catch(e){ await db.auth.admin.deleteUser(data.user.id).catch(()=>{}); throw e; }
+  catch(e){
+    // Profiles are not linked to auth.users by a cascading foreign key.
+    // Explicitly remove only this newly-created account's partial profile/application.
+    const cleanup = await db.from('nanivio_users').delete().eq('auth_user_id', data.user.id);
+    if (cleanup.error) console.error('[Signup] Partial profile cleanup failed', { code: cleanup.error.code });
+    const removed = await db.auth.admin.deleteUser(data.user.id);
+    if (removed.error) console.error('[Signup] Authentication cleanup failed', { status: removed.error.status });
+    throw e;
+  }
 }
 
 export async function registerPersonal(input:PersonalSignUpData){ return createAccount(input,'PERSONAL'); }

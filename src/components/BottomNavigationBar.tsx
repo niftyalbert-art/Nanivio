@@ -37,7 +37,6 @@ export const BottomNavigationBar: React.FC = () => {
 
   // Determine indicator status for chat:
   const unreadChatCount = conversations.reduce((acc, c) => acc + (c.unreadCount || 0), 0);
-  const hasChatActivity = conversations.length > 0;
 
   const handleTabClick = (tabId: string) => {
     setActiveTab(tabId as any);
@@ -66,7 +65,7 @@ export const BottomNavigationBar: React.FC = () => {
       color: 'emerald',
       activeClass: 'bg-emerald-500/25 text-emerald-300 border-emerald-500/50 shadow-md shadow-emerald-500/20',
       iconClass: 'text-emerald-400',
-      indicator: unreadChatCount > 0 ? 'red' : hasChatActivity ? 'green' : null,
+      indicator: unreadChatCount > 0 ? 'red' : null,
       indicatorCount: unreadChatCount > 0 ? unreadChatCount : null,
     },
     {
@@ -152,11 +151,11 @@ export const BottomNavigationBar: React.FC = () => {
     <nav
       id="nanivio-bottom-navigation"
       aria-label="Bottom Navigation"
-      className="fixed bottom-0 inset-x-0 z-40 bg-[#070d18]/95 backdrop-blur-xl border-t border-slate-800/90 shadow-2xl pb-1 sm:pb-2 pt-1 select-none max-w-full overflow-hidden"
+      className="fixed bottom-0 inset-x-0 z-40 bg-white/95 backdrop-blur-xl border-t border-[#e1eae3] shadow-[0_-8px_30px_rgba(29,73,47,0.06)] pb-1 sm:pb-2 pt-1 select-none max-w-full overflow-hidden"
     >
       {/* Mobile Dedicated Drag Bar & Indicator */}
       <div className="w-full flex items-center justify-center sm:hidden pb-0.5">
-        <div className="w-9 h-1 bg-slate-700/80 rounded-full" />
+        <div className="w-9 h-1 bg-[#c7d5cb] rounded-full" />
       </div>
 
       <div className="max-w-6xl mx-auto px-1 sm:px-4 relative flex items-center">
@@ -186,8 +185,8 @@ export const BottomNavigationBar: React.FC = () => {
                 onClick={() => handleTabClick(item.id)}
                 className={`shrink-0 group flex flex-col sm:flex-row items-center justify-center gap-1 sm:gap-2 px-2.5 sm:px-3.5 py-1.5 sm:py-2 rounded-2xl text-[12px] sm:text-[13px] font-bold transition-all border min-w-[52px] sm:min-w-0 min-h-[48px] snap-center active:scale-95 touch-manipulation cursor-pointer select-none ${
                   isActive
-                    ? `${item.activeClass} border scale-105 sm:scale-100`
-                    : 'border-transparent text-slate-400 hover:text-slate-200 hover:bg-slate-800/60'
+                   ? 'bg-emerald-50 text-emerald-900 border-emerald-200 shadow-sm scale-105 sm:scale-100'
+                     : 'border-transparent text-[#718278] hover:text-[#284735] hover:bg-[#f3f8f4]'
                 }`}
                 title={item.desktopLabel}
               >
@@ -207,10 +206,10 @@ export const BottomNavigationBar: React.FC = () => {
                       </span>
                     )}
                     {item.indicator === 'green' && (
-                      <span className="absolute -top-0.5 -right-0.5 inline-flex rounded-full h-2.5 w-2.5 bg-emerald-400 ring-2 ring-[#070d18] shadow-sm shadow-emerald-400/80"></span>
+                        <span className="absolute -top-0.5 -right-0.5 inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500 ring-2 ring-white"></span>
                     )}
                     {item.indicator === 'red' && (
-                      <span className="absolute -top-1.5 -right-1.5 flex items-center justify-center min-w-4 h-4 px-1 rounded-full bg-rose-500 ring-2 ring-[#070d18] shadow-sm shadow-rose-500/80 text-[10px] text-white font-bold">
+                        <span className="absolute -top-1.5 -right-1.5 flex items-center justify-center min-w-4 h-4 px-1 rounded-full bg-rose-600 ring-2 ring-white text-[10px] text-white font-bold">
                         {item.indicatorCount && item.indicatorCount > 0 ? (item.indicatorCount > 9 ? '9+' : item.indicatorCount) : '!'}
                       </span>
                     )}

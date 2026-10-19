@@ -121,6 +121,24 @@ export class AuthClient {
 
   // --- Authentication Operations ---
 
+  public async sendSignupEmail(identity: { email: string; phoneNumber: string }) {
+    const response = await fetch('/api/auth/email/otp/send', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(identity),
+    });
+    const result = await response.json();
+    if (!response.ok || !result.success) throw new Error(result.error || 'Unable to send verification email.');
+    return result as { success: true; cooldownSeconds: number; message: string };
+  }
+
+  public async verifySignupEmail(identity: { email: string; phoneNumber: string }, code: string) {
+    const response = await fetch('/api/auth/email/otp/verify', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...identity, code }),
+    });
+    const result = await response.json();
+    if (!response.ok || !result.success) throw new Error(result.error || 'Unable to verify email.');
+    return result as { success: true; verifiedEmail: string; verifiedPhone: string; verificationToken: string; expiresInSeconds: number };
+  }
+
   public async signIn(identifier: string, password: string): Promise<{ session: AuthSession; user: NanivioUser }> {
     const res = await fetch('/api/auth/signin', {
       method: 'POST',

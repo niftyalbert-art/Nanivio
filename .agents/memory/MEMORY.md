@@ -22,5 +22,6 @@
 - [Browser wait predicates](browser-wait-predicates.md) — CDP waits must return booleans, not DOM elements that cannot be serialized by value.
 - [External production hosting](external-production-host.md) — the user’s live app is on Render; this fork’s Replit deployment state does not describe it.
 - [Supabase owner-run assessments](supabase-owner-run-assessments.md) — use one result set; the SQL editor may show only the final SELECT.
-- [Authentication delivery](auth-delivery-policy.md) — Didit is selected for signup phone verification; Resend is reserved for password-reset verification.
+- [Authentication delivery](auth-delivery-policy.md) — collect unique email and phone at signup; verify email instead of sending paid signup SMS.
+- [Global product direction](global-product-direction.md) — international audience with Ghana/Africa roots; green/white refresh, no fabricated activity, Malvi follows.
 - [Didit phone API restrictions](didit-phone-restrictions.md) — phone-specific 403 meanings differ from generic API-key docs; read the full endpoint Markdown.

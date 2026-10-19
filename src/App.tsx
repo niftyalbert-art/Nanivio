@@ -29,7 +29,7 @@ const MainLayout: React.FC = () => {
 
   return (
     <MalviLiveAssistantProvider>
-    <div className="min-h-screen bg-[#070d18] text-slate-100 flex flex-col selection:bg-emerald-500/30 selection:text-emerald-200 w-full max-w-full overflow-x-hidden relative">
+    <div className="nanivio-app min-h-[100dvh] flex flex-col selection:bg-emerald-200 selection:text-emerald-900 w-full max-w-full overflow-x-hidden relative">
       <Navbar />
 
       {/* Real-time Incoming Call Banner Overlay */}
@@ -42,7 +42,7 @@ const MainLayout: React.FC = () => {
         />
       )}
 
-      <main className="flex-1 pb-24 sm:pb-28 w-full max-w-full overflow-x-hidden">
+      <main className="nanivio-main flex-1 pb-24 sm:pb-28 w-full max-w-full overflow-x-hidden">
         <ErrorBoundary
           key={activeTab}
           fallbackTitle={`Nanivio ${activeTab.charAt(0).toUpperCase() + activeTab.slice(1)} Workspace`}

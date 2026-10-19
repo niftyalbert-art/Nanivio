@@ -101,7 +101,7 @@ export const CommunicationSpaceView: React.FC = () => {
 
   // Group Conference & Family Lounge Live Room State
   const [activeRoomType, setActiveRoomType] = useState<'business' | 'family' | 'custom'>('business');
-  const [customRoomName, setCustomRoomName] = useState('Global Multilateral Syndicate');
+  const [customRoomName, setCustomRoomName] = useState('Conference room');
   const [roomParticipantIds, setRoomParticipantIds] = useState<string[]>([]);
   const [externalParticipants, setExternalParticipants] = useState<Participant[]>([]);
   const [stagingNvInput, setStagingNvInput] = useState('');
@@ -201,24 +201,29 @@ export const CommunicationSpaceView: React.FC = () => {
           <div className="flex items-center gap-4">
             <div className="w-12 h-12 rounded-2xl bg-gradient-to-tr from-cyan-600 via-teal-500 to-emerald-400 p-0.5 shadow-lg shadow-cyan-500/20 shrink-0">
               <div className="w-full h-full bg-slate-950 rounded-[14px] flex items-center justify-center">
-                <Radio className="w-6 h-6 text-cyan-400 animate-pulse" />
+                <Radio className="w-6 h-6 text-cyan-400" />
               </div>
             </div>
 
             <div>
               <div className="flex items-center gap-2 flex-wrap">
                 <span className="text-xs font-mono font-bold uppercase tracking-wider text-cyan-300">
-                  Nanivio Telecom Network
+                  Nanivio Calls
                 </span>
                 <span className="px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 text-[10px] font-mono font-bold border border-emerald-500/30 flex items-center gap-1">
-                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-                  VOICE &amp; VIDEO SIGNAL ACTIVE
+                  {isAudioEnabled && isVideoEnabled
+                    ? 'Audio & video calling available'
+                    : isAudioEnabled
+                    ? 'Audio calling available'
+                    : isVideoEnabled
+                    ? 'Video calling available'
+                    : 'Calling is currently disabled'}
                 </span>
               </div>
               <div className="flex items-baseline gap-2 mt-0.5">
                 <span className="text-xs text-slate-400 font-mono">Your Nanivio Line:</span>
                 <span className="text-lg sm:text-xl font-mono font-black text-white tracking-wider">
-                  NV {currentUser?.nvId || currentUser?.nanivioNumber || '0486000000'}
+                  NV {currentUser?.nvId || currentUser?.nanivioNumber || 'Not assigned'}
                 </span>
               </div>
             </div>
@@ -227,8 +232,8 @@ export const CommunicationSpaceView: React.FC = () => {
           <div className="flex items-center gap-2.5 flex-wrap sm:flex-nowrap w-full lg:w-auto justify-start lg:justify-end">
             <div className="bg-slate-950/70 border border-slate-800 rounded-2xl px-3.5 py-2 flex items-center gap-3 text-xs font-mono hidden sm:flex">
               <div>
-                <div className="text-[10px] text-slate-400 uppercase">Carrier Frequency</div>
-                <div className="text-cyan-300 font-bold">5G VoLTE • E2EE Edge</div>
+                <div className="text-[10px] text-slate-400 uppercase">Calling features</div>
+                <div className="text-cyan-300 font-bold">Audio · video · group calls</div>
               </div>
             </div>
 
@@ -263,13 +268,12 @@ export const CommunicationSpaceView: React.FC = () => {
           <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-slate-800/80 pb-4">
             <div className="flex items-start sm:items-center gap-3.5">
               <div className="w-12 h-12 rounded-2xl bg-emerald-500/20 border border-emerald-400/40 flex items-center justify-center text-emerald-400 shrink-0 shadow-lg shadow-emerald-500/20">
-                <Sparkles className="w-6 h-6 animate-pulse" />
+                <Sparkles className="w-6 h-6" />
               </div>
               <div>
                 <div className="flex items-center gap-2 flex-wrap">
                   <h2 className="text-base sm:text-lg font-bold text-white">Free Audio &amp; Video Calls Active</h2>
                   <span className="text-[10px] px-2.5 py-0.5 rounded-full font-mono font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 flex items-center gap-1">
-                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
                     FREE FOR ALL USERS
                   </span>
                 </div>
@@ -311,7 +315,7 @@ export const CommunicationSpaceView: React.FC = () => {
                 <span>{isAudioEnabled ? 'Free HD Voice Calls' : 'Audio Calls Turned Off'}</span>
               </div>
               <div className="text-[11px] text-slate-400 mt-1">
-                {isAudioEnabled ? 'End-to-end encrypted voice calling between all NV users' : 'Temporarily suspended by administrator'}
+                {isAudioEnabled ? 'Voice calls between Nanivio members' : 'Temporarily suspended by administrator'}
               </div>
             </div>
 
@@ -360,7 +364,7 @@ export const CommunicationSpaceView: React.FC = () => {
                       isSubscribed
                         ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30'
                         : isFreeTrialActive
-                        ? 'bg-cyan-500/20 text-cyan-300 border-cyan-500/30 animate-pulse'
+                        ? 'bg-cyan-500/20 text-cyan-300 border-cyan-500/30'
                         : 'bg-rose-500/20 text-rose-300 border-rose-500/30'
                     }`}
                   >
@@ -906,7 +910,7 @@ export const CommunicationSpaceView: React.FC = () => {
                     <div className="truncate">
                       <div className="text-xs font-bold text-white truncate">{c.name}</div>
                       <div className="text-[11px] font-mono text-emerald-400 font-bold">
-                        NV {c.nvId || c.nanivioNumber || '0486XXXXXX'}
+                        NV {c.nvId || c.nanivioNumber || 'Not assigned'}
                       </div>
                     </div>
                   </div>
@@ -964,7 +968,7 @@ export const CommunicationSpaceView: React.FC = () => {
                 Live Multilateral Conference &amp; Diaspora Lounge
               </h3>
               <p className="text-xs text-slate-400">
-                Host end-to-end encrypted rooms with live multi-party Langpretation speech translation.
+                Start a group call with invited participants and translated speech.
               </p>
             </div>
 
@@ -973,7 +977,7 @@ export const CommunicationSpaceView: React.FC = () => {
               <button
                 onClick={() => {
                   setActiveRoomType('business');
-                  setCustomRoomName('Global Multilateral Syndicate');
+                  setCustomRoomName('Business conference');
                 }}
                 className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
                   activeRoomType === 'business'
@@ -1019,13 +1023,12 @@ export const CommunicationSpaceView: React.FC = () => {
               <div className="p-4 rounded-2xl bg-slate-950/80 border border-slate-800 space-y-3">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
-                    <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse" />
                     <span className="text-xs font-bold text-white uppercase tracking-wider font-mono">
                       {customRoomName}
                     </span>
                   </div>
                   <span className="text-[11px] font-mono text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-lg border border-emerald-500/20">
-                    Live Room ID: {roomId}
+                    Room ID: {roomId}
                   </span>
                 </div>
 

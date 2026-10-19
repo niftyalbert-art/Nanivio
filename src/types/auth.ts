@@ -231,6 +231,7 @@ export interface PersonalSignUpData {
   displayName: string;
   email: string;
   phoneNumber: string;
+  /** Short-lived, single-use email proof bound to this email and phone. Not an SMS proof. */
   verificationToken?: string;
   country: string;
   state?: string; // State / Region / Province
