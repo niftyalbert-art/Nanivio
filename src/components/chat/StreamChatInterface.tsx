@@ -35,9 +35,10 @@ import {
 } from '../../lib/streamClient';
 import { realtimeClient } from '../../lib/realtimeClient';
 import { SUPPORTED_LANGUAGES } from '../../types';
+import { ChatCategoryMenu, ChatCategory } from './ChatCategoryMenu';
 
 interface StreamChatInterfaceProps {
-  onClose?: () => void;
+  onCategorySelect: (category: ChatCategory) => void;
 }
 
 const QUICK_REACTIONS = [
@@ -48,7 +49,7 @@ const QUICK_REACTIONS = [
   { type: 'globe', icon: '🌍', label: 'Global' },
 ];
 
-export const StreamChatInterface: React.FC<StreamChatInterfaceProps> = () => {
+export const StreamChatInterface: React.FC<StreamChatInterfaceProps> = ({ onCategorySelect }) => {
   const {
     currentUser,
     myLanguage,
@@ -250,7 +251,7 @@ export const StreamChatInterface: React.FC<StreamChatInterfaceProps> = () => {
   const myLangInfo = SUPPORTED_LANGUAGES.find((l) => l.code === myLanguage) || SUPPORTED_LANGUAGES[0];
 
   return (
-    <div className="flex-1 flex flex-col md:flex-row bg-[#080e1a] rounded-2xl border border-slate-800 overflow-hidden shadow-2xl h-[calc(100vh-6rem)]">
+    <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-2xl border border-slate-800 bg-[#080e1a] shadow-2xl md:flex-row">
       {/* ------------------------------------------------------------- */}
       {/* LEFT: Stream Channels Navigation */}
       {/* ------------------------------------------------------------- */}
@@ -264,19 +265,8 @@ export const StreamChatInterface: React.FC<StreamChatInterfaceProps> = () => {
               </div>
               <div>
                 <h3 className="text-sm font-bold text-white leading-none">Community Channels</h3>
-                <span className="text-[11px] text-slate-400">Live Multi-User Spaces</span>
               </div>
             </div>
-          </div>
-
-          {/* Connection Status Pill */}
-          <div className="flex items-center justify-between px-3 py-1.5 rounded-xl bg-slate-950 border border-slate-800 text-xs">
-            <div className="flex items-center gap-2">
-              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-              <span className="text-slate-300 font-mono text-[11px]">Channels Network:</span>
-              <span className="text-emerald-400 font-bold font-mono text-[11px]">Connected</span>
-            </div>
-            <span className="text-[10px] text-slate-500 font-mono">Live Sync</span>
           </div>
         </div>
 
@@ -353,10 +343,6 @@ export const StreamChatInterface: React.FC<StreamChatInterfaceProps> = () => {
                     <span className="text-[12px] font-mono text-purple-300">
                       {chan.members.length} members
                     </span>
-                    <span className="text-[12px] text-emerald-400 font-mono flex items-center gap-1">
-                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
-                      Live Stream
-                    </span>
                   </div>
                 </div>
               </button>
@@ -378,20 +364,23 @@ export const StreamChatInterface: React.FC<StreamChatInterfaceProps> = () => {
             <div>
               <div className="flex items-center gap-2">
                 <h3 className="text-sm sm:text-base font-bold text-white">{currentChannel?.name || 'Channel'}</h3>
-                <span className="px-2 py-0.5 rounded-full bg-purple-500/20 text-purple-300 border border-purple-500/30 text-[10px] font-mono">
-                  Live Channel
-                </span>
               </div>
               <p className="text-[11px] text-slate-400 flex items-center gap-1.5">
                 <span>Translates to: <strong className="text-emerald-300">{myLangInfo.name}</strong></span>
                 <span>•</span>
-                <span>{currentChannel?.members.length || 2} members in sync</span>
+                <span>{currentChannel?.members.length || 2} members</span>
               </p>
             </div>
           </div>
 
           {/* Action buttons: Agora Call triggers */}
           <div className="flex items-center gap-2">
+            <ChatCategoryMenu
+              activeCategory="stream_channels"
+              connectionStatus={streamState.status}
+              connectionLabel={streamState.status === 'CONNECTED' ? 'Channels connected' : streamState.status === 'CONNECTING' ? 'Connecting to channels' : 'Channels unavailable'}
+              onSelect={onCategorySelect}
+            />
             <button
               onClick={() => {
                 const other = currentChannel?.members.find((m) => m.userId !== currentUser.id);
@@ -440,14 +429,6 @@ export const StreamChatInterface: React.FC<StreamChatInterfaceProps> = () => {
 
         {/* Main Messages Scroll Stream */}
         <div className="flex-1 overflow-y-auto p-4 space-y-4">
-          {/* Welcome Pill */}
-          <div className="mx-auto max-w-md bg-purple-950/40 border border-purple-500/30 rounded-xl p-2.5 text-center text-xs text-purple-200 flex items-center justify-center gap-2">
-            <Sparkles className="w-4 h-4 text-purple-400 shrink-0" />
-            <span>
-              Connected to Channel. Real-time Langpretation translates cross-language dialogues seamlessly.
-            </span>
-          </div>
-
           {messages.map((msg) => {
             const isMe = msg.userId === currentUser.id;
             const showOriginal = showOriginalMap[msg.id];

@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { callMediaErrorMessage } from '../src/lib/callMediaErrors';
 import { build } from 'esbuild';
 import { createRequire } from 'node:module';
 import { readFileSync } from 'node:fs';
@@ -149,11 +150,73 @@ test('failed camera preview closes the microphone and never reports local media 
   assert.ok(events.includes('audio:close'));
 });
 
+test('overlapping preview requests share one microphone/camera acquisition', async t => {
+  const original = globalThis.fetch; t.after(() => { globalThis.fetch = original; });
+  const events = fixture(); const client = await loadClient();
+  const sdk = (globalThis as any).__rtcFixture;
+  const capture = sdk.createMicrophoneAudioTrack;
+  let release!: (value: unknown) => void;
+  sdk.createMicrophoneAudioTrack = () => new Promise(resolve => { release = resolve; });
+  const first = client.startLocalPreview('video');
+  const second = client.startLocalPreview('video');
+  release(await capture());
+  const [a, b] = await Promise.all([first, second]);
+  assert.equal(a, b);
+  assert.equal(events.filter(e => e === 'microphone').length, 1);
+  assert.equal(events.filter(e => e === 'camera').length, 1);
+  await client.leaveChannel();
+});
+
+test('answering during pending camera capture waits for cancelled preview cleanup before reopening devices', async t => {
+  const original = globalThis.fetch; t.after(() => { globalThis.fetch = original; });
+  const events = fixture(); const client = await loadClient();
+  const sdk = (globalThis as any).__rtcFixture;
+  const capture = sdk.createCameraVideoTrack;
+  let release!: (value: unknown) => void;
+  let pendingTrack: unknown;
+  sdk.createCameraVideoTrack = async () => {
+    const track = await capture();
+    if (release) return track;
+    pendingTrack = track;
+    return new Promise(resolve => { release = resolve; });
+  };
+  const preview = client.startLocalPreview('video');
+  const rejected = assert.rejects(preview, /cancelled/);
+  await new Promise(resolve => setImmediate(resolve));
+  assert.ok(release);
+  const joining = client.joinChannel('private-call', 'user', 'User', 'video');
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(events.filter(e => e === 'camera').length, 1);
+  release(pendingTrack);
+  await rejected;
+  await joining;
+  assert.equal(events.filter(e => e === 'camera').length, 2);
+  assert.ok(events.indexOf('video:close') < events.lastIndexOf('camera'));
+  await client.leaveChannel();
+});
+
+test('device errors identify local camera failure separately from permission and network errors', () => {
+  const message = callMediaErrorMessage({ code: 'NOT_READABLE', message: 'NotReadableError: Could not start video source' }, 'video');
+  assert.match(message, /camera or microphone could not start/);
+  assert.match(message, /Close other apps or browser tabs/);
+  assert.doesNotMatch(message, /credit|token|Agora account/i);
+  assert.match(callMediaErrorMessage(new Error('NotAllowedError'), 'audio'), /Access to your microphone was denied/);
+  assert.match(callMediaErrorMessage(new Error('NotFoundError'), 'video'), /No available/);
+  assert.match(callMediaErrorMessage(new Error('NETWORK_TIMEOUT'), 'video'), /Check your connection/);
+});
+
+test('call display components never acquire a second camera', () => {
+  for (const name of ['ActiveCallModal', 'LiveCallVideoStage']) {
+    const source = readFileSync(new URL(`../src/components/calls/${name}.tsx`, import.meta.url), 'utf8');
+    assert.doesNotMatch(source, /startLocalPreview|createCameraVideoTrack|getUserMedia/);
+  }
+});
+
 test('context does not fabricate support conversations or accept calls on a recipient’s behalf', () => {
   const source = readFileSync(new URL('../src/context/NanivioContext.tsx', import.meta.url), 'utf8');
   assert.doesNotMatch(source, /usr_nanivio_service|usr_partner|Nanivio Live Support & Services/);
   const force = source.slice(source.indexOf('const forceConnectCall'), source.indexOf('const acceptIncomingCall'));
   assert.doesNotMatch(force, /joinChannel|acceptCall|status: 'connected'/);
   assert.match(source, /await agoraClient\.joinChannel/);
-  assert.match(source, /mediaError: denied/);
+  assert.match(source, /mediaError: callMediaErrorMessage\(error, type\)/);
 });

@@ -202,10 +202,13 @@ export const EmojiPickerPopover: React.FC<EmojiPickerPopoverProps> = ({
   return (
     <div
       id="emoji-picker-panel"
-      className="absolute bottom-16 left-3 sm:left-4 z-40 w-[92vw] sm:w-80 max-w-sm rounded-3xl bg-[#09101f] border border-slate-700/80 shadow-2xl shadow-black/80 backdrop-blur-md overflow-hidden flex flex-col animate-in fade-in slide-in-from-bottom-2 duration-200"
+      role="dialog"
+      aria-label="Emoji picker"
+      style={{ maxHeight: 'max(10rem, calc(var(--nv-chat-visual-height, 100dvh) - 14rem))' }}
+      className="absolute bottom-16 left-2 z-40 w-[min(22rem,calc(100vw-1rem))] rounded-2xl bg-[#12161b] border border-slate-700/80 shadow-2xl shadow-black/50 overflow-hidden flex flex-col animate-in fade-in slide-in-from-bottom-2 duration-200"
     >
       {/* Header with Search and Close */}
-      <div className="p-3 bg-slate-900/80 border-b border-slate-800 flex items-center gap-2">
+      <div className="shrink-0 p-3 bg-slate-900/80 border-b border-slate-800 flex items-center gap-2">
         <div className="relative flex-1">
           <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-2.5" />
           <input
@@ -235,13 +238,14 @@ export const EmojiPickerPopover: React.FC<EmojiPickerPopoverProps> = ({
       </div>
 
       {/* Categories Bar */}
-      <div className="flex items-center gap-1 p-1.5 bg-slate-950/60 border-b border-slate-800/80 overflow-x-auto no-scrollbar text-xs">
+      <div className="shrink-0 flex items-center gap-1 p-1.5 bg-slate-950/60 border-b border-slate-800/80 overflow-x-auto no-scrollbar text-xs">
         {CATEGORY_TABS.map((tab) => {
           const Icon = tab.icon;
           const isActive = activeTab === tab.id;
           return (
             <button
               key={tab.id}
+              aria-label={`Emoji category: ${tab.label}`}
               onClick={() => {
                 setActiveTab(tab.id);
                 setSearchQuery('');
@@ -259,35 +263,13 @@ export const EmojiPickerPopover: React.FC<EmojiPickerPopoverProps> = ({
         })}
       </div>
 
-      {/* Quick Trending Bar */}
-      {!searchQuery && activeTab === 'all' && (
-        <div className="px-3 pt-2.5 pb-1">
-          <span className="text-[10px] font-mono font-bold uppercase tracking-wider text-slate-400 block mb-1.5">
-            Quick Expressions &amp; Ghana Vibes:
-          </span>
-          <div className="flex items-center justify-between gap-1 p-1.5 bg-slate-900/60 border border-slate-800 rounded-2xl">
-            {EMOJI_DATABASE.slice(0, 8).map((em, idx) => (
-              <button
-                key={idx}
-                onClick={() => {
-                  onSelectEmoji(em.char);
-                }}
-                className="w-8 h-8 flex items-center justify-center text-lg hover:scale-125 transition-transform rounded-xl hover:bg-slate-800/80 cursor-pointer"
-                title={em.name}
-              >
-                {em.char}
-              </button>
-            ))}
-          </div>
-        </div>
-      )}
-
       {/* Emoji Grid Area */}
-      <div className="p-3 max-h-56 overflow-y-auto grid grid-cols-7 sm:grid-cols-8 gap-1.5">
+      <div className="min-h-0 p-3 max-h-56 overflow-y-auto grid grid-cols-7 sm:grid-cols-8 gap-1.5">
         {filteredEmojis.map((em, idx) => (
           <button
             key={idx}
             type="button"
+            aria-label={`Insert ${em.name}`}
             onClick={() => onSelectEmoji(em.char)}
             className="w-9 h-9 flex items-center justify-center text-xl hover:scale-125 active:scale-95 transition-transform rounded-xl hover:bg-slate-800/90 text-center cursor-pointer select-none"
             title={em.name}
@@ -303,11 +285,6 @@ export const EmojiPickerPopover: React.FC<EmojiPickerPopoverProps> = ({
         )}
       </div>
 
-      {/* Bottom Footer Tip */}
-      <div className="px-3 py-1.5 bg-slate-950 border-t border-slate-800/80 text-[10px] text-slate-400 flex items-center justify-between font-mono">
-        <span>Click any emoji to insert into chat</span>
-        <span className="text-emerald-400">✨ Nanivio Modern Suite</span>
-      </div>
     </div>
   );
 };
