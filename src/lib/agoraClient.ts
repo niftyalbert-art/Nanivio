@@ -68,6 +68,7 @@ class NanivioAgoraClient {
   private mediaGeneration = 0;
   private remoteAudioMuted = false;
   private mediaReady = false;
+  private previewGeneration: number | null = null;
 
   constructor() {
     if (typeof window !== 'undefined') {
@@ -95,9 +96,12 @@ class NanivioAgoraClient {
   }
 
   public async joinChannel(channelName: string, uid: string | number, userName: string, callType: 'audio' | 'video', _remotePeerId?: string, _isInitiator = false): Promise<AgoraTelemetryStats> {
-    const hadPreview = !!this.localStream;
-    const muted = hadPreview && this.isAudioMuted;
-    const cameraOff = callType === 'audio' || (hadPreview && this.isVideoOff);
+    const hadPreview = !!this.localStream || this.previewGeneration === this.mediaGeneration;
+    if (!hadPreview) {
+      this.isAudioMuted = false;
+      this.isVideoOff = callType === 'audio';
+    }
+    if (callType === 'audio') this.isVideoOff = true;
     await this.leaveChannel();
     const generation = ++this.mediaGeneration;
     const stillCurrent = () => {
@@ -109,7 +113,6 @@ class NanivioAgoraClient {
     try {
     this.connectionState = 'CONNECTING';
     this.currentChannel = channelName; this.currentUid = uid;
-    this.isAudioMuted = muted; this.isVideoOff = cameraOff;
     this.notifyStats();
 
     const token = await this.fetchToken(channelName, uid);
@@ -188,12 +191,15 @@ class NanivioAgoraClient {
       this.notifyStats();
     });
     this.client.on('user-unpublished', (user, mediaType) => {
-      if (!this.remoteStream) return;
-      if (mediaType === 'audio') this.remoteStream.getAudioTracks().forEach(t => t.stop());
-      if (mediaType === 'video') this.remoteStream.getVideoTracks().forEach(t => t.stop());
+      if (this.client !== client || !this.remoteStream) return;
+      const tracks = mediaType === 'audio' ? this.remoteStream.getAudioTracks() : this.remoteStream.getVideoTracks();
+      tracks.forEach(track => this.remoteStream?.removeTrack(track));
+      if (!this.remoteStream.getTracks().length) this.remoteStream = null;
       this.notifyRemoteStream();
+      this.notifyStats();
     });
     this.client.on('user-left', () => {
+      if (this.client !== client) return;
       this.remoteStream = null; this.notifyRemoteStream(); this.notifyStats();
     });
     this.client.on('connection-state-change', (state) => {
@@ -229,11 +235,14 @@ class NanivioAgoraClient {
   public async startLocalPreview(callType: 'audio' | 'video' = 'video'): Promise<MediaStream | null> {
     if (this.localStream) return this.localStream;
     const generation = this.mediaGeneration;
+    this.previewGeneration = generation;
     this.isAudioMuted = false;
     this.isVideoOff = callType === 'audio';
-    const audio = await AgoraRTC.createMicrophoneAudioTrack({ encoderConfig:'speech_standard' } as any);
+    let audio: ILocalAudioTrack | null = null;
     let video: ILocalVideoTrack | null = null;
     try {
+    audio = await AgoraRTC.createMicrophoneAudioTrack({ encoderConfig:'speech_standard' } as any);
+    if (generation !== this.mediaGeneration) throw new Error('Preview was cancelled.');
     if (callType === 'video') video = await AgoraRTC.createCameraVideoTrack();
     if (generation !== this.mediaGeneration) throw new Error('Preview was cancelled.');
     await audio.setEnabled(!this.isAudioMuted);
@@ -245,8 +254,10 @@ class NanivioAgoraClient {
     this.rebuildLocalStream();
     return this.localStream;
     } catch (error) {
-      audio.stop(); audio.close(); video?.stop(); video?.close();
+      audio?.stop(); audio?.close(); video?.stop(); video?.close();
       throw error;
+    } finally {
+      if (this.previewGeneration === generation) this.previewGeneration = null;
     }
   }
 
@@ -300,7 +311,19 @@ class NanivioAgoraClient {
     } catch (e) { console.warn('[Agora] restore original audio failed:', e); }
   }
 
-  public setAudioMuted(muted: boolean) { this.isAudioMuted = muted; this.localAudio?.setEnabled(!muted); this.notifyStats(); }
+  public async setAudioMuted(muted: boolean) {
+    const generation = this.mediaGeneration;
+    const previous = this.isAudioMuted;
+    this.isAudioMuted = muted;
+    try {
+      await this.localAudio?.setEnabled(!muted);
+      if (generation === this.mediaGeneration) this.rebuildLocalStream();
+    } catch (error) {
+      if (generation !== this.mediaGeneration) return;
+      this.isAudioMuted = previous; this.notifyStats();
+      throw error;
+    }
+  }
   public setRemoteAudioMuted(muted: boolean) {
     this.remoteAudioMuted = muted;
     this.client?.remoteUsers.forEach(user => user.audioTrack?.setVolume(muted ? 0 : 100));
@@ -316,7 +339,19 @@ class NanivioAgoraClient {
     await (this.localVideo as ICameraVideoTrack).setDevice(next.deviceId);
     this.rebuildLocalStream();
   }
-  public setVideoOff(off: boolean) { this.isVideoOff = off; this.localVideo?.setEnabled(!off); this.notifyStats(); }
+  public async setVideoOff(off: boolean) {
+    const generation = this.mediaGeneration;
+    const previous = this.isVideoOff;
+    this.isVideoOff = off;
+    try {
+      await this.localVideo?.setEnabled(!off);
+      if (generation === this.mediaGeneration) this.rebuildLocalStream();
+    } catch (error) {
+      if (generation !== this.mediaGeneration) return;
+      this.isVideoOff = previous; this.notifyStats();
+      throw error;
+    }
+  }
   public getLocalStream() { return this.localStream; }
   public getRemoteStream() { return this.remoteStream; }
   public subscribeLocalStream(cb: StreamCallback) { this.localStreamListeners.add(cb); return () => this.localStreamListeners.delete(cb); }

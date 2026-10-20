@@ -1,4 +1,5 @@
 - [Agora package interoperability](agora-interop.md) — validate the Node/tsx runtime as well as the CJS production bundle.
+- [Agora media lifecycle](agora-media-lifecycle.md) — re-enabling capture can replace tracks; refresh stream bindings and keep capture out of video display components.
 - [Communication grant periods](communication-grants.md) — self-service tier/cycle switches must preserve consumption and the existing term.
 - [Authentication signature](signature-video-policy.md) — show only after successful sign-in/sign-up, with sound and without skip or sound controls.
 - [Branch safety](branch-safety.md) — this project's approved source and push target is malvi-production-upgrade, never main.

@@ -68,3 +68,16 @@ test('real call screen reports media errors and does not claim a working remote 
   assert.doesNotMatch(html, /1080p 60fps|24ms|00:42|LIVE HD/);
   assert.match(html, /Connecting|connecting|Waiting|waiting/);
 });
+
+for (const type of ['audio_1on1', 'video_1on1']) {
+  test(`${type} shows the local media stage before the remote participant publishes`, async () => {
+    const values = fixture();
+    values.activeCall.type = type;
+    values.activeCall.status = 'ringing';
+    values.agoraStats.hasLocalMedia = true;
+    const CallScreen = await component('src/components/calls/VideoCallScreen.tsx', 'VideoCallScreen');
+    const html = renderToStaticMarkup(React.createElement(CallScreen, { onEndCall: () => {} }));
+    assert.match(html, /id="video-call-pip-window"/);
+    assert.doesNotMatch(html, /Local media is not available yet/);
+  });
+}

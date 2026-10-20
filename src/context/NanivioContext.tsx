@@ -1050,6 +1050,7 @@ export const NanivioProvider: React.FC<{ children: React.ReactNode }> = ({ child
   const [incomingCall, setIncomingCall] = useState<IncomingCallEvent | null>(null);
   const [onlineUsers, setOnlineUsers] = useState<RealtimeUser[]>([]);
   const [agoraStats, setAgoraStats] = useState<AgoraTelemetryStats>(agoraClient.getStats());
+  const mediaControlPendingRef = useRef({ audio: false, video: false });
   const connectCallMedia = useCallback(async (
     callId: string, channel: string, type: 'audio' | 'video', remoteId?: string,
   ) => {
@@ -1847,6 +1848,8 @@ export const NanivioProvider: React.FC<{ children: React.ReactNode }> = ({ child
         activeRingtoneRef.current = null;
       }
       playCallEndedTone();
+      participants.forEach(p => realtimeClient.endCall(callId, channelName, currentUser.id, p.id));
+      void agoraClient.leaveChannel();
       setActiveCall(null);
     }, 60000);
   };
@@ -2063,28 +2066,38 @@ export const NanivioProvider: React.FC<{ children: React.ReactNode }> = ({ child
     });
   };
 
-  const toggleCallMute = () => {
-    setActiveCall(prev => {
-      if (!prev) return null;
-      const nextMuted = !prev.host.isMuted;
-      agoraClient.setAudioMuted(nextMuted);
-      return {
-        ...prev,
-        host: { ...prev.host, isMuted: nextMuted },
-      };
-    });
+  const toggleCallMute = async () => {
+    if (!activeCall || mediaControlPendingRef.current.audio) return;
+    const callId = activeCall.id;
+    const nextMuted = !activeCall.host.isMuted;
+    mediaControlPendingRef.current.audio = true;
+    try {
+      await agoraClient.setAudioMuted(nextMuted);
+      setActiveCall(prev => prev?.id === callId ? {
+        ...prev, host: { ...prev.host, isMuted: nextMuted },
+      } : prev);
+    } catch {
+      setActiveCall(prev => prev?.id === callId ? {
+        ...prev, mediaError: 'The microphone could not be changed. Check browser permissions and other apps using it.',
+      } : prev);
+    } finally { mediaControlPendingRef.current.audio = false; }
   };
 
-  const toggleCallVideo = () => {
-    setActiveCall(prev => {
-      if (!prev) return null;
-      const nextCameraOff = !prev.host.isCameraOff;
-      agoraClient.setVideoOff(nextCameraOff);
-      return {
-        ...prev,
-        host: { ...prev.host, isCameraOff: nextCameraOff },
-      };
-    });
+  const toggleCallVideo = async () => {
+    if (!activeCall || mediaControlPendingRef.current.video) return;
+    const callId = activeCall.id;
+    const nextCameraOff = !activeCall.host.isCameraOff;
+    mediaControlPendingRef.current.video = true;
+    try {
+      await agoraClient.setVideoOff(nextCameraOff);
+      setActiveCall(prev => prev?.id === callId ? {
+        ...prev, host: { ...prev.host, isCameraOff: nextCameraOff },
+      } : prev);
+    } catch {
+      setActiveCall(prev => prev?.id === callId ? {
+        ...prev, mediaError: 'The camera could not be changed. Check browser permissions and other apps using it.',
+      } : prev);
+    } finally { mediaControlPendingRef.current.video = false; }
   };
 
   // Call duration, billing meter, and quota ticker
