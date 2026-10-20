@@ -82,7 +82,7 @@ export const LiveCameraModal: React.FC<Props> = ({ isOpen, onClose, onSendMedia 
         <div className="mt-4 flex flex-wrap justify-center gap-3">
           {preview ? <>
             <button type="button" disabled={sending} onClick={() => { if (capture.current) URL.revokeObjectURL(capture.current.url); capture.current = null; setPreview(''); }} className="rounded-xl border border-slate-600 px-4 py-3">Retake</button>
-            <button type="button" disabled={sending} onClick={send} className="flex items-center gap-2 rounded-xl bg-teal-500 px-4 py-3 font-semibold text-slate-950"><Send size={18} />{sending ? 'Sending…' : 'Send capture'}</button>
+            <button type="button" disabled={sending} onClick={send} className="flex items-center gap-2 rounded-xl bg-[#f0b90b] px-4 py-3 font-semibold text-slate-950 hover:bg-[#ffd54a] disabled:opacity-50"><Send size={18} />{sending ? 'Sending…' : 'Send capture'}</button>
           </> : <>
             <button type="button" disabled={!ready || recording} onClick={photo} className="flex items-center gap-2 rounded-xl border border-slate-600 px-4 py-3 disabled:opacity-40"><Camera size={18} />Photo</button>
             <button type="button" disabled={!ready} onClick={record} className="flex items-center gap-2 rounded-xl border border-slate-600 px-4 py-3 disabled:opacity-40">{recording ? <Square size={18} /> : <Video size={18} />}{recording ? 'Stop recording' : 'Record video'}</button>
