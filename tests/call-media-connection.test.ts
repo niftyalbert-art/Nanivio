@@ -27,12 +27,13 @@ function fixture(fail: 'none' | 'token' | 'camera' | 'publish' | 'register' = 'n
   const track = (kind: string) => ({
     getMediaStreamTrack: () => ({ kind }),
     stop: () => events.push(`${kind}:stop`), close: () => events.push(`${kind}:close`),
-    setEnabled: async () => {}, setVolume: () => {},
+    setEnabled: async (enabled: boolean) => { events.push(`${kind}:enabled:${enabled}`); }, setVolume: () => {},
   });
   const remote = { setVolume: (volume: number) => events.push(`remote:volume:${volume}`) };
+  const handlers = new Map<string, Function>();
   const client = {
-    remoteUsers: [{ audioTrack: remote }], on: () => {},
-    join: async () => { events.push('rtc:join'); },
+    remoteUsers: [{ audioTrack: remote }], on: (event: string, handler: Function) => handlers.set(event, handler),
+    join: async () => { events.push('rtc:join'); handlers.get('connection-state-change')?.('CONNECTED'); },
     publish: async () => { events.push('rtc:publish'); if (fail === 'publish') throw new Error('Publication failed'); },
     leave: async () => { events.push('rtc:leave'); },
   };
@@ -89,6 +90,64 @@ for (const failure of ['token', 'camera', 'publish', 'register'] as const) {
     assert.equal(states.includes('CONNECTED'), false);
   });
 }
+
+for (const type of ['audio', 'video'] as const) {
+  test(`${type} ringing preview immediately publishes local readiness, not a connected call`, async t => {
+    const original = globalThis.fetch; t.after(() => { globalThis.fetch = original; });
+    const events = fixture(); const client = await loadClient();
+    const snapshots: any[] = [];
+    client.subscribeTelemetry((stats: any) => snapshots.push(stats));
+    await client.startLocalPreview(type);
+    assert.equal(snapshots.at(-1).hasLocalMedia, true);
+    assert.equal(snapshots.at(-1).connectionState, 'DISCONNECTED');
+    assert.equal(snapshots.at(-1).hasRemoteMedia, false);
+    assert.equal(events.includes('camera'), type === 'video');
+    assert.equal(events.includes('token'), false);
+    await client.leaveChannel();
+    assert.equal(snapshots.at(-1).hasLocalMedia, false);
+    assert.ok(events.includes('audio:close'));
+  });
+}
+
+test('answering preserves microphone mute and camera-off from the ringing preview', async t => {
+  const original = globalThis.fetch; t.after(() => { globalThis.fetch = original; });
+  const events = fixture(); const client = await loadClient();
+  await client.startLocalPreview('video');
+  await client.setAudioMuted(true); await client.setVideoOff(true);
+  events.length = 0;
+  const result = await client.joinChannel('private-call', 'user', 'User', 'video');
+  assert.equal(result.isAudioMuted, true);
+  assert.equal(result.isVideoOff, true);
+  assert.ok(events.indexOf('audio:enabled:false') < events.indexOf('rtc:publish'));
+  assert.ok(events.indexOf('video:enabled:false') < events.indexOf('rtc:publish'));
+  assert.equal(events.includes('audio:enabled:true'), false);
+  assert.equal(events.includes('video:enabled:true'), false);
+  await client.leaveChannel();
+});
+
+test('cancelling a pending microphone prompt closes it without opening a camera afterwards', async t => {
+  const original = globalThis.fetch; t.after(() => { globalThis.fetch = original; });
+  const events = fixture(); const client = await loadClient();
+  const sdk = (globalThis as any).__rtcFixture;
+  const capture = sdk.createMicrophoneAudioTrack;
+  let release!: (value: unknown) => void;
+  sdk.createMicrophoneAudioTrack = () => new Promise(resolve => { release = resolve; });
+  const pending = client.startLocalPreview('video');
+  await client.leaveChannel();
+  release(await capture());
+  await assert.rejects(pending, /cancelled/);
+  assert.equal(events.includes('camera'), false);
+  assert.ok(events.includes('audio:close'));
+  assert.equal(client.getLocalStream(), null);
+});
+
+test('failed camera preview closes the microphone and never reports local media ready', async t => {
+  const original = globalThis.fetch; t.after(() => { globalThis.fetch = original; });
+  const events = fixture('camera'); const client = await loadClient();
+  await assert.rejects(client.startLocalPreview('video'), /NotAllowedError/);
+  assert.equal(client.getStats().hasLocalMedia, false);
+  assert.ok(events.includes('audio:close'));
+});
 
 test('context does not fabricate support conversations or accept calls on a recipient’s behalf', () => {
   const source = readFileSync(new URL('../src/context/NanivioContext.tsx', import.meta.url), 'utf8');

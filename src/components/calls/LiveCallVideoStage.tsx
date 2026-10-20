@@ -100,21 +100,13 @@ export const LiveCallVideoStage: React.FC<LiveCallVideoStageProps> = ({
       }
     });
 
-    // Ensure local stream is active
-    if (!isLocalCameraOff) {
-      agoraClient.startLocalPreview('video').then((s) => {
-        if (s) {
-          setLocalStream(s);
-          setCameraPermission('granted');
-        }
-      }).catch(() => setCameraPermission('denied'));
-    }
-
+    // The call controller owns capture. Mounting this display must not open
+    // another microphone/camera while joinChannel is creating its tracks.
     return () => {
       unsubLocal();
       unsubRemote();
     };
-  }, [isLocalCameraOff]);
+  }, []);
 
   // Bind local stream to video element
   useEffect(() => {

@@ -386,7 +386,7 @@ export const VideoCallScreen: React.FC<VideoCallScreenProps> = ({ onEndCall }) =
                 <p className="mt-1 text-sm text-white/55">You can close this call screen.</p>
               </div>
             </div>
-          ) : remoteParticipant && agoraStats?.hasRemoteMedia ? (
+          ) : remoteParticipant && (agoraStats?.hasLocalMedia || agoraStats?.hasRemoteMedia) ? (
             <LiveCallVideoStage
               localParticipant={host}
               remoteParticipant={remoteParticipant}
