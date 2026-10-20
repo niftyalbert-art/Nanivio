@@ -67,6 +67,7 @@ class NanivioAgoraClient {
   private queuedTranslations=0;
   private mediaGeneration = 0;
   private remoteAudioMuted = false;
+  private mediaReady = false;
 
   constructor() {
     if (typeof window !== 'undefined') {
@@ -94,6 +95,9 @@ class NanivioAgoraClient {
   }
 
   public async joinChannel(channelName: string, uid: string | number, userName: string, callType: 'audio' | 'video', _remotePeerId?: string, _isInitiator = false): Promise<AgoraTelemetryStats> {
+    const hadPreview = !!this.localStream;
+    const muted = hadPreview && this.isAudioMuted;
+    const cameraOff = callType === 'audio' || (hadPreview && this.isVideoOff);
     await this.leaveChannel();
     const generation = ++this.mediaGeneration;
     const stillCurrent = () => {
@@ -104,7 +108,8 @@ class NanivioAgoraClient {
     let client: IAgoraRTCClient | null = null;
     try {
     this.connectionState = 'CONNECTING';
-    this.currentChannel = channelName; this.currentUid = uid; this.isVideoOff = callType === 'audio';
+    this.currentChannel = channelName; this.currentUid = uid;
+    this.isAudioMuted = muted; this.isVideoOff = cameraOff;
     this.notifyStats();
 
     const token = await this.fetchToken(channelName, uid);
@@ -123,10 +128,14 @@ class NanivioAgoraClient {
     stillCurrent();
     this.originalAudio = audio;
     this.localAudio = this.originalAudio;
+    await audio.setEnabled(!this.isAudioMuted);
+    stillCurrent();
     if (callType === 'video') {
       video = await AgoraRTC.createCameraVideoTrack();
       stillCurrent();
       this.localVideo = video;
+      await video.setEnabled(!this.isVideoOff);
+      stillCurrent();
     }
     await this.client.publish([this.localAudio, ...(this.localVideo ? [this.localVideo] : [])]);
     stillCurrent();
@@ -150,6 +159,7 @@ class NanivioAgoraClient {
         throw new Error(joinResult.error || 'The server did not register this call participant.');
       }
     } catch (error) { throw error; }
+    this.mediaReady = true;
     this.connectionState = 'CONNECTED';
     this.startStatsTelemetry();
     this.notifyStats();
@@ -164,9 +174,11 @@ class NanivioAgoraClient {
 
   private registerClientEvents() {
     if (!this.client) return;
-    this.client.on('user-published', async (user, mediaType) => {
-      if (!this.client) return;
-      await this.client.subscribe(user, mediaType);
+    const client = this.client;
+    client.on('user-published', async (user, mediaType) => {
+      if (this.client !== client) return;
+      await client.subscribe(user, mediaType);
+      if (this.client !== client) return;
       if (mediaType === 'audio' && user.audioTrack) {
         user.audioTrack.setVolume(this.remoteAudioMuted ? 0 : 100);
         user.audioTrack.play();
@@ -185,7 +197,8 @@ class NanivioAgoraClient {
       this.remoteStream = null; this.notifyRemoteStream(); this.notifyStats();
     });
     this.client.on('connection-state-change', (state) => {
-      this.connectionState = state === 'CONNECTED' ? 'CONNECTED' : state === 'RECONNECTING' ? 'RECONNECTING' : state === 'DISCONNECTED' ? 'DISCONNECTED' : 'CONNECTING';
+      if (this.client !== client) return;
+      this.connectionState = state === 'CONNECTED' ? (this.mediaReady ? 'CONNECTED' : 'CONNECTING') : state === 'RECONNECTING' ? 'RECONNECTING' : state === 'DISCONNECTED' ? 'DISCONNECTED' : 'CONNECTING';
       this.notifyStats();
     });
   }
@@ -210,15 +223,21 @@ class NanivioAgoraClient {
     if (this.localVideo) tracks.push(this.localVideo.getMediaStreamTrack());
     this.localStream = tracks.length ? new MediaStream(tracks) : null;
     this.notifyLocalStream();
+    this.notifyStats();
   }
 
   public async startLocalPreview(callType: 'audio' | 'video' = 'video'): Promise<MediaStream | null> {
     if (this.localStream) return this.localStream;
     const generation = this.mediaGeneration;
+    this.isAudioMuted = false;
+    this.isVideoOff = callType === 'audio';
     const audio = await AgoraRTC.createMicrophoneAudioTrack({ encoderConfig:'speech_standard' } as any);
     let video: ILocalVideoTrack | null = null;
     try {
     if (callType === 'video') video = await AgoraRTC.createCameraVideoTrack();
+    if (generation !== this.mediaGeneration) throw new Error('Preview was cancelled.');
+    await audio.setEnabled(!this.isAudioMuted);
+    if (video) await video.setEnabled(!this.isVideoOff);
     if (generation !== this.mediaGeneration) throw new Error('Preview was cancelled.');
     this.localAudio = audio;
     this.originalAudio = audio;
@@ -308,6 +327,7 @@ class NanivioAgoraClient {
 
   public async leaveChannel() {
     this.mediaGeneration++;
+    this.mediaReady = false;
     if (this.currentChannel) {
       const token = authClient.getToken();
       const headers: Record<string, string> = { 'Content-Type': 'application/json' };

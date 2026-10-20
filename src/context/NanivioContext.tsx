@@ -1125,6 +1125,7 @@ export const NanivioProvider: React.FC<{ children: React.ReactNode }> = ({ child
         activeRingtoneRef.current = null;
       }
       playCallEndedTone();
+      void agoraClient.leaveChannel();
       setActiveCall(null);
     });
 
@@ -1747,13 +1748,13 @@ export const NanivioProvider: React.FC<{ children: React.ReactNode }> = ({ child
       langpretationMinutesUsed: 0,
     };
 
-    if (type === 'video') {
-      agoraClient.startLocalPreview('video').catch(() => {
-        setActiveCall(prev => prev ? { ...prev, mediaError: 'Camera preview unavailable. Check browser permissions.' } : prev);
-      });
-    }
-
     setActiveCall(newCall);
+    agoraClient.startLocalPreview(type).catch((error) => {
+      if (/cancelled/i.test(String(error))) return;
+      setActiveCall(prev => prev?.id === callId && prev.status === 'ringing' ? {
+        ...prev, mediaError: `${type === 'video' ? 'Camera or microphone' : 'Microphone'} preview unavailable. Check browser permissions and other apps using your devices.`,
+      } : prev);
+    });
 
     // Start realistic dual-tone outgoing telephone ringing audio
     activeRingtoneRef.current = startRingtone();
@@ -1776,6 +1777,7 @@ export const NanivioProvider: React.FC<{ children: React.ReactNode }> = ({ child
       }
       playCallEndedTone();
       realtimeClient.endCall(callId, channelName, currentUser.id, contact.id);
+      void agoraClient.leaveChannel();
       setActiveCall(null);
     }, 60000);
   };
@@ -1817,13 +1819,13 @@ export const NanivioProvider: React.FC<{ children: React.ReactNode }> = ({ child
       langpretationMinutesUsed: 0,
     };
 
-    if (type === 'video') {
-      agoraClient.startLocalPreview('video').catch(() => {
-        setActiveCall(prev => prev ? { ...prev, mediaError: 'Camera preview unavailable. Check browser permissions.' } : prev);
-      });
-    }
-
     setActiveCall(newCall);
+    agoraClient.startLocalPreview(type).catch((error) => {
+      if (/cancelled/i.test(String(error))) return;
+      setActiveCall(prev => prev?.id === callId && prev.status === 'ringing' ? {
+        ...prev, mediaError: `${type === 'video' ? 'Camera or microphone' : 'Microphone'} preview unavailable. Check browser permissions and other apps using your devices.`,
+      } : prev);
+    });
     activeRingtoneRef.current = startRingtone();
 
     // Signal all group participants via WebSocket
