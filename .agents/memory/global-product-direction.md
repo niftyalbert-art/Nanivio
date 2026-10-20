@@ -23,6 +23,10 @@ familiar conversation and composing interactions while preserving Nanivio's iden
 Calls should open straight into the phone dialer, with clear audio/video choices.
 Billing and plan cards belong in More → Billing, not in Calls. Home should be a
 full modern “Global Communication Platform” screen, not a large promotional card.
+The user asked to maintain the Calls section's colour across the entire app,
+including Chat's colour and layout. Use that shared palette consistently; keep
+the full WhatsApp-style conversation/composer interactions. Malvi feature work
+comes afterwards.
 
 **Why:** The user clarified the international audience, rejected the washed-out
 white/green refresh, and approved bringing the Bybit-inspired direction to Nanivio.

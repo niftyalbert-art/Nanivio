@@ -602,7 +602,7 @@ export const ChatView: React.FC = () => {
                     <div
                       key={conv.id}
                       className={`group relative w-full p-3.5 flex items-start gap-3 text-left transition-all cursor-pointer ${
-                        isActive ? 'bg-emerald-500/10 border-l-4 border-emerald-400' : 'hover:bg-slate-900/60'
+                        isActive ? 'bg-slate-800 border-l-4 border-amber-400' : 'hover:bg-slate-900/60'
                       }`}
                       onClick={() => {
                         setActiveConversationId(conv.id);
@@ -1007,7 +1007,7 @@ export const ChatView: React.FC = () => {
                       </div>
                     )}
                     <div
-                      className={`group relative flex items-start gap-2.5 ${isMe ? 'flex-row-reverse' : 'flex-row'}`}
+                      className={`nv-chat-message-row group relative flex min-w-0 w-full items-start gap-2.5 ${isMe ? 'flex-row-reverse' : 'flex-row'}`}
                     >
                       {!isMe && (
                         <div className="w-8 h-8 rounded-full overflow-hidden border border-slate-700 bg-slate-800 shrink-0 flex items-center justify-center text-[10px] font-bold text-emerald-700">
@@ -1024,12 +1024,12 @@ export const ChatView: React.FC = () => {
                         </div>
                       )}
 
-                      <div className={`max-w-md ${isMe ? 'items-end' : 'items-start'} flex flex-col relative`}>
+                      <div className={`min-w-0 max-w-md ${isMe ? 'items-end' : 'items-start'} flex flex-col relative`}>
                         {!isMe && (
-                          <div className="flex items-center gap-1.5 mb-1 px-1">
-                            <span className="text-[13.5px] font-bold text-emerald-400">{msg.senderName}</span>
+                          <div className="nv-chat-sender flex min-w-0 max-w-full flex-wrap items-center gap-1.5 mb-1 px-1">
+                            <span className="min-w-0 break-words text-[13.5px] font-bold">{msg.senderName}</span>
                             {senderLangObj && (
-                              <span className="text-[12px] text-emerald-300/80 font-mono">({senderLangObj.name})</span>
+                              <span className="text-[12px] text-slate-400 font-mono">({senderLangObj.name})</span>
                             )}
                           </div>
                         )}
@@ -1227,14 +1227,14 @@ export const ChatView: React.FC = () => {
                         ) : (
                           /* Standard Text Message Bubble */
                           <div
-                            className={`rounded-2xl px-4 py-2.5 border shadow-md space-y-1 ${
+                            className={`min-w-0 max-w-full rounded-2xl px-4 py-2.5 border shadow-md space-y-1 ${
                               isMe
-                                ? 'chat-outgoing-bubble bg-emerald-600 text-white border-emerald-500 rounded-tr-none'
+                                ? 'chat-outgoing-bubble bg-slate-800 text-white border-amber-500 rounded-tr-none'
                                 : 'chat-incoming-bubble bg-slate-900 text-slate-100 border-slate-700 rounded-tl-none'
                             }`}
                           >
                             {/* Display translated text in receiver's language — WhatsApp size */}
-                            <p className="text-[15.5px] sm:text-[16px] leading-[22px] tracking-normal font-normal">
+                            <p className="whatsapp-msg-text whitespace-pre-wrap text-[15.5px] sm:text-[16px] leading-[22px] tracking-normal font-normal">
                               {!isMe && msg.translatedText && !showOriginal
                                 ? msg.translatedText
                                 : msg.text}
