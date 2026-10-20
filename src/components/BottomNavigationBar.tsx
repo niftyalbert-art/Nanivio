@@ -14,13 +14,11 @@ import {
   MoreHorizontal,
 } from 'lucide-react';
 import { useNanivio } from '../context/NanivioContext';
-import { MissedCallsModal } from './calls/MissedCallsModal';
 
 export const BottomNavigationBar: React.FC = () => {
   const { activeTab, setActiveTab, callLogs, conversations } = useNanivio();
   const navScrollRef = useRef<HTMLDivElement | null>(null);
   const navRef = useRef<HTMLElement | null>(null);
-  const [showMissedModal, setShowMissedModal] = useState(false);
   const [showMore, setShowMore] = useState(false);
 
   useEffect(() => {
@@ -61,9 +59,6 @@ export const BottomNavigationBar: React.FC = () => {
   const handleTabClick = (tabId: string) => {
     setActiveTab(tabId as any);
     setShowMore(false);
-    if (tabId === 'calls' && hasMissedCall) {
-      setShowMissedModal(true);
-    }
   };
 
   // Section 24: Navigation simplified around communication-first identity
@@ -292,11 +287,6 @@ export const BottomNavigationBar: React.FC = () => {
         </button>
       </div>
 
-      {/* Missed Calls Details Overlay */}
-      <MissedCallsModal
-        isOpen={showMissedModal}
-        onClose={() => setShowMissedModal(false)}
-      />
     </nav>
   );
 };

@@ -1,39 +1,38 @@
-import React, { useState } from 'react';
+import React, { useRef, useState } from 'react';
 import {
   X,
   Phone,
   Video,
   Delete,
   Users,
-  ShieldCheck,
-  Radio,
-  Sparkles,
   PhoneCall,
   MessageSquare,
   AlertCircle,
   Loader2,
 } from 'lucide-react';
 import { useNanivio } from '../../context/NanivioContext';
-import { Participant } from '../../types';
 import { lookupNanivioUser } from '../../utils/userLookup';
 
 interface PhoneDialerModalProps {
   isOpen: boolean;
   onClose: () => void;
+  presentation?: 'modal' | 'inline';
 }
 
-export const PhoneDialerModal: React.FC<PhoneDialerModalProps> = ({ isOpen, onClose }) => {
+export const PhoneDialerModal: React.FC<PhoneDialerModalProps> = ({ isOpen, onClose, presentation = 'modal' }) => {
   const {
-    currentUser,
     start1on1Call,
     startDirectChatWithUser,
     contacts,
-    globalLangpretationEnabled,
+    adminFeatures,
   } = useNanivio();
+  const isAudioEnabled = adminFeatures?.audioCallsEnabled !== false;
+  const isVideoEnabled = adminFeatures?.videoCallsEnabled !== false;
 
   const [dialedNumber, setDialedNumber] = useState('');
   const [lookupError, setLookupError] = useState<string | null>(null);
   const [isVerifying, setIsVerifying] = useState(false);
+  const lookupInProgress = useRef(false);
 
   if (!isOpen) return null;
 
@@ -54,12 +53,16 @@ export const PhoneDialerModal: React.FC<PhoneDialerModalProps> = ({ isOpen, onCl
   };
 
   const handleInitiateCall = async (targetNum: string, type: 'audio' | 'video') => {
+    if (lookupInProgress.current) return;
+    if (type === 'audio' && !isAudioEnabled) return;
+    if (type === 'video' && !isVideoEnabled) return;
     const rawNumber = targetNum.replace(/\s+/g, '');
     if (!rawNumber) {
       setLookupError('Please enter a valid Nanivio number to place a call.');
       return;
     }
 
+    lookupInProgress.current = true;
     setIsVerifying(true);
     setLookupError(null);
 
@@ -71,19 +74,22 @@ export const PhoneDialerModal: React.FC<PhoneDialerModalProps> = ({ isOpen, onCl
         return;
       }
 
-      onClose();
-      start1on1Call(realUser, type, globalLangpretationEnabled);
+      if (presentation === 'modal') onClose();
+      start1on1Call(realUser, type);
     } catch (err: any) {
       setLookupError(err.message || 'Error locating subscriber on network');
     } finally {
+      lookupInProgress.current = false;
       setIsVerifying(false);
     }
   };
 
   const handleInitiateChat = async (targetNum: string) => {
+    if (lookupInProgress.current) return;
     const rawNumber = targetNum.replace(/\s+/g, '');
     if (!rawNumber) return;
 
+    lookupInProgress.current = true;
     setIsVerifying(true);
     setLookupError(null);
 
@@ -95,80 +101,69 @@ export const PhoneDialerModal: React.FC<PhoneDialerModalProps> = ({ isOpen, onCl
         return;
       }
 
-      const targetUser = {
-        id: realUser.id,
-        name: realUser.name,
-        avatar: realUser.avatar || '',
-        initials: realUser.initials || 'NV',
-        email: `${realUser.nvId || realUser.id}@nanivio.net`,
-        nanivioNumber: realUser.nvId || rawNumber,
-        role: (realUser.role as any) || 'user',
-        balanceGHS: 0,
-        balanceUSD: 0,
-        verified: true,
-        country: realUser.country || 'Ghana',
-        preferredLanguage: realUser.myLanguage || 'en',
-      };
-
-      onClose();
-      startDirectChatWithUser(targetUser);
+      if (presentation === 'modal') onClose();
+      startDirectChatWithUser(realUser);
     } catch (err: any) {
       setLookupError(err.message || 'Error connecting to subscriber');
     } finally {
+      lookupInProgress.current = false;
       setIsVerifying(false);
     }
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-5 bg-black/80 backdrop-blur-md animate-in fade-in duration-200 overflow-y-auto">
-      <div className="bg-[#0b1424] border border-slate-700 rounded-3xl p-5 sm:p-6 max-w-4xl w-full shadow-2xl space-y-5 my-auto max-h-[92vh] overflow-y-auto">
+    <div className={presentation === 'inline' ? 'nv-dialer-inline' : 'fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-5 bg-black/80 animate-in fade-in duration-200 overflow-y-auto'}>
+      <div className={`${presentation === 'inline' ? 'nv-dialer-panel' : 'bg-[#0b1424] border border-slate-700 rounded-3xl p-5 sm:p-6 max-w-4xl w-full shadow-2xl space-y-5 my-auto max-h-[92vh] overflow-y-auto'}`}>
         {/* Header */}
-        <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+        <div className="nv-dialer-heading flex items-center justify-between border-b border-slate-800 pb-3">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-2xl bg-emerald-500/20 border border-emerald-500/40 flex items-center justify-center text-emerald-400">
+            <div className="nv-dialer-heading-icon w-10 h-10 shrink-0 rounded-2xl bg-emerald-500/20 border border-emerald-500/40 flex items-center justify-center text-emerald-400">
               <Phone className="w-5 h-5" />
             </div>
             <div>
               <div className="flex items-center gap-2">
-                <h3 className="text-base font-bold text-white">Nanivio Phone Dialer</h3>
-                <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 font-mono font-bold">
+              <h3 className="text-base font-bold text-white">{presentation === 'inline' ? 'Make a call' : 'Nanivio Phone Dialer'}</h3>
+                {presentation === 'modal' && <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 font-mono font-bold">
                   NV Lines Only
-                </span>
+                </span>}
               </div>
-              <p className="text-xs text-slate-400">
-                Direct HD WebRTC calling with live Multilateral Langpretation
-              </p>
+              {presentation === 'modal' && <p className="text-xs text-slate-400">
+                Call a registered Nanivio number.
+              </p>}
             </div>
           </div>
-          <button
+          {presentation === 'modal' && <button
             onClick={onClose}
+            aria-label="Close dialer"
             className="p-2 rounded-xl text-slate-400 hover:text-white hover:bg-slate-800 transition-colors cursor-pointer"
           >
             <X className="w-5 h-5" />
-          </button>
+          </button>}
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+        <div className="nv-dialer-body grid grid-cols-1 lg:grid-cols-12 gap-6">
           {/* Dialer Keypad Section */}
-          <div className="lg:col-span-6 bg-slate-950/80 border border-slate-800/80 rounded-2xl p-5 space-y-4">
+          <div className="lg:col-span-6 nv-dialer-keypad">
             {/* Number Display with NV prefix */}
-            <div className="bg-[#080d1a] border border-slate-700/80 rounded-2xl p-4 text-center relative">
+            <div className="nv-dialer-line bg-[#080d1a] border border-slate-700/80 rounded-2xl p-4 text-center relative">
               <div className="text-[10px] uppercase font-mono text-slate-500 tracking-wider">
                 Nanivio Line Display
               </div>
               <div className="text-2xl sm:text-3xl font-black font-mono tracking-widest text-emerald-400 flex items-center justify-center gap-2 mt-1 min-h-[40px]">
                 <span className="text-slate-500 text-lg font-bold">NV</span>
-                <span>{dialedNumber || '0486XXXXXX'}</span>
+                <input aria-label="Nanivio number to call" type="tel" inputMode="tel" autoComplete="tel" maxLength={15} value={dialedNumber} onChange={(event) => { setDialedNumber(event.target.value.replace(/[^0-9*#+]/g, '').slice(0, 15)); setLookupError(null); }} placeholder="Enter a number" className="nv-dialer-number-input" />
               </div>
-              {dialedNumber && (
+              <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center">
+                {dialedNumber && <>
                 <button
                   onClick={handleBackspace}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 p-2 rounded-xl text-slate-400 hover:text-red-400 hover:bg-slate-800/60 transition-colors cursor-pointer"
+                  aria-label="Delete last digit"
+                  className="p-2 rounded-xl text-slate-400 hover:text-red-400 hover:bg-slate-800/60 transition-colors cursor-pointer"
                   title="Backspace"
                 >
                   <Delete className="w-4 h-4" />
-                </button>
-              )}
+                </button><button onClick={handleClear} aria-label="Clear number" className="px-1.5 py-2 text-[10px] text-slate-400 hover:text-white">Clear</button></>}
+              </div>
             </div>
 
             {/* Error or Verification Banner */}
@@ -186,7 +181,7 @@ export const PhoneDialerModal: React.FC<PhoneDialerModalProps> = ({ isOpen, onCl
             )}
 
             {/* Keypad Grid */}
-            <div className="grid grid-cols-3 gap-2.5 max-w-xs mx-auto">
+            <div className="nv-dialer-pad-grid grid grid-cols-3 gap-2.5 max-w-xs mx-auto">
               {[
                 { digit: '1', sub: '' },
                 { digit: '2', sub: 'ABC' },
@@ -204,6 +199,8 @@ export const PhoneDialerModal: React.FC<PhoneDialerModalProps> = ({ isOpen, onCl
                 <button
                   key={k.digit}
                   onClick={() => handleKeypadPress(k.digit)}
+                  aria-label={`Enter ${k.digit}`}
+                  disabled={isVerifying}
                   className="h-14 rounded-2xl bg-slate-900/90 border border-slate-800 hover:border-emerald-500/50 hover:bg-slate-850 text-white font-mono flex flex-col items-center justify-center transition-all active:scale-95 shadow-sm cursor-pointer"
                 >
                   <span className="text-lg font-bold leading-none">{k.digit}</span>
@@ -213,12 +210,13 @@ export const PhoneDialerModal: React.FC<PhoneDialerModalProps> = ({ isOpen, onCl
             </div>
 
             {/* Action Buttons: Audio & Video Call */}
-            <div className="grid grid-cols-2 gap-3 max-w-xs mx-auto pt-1">
+            <div className="nv-dialer-actions grid grid-cols-2 gap-3 max-w-xs mx-auto pt-1">
               <button
                 onClick={() => handleInitiateCall(dialedNumber, 'audio')}
-                disabled={!dialedNumber}
+                disabled={!dialedNumber || !isAudioEnabled || isVerifying}
+                aria-label="Start audio call"
                 className={`py-3 rounded-2xl font-extrabold text-xs shadow-lg transition-all flex items-center justify-center gap-2 cursor-pointer ${
-                  dialedNumber
+                  dialedNumber && isAudioEnabled && !isVerifying
                     ? 'bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-slate-950 shadow-emerald-500/25'
                     : 'bg-slate-800 text-slate-500 cursor-not-allowed border border-slate-700'
                 }`}
@@ -229,9 +227,10 @@ export const PhoneDialerModal: React.FC<PhoneDialerModalProps> = ({ isOpen, onCl
 
               <button
                 onClick={() => handleInitiateCall(dialedNumber, 'video')}
-                disabled={!dialedNumber}
+                disabled={!dialedNumber || !isVideoEnabled || isVerifying}
+                aria-label="Start video call"
                 className={`py-3 rounded-2xl font-extrabold text-xs shadow-lg transition-all flex items-center justify-center gap-2 cursor-pointer ${
-                  dialedNumber
+                  dialedNumber && isVideoEnabled && !isVerifying
                     ? 'bg-gradient-to-r from-cyan-500 to-blue-500 hover:from-cyan-400 hover:to-blue-400 text-slate-950 shadow-cyan-500/25'
                     : 'bg-slate-800 text-slate-500 cursor-not-allowed border border-slate-700'
                 }`}
@@ -243,7 +242,7 @@ export const PhoneDialerModal: React.FC<PhoneDialerModalProps> = ({ isOpen, onCl
           </div>
 
           {/* Directory & Speed Dial Section */}
-          <div className="lg:col-span-6 space-y-3">
+          <div className="lg:col-span-6 nv-dialer-contacts">
             <div className="flex items-center justify-between">
               <span className="text-xs font-bold text-white flex items-center gap-1.5">
                 <Users className="w-3.5 h-3.5 text-emerald-400" />
@@ -309,6 +308,7 @@ export const PhoneDialerModal: React.FC<PhoneDialerModalProps> = ({ isOpen, onCl
                     <div className="flex items-center gap-1 shrink-0">
                       <button
                         onClick={() => handleInitiateCall(item.nvId || item.phone || '', 'audio')}
+                        disabled={!isAudioEnabled || isVerifying}
                         className="w-7 h-7 rounded-full bg-slate-800 hover:bg-emerald-500 text-slate-300 hover:text-slate-950 flex items-center justify-center transition-all cursor-pointer"
                         title={`Audio call ${item.name}`}
                       >
@@ -316,6 +316,7 @@ export const PhoneDialerModal: React.FC<PhoneDialerModalProps> = ({ isOpen, onCl
                       </button>
                       <button
                         onClick={() => handleInitiateCall(item.nvId || item.phone || '', 'video')}
+                        disabled={!isVideoEnabled || isVerifying}
                         className="w-7 h-7 rounded-full bg-slate-800 hover:bg-cyan-500 text-slate-300 hover:text-slate-950 flex items-center justify-center transition-all cursor-pointer"
                         title={`Video call ${item.name}`}
                       >
@@ -323,6 +324,7 @@ export const PhoneDialerModal: React.FC<PhoneDialerModalProps> = ({ isOpen, onCl
                       </button>
                       <button
                         onClick={() => handleInitiateChat(item.nvId || item.phone || '')}
+                        disabled={isVerifying}
                         className="w-7 h-7 rounded-full bg-slate-800 hover:bg-indigo-500 text-slate-300 hover:text-white flex items-center justify-center transition-all cursor-pointer"
                         title={`Chat with ${item.name}`}
                       >

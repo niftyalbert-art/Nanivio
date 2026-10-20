@@ -20,6 +20,9 @@ emoji entry. Both ringing and connected audio/video views should minimize writte
 clutter and keep secondary controls together.
 The user further asked for the chat box features “exactly as WhatsApp”; use its
 familiar conversation and composing interactions while preserving Nanivio's identity.
+Calls should open straight into the phone dialer, with clear audio/video choices.
+Billing and plan cards belong in More → Billing, not in Calls. Home should be a
+full modern “Global Communication Platform” screen, not a large promotional card.
 
 **Why:** The user clarified the international audience, rejected the washed-out
 white/green refresh, and approved bringing the Bybit-inspired direction to Nanivio.
