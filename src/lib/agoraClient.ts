@@ -69,6 +69,8 @@ class NanivioAgoraClient {
   private remoteAudioMuted = false;
   private mediaReady = false;
   private previewGeneration: number | null = null;
+  private pendingPreview: { generation: number; promise: Promise<MediaStream | null> } | null = null;
+  private cameraSwitchPending = false;
 
   constructor() {
     if (typeof window !== 'undefined') {
@@ -96,6 +98,7 @@ class NanivioAgoraClient {
   }
 
   public async joinChannel(channelName: string, uid: string | number, userName: string, callType: 'audio' | 'video', _remotePeerId?: string, _isInitiator = false): Promise<AgoraTelemetryStats> {
+    const pendingPreview = this.pendingPreview?.promise;
     const hadPreview = !!this.localStream || this.previewGeneration === this.mediaGeneration;
     if (!hadPreview) {
       this.isAudioMuted = false;
@@ -111,6 +114,10 @@ class NanivioAgoraClient {
     let video: ILocalVideoTrack | null = null;
     let client: IAgoraRTCClient | null = null;
     try {
+    // An unresolved getUserMedia request cannot be cancelled by stopping tracks.
+    // Let its cancellation cleanup finish before reacquiring the same devices.
+    if (pendingPreview) await pendingPreview.catch(() => null);
+    stillCurrent();
     this.connectionState = 'CONNECTING';
     this.currentChannel = channelName; this.currentUid = uid;
     this.notifyStats();
@@ -233,8 +240,28 @@ class NanivioAgoraClient {
   }
 
   public async startLocalPreview(callType: 'audio' | 'video' = 'video'): Promise<MediaStream | null> {
-    if (this.localStream) return this.localStream;
     const generation = this.mediaGeneration;
+    const pending = this.pendingPreview;
+    if (pending) {
+      if (pending.generation === generation) return pending.promise;
+      await pending.promise.catch(() => null);
+      if (generation !== this.mediaGeneration) throw new Error('Preview was cancelled.');
+      return this.startLocalPreview(callType);
+    }
+    if (this.localStream) return this.localStream;
+    const capture = {
+      generation,
+      promise: this.captureLocalPreview(callType, generation),
+    };
+    this.pendingPreview = capture;
+    try {
+      return await capture.promise;
+    } finally {
+      if (this.pendingPreview === capture) this.pendingPreview = null;
+    }
+  }
+
+  private async captureLocalPreview(callType: 'audio' | 'video', generation: number): Promise<MediaStream | null> {
     this.previewGeneration = generation;
     this.isAudioMuted = false;
     this.isVideoOff = callType === 'audio';
@@ -330,14 +357,23 @@ class NanivioAgoraClient {
   }
   public async switchCamera(facing: 'user' | 'environment') {
     if (!this.localVideo) throw new Error('The camera is not active.');
+    if (this.cameraSwitchPending) return;
+    this.cameraSwitchPending = true;
+    const video = this.localVideo;
+    const generation = this.mediaGeneration;
+    try {
     const cameras = await AgoraRTC.getCameras();
-    const currentId = this.localVideo.getMediaStreamTrack().getSettings().deviceId;
+    if (generation !== this.mediaGeneration || this.localVideo !== video) return;
+    const currentId = video.getMediaStreamTrack().getSettings().deviceId;
     const preferred = facing === 'environment' ? /back|rear|environment/i : /front|user|facetime/i;
     const next = cameras.find(camera => camera.deviceId !== currentId && preferred.test(camera.label))
       || cameras.find(camera => camera.deviceId !== currentId);
     if (!next) throw new Error('No second camera is available on this device.');
-    await (this.localVideo as ICameraVideoTrack).setDevice(next.deviceId);
-    this.rebuildLocalStream();
+    await (video as ICameraVideoTrack).setDevice(next.deviceId);
+    if (generation === this.mediaGeneration && this.localVideo === video) this.rebuildLocalStream();
+    } finally {
+      this.cameraSwitchPending = false;
+    }
   }
   public async setVideoOff(off: boolean) {
     const generation = this.mediaGeneration;

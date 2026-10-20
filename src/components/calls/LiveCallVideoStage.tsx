@@ -20,6 +20,7 @@ import {
 } from 'lucide-react';
 import type { Participant } from '../../types';
 import { agoraClient } from '../../lib/agoraClient';
+import { callMediaErrorMessage } from '../../lib/callMediaErrors';
 
 interface LiveCallVideoStageProps {
   audioOnly?: boolean;
@@ -61,6 +62,8 @@ export const LiveCallVideoStage: React.FC<LiveCallVideoStageProps> = ({
   const [remoteStream, setRemoteStream] = useState<MediaStream | null>(() => agoraClient.getRemoteStream());
   const [hasRemoteVideoTrack, setHasRemoteVideoTrack] = useState(false);
   const [cameraActionError, setCameraActionError] = useState('');
+  const [isSwitchingCamera, setIsSwitchingCamera] = useState(false);
+  const cameraSwitchPendingRef = useRef(false);
 
   // Remote Canvas Fallback (Living 60fps audio-reactive matrix if remote video not streaming)
   const remoteCanvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -194,12 +197,19 @@ export const LiveCallVideoStage: React.FC<LiveCallVideoStageProps> = ({
   // Flip Camera
   const handleFlipCamera = async (e: React.MouseEvent) => {
     e.stopPropagation();
+    if (cameraSwitchPendingRef.current) return;
+    cameraSwitchPendingRef.current = true;
+    setIsSwitchingCamera(true);
     const nextMode = facingMode === 'user' ? 'environment' : 'user';
     try {
       await agoraClient.switchCamera(nextMode);
       setFacingMode(nextMode); setIsMirrored(nextMode === 'user'); setCameraActionError('');
     } catch (error) {
-      setCameraActionError(error instanceof Error ? error.message : 'Unable to switch cameras.');
+      setCameraActionError(/no second camera|not active/i.test(String(error))
+        ? (error as Error).message : callMediaErrorMessage(error, 'video'));
+    } finally {
+      cameraSwitchPendingRef.current = false;
+      setIsSwitchingCamera(false);
     }
   };
 
@@ -524,6 +534,9 @@ export const LiveCallVideoStage: React.FC<LiveCallVideoStageProps> = ({
 
           {!isPiPSwapped && !isLocalCameraOff && (
             <button
+              type="button"
+              disabled={isSwitchingCamera}
+              onPointerDown={(event) => event.stopPropagation()}
               onClick={handleFlipCamera}
               className="w-8 h-8 rounded-full bg-black/80 border border-white/30 text-white flex items-center justify-center hover:bg-cyan-500 hover:text-slate-950 transition-colors shadow-lg cursor-pointer active:scale-90"
               title="Flip camera"

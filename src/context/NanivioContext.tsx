@@ -46,6 +46,7 @@ import {
 } from '../data/mockData';
 import { lookupNanivioUser, normalizeNanivioNumber } from '../utils/userLookup';
 import { agoraClient, AgoraTelemetryStats } from '../lib/agoraClient';
+import { callMediaErrorMessage } from '../lib/callMediaErrors';
 import { streamClient, StreamClientState } from '../lib/streamClient';
 import { linkedPrivateConversation, privateConversationChannel, publishPrivateMessage, restoredPrivateMessage } from '../lib/privateChat';
 import { durableChatMedia } from '../lib/chatAttachments';
@@ -1063,11 +1064,8 @@ export const NanivioProvider: React.FC<{ children: React.ReactNode }> = ({ child
       playCallConnectedTone();
     } catch (error) {
       if (currentAccountIdRef.current !== currentUser.id) return;
-      const denied = /permission|denied|notallowed/i.test(String(error));
       setActiveCall(prev => prev?.id === callId ? { ...prev, status: 'ended',
-        mediaError: denied
-          ? 'Microphone or camera access was denied. Allow access in your browser and call again.'
-          : 'The call media could not connect. Check your connection and call again.' } : prev);
+        mediaError: callMediaErrorMessage(error, type) } : prev);
       realtimeClient.endCall(callId, channel, currentUser.id, remoteId);
       throw new Error('Call media connection failed.');
     }
@@ -1753,7 +1751,7 @@ export const NanivioProvider: React.FC<{ children: React.ReactNode }> = ({ child
     agoraClient.startLocalPreview(type).catch((error) => {
       if (/cancelled/i.test(String(error))) return;
       setActiveCall(prev => prev?.id === callId && prev.status === 'ringing' ? {
-        ...prev, mediaError: `${type === 'video' ? 'Camera or microphone' : 'Microphone'} preview unavailable. Check browser permissions and other apps using your devices.`,
+        ...prev, mediaError: callMediaErrorMessage(error, type),
       } : prev);
     });
 
@@ -1824,7 +1822,7 @@ export const NanivioProvider: React.FC<{ children: React.ReactNode }> = ({ child
     agoraClient.startLocalPreview(type).catch((error) => {
       if (/cancelled/i.test(String(error))) return;
       setActiveCall(prev => prev?.id === callId && prev.status === 'ringing' ? {
-        ...prev, mediaError: `${type === 'video' ? 'Camera or microphone' : 'Microphone'} preview unavailable. Check browser permissions and other apps using your devices.`,
+        ...prev, mediaError: callMediaErrorMessage(error, type),
       } : prev);
     });
     activeRingtoneRef.current = startRingtone();

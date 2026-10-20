@@ -22,3 +22,16 @@ startup. Gating the display on remote media also hid a working local preview.
 
 **How to apply:** Let display components subscribe to streams and keep permission,
 cancellation, capture cleanup, and preview-to-call handoff in the media lifecycle.
+
+Stopping known tracks does not cancel an unresolved browser capture request.
+Coalesce concurrent previews and finish cancelled capture cleanup before opening
+devices for the answered call.
+
+**Why:** The user reported `NOT_READABLE` / “Could not start video source” around
+the local picture-in-picture controls. Inspection found overlay-owned preview
+capture and a pending preview-to-join overlap. This error identifies local device
+startup failure; it does not establish an Agora credential or credit failure.
+
+**How to apply:** Test answering while camera acquisition is pending, not only
+after a completed preview. Distinguish device-busy errors from permission,
+token, and network failures; do not promise a provider switch will fix capture.
