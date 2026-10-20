@@ -18,6 +18,8 @@ card must be removed, with those destinations available under one click. The
 conversation and multiline composer must have full usable space, including visible
 emoji entry. Both ringing and connected audio/video views should minimize written
 clutter and keep secondary controls together.
+The user further asked for the chat box features “exactly as WhatsApp”; use its
+familiar conversation and composing interactions while preserving Nanivio's identity.
 
 **Why:** The user clarified the international audience, rejected the washed-out
 white/green refresh, and approved bringing the Bybit-inspired direction to Nanivio.
