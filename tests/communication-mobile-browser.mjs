@@ -2,7 +2,7 @@
 import assert from 'node:assert/strict';
 import { build } from 'esbuild';
 import { spawn } from 'node:child_process';
-import { mkdtemp, rm } from 'node:fs/promises';
+import { mkdtemp, rm, mkdir, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import WebSocket from 'ws';
@@ -24,7 +24,9 @@ const built = await build({
         currentUser:me,myLanguage:'en',activeTab:'chat',activeConversationId:'fixture-conversation',
         conversations:[{id:'fixture-conversation',title:peer.name,participants:[me,peer],unreadCount:0}],
         messages:{'fixture-conversation':[{id:'fixture-message',senderId:peer.id,senderName:peer.name,
-          senderLang:'en',text:'Isolated layout test: '+ 'LongUnbrokenMessage'.repeat(16),timestamp:1,status:'sent'}]},
+          senderLang:'en',text:'Isolated layout test: '+ 'LongUnbrokenMessage'.repeat(16),timestamp:1,status:'sent'},
+          {id:'fixture-reply',senderId:me.id,senderName:me.name,senderLang:'en',
+            text:'Isolated outgoing message fixture.',timestamp:2,status:'sent'}]},
         contacts:[],callLogs:[],replyingToMessage:null,currentPlan:{tier:'free',groupCallLimit:4},
         userSettings:{privacy:{blockedUsers:[],restrictedUsers:[]}},
         globalLangpretationEnabled:false,streamState:{status:'DISCONNECTED'},
@@ -158,7 +160,27 @@ try {
     assert.ok(chat.input.left >= 0 && chat.send.right <= width, `Composer clipped at ${width}`);
     assert.ok(chat.send.bottom <= chat.nav.top + 1, `Composer behind navigation at ${width}`);
     assert.ok(chat.pageWidth <= width + 1, `Page overflows horizontally at ${width}`);
+    assert.ok(await evaluate(`(()=>{const thread=document.querySelector('.chat-thread-surface');
+      const bubbles=[...document.querySelectorAll('.chat-incoming-bubble,.chat-outgoing-bubble')];
+      return thread.scrollWidth<=thread.clientWidth+1 && bubbles.every(b=>b.scrollWidth<=b.clientWidth+1);})()`),
+      `Long messages must wrap inside the conversation rather than scroll sideways at ${width}`);
     assert.ok(chat.categoryClosed && chat.categoryButton, 'Category destinations should be collapsed under one button');
+    const palette = await evaluate(`(()=>{
+      const background=selector=>getComputedStyle(document.querySelector(selector)).backgroundColor;
+      return {thread:background('.chat-thread-surface'),composer:background('.chat-composer'),
+        incoming:background('.chat-incoming-bubble'),outgoing:background('.chat-outgoing-bubble'),
+        action:background('#btn-chat-send-msg')};
+    })()`);
+    assert.equal(palette.thread, 'rgb(18, 20, 23)', 'Chat thread must match the Calls stage');
+    assert.equal(palette.composer, 'rgb(25, 28, 32)', 'Chat composer must match Calls panels');
+    assert.equal(palette.incoming, 'rgb(32, 35, 41)', 'Incoming bubble must use shared charcoal');
+    assert.equal(palette.outgoing, 'rgb(36, 35, 31)', 'Outgoing bubble must use the warm-gold/charcoal treatment');
+    assert.equal(palette.action, 'rgb(226, 187, 98)', 'Chat action must match Calls gold');
+    if (process.env.NANIVIO_SCREENSHOT_DIR && width === 390 && height === 844) {
+      await mkdir(process.env.NANIVIO_SCREENSHOT_DIR, { recursive: true });
+      const screenshot = await call('Page.captureScreenshot', { format: 'png' });
+      await writeFile(join(process.env.NANIVIO_SCREENSHOT_DIR, 'chat-mobile.png'), Buffer.from(screenshot.data, 'base64'));
+    }
     assert.equal(await evaluate(`document.querySelector('#btn-chat-send-msg').getAttribute('aria-label')`), 'Record voice note');
     assert.equal(await evaluate(`document.querySelectorAll('.nv-chat-date-separator').length`), 1, 'Date separator missing');
     await evaluate(`if(innerWidth<1024)document.querySelector('button[title="Back to all conversations"]').click()`);
@@ -214,7 +236,7 @@ try {
       assert.equal(controls.overflow, false, `${screen} overflows at ${width}`);
       assert.deepEqual(controls.offscreen, [], `${screen} controls clipped at ${width}`);
     }
-    report.push({ width, height, typingWidth: chat.input.width, emojiAndSend: true, callsFit: true });
+    report.push({ width, height, typingWidth: chat.input.width, sharedCallsPalette: true, emojiAndSend: true, callsFit: true });
   }
   await evaluate(`window.__communicationFixture.sendMessage=async()=>{throw new Error('Fixture send failure')};
     window.__renderCommunicationFixture('chat')`);

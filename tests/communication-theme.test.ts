@@ -16,16 +16,19 @@ function luminance(hex: string) {
 const contrast = (a: string, b: string) =>
   (Math.max(luminance(a), luminance(b)) + 0.05) / (Math.min(luminance(a), luminance(b)) + 0.05);
 
-test('charcoal/gold tokens are scoped to communication and auth rather than all routes', () => {
+test('the shared app palette uses the approved Calls charcoal and warm gold', () => {
   assert.ok(scope);
   assert.ok(luminance(token('bg')) < 0.03);
   assert.match(token('gold'), /^#[a-f\d]{6}$/i);
+  assert.equal(token('gold'), '#e2bb62');
+  assert.equal(token('text'), '#f4f1e9');
   assert.doesNotMatch(css, /--color-emerald-\d+\s*:/);
 });
 
-test('Malvi remains outside the new theme without modifying its route or implementation', () => {
+test('every app destination shares the visual shell while retaining the Malvi feature route', () => {
   const app = readFileSync(new URL('../src/App.tsx', import.meta.url), 'utf8');
-  assert.match(app, /activeTab === 'malvi' \? '' : 'nv-theme-dark'/);
+  assert.match(app, /nanivio-app nv-theme-dark/);
+  assert.doesNotMatch(app, /activeTab === 'malvi' \? '' : 'nv-theme-dark'/);
   assert.match(app, /activeTab === 'malvi' && <MalviView/);
 });
 

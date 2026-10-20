@@ -27,7 +27,7 @@ const MainLayout: React.FC = () => {
   const { activeTab, incomingCall, acceptIncomingCall, declineIncomingCall } = useNanivio();
 
   return (
-    <div className={`nanivio-app ${activeTab === 'malvi' ? '' : 'nv-theme-dark'} ${activeTab === 'chat' ? 'chat-app-shell h-[100dvh] max-h-[100dvh]' : 'min-h-[100dvh]'} flex flex-col selection:bg-amber-200 selection:text-slate-900 w-full max-w-full overflow-x-hidden relative`}>
+    <div className={`nanivio-app nv-theme-dark ${activeTab === 'chat' ? 'chat-app-shell h-[100dvh] max-h-[100dvh]' : 'min-h-[100dvh]'} flex flex-col selection:bg-amber-200 selection:text-slate-900 w-full max-w-full overflow-x-hidden relative`}>
       <Navbar />
 
       {/* Real-time Incoming Call Banner Overlay */}
