@@ -42,6 +42,7 @@ import { getPersistentInvoice } from "./src/server/normalizedBillingRepository.t
 import { authDb } from "./src/server/authDb.ts";
 import * as persistentAuth from "./src/server/persistentAuth.ts";
 import { productionStatus } from "./src/server/productionStatus.ts";
+import { uploadStreamAttachment } from "./src/server/streamService.ts";
 import { audioCallingEnabled, featureSettingsHandler, videoCallingEnabled } from "./src/server/featureSettings.ts";
 import { quotePaystackOrder, validateVerifiedOrder } from "./src/server/paystackOrders.ts";
 import { activatePaystackSubscriptionPersistent } from "./src/server/normalizedBillingRepository.ts";
@@ -1580,6 +1581,25 @@ app.get("/api/stream/channels/:channelId/messages", requireAuthenticatedUser, re
     res.status(error instanceof StreamAccessError ? error.status : 502).json({ success: false, error: error instanceof StreamAccessError ? error.message : "Messages unavailable." });
   }
 });
+
+app.post("/api/stream/channels/:channelId/attachments", requireAuthenticatedUser, requireActiveChatAccount,
+  express.raw({ type: 'application/octet-stream', limit: '20mb' }), async (req, res) => {
+    res.setHeader('Cache-Control', 'no-store');
+    try {
+      if (!req.is('application/octet-stream') || !Buffer.isBuffer(req.body)) {
+        return res.status(415).json({ error: 'Upload the selected file as binary data.' });
+      }
+      let fileName: string;
+      try { fileName = decodeURIComponent(String(req.headers['x-file-name'] || '')); }
+      catch { return res.status(400).json({ error: 'Invalid file name.' }); }
+      const url = await uploadStreamAttachment(req.params.channelId, authenticatedUserId(req), req.body,
+        fileName, String(req.headers['x-file-type'] || 'application/octet-stream'));
+      res.json({ success: true, url });
+    } catch (error) {
+      const status = error instanceof StreamAccessError ? error.status : 400;
+      res.status(status).json({ error: error instanceof StreamAccessError ? error.message : 'Invalid or unsupported attachment. Choose a file smaller than 20 MB.' });
+    }
+  });
 
 app.post("/api/stream/channels/:channelId/messages", requireAuthenticatedUser, requireActiveChatAccount, async (req, res) => {
   try {

@@ -1,4 +1,5 @@
 import crypto from 'crypto';
+import { validateChatUpload } from './chatAttachments.ts';
 import { canManageChannelMembers, canRemoveChannelMember, isChannelMember, normalizeChannelId, StreamAccessError } from './chatPrivacy.ts';
 
 export interface StreamUserTokenOptions { userId: string; name?: string; role?: string; expirationSeconds?: number; }
@@ -8,7 +9,7 @@ export interface StreamChatMessage {
   id: string; channelId: string; userId: string; userName: string; userAvatar?: string; text: string;
   translatedText?: string; targetLang?: string; sourceLang?: string; createdAt: number; reactions: StreamReaction[];
   attachments?: Array<{ type: 'image' | 'audio' | 'file'; url: string; name?: string; size?: string }>;
-  isVoiceNote?: boolean; voiceNoteDuration?: number;
+  isVoiceNote?: boolean; voiceNoteDuration?: number; nanivio?: ReturnType<typeof import('./chatAttachments.ts').privateMessageMedia>;
 }
 export interface StreamChannelData { id: string; type: string; name: string; members: StreamChannelMember[]; custom?: Record<string, any>; lastMessage?: string; lastMessageAt?: number; updatedAt: number; unreadCount?: number; }
 export interface StreamEventLog { id: string; type: string; channelId?: string; userId?: string; payload: any; timestamp: number; }
@@ -79,6 +80,14 @@ function mapChannel(snapshot: any): StreamChannelData {
 }
 
 function mapMessage(message: any, channelId: string): StreamChatMessage {
+  const metadata = message.nanivio ? { ...message.nanivio } : undefined;
+  const assets = message.attachments || [];
+  const assetUrl = (asset: any) => asset?.asset_url || asset?.image_url || asset?.url;
+  if (metadata?.mediaUrl && assetUrl(assets[0])) metadata.mediaUrl = assetUrl(assets[0]);
+  if (metadata?.voiceNote && assetUrl(assets[0])) {
+    metadata.voiceNote = { ...metadata.voiceNote, audioBlobUrl: assetUrl(assets[0]),
+      ...(assets[1] ? { translatedAudioUrl: assetUrl(assets[1]) } : {}) };
+  }
   return {
     id: message.id, channelId, userId: message.user?.id || message.user_id || '',
     userName: message.user?.name || message.user_id || '', userAvatar: message.user?.image,
@@ -90,6 +99,7 @@ function mapMessage(message: any, channelId: string): StreamChatMessage {
       type: a.type === 'image' ? 'image' : a.type === 'audio' ? 'audio' : 'file',
       url: a.asset_url || a.image_url || a.url || '', name: a.title || a.name, size: a.file_size ? String(a.file_size) : undefined,
     })),
+    nanivio: metadata,
     isVoiceNote: Boolean(message.isVoiceNote || message.is_voice_note),
     voiceNoteDuration: Number(message.voiceNoteDuration || message.voice_note_duration || 0) || undefined,
   };
@@ -112,6 +122,27 @@ export async function requireStreamChannelMember(channelId: string, userId: stri
   const members = (data.members || []).map(mapMember);
   if (!isChannelMember(userId, members)) throw new StreamAccessError();
   return members.find((member: StreamChannelMember) => member.userId === userId)!;
+}
+
+export async function uploadStreamAttachment(channelId: string, userId: string, bytes: Buffer, fileName: string, mimeType: string) {
+  const { name, type } = validateChatUpload(bytes, fileName, mimeType);
+  await requireStreamChannelMember(channelId, userId);
+  const id = normalizeChannelId(channelId);
+  const { apiKey, base } = cfg();
+  const form = new FormData();
+  form.append('file', new Blob([new Uint8Array(bytes)], { type }), name);
+  form.append('user', JSON.stringify({ id: userId }));
+  const response = await fetch(`${base}/channels/messaging/${encodeURIComponent(id)}/file?api_key=${encodeURIComponent(apiKey)}`, {
+    method: 'POST',
+    headers: { 'Stream-Auth-Type': 'jwt', Authorization: signedToken({ server: true }) },
+    body: form,
+    signal: AbortSignal.timeout(60000),
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok || typeof data.file !== 'string' || !data.file.startsWith('https://')) {
+    throw new StreamAccessError('Attachment upload failed. Please retry.', 502);
+  }
+  return data.file as string;
 }
 
 /** Fresh complete membership for private fan-out; no stale permission cache. */
@@ -195,9 +226,12 @@ export async function addStreamMessage(channelId: string, message: StreamChatMes
   const id = normalizeChannelId(channelId);
   const data = await streamRequest(`/channels/messaging/${id}/message`, 'POST', {
     message: {
-      text: message.text, attachments: message.attachments || [], user_id: message.userId,
+      text: message.text, attachments: (message.attachments || []).map(attachment => ({
+        ...attachment, title: attachment.name,
+        ...(attachment.type === 'image' ? { image_url: attachment.url } : { asset_url: attachment.url }),
+      })), user_id: message.userId,
       sourceLang: message.sourceLang, targetLang: message.targetLang, translatedText: message.translatedText,
-      isVoiceNote: message.isVoiceNote, voiceNoteDuration: message.voiceNoteDuration,
+      isVoiceNote: message.isVoiceNote, voiceNoteDuration: message.voiceNoteDuration, nanivio: message.nanivio,
     },
   }, message.userId);
   return mapMessage(data.message, id);

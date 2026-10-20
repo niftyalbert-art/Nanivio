@@ -22,6 +22,7 @@ import type { Participant } from '../../types';
 import { agoraClient } from '../../lib/agoraClient';
 
 interface LiveCallVideoStageProps {
+  audioOnly?: boolean;
   localParticipant: Participant;
   remoteParticipant: Participant;
   isLocalCameraOff: boolean;
@@ -34,6 +35,7 @@ interface LiveCallVideoStageProps {
 }
 
 export const LiveCallVideoStage: React.FC<LiveCallVideoStageProps> = ({
+  audioOnly = false,
   localParticipant,
   remoteParticipant,
   isLocalCameraOff,
@@ -58,6 +60,7 @@ export const LiveCallVideoStage: React.FC<LiveCallVideoStageProps> = ({
   const remoteAudioRef = useRef<HTMLAudioElement | null>(null);
   const [remoteStream, setRemoteStream] = useState<MediaStream | null>(() => agoraClient.getRemoteStream());
   const [hasRemoteVideoTrack, setHasRemoteVideoTrack] = useState(false);
+  const [cameraActionError, setCameraActionError] = useState('');
 
   // Remote Canvas Fallback (Living 60fps audio-reactive matrix if remote video not streaming)
   const remoteCanvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -104,7 +107,7 @@ export const LiveCallVideoStage: React.FC<LiveCallVideoStageProps> = ({
           setLocalStream(s);
           setCameraPermission('granted');
         }
-      });
+      }).catch(() => setCameraPermission('denied'));
     }
 
     return () => {
@@ -127,11 +130,7 @@ export const LiveCallVideoStage: React.FC<LiveCallVideoStageProps> = ({
       const videoTracks = remoteStream.getVideoTracks();
       setHasRemoteVideoTrack(videoTracks.length > 0);
     }
-    if (remoteAudioRef.current && remoteStream) {
-      remoteAudioRef.current.srcObject = remoteStream;
-      remoteAudioRef.current.play().catch(() => {});
-    }
-  }, [remoteStream, isPiPSwapped]);
+  }, [remoteStream, isPiPSwapped, hasRemoteVideoTrack]);
 
   // -------------------------------------------------------------
   // 2. DRAGGABLE PIP WINDOW (POINTER / TOUCH / MOUSE)
@@ -204,9 +203,12 @@ export const LiveCallVideoStage: React.FC<LiveCallVideoStageProps> = ({
   const handleFlipCamera = async (e: React.MouseEvent) => {
     e.stopPropagation();
     const nextMode = facingMode === 'user' ? 'environment' : 'user';
-    setFacingMode(nextMode);
-    setIsMirrored(nextMode === 'user');
-    await agoraClient.startLocalPreview('video');
+    try {
+      await agoraClient.switchCamera(nextMode);
+      setFacingMode(nextMode); setIsMirrored(nextMode === 'user'); setCameraActionError('');
+    } catch (error) {
+      setCameraActionError(error instanceof Error ? error.message : 'Unable to switch cameras.');
+    }
   };
 
   // -------------------------------------------------------------
@@ -408,30 +410,28 @@ export const LiveCallVideoStage: React.FC<LiveCallVideoStageProps> = ({
             ref={remoteVideoRef}
             autoPlay
             playsInline
+            muted
             className="w-full h-full object-cover object-center"
           />
         ) : (
-          /* Dynamic Living Video Canvas (Live 60fps audio/video reactive telecom matrix) */
-          <canvas
-            ref={remoteCanvasRef}
-            width={720}
-            height={1080}
-            className="w-full h-full object-cover object-center"
-          />
+          <div className="flex h-full flex-col items-center justify-center gap-4 px-6 text-center">
+            <div className="flex h-24 w-24 items-center justify-center rounded-full border border-white/15 bg-slate-800 text-3xl font-semibold text-white">
+              {remoteParticipant.initials || remoteParticipant.name?.slice(0, 2).toUpperCase()}
+            </div>
+            <p className="text-sm text-slate-300">{audioOnly ? (remoteStream ? 'Audio call' : 'Waiting for remote audio…') : remoteStream ? 'Remote camera is off' : 'Waiting for remote media…'}</p>
+          </div>
         )}
 
         {/* Video Quality HUD overlay */}
         <div className="absolute top-3 left-3 z-10 flex items-center gap-2 pointer-events-none">
           <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-black/60 backdrop-blur-md border border-white/10 text-[10px] font-mono shadow-md text-white">
-            <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-            <span className="font-bold text-emerald-300">LIVE HD</span>
-            <span className="text-white/40">|</span>
-            <span className="text-slate-300">1080p 60fps</span>
+            <span className={`h-2 w-2 rounded-full ${hasRemoteVideoTrack ? 'bg-emerald-400' : 'bg-amber-400'}`} />
+            <span className="font-medium text-slate-200">{audioOnly ? 'Audio call' : hasRemoteVideoTrack ? 'Remote video' : 'Camera off'}</span>
           </div>
 
           <div className="hidden sm:flex items-center gap-1 px-2 py-1 rounded-full bg-black/40 backdrop-blur-md border border-white/10 text-[10px] text-slate-300">
-            <Wifi className="w-3 h-3 text-emerald-400" />
-            <span>24ms</span>
+            <Wifi className="w-3 h-3 text-slate-300" />
+            <span>{remoteStream ? 'Media received' : 'Waiting'}</span>
           </div>
         </div>
 
@@ -456,7 +456,7 @@ export const LiveCallVideoStage: React.FC<LiveCallVideoStageProps> = ({
                 )}
               </span>
               <span className="text-[10px] font-mono text-emerald-400">
-                NV-ID: {remoteParticipant.nvId || '0486XXXXXX'}
+                {remoteParticipant.nvId ? `NV-ID: ${remoteParticipant.nvId}` : ''}
               </span>
             </div>
           </div>
@@ -470,8 +470,8 @@ export const LiveCallVideoStage: React.FC<LiveCallVideoStageProps> = ({
       ref={containerRef}
       className="relative w-full h-full flex-1 overflow-hidden bg-black select-none touch-none"
     >
-      {/* Hidden dedicated audio playback element for remote peer speech */}
-      <audio ref={remoteAudioRef} autoPlay playsInline className="hidden" />
+      {/* Agora owns remote audio playback, avoiding duplicate sound and bypassed speaker controls. */}
+      {cameraActionError && <p role="alert" className="absolute top-14 inset-x-4 z-40 rounded-lg bg-slate-900 px-3 py-2 text-center text-sm text-amber-200">{cameraActionError}</p>}
 
       {/* ------------------------------------------------------------- */}
       {/* 1. MAIN STAGE VIDEO (Either Remote or Swapped Local) */}

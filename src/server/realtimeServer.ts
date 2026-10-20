@@ -17,6 +17,7 @@ import {
 import { authDb } from './authDb.ts';
 import * as persistentAuth from './persistentAuth.ts';
 import { channelRecipients, normalizeChannelId } from './chatPrivacy.ts';
+import { privateMessageMedia } from './chatAttachments.ts';
 import { callKhayaEngine as khaya, callSunbirdEngine as sunbird } from './translationProviders.ts';
 import { translateWithProductionProviders as callProductionTranslation } from './translationRouter.ts';
 import { malviLiveBrainController } from './assistant/liveBrain.ts';
@@ -750,10 +751,23 @@ export function setupRealtimeServer(httpServer: HttpServer) {
                 : null;
               if (!message) return;
               const originalMessageId = String(message.id || '');
+              const nanivio = privateMessageMedia(message);
+              Object.assign(message, nanivio);
+              const attachments: NonNullable<StreamChatMessage['attachments']> = nanivio.mediaUrl ? [{
+                type: nanivio.mediaType === 'image' ? 'image' as const : 'file' as const,
+                url: nanivio.mediaUrl, name: nanivio.mediaFileName, size: nanivio.mediaFileSize,
+              }] : nanivio.voiceNote ? [{
+                type: 'audio' as const, url: nanivio.voiceNote.audioBlobUrl!,
+                name: 'Voice note',
+              }] : [];
+              if (nanivio.voiceNote?.translatedAudioUrl) attachments.push({
+                type: 'audio', url: nanivio.voiceNote.translatedAudioUrl, name: 'Translated voice note',
+              });
               const saved = await addStreamMessage(channelId, {
                 id: originalMessageId, channelId, userId: currentUser!.userId, userName: currentUser!.name,
                 userAvatar: currentUser!.avatar, text: String(message.text || ''),
                 sourceLang: currentUser!.myLanguage, createdAt: Date.now(), reactions: [],
+                attachments, nanivio, isVoiceNote: nanivio.isVoiceNote, voiceNoteDuration: nanivio.voiceNote?.duration,
               });
               message.id = saved.id;
               // A canonical provider channel ID, not a caller-chosen local

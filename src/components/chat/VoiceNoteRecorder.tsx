@@ -30,7 +30,7 @@ export const VoiceNoteRecorder: React.FC<VoiceNoteRecorderProps> = ({
 }) => {
   const { myLanguage, globalLangpretationEnabled } = useNanivio();
   const [seconds, setSeconds] = useState(0);
-  const [waveformData, setWaveformData] = useState<number[]>([15, 25, 40, 20, 60, 35, 80, 45, 30, 70, 50, 20]);
+  const [waveformData, setWaveformData] = useState<number[]>(Array(12).fill(0));
   const [transcript, setTranscript] = useState('');
   const [isProcessing, setIsProcessing] = useState(false);
   const [processingError,setProcessingError]=useState('');
@@ -42,15 +42,21 @@ export const VoiceNoteRecorder: React.FC<VoiceNoteRecorderProps> = ({
   const audioChunksRef = useRef<Blob[]>([]);
   const mediaStreamRef = useRef<MediaStream | null>(null);
   const recognitionRef = useRef<any>(null);
+  const audioContextRef = useRef<AudioContext | null>(null);
+  const analyserRef = useRef<AnalyserNode | null>(null);
 
   useEffect(() => {
     // 1. Timer & visual audio wave fluctuation
     const timer = setInterval(() => {
+      if (!mediaStreamRef.current?.active) return;
       setSeconds((prev) => prev + 1);
-      setWaveformData((prev) => [
-        ...prev.slice(1),
-        Math.floor(Math.random() * 75) + 20,
-      ]);
+      const analyser = analyserRef.current;
+      if (analyser) {
+        const samples = new Uint8Array(analyser.fftSize);
+        analyser.getByteTimeDomainData(samples);
+        const rms = Math.sqrt(samples.reduce((sum, sample) => sum + ((sample - 128) / 128) ** 2, 0) / samples.length);
+        setWaveformData(previous => [...previous.slice(1), Math.min(100, Math.round(rms * 250))]);
+      }
     }, 1000);
 
     // 2. Real Microphone Audio Capture via MediaRecorder
@@ -60,6 +66,13 @@ export const VoiceNoteRecorder: React.FC<VoiceNoteRecorderProps> = ({
         .then((stream) => {
           mediaStreamRef.current = stream;
           audioChunksRef.current = [];
+          try {
+            const context = new AudioContext();
+            audioContextRef.current = context;
+            const analyser = context.createAnalyser(); analyser.fftSize = 256;
+            context.createMediaStreamSource(stream).connect(analyser);
+            analyserRef.current = analyser;
+          } catch { /* Recording remains available when waveform analysis is unsupported. */ }
 
           const mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
             ? 'audio/webm;codecs=opus'
@@ -79,6 +92,7 @@ export const VoiceNoteRecorder: React.FC<VoiceNoteRecorderProps> = ({
           recorder.start(250);
         })
         .catch((err) => {
+          setProcessingError('Microphone access is unavailable. Allow access in your browser before recording.');
           console.warn('[VoiceNoteRecorder] Microphone access notice:', err);
         });
     }
@@ -126,6 +140,7 @@ export const VoiceNoteRecorder: React.FC<VoiceNoteRecorderProps> = ({
       if (mediaStreamRef.current) {
         mediaStreamRef.current.getTracks().forEach((t) => t.stop());
       }
+      audioContextRef.current?.close().catch(() => {});
     };
   }, [myLanguage]);
 
@@ -172,15 +187,15 @@ export const VoiceNoteRecorder: React.FC<VoiceNoteRecorderProps> = ({
 
     if (voiceMode === 'normal') {
       // 1. Normal Stream Voice Note
-      setIsProcessing(false);
-      onSend({
+      try { await onSend({
         duration: durationSec,
         transcript: rawTranscript,
         audioBlobUrl: originalAudioBlobUrl,
         isLangpretation: false,
         sourceLang: myLanguage,
         targetLang,
-      });
+      }); } catch (error) { setProcessingError(error instanceof Error ? error.message : 'Voice note was not sent.'); }
+      finally { setIsProcessing(false); }
       return;
     }
 

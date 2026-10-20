@@ -139,8 +139,8 @@ export const ActiveCallModal: React.FC = () => {
   const myLangInfo = SUPPORTED_LANGUAGES.find((l) => l.code === myLanguage) || SUPPORTED_LANGUAGES[0];
   const isRinging = activeCall.status === 'ringing' || activeCall.status === 'calling';
 
-  // If it's a 1-on-1 video call and connected, render the dedicated VideoCallScreen
-  if (isVideo && !isGroup && !isRinging) {
+  // Share the compact, media-verified stage for both direct audio and video calls.
+  if (!isGroup && !isRinging) {
     return <VideoCallScreen onEndCall={endCall} />;
   }
 

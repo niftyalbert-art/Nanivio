@@ -17,6 +17,7 @@ export interface StreamReaction {
 }
 
 export interface StreamChatMessage {
+  nanivio?: Partial<import('../types').ChatMessage>;
   id: string;
   channelId: string;
   userId: string;

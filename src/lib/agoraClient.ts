@@ -6,6 +6,7 @@ import AgoraRTC, {
   IAgoraRTCClient,
   ILocalAudioTrack,
   ILocalVideoTrack,
+  ICameraVideoTrack,
   IRemoteAudioTrack,
   IRemoteVideoTrack,
 } from 'agora-rtc-sdk-ng';
@@ -64,6 +65,8 @@ class NanivioAgoraClient {
   private isVideoOff = false;
   private translationQueue:Promise<boolean>=Promise.resolve(true);
   private queuedTranslations=0;
+  private mediaGeneration = 0;
+  private remoteAudioMuted = false;
 
   constructor() {
     if (typeof window !== 'undefined') {
@@ -92,23 +95,41 @@ class NanivioAgoraClient {
 
   public async joinChannel(channelName: string, uid: string | number, userName: string, callType: 'audio' | 'video', _remotePeerId?: string, _isInitiator = false): Promise<AgoraTelemetryStats> {
     await this.leaveChannel();
+    const generation = ++this.mediaGeneration;
+    const stillCurrent = () => {
+      if (generation !== this.mediaGeneration) throw new Error('Call was cancelled.');
+    };
+    let audio: ILocalAudioTrack | null = null;
+    let video: ILocalVideoTrack | null = null;
+    let client: IAgoraRTCClient | null = null;
+    try {
     this.connectionState = 'CONNECTING';
     this.currentChannel = channelName; this.currentUid = uid; this.isVideoOff = callType === 'audio';
     this.notifyStats();
 
     const token = await this.fetchToken(channelName, uid);
+    stillCurrent();
     const numericUid = token.agoraUid ?? this.agoraUid ?? 0;
     this.client = AgoraRTC.createClient({ mode: 'rtc', codec: 'vp8' });
+    client = this.client;
     this.registerClientEvents();
     await this.client.join(token.appId, channelName, token.token, numericUid);
+    stillCurrent();
 
-    this.originalAudio = await AgoraRTC.createMicrophoneAudioTrack({
+    audio = await AgoraRTC.createMicrophoneAudioTrack({
       encoderConfig: 'speech_standard',
       AEC: true, ANS: true, AGC: true,
     } as any);
+    stillCurrent();
+    this.originalAudio = audio;
     this.localAudio = this.originalAudio;
-    if (callType === 'video') this.localVideo = await AgoraRTC.createCameraVideoTrack();
+    if (callType === 'video') {
+      video = await AgoraRTC.createCameraVideoTrack();
+      stillCurrent();
+      this.localVideo = video;
+    }
     await this.client.publish([this.localAudio, ...(this.localVideo ? [this.localVideo] : [])]);
+    stillCurrent();
     this.rebuildLocalStream();
 
     const authToken = authClient.getToken();
@@ -124,17 +145,21 @@ class NanivioAgoraClient {
         body: JSON.stringify({ channelName, callType }),
       });
       const joinResult = await joinResponse.json().catch(() => ({}));
+      stillCurrent();
       if (!joinResponse.ok || !joinResult.success) {
         throw new Error(joinResult.error || 'The server did not register this call participant.');
       }
-    } catch (error) {
-      await this.leaveChannel();
-      throw error instanceof Error ? error : new Error('Unable to register call participant.');
-    }
+    } catch (error) { throw error; }
     this.connectionState = 'CONNECTED';
     this.startStatsTelemetry();
     this.notifyStats();
     return this.getStats();
+    } catch (error) {
+      audio?.stop(); audio?.close(); video?.stop(); video?.close();
+      if (generation === this.mediaGeneration) await this.leaveChannel();
+      else await client?.leave().catch(() => {});
+      throw error instanceof Error ? error : new Error('Unable to connect microphone or camera.');
+    }
   }
 
   private registerClientEvents() {
@@ -143,6 +168,7 @@ class NanivioAgoraClient {
       if (!this.client) return;
       await this.client.subscribe(user, mediaType);
       if (mediaType === 'audio' && user.audioTrack) {
+        user.audioTrack.setVolume(this.remoteAudioMuted ? 0 : 100);
         user.audioTrack.play();
         this.attachRemoteAudio(user.audioTrack);
       }
@@ -188,12 +214,21 @@ class NanivioAgoraClient {
 
   public async startLocalPreview(callType: 'audio' | 'video' = 'video'): Promise<MediaStream | null> {
     if (this.localStream) return this.localStream;
+    const generation = this.mediaGeneration;
     const audio = await AgoraRTC.createMicrophoneAudioTrack({ encoderConfig:'speech_standard' } as any);
+    let video: ILocalVideoTrack | null = null;
+    try {
+    if (callType === 'video') video = await AgoraRTC.createCameraVideoTrack();
+    if (generation !== this.mediaGeneration) throw new Error('Preview was cancelled.');
     this.localAudio = audio;
     this.originalAudio = audio;
-    if (callType === 'video') this.localVideo = await AgoraRTC.createCameraVideoTrack();
+    this.localVideo = video;
     this.rebuildLocalStream();
     return this.localStream;
+    } catch (error) {
+      audio.stop(); audio.close(); video?.stop(); video?.close();
+      throw error;
+    }
   }
 
   public async injectTranslatedAudioToRemote(audioBuffer: AudioBuffer): Promise<boolean> {
@@ -247,6 +282,21 @@ class NanivioAgoraClient {
   }
 
   public setAudioMuted(muted: boolean) { this.isAudioMuted = muted; this.localAudio?.setEnabled(!muted); this.notifyStats(); }
+  public setRemoteAudioMuted(muted: boolean) {
+    this.remoteAudioMuted = muted;
+    this.client?.remoteUsers.forEach(user => user.audioTrack?.setVolume(muted ? 0 : 100));
+  }
+  public async switchCamera(facing: 'user' | 'environment') {
+    if (!this.localVideo) throw new Error('The camera is not active.');
+    const cameras = await AgoraRTC.getCameras();
+    const currentId = this.localVideo.getMediaStreamTrack().getSettings().deviceId;
+    const preferred = facing === 'environment' ? /back|rear|environment/i : /front|user|facetime/i;
+    const next = cameras.find(camera => camera.deviceId !== currentId && preferred.test(camera.label))
+      || cameras.find(camera => camera.deviceId !== currentId);
+    if (!next) throw new Error('No second camera is available on this device.');
+    await (this.localVideo as ICameraVideoTrack).setDevice(next.deviceId);
+    this.rebuildLocalStream();
+  }
   public setVideoOff(off: boolean) { this.isVideoOff = off; this.localVideo?.setEnabled(!off); this.notifyStats(); }
   public getLocalStream() { return this.localStream; }
   public getRemoteStream() { return this.remoteStream; }
@@ -257,6 +307,7 @@ class NanivioAgoraClient {
   public subscribeTelemetry(cb: (stats: AgoraTelemetryStats) => void) { this.listeners.add(cb); cb(this.getStats()); return () => this.listeners.delete(cb); }
 
   public async leaveChannel() {
+    this.mediaGeneration++;
     if (this.currentChannel) {
       const token = authClient.getToken();
       const headers: Record<string, string> = { 'Content-Type': 'application/json' };
@@ -279,7 +330,16 @@ class NanivioAgoraClient {
   }
 
   public getStats(): AgoraTelemetryStats {
-    return { connectionState:this.connectionState, channelName:this.currentChannel||'', uid:this.currentUid||'', rttMs:0, packetLossPercent:0, uplinkBitrateKbps:0, downlinkBitrateKbps:0, audioCodec:'Opus', videoCodec:'VP8', videoResolution:this.localVideo?'camera':'', fps:this.localVideo?30:0, isAudioMuted:this.isAudioMuted, isVideoOff:this.isVideoOff, hasLocalMedia:!!this.localStream, hasRemoteMedia:!!this.remoteStream };
+    const rtc = this.client?.getRTCStats?.();
+    const video = this.client?.getLocalVideoStats?.();
+    const settings = this.localVideo?.getMediaStreamTrack().getSettings?.();
+    return { connectionState:this.connectionState, channelName:this.currentChannel||'', uid:this.currentUid||'',
+      rttMs: rtc?.RTT || 0, packetLossPercent: 0,
+      uplinkBitrateKbps: (rtc?.SendBitrate || 0) / 1000, downlinkBitrateKbps: (rtc?.RecvBitrate || 0) / 1000,
+      audioCodec: this.localAudio ? 'Opus' : '', videoCodec: this.localVideo ? 'VP8' : '',
+      videoResolution: settings?.width && settings.height ? `${settings.width}×${settings.height}` : '',
+      fps: video?.sendFrameRate || 0, isAudioMuted:this.isAudioMuted, isVideoOff:this.isVideoOff,
+      hasLocalMedia:!!this.localStream, hasRemoteMedia:!!this.remoteStream };
   }
   private notifyStats(){ const s=this.getStats(); this.listeners.forEach(cb=>cb(s)); }
   private startStatsTelemetry(){ if(this.statsInterval) clearInterval(this.statsInterval); this.statsInterval=setInterval(()=>this.notifyStats(),2000); }
