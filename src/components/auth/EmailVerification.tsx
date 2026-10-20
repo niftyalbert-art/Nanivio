@@ -53,24 +53,24 @@ export function EmailVerification({ email, phone, callingCode, country, verified
       if (mounted.current) setBusy(false);
     }
   };
-  if (verified) return <p role="status" className="flex items-center gap-2 text-sm text-emerald-700 py-2">
+  if (verified) return <p role="status" className="flex items-center gap-2 text-sm text-emerald-300 py-2">
     <CheckCircle2 className="w-4 h-4" /> Email verified. Your phone number has not been SMS-verified.
   </p>;
-  return <div className="space-y-3 p-4 rounded-2xl border border-emerald-200 bg-emerald-50 text-slate-700">
-    <p className="flex items-center gap-2 font-semibold text-sm"><Mail className="w-4 h-4 text-emerald-700" /> Verify your email</p>
-    <p className="text-sm">We’ll email you a code. Both email and phone must be unique; no signup SMS is sent.</p>
+  return <div className="space-y-3 p-4 rounded-2xl border border-slate-700 bg-slate-900 text-slate-200">
+    <p className="flex items-center gap-2 font-semibold text-sm"><Mail className="w-4 h-4 text-[#f0b90b]" /> Verify your email</p>
+    <p className="text-sm text-slate-400">We’ll email you a code. Both email and phone must be unique; no signup SMS is sent.</p>
     <button type="button" onClick={() => void run(false)} disabled={busy || cooldown > 0 || !email.trim() || !phone.trim()}
-      className="px-4 py-2.5 rounded-xl bg-emerald-700 text-white text-sm font-semibold disabled:opacity-50">
+      className="px-4 py-2.5 rounded-xl bg-[#f0b90b] hover:bg-[#ffd54a] text-slate-950 text-sm font-semibold disabled:opacity-50">
       {busy ? 'Please wait…' : cooldown ? `Resend in ${cooldown}s` : sent ? 'Resend email code' : 'Send email code'}
     </button>
     {sent && <div className="flex gap-2">
       <input aria-label="Email verification code" autoComplete="one-time-code" inputMode="numeric" maxLength={6}
         value={code} onChange={e => setCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
-        placeholder="6-digit email code" className="min-w-0 flex-1 px-3 py-2 rounded-xl border border-emerald-200 bg-white text-slate-900" />
+        placeholder="6-digit email code" className="min-w-0 flex-1 px-3 py-2 rounded-xl border border-slate-700 bg-slate-950 text-slate-100" />
       <button type="button" onClick={() => void run(true)} disabled={busy || code.length !== 6}
-        className="px-4 py-2 rounded-xl bg-emerald-700 text-white font-semibold text-sm disabled:opacity-50">Verify email</button>
+        className="px-4 py-2 rounded-xl bg-[#f0b90b] hover:bg-[#ffd54a] text-slate-950 font-semibold text-sm disabled:opacity-50">Verify email</button>
     </div>}
-    {message && <p role="status" className="text-sm text-slate-600">{message}</p>}
-    {error && <p role="alert" className="text-sm text-red-700">{error}</p>}
+    {message && <p role="status" className="text-sm text-emerald-300">{message}</p>}
+    {error && <p role="alert" className="text-sm text-red-300">{error}</p>}
   </div>;
 }

@@ -23,5 +23,5 @@
 - [External production hosting](external-production-host.md) — the user’s live app is on Render; this fork’s Replit deployment state does not describe it.
 - [Supabase owner-run assessments](supabase-owner-run-assessments.md) — use one result set; the SQL editor may show only the final SELECT.
 - [Authentication delivery](auth-delivery-policy.md) — collect unique email and phone at signup; verify email instead of sending paid signup SMS.
-- [Global product direction](global-product-direction.md) — international audience, Ghana/Africa roots; crisp classic-modern communication, no blur or fake activity; Malvi follows.
+- [Global product direction](global-product-direction.md) — international/Ghana-Africa roots; Bybit-inspired charcoal/gold, compact controls, no blur or fake activity; Malvi follows.
 - [Didit phone API restrictions](didit-phone-restrictions.md) — phone-specific 403 meanings differ from generic API-key docs; read the full endpoint Markdown.

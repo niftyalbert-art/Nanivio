@@ -69,7 +69,7 @@ export const MediaAttachmentModal: React.FC<MediaAttachmentModalProps> = ({ isOp
           </div>
         ) : <p className="py-8 text-center text-sm text-slate-400">Choose your own photo, video or document.<br />Up to 20 MB per file.</p>}
         {error && <p role="alert" className="mt-3 text-sm text-red-400">{error}</p>}
-        <button type="button" onClick={send} disabled={!file || sending} className="mt-5 flex min-h-12 w-full items-center justify-center gap-2 rounded-xl bg-teal-500 font-semibold text-slate-950 disabled:opacity-40">
+        <button type="button" onClick={send} disabled={!file || sending} className="mt-5 flex min-h-12 w-full items-center justify-center gap-2 rounded-xl bg-[#f0b90b] font-semibold text-slate-950 hover:bg-[#ffd54a] disabled:opacity-40">
           <Send size={18} /> {sending ? 'Uploading & sending…' : 'Send attachment'}
         </button>
       </section>

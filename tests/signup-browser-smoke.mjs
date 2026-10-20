@@ -15,6 +15,19 @@ const browser = spawn('/repl/tools/bin/chromium', [
   `--remote-debugging-port=${port}`, `--user-data-dir=${profile}`, 'about:blank',
 ], { stdio: 'ignore' });
 const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
+function rgb(value) {
+  const channels = value.match(/[\d.]+/g)?.slice(0, 3).map(Number);
+  assert.equal(channels?.length, 3, `Expected a resolved RGB colour: ${value}`);
+  return channels;
+}
+function contrast(a, b) {
+  const luminance = value => rgb(value).map(channel => {
+    const s = channel / 255;
+    return s <= 0.04045 ? s / 12.92 : ((s + 0.055) / 1.055) ** 2.4;
+  }).reduce((sum, channel, index) => sum + channel * [0.2126, 0.7152, 0.0722][index], 0);
+  const first = luminance(a), second = luminance(b);
+  return (Math.max(first, second) + 0.05) / (Math.min(first, second) + 0.05);
+}
 let socket;
 try {
   let target;
@@ -67,6 +80,27 @@ try {
     await call('Page.navigate', { url: base });
     await wait("document.querySelector('#tab-auth-signin')");
     await evaluate('document.fonts.ready.then(() => true)');
+    const theme = await evaluate(`(() => {
+      const surface = document.querySelector('.nanivio-auth');
+      const submit = document.querySelector('#btn-submit-signin');
+      const input = surface.querySelector('input:not([type=checkbox]):not([type=radio])');
+      return {
+        surface: getComputedStyle(surface).backgroundColor,
+        buttonBackground: getComputedStyle(submit).backgroundColor,
+        buttonText: getComputedStyle(submit).color,
+        inputBackground: getComputedStyle(input).backgroundColor,
+        inputText: getComputedStyle(input).color,
+        visibleAmbientBlobs: [...surface.querySelectorAll('[class*="blur-3xl"]')].filter(el =>
+          getComputedStyle(el).display !== 'none' && el.getBoundingClientRect().width > 0).length,
+      };
+    })()`);
+    assert.ok(Math.max(...rgb(theme.surface)) < 100, `${name}: auth surface must use the dark theme`);
+    assert.ok(Math.max(...rgb(theme.inputBackground)) < 115, `${name}: inputs must use a dark surface`);
+    const [red, green, blue] = rgb(theme.buttonBackground);
+    assert.ok(red >= 180 && green >= 100 && blue < 120 && red > green, `${name}: primary action should be gold/amber`);
+    assert.ok(contrast(theme.buttonBackground, theme.buttonText) >= 4.5, `${name}: primary button contrast`);
+    assert.ok(contrast(theme.inputBackground, theme.inputText) >= 4.5, `${name}: input text contrast`);
+    assert.equal(theme.visibleAmbientBlobs, 0, `${name}: no blurred ambient blobs`);
     await screenshot(`${name}-signin`);
     await evaluate("document.querySelector('#tab-auth-personal').click()");
     await wait("document.querySelector('#input-personal-phone')");
@@ -100,7 +134,7 @@ try {
     await wait("[...document.querySelectorAll('#personal-country-selector button')].some(b => b.textContent.includes('United Kingdom'))");
     await evaluate("[...document.querySelectorAll('#personal-country-selector button')].find(b => b.textContent.includes('United Kingdom')).click()");
     assert.ok((await evaluate("document.querySelector('#personal-country-selector button').innerText")).includes('+44'));
-    report.push({ viewport: name, ...state, internationalCountrySelection: true });
+    report.push({ viewport: name, ...state, internationalCountrySelection: true, theme });
   }
   assert.deepEqual(exceptions, [], 'Uncaught browser exceptions');
   console.log(JSON.stringify({ checks: report, uncaughtExceptions: exceptions, output }, null, 2));
