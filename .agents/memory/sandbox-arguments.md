@@ -25,3 +25,9 @@ Large unsegmented base64 strings can also surface as a proxy HTTP 400 “malform
 **Why:** The same Git blob succeeded with its expected hash after its base64 payload was split into smaller strings at the isolated-execution boundary.
 
 **How to apply:** Segment large encodings before passing them into isolated functions, join them only inside that function, and verify returned hashes before updating a branch.
+
+For local Git-object transfers, read the Git blobs inside the isolated function and upload them directly through the connected API instead of carrying their contents through notebook state or shell callback output.
+
+**Why:** Large retained payloads reset execution state and temporary files. Shell callback output also altered/truncated a large encoded blob without a useful truncation flag, producing a different uploaded Git hash. Reading the exact Git object with Node's standard child-process module inside the isolated function preserved every verified blob and tree hash.
+
+**How to apply:** Use read-only Git commands against the known workspace directory, keep credentials injected by the connector, and return only hashes/counts. Verify the exact release tree and parent before a non-forced update of the approved branch. Re-read the remote reference after interrupted operations; do not assume a write failed just because the notebook stopped.
