@@ -13,8 +13,16 @@ controls grouped under one menu, and a clear Send button. Chat should behave lik
 a real WhatsApp-style dialog, including sending images, videos and documents,
 with “no fakes.”
 
+The user reiterated that the persistent “Direct & Group Chats, Community Channels”
+card must be removed, with those destinations available under one click. The
+conversation and multiline composer must have full usable space, including visible
+emoji entry. Both ringing and connected audio/video views should minimize written
+clutter and keep secondary controls together.
+
 **Why:** The user clarified the international audience, rejected the washed-out
 white/green refresh, and approved bringing the Bybit-inspired direction to Nanivio.
+They repeated the space and mobile-readability requirements after finding clipped
+words and features in the refreshed app.
 
 **How to apply:** Do not restore the washed-out, blurred mint-and-white direction.
 Do not require Ghana-specific geography at signup, fabricate users,

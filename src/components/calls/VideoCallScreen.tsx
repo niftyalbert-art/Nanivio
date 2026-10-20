@@ -264,31 +264,12 @@ export const VideoCallScreen: React.FC<VideoCallScreenProps> = ({ onEndCall }) =
               <span className="truncate">{callConnectionLabel}</span>
             </div>
 
-            {/* Remote Participant Identity Pill */}
-            <div className="hidden sm:flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-slate-900/80 border border-slate-700/60 text-xs">
-                <span className="text-slate-400">{remoteParticipant ? 'Calling:' : 'Waiting for participant'}</span>
+            {remoteParticipant && <div className="hidden sm:flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-slate-900/80 border border-slate-700/60 text-xs">
+                <span className="text-slate-400">With</span>
               <span className="font-semibold text-white truncate max-w-[140px]">
-                  {remoteParticipant?.name || ''}
+                  {remoteParticipant.name}
               </span>
-            </div>
-
-            {/* Live Langpretation Meter / Nanivio credit pill */}
-            <div className="hidden md:flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-slate-900/70 border border-emerald-500/30 text-[11px] font-mono">
-              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-              {langpretationMeter && langpretationMeter.remainingAllowance > 0 ? (
-                <span className="text-emerald-300 font-semibold">
-                  Live Meter: {formatBillingAmount(langpretationMeter?.remainingAllowance)}m remaining
-                </span>
-              ) : currentPlan.langpretationMinutesRemaining > 0 ? (
-                <span className="text-emerald-300 font-semibold">
-                  {currentPlan.langpretationMinutesRemaining}m included
-                </span>
-              ) : (
-                <span className="text-amber-300 font-semibold">
-                  Value: GH₵ {formatBillingAmount(billingSummary?.communicationAccount?.balance ?? wallets?.find((w) => w.currency === 'GHS')?.amount)}
-                </span>
-              )}
-            </div>
+            </div>}
           </div>
 
           {/* Center: Nanivio Brand Logo */}
@@ -316,6 +297,22 @@ export const VideoCallScreen: React.FC<VideoCallScreenProps> = ({ onEndCall }) =
                 <button type="button" role="menuitem" onClick={() => { setIsPiPSwapped((swapped) => !swapped); setShowCallMore(false); }} className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2.5 text-left text-xs font-medium text-white hover:bg-white/10">
                   <RefreshCw className="h-4 w-4 text-[#e5b84e]" /> Swap video tiles
                 </button>
+                <button type="button" role="menuitem" onClick={() => { void toggleSpeechRecognition(); setShowCallMore(false); }} className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2.5 text-left text-xs font-medium text-white hover:bg-white/10">
+                  <Mic className="h-4 w-4 text-[#e5b84e]" /> {isListeningToSpeech ? 'Stop live translation' : 'Start live translation'}
+                </button>
+                <button type="button" role="menuitem" onClick={() => { const next = !autoVocalize; setAutoVocalize(next); if (!next) speechService.stopSpeaking(); setShowCallMore(false); }} className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2.5 text-left text-xs font-medium text-white hover:bg-white/10">
+                  <Volume2 className="h-4 w-4 text-[#e5b84e]" /> {autoVocalize ? 'Mute translated speech' : 'Play translated speech'}
+                </button>
+                <button type="button" role="menuitem" onClick={() => { setShowLanguagePicker(true); setShowCallMore(false); }} className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2.5 text-left text-xs font-medium text-white hover:bg-white/10">
+                  <MessageSquare className="h-4 w-4 text-[#e5b84e]" /> Translation language
+                </button>
+                <div role="status" className="mt-1 border-t border-white/10 px-3 py-2 text-xs text-white/65">
+                  {langpretationMeter && langpretationMeter.remainingAllowance > 0
+                    ? `${formatBillingAmount(langpretationMeter.remainingAllowance)} translation minutes remaining`
+                    : currentPlan.langpretationMinutesRemaining > 0
+                    ? `${currentPlan.langpretationMinutesRemaining} translation minutes included`
+                    : `Available balance: GH₵ ${formatBillingAmount(billingSummary?.communicationAccount?.balance ?? wallets?.find((wallet) => wallet.currency === 'GHS')?.amount)}`}
+                </div>
               </div>
             )}
           </div>
@@ -410,12 +407,11 @@ export const VideoCallScreen: React.FC<VideoCallScreenProps> = ({ onEndCall }) =
                     ? callConnectionLabel
                     : remoteParticipant
                     ? 'Waiting for remote media'
-                    : 'Waiting for a participant'}
+                    : callConnectionLabel}
                 </p>
-                <p className="mt-1 text-sm text-white/55">
-                  {agoraStats?.hasLocalMedia ? 'Local media is ready.' : 'Local media is not available yet.'}
-                  {remoteParticipant && !agoraStats?.hasRemoteMedia ? ' Remote video will appear when media is available.' : ''}
-                </p>
+                {agoraStats?.hasLocalMedia && !agoraStats?.hasRemoteMedia && remoteParticipant && (
+                  <p className="mt-1 text-sm text-white/55">Waiting for remote media.</p>
+                )}
               </div>
             </div>
           )}
@@ -523,15 +519,15 @@ export const VideoCallScreen: React.FC<VideoCallScreenProps> = ({ onEndCall }) =
         {/* ============================================================= */}
         {/* 4. LANGPRETATION LIVE SUBTITLE & SPEECH-TO-SPEECH BAR */}
         {/* ============================================================= */}
-        <div className="relative z-30 px-3.5 sm:px-6 py-1.5 bg-[#18211c] border-t border-white/10">
-          <div className="rounded-xl bg-[#202c24] border border-white/10 px-3 py-2 space-y-1">
+        <div className={`relative z-30 px-2 sm:px-4 py-1 bg-[#18211c] border-t border-white/10 ${isLangpretationOn || showLanguagePicker || speechStatus ? '' : 'hidden'}`}>
+          <div className="rounded-lg bg-[#202c24] border border-white/10 px-2.5 py-1.5">
               {/* Top Indicator Line */}
               <div className="flex items-center justify-between">
                 {/* Left: Langpretation Status + Stage */}
-                <div className="flex items-center gap-1.5">
-                  <LangpretationIcon size={20} glow={isLangpretationOn} />
-                  <div className="flex items-center gap-1 text-[10px] sm:text-xs font-bold tracking-tight">
-                    <span className="text-white">LANGPRETATION</span>
+                <div className="flex min-w-0 items-center gap-1.5">
+                  <LangpretationIcon size={18} glow={isLangpretationOn} />
+                  <div className="flex items-center gap-1 text-[10px] font-bold tracking-tight">
+                    <span className="text-white">Translation</span>
                     <span
                       className={`w-1.5 h-1.5 rounded-full ${
                         isLangpretationOn ? 'bg-emerald-400 animate-pulse' : 'bg-slate-500'
@@ -542,19 +538,15 @@ export const VideoCallScreen: React.FC<VideoCallScreenProps> = ({ onEndCall }) =
                     </span>
                   </div>
 
-                  {/* Call Assist Stage Indicator */}
-                  {isLangpretationOn && (
-                    <span className="ml-1 px-1.5 py-0.2 rounded bg-cyan-500/10 text-cyan-300 text-[9px] font-mono border border-cyan-500/20 flex items-center gap-0.5">
-                      {isListeningToSpeech ? 'Mic on' : 'Ready'}
-                    </span>
-                  )}
+                  {speechStatus && <span role="status" className="max-w-[28vw] truncate text-[10px] text-amber-200">{speechStatus}</span>}
                 </div>
 
                 {/* Center: Language Pair Pill with dropdown */}
                 <div className="relative" ref={languagePickerRef}>
                   <button
                     onClick={() => setShowLanguagePicker(!showLanguagePicker)}
-                    className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-slate-900 hover:bg-slate-800 border border-slate-700/80 text-[10px] sm:text-xs text-slate-200 font-medium transition-colors"
+                    aria-label={`Translation language: ${hostLang.name}${remoteLang ? ` to ${remoteLang.name}` : ''}`}
+                    className="flex max-w-[48vw] items-center gap-1 rounded-full bg-slate-900 hover:bg-slate-800 border border-slate-700/80 px-2 py-1 text-[10px] text-slate-200 font-medium transition-colors sm:max-w-none sm:gap-1.5 sm:px-2.5 sm:text-xs"
                     title="Change translation language pair"
                   >
                     <span className="font-mono text-[9px] uppercase">{hostLang.code}</span>
@@ -566,7 +558,7 @@ export const VideoCallScreen: React.FC<VideoCallScreenProps> = ({ onEndCall }) =
                         <span className="font-mono text-[9px] uppercase">{remoteLang.code}</span>
                       </>
                     ) : (
-                      <span className="text-slate-400">{hasRemoteParticipant ? 'Language not set' : 'Waiting for participant'}</span>
+                      <span className="text-slate-400">{hasRemoteParticipant ? 'Language not set' : 'Language pair pending'}</span>
                     )}
                   </button>
 
@@ -574,7 +566,7 @@ export const VideoCallScreen: React.FC<VideoCallScreenProps> = ({ onEndCall }) =
                   {showLanguagePicker && (
                     <div className="absolute bottom-full mb-2 left-1/2 -translate-x-1/2 w-64 max-w-[calc(100vw-2rem)] bg-slate-900 border border-slate-700 rounded-2xl p-2 shadow-2xl z-40 max-h-[min(14rem,40dvh)] overflow-y-auto">
                       <div className="text-[10px] text-slate-400 uppercase font-mono px-2 py-1">
-                        Choose Your Language
+                        Translation language
                       </div>
                       {SUPPORTED_LANGUAGES.map((lang) => (
                         <button
@@ -600,41 +592,7 @@ export const VideoCallScreen: React.FC<VideoCallScreenProps> = ({ onEndCall }) =
                   )}
                 </div>
 
-                {/* Right: Live STT Mic, Auto-Vocalize TTS, and Quick Phrases */}
-                <div className="flex items-center gap-1.5">
-                  {/* Real Microphone STT Button */}
-                  <button
-                    onClick={toggleSpeechRecognition}
-                    className={`flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-bold font-mono transition-all cursor-pointer ${
-                      isListeningToSpeech
-                        ? 'bg-emerald-500 text-slate-950 shadow-md shadow-emerald-500/30 animate-pulse'
-                        : 'bg-slate-800/90 text-slate-300 hover:text-white border border-slate-700'
-                    }`}
-                    title={isListeningToSpeech ? 'Click to stop live microphone STT' : 'Speak into real microphone to translate'}
-                  >
-                    <Mic className="w-3 h-3" />
-                    <span>{isListeningToSpeech ? 'Live Mic ON' : 'Talk Mic'}</span>
-                  </button>
-
-                  {/* Auto-Vocalize TTS Toggle */}
-                  <button
-                    onClick={() => {
-                      const next = !autoVocalize;
-                      setAutoVocalize(next);
-                      if (!next) speechService.stopSpeaking();
-                    }}
-                    className={`p-1 rounded-full transition-colors ${
-                      autoVocalize ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/40' : 'bg-slate-800 text-slate-500'
-                    }`}
-                    title={autoVocalize ? 'Text-to-Speech (TTS) enabled' : 'Text-to-Speech (TTS) muted'}
-                  >
-                    <Volume2 className="w-3.5 h-3.5" />
-                  </button>
-
-                  <span className="px-1.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 text-[9px] font-bold font-mono">
-                    HD
-                  </span>
-                </div>
+                <span className="text-[10px] text-white/40">{isListeningToSpeech ? 'Mic on' : ''}</span>
               </div>
 
               {/* Compact translated-caption strip; no synthetic audio meter. */}
@@ -651,7 +609,7 @@ export const VideoCallScreen: React.FC<VideoCallScreenProps> = ({ onEndCall }) =
                       {hostLang.name}:
                     </span>
                     <span className="text-xs sm:text-[13px] text-white font-medium truncate">
-                      {currentTranslatedSubtitle || speechStatus || (isListeningToSpeech ? 'Listening for speech…' : 'No translation received yet.')}
+                      {currentTranslatedSubtitle || (isListeningToSpeech ? 'Listening…' : '')}
                     </span>
                   </div>
                 </div>
@@ -734,7 +692,6 @@ export const VideoCallScreen: React.FC<VideoCallScreenProps> = ({ onEndCall }) =
           {isMediaConnected
             ? <span className="text-[10px] font-mono text-white/45">{formatTime(durationSeconds)}</span>
             : <span title={callConnectionLabel} className="max-w-[38vw] truncate text-[10px] font-mono text-white/45">{callConnectionLabel}</span>}
-          <span className="hidden text-[10px] font-mono uppercase tracking-widest text-white/45 sm:inline">Call controls above</span>
         </div>
       </div>
     </div>

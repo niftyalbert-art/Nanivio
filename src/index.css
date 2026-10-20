@@ -233,7 +233,7 @@
 .nv-theme-dark .nv-chat-workspace .chat-send-button { background: #f0b90b !important; color: #111318 !important; }
 .nv-theme-dark .nv-chat-workspace .chat-send-button:disabled { background: #343b45 !important; color: #929ba8 !important; cursor: not-allowed; }
 .nv-theme-dark .nv-chat-workspace input,
-.nv-theme-dark .nv-chat-workspace textarea { font-size: 15px; }
+.nv-theme-dark .nv-chat-workspace textarea { font-size: 16px; }
 .nv-theme-dark .nv-chat-workspace [class*="rounded-2xl"] { border-radius: 14px; }
 
 .nanivio-auth { background: #0b0e11; color: #f4f6f8; }
@@ -257,10 +257,21 @@
 .nv-theme-dark ::-webkit-scrollbar-thumb:hover { background: #4b5562; }
 
 .nv-chat-workspace {
-  height: max(0px, calc(100dvh - 18rem - env(safe-area-inset-bottom)));
+  height: auto;
   min-height: 0;
+  flex: 1 1 0%;
 }
-.nv-chat-workspace > * { min-height: 0; }
+.nv-chat-workspace > *,
+.nv-chat-page,
+.chat-thread-surface { min-height: 0; }
+.chat-app-shell { height: var(--nv-chat-visual-height, 100dvh); max-height: var(--nv-chat-visual-height, 100dvh); overflow: hidden; }
+.chat-app-shell > header { flex: 0 0 auto; }
+.chat-main { min-height: 0; }
+.nv-chat-page { height: 100%; }
+.nv-chat-workspace > *,
+.nv-chat-workspace .chat-thread-surface { min-width: 0; }
+.nv-chat-workspace .chat-thread-surface { overflow: hidden; }
+.nv-chat-workspace .chat-composer { flex: 0 0 auto; }
 #nanivio-bottom-navigation { padding-bottom: max(.25rem, env(safe-area-inset-bottom)); }
 .scrollbar-none { -ms-overflow-style: none; scrollbar-width: none; }
 .scrollbar-none::-webkit-scrollbar { display: none; }
@@ -273,8 +284,17 @@
 .nv-theme-dark .text-sm, .nanivio-auth .text-sm { font-size: .90625rem !important; line-height: 1.375rem !important; }
 .nv-theme-dark .text-base, .nanivio-auth .text-base { font-size: 1rem !important; line-height: 1.5rem !important; }
 @media (max-width: 767px) {
-  .nv-chat-workspace { height: max(0px, calc(100dvh - 15rem - env(safe-area-inset-bottom))); min-height: 0; }
   .nv-chat-workspace .chat-thread-surface { border-radius: 0; }
+  .nv-chat-page { padding-bottom: max(.5rem, env(safe-area-inset-bottom)); }
+  .nv-chat-workspace > aside,
+  .nv-chat-workspace .chat-thread-surface { min-height: 0; }
+}
+@media (max-width: 360px) {
+  .nanivio-navbar-inner { padding-left: .5rem; padding-right: .5rem; }
+  .navbar-brand { min-width: 0; }
+  .navbar-actions { min-width: 0; gap: .3rem; }
+  .navbar-install { display: none; }
+  .nv-chat-workspace .chat-composer { padding: .5rem !important; }
 }
 @media (prefers-reduced-motion: no-preference) {
   .nv-theme-dark .nanivio-app main > * { animation: settle-in .22s ease-out both; }

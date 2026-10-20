@@ -12,7 +12,6 @@ import {
   Maximize2,
   Users,
   Shield,
-  Coins,
   Send,
   MessageSquare,
   Activity,
@@ -24,6 +23,7 @@ import {
   Hash,
   VolumeX,
   Delete,
+  MoreHorizontal,
 } from 'lucide-react';
 import { useNanivio } from '../../context/NanivioContext';
 import { SUPPORTED_LANGUAGES, Participant } from '../../types';
@@ -74,6 +74,7 @@ export const ActiveCallModal: React.FC = () => {
   } = useNanivio();
 
   const [showAgoraStats, setShowAgoraStats] = useState(false);
+  const [showConnectedMore, setShowConnectedMore] = useState(false);
   const [showInCallChat, setShowInCallChat] = useState(false);
   const [showCallerKeypad, setShowCallerKeypad] = useState(false);
   const [callerDialedKeys, setCallerDialedKeys] = useState('');
@@ -84,15 +85,6 @@ export const ActiveCallModal: React.FC = () => {
 
   // Subscribe to local media stream during ringing preview
   useEffect(() => {
-    const isVideo = activeCall?.type === 'video_1on1' || activeCall?.type === 'group_video';
-    const isRinging = activeCall?.status === 'ringing' || activeCall?.status === 'calling';
-
-    if (isVideo && isRinging) {
-      agoraClient.startLocalPreview('video').then((s) => {
-        if (s) setLocalRingingStream(s);
-      });
-    }
-
     const unsub = agoraClient.subscribeLocalStream((stream) => {
       setLocalRingingStream(stream);
     });
@@ -432,8 +424,6 @@ export const ActiveCallModal: React.FC = () => {
                 otherParticipant.initials || otherParticipant.name?.slice(0, 2).toUpperCase() || 'NV'
               )}
             </div>
-            {/* Online/call pulse */}
-            <span className="absolute bottom-0 right-0 w-3 h-3 rounded-full bg-emerald-500 border-2 border-slate-950 animate-pulse" />
           </div>
 
           <div>
@@ -455,79 +445,29 @@ export const ActiveCallModal: React.FC = () => {
           </div>
         </div>
 
-        {/* Status Badges: In-Call Chat, Agora RTC Telemetry, Langpretation */}
-        <div className="flex items-center gap-2 sm:gap-3">
-          {/* In-Call Live Chat Toggle */}
-          <button
-            onClick={() => setShowInCallChat(!showInCallChat)}
-            className={`px-3 py-1 rounded-xl border flex items-center gap-1.5 text-xs font-bold transition-all shadow-md ${
-              showInCallChat
-                ? 'bg-indigo-600 border-indigo-400 text-white shadow-indigo-600/30'
-                : 'bg-slate-900/90 hover:bg-slate-800 border-slate-700 text-slate-200'
-            }`}
-            title="Toggle In-Call Live Chat"
-          >
-            <MessageSquare className="w-3.5 h-3.5" />
-            <span className="hidden sm:inline">In-Call Chat</span>
+        <div className="relative" aria-label="Call options">
+          <button type="button" aria-haspopup="menu" aria-expanded={showConnectedMore} aria-label="More call options" onClick={() => setShowConnectedMore((open) => !open)} className="inline-flex h-10 w-10 items-center justify-center rounded-xl border border-white/15 bg-slate-900/90 text-white hover:bg-slate-800">
+            <MoreHorizontal className="h-5 w-5" />
           </button>
-
-          {/* Nanivio HD Voice & Video Telemetry Badge */}
-          <button
-            onClick={() => setShowAgoraStats(!showAgoraStats)}
-            className="px-2.5 py-1 rounded-xl bg-slate-900/90 hover:bg-slate-800 border border-emerald-500/40 text-emerald-300 flex items-center gap-1.5 shadow-lg text-xs font-mono transition-all"
-            title="Click to inspect live stream telemetry"
-          >
-            <Activity className="w-3.5 h-3.5 text-emerald-400 animate-pulse" />
-            <span className="hidden sm:inline font-bold">HD Voice</span>
-            <span className="text-[10px] px-1.5 py-0.2 rounded bg-emerald-500/20 text-emerald-300">
-              {agoraStats.rttMs}ms
-            </span>
-          </button>
-
-          {/* Paid Expert Billing Meter */}
-          {activeCall.isPaidServiceCall && (
-            <div className="px-3 py-1 rounded-xl bg-amber-950/80 border border-amber-500/40 flex items-center gap-2 shadow-lg">
-              <Coins className="w-3.5 h-3.5 text-amber-400" />
-              <div className="text-right font-mono">
-                <div className="text-[10px] text-amber-300/80">Accrued ({activeCall.billedMinutes}m)</div>
-                <div className="text-xs font-bold text-amber-300">GH₵{activeCall.accruedCost.toFixed(2)}</div>
+          {showConnectedMore && (
+            <div role="menu" aria-label="More call options" className="absolute right-0 top-full z-40 mt-2 w-60 rounded-xl border border-slate-700 bg-[#12161b] p-1.5 shadow-xl">
+              <button type="button" role="menuitem" onClick={() => { setShowInCallChat((open) => !open); setShowConnectedMore(false); }} className="flex min-h-11 w-full items-center gap-2 rounded-lg px-3 text-left text-sm text-white hover:bg-slate-800">
+                <MessageSquare className="h-4 w-4 text-amber-400" /> {showInCallChat ? 'Close in-call chat' : 'Open in-call chat'}
+              </button>
+              <button type="button" role="menuitem" onClick={() => { setShowAgoraStats((open) => !open); setShowConnectedMore(false); }} className="flex min-h-11 w-full items-center gap-2 rounded-lg px-3 text-left text-sm text-white hover:bg-slate-800">
+                <Activity className="h-4 w-4 text-amber-400" /> {showAgoraStats ? 'Hide connection details' : 'Connection details'}
+              </button>
+              {activeCall.isPaidServiceCall && (
+                <div role="status" className="border-t border-slate-800 px-3 py-2 text-xs text-amber-200">
+                  {activeCall.billedMinutes} min · GH₵{activeCall.accruedCost.toFixed(2)}
+                </div>
+              )}
+              <div role="status" className="border-t border-slate-800 px-3 py-2 text-xs text-slate-300">
+                Translation {activeCall.langpretationEnabled ? `on · ${myLangInfo.name}` : 'off'}
+                {adminFeatures?.callMinutesWarningApproved && langpretationMeter && activeCall.langpretationEnabled && ` · ${langpretationMeter.remainingAllowance.toFixed(1)} min`}
               </div>
             </div>
           )}
-
-          {/* Langpretation State & Production Allowance Badge */}
-          <div
-            className={`px-3 py-1 rounded-xl border flex items-center gap-2 shadow-lg transition-all ${
-              activeCall.langpretationEnabled
-                ? 'bg-emerald-950/70 border-emerald-500/50 text-emerald-300 glow-crystal-subtle'
-                : 'bg-slate-900/80 border-slate-800 text-slate-400'
-            }`}
-          >
-            <Radio
-              className={`w-3.5 h-3.5 ${
-                activeCall.langpretationEnabled ? 'text-emerald-400 animate-pulse' : 'text-slate-500'
-              }`}
-            />
-            <div className="text-left hidden sm:block">
-              <div className="text-[9px] uppercase tracking-wider text-slate-400 font-bold flex items-center gap-1">
-                <span>Langpretation</span>
-                {activeCall.langpretationEnabled && (
-                  adminFeatures?.callMinutesWarningApproved && langpretationMeter ? (
-                    <span className="font-mono text-emerald-400 font-bold">
-                      • {langpretationMeter.remainingAllowance.toFixed(1)}m left
-                    </span>
-                  ) : (
-                    <span className="font-mono text-emerald-400 font-bold">
-                      • FREE HD
-                    </span>
-                  )
-                )}
-              </div>
-              <div className="text-xs font-semibold text-white">
-                {activeCall.langpretationEnabled ? `ON (${myLangInfo.name})` : 'OFF'}
-              </div>
-            </div>
-          </div>
         </div>
       </div>
 
@@ -735,8 +675,8 @@ export const ActiveCallModal: React.FC = () => {
 
             {/* Chat Messages Stream */}
             <div className="flex-1 p-4 overflow-y-auto space-y-3 text-xs">
-              <div className="p-2.5 rounded-xl bg-indigo-950/40 border border-indigo-500/30 text-indigo-200 text-[11px] leading-relaxed">
-                💬 Live in-call text channel. Messages are translated into each participant's preferred language.
+              <div className="p-2.5 rounded-xl bg-slate-900 border border-slate-800 text-slate-300 text-[11px] leading-relaxed">
+                In-call messages are translated into each participant's preferred language.
               </div>
             </div>
 

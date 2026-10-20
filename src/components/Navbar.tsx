@@ -33,10 +33,10 @@ export const Navbar: React.FC = () => {
         </div>
       )}
 
-      <div className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8">
+      <div className="nanivio-navbar-inner max-w-7xl mx-auto px-3 sm:px-6 lg:px-8">
         <div className="flex items-center justify-between h-[68px] gap-3">
           {/* Brand Logo & Identity */}
-          <div className="flex items-center gap-3 shrink-0">
+          <div className="navbar-brand flex items-center gap-3 shrink-0">
             <button
               onClick={() => setActiveTab('home')}
               className="flex items-center gap-2 group text-left focus:outline-none cursor-pointer"
@@ -50,9 +50,9 @@ export const Navbar: React.FC = () => {
           </div>
 
           {/* Right Action Controls: PWA Install, Language Selector, Langpretation Switch & User Profile */}
-          <div className="flex items-center gap-2 sm:gap-3 shrink-0">
+          <div className="navbar-actions flex items-center gap-2 sm:gap-3 shrink-0">
             {/* Native App Install Button */}
-            <PWAInstallButton compact={true} />
+            <span className="navbar-install"><PWAInstallButton compact={true} /></span>
 
             {/* Consumer-Facing "My Language" Selector Pill */}
             <button

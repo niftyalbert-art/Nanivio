@@ -59,6 +59,8 @@ import { ReportSafetyModal } from './ReportSafetyModal';
 import { LiveCameraModal } from './LiveCameraModal';
 import { EditProfileModal } from '../account/EditProfileModal';
 import { SettingsModal } from '../settings/SettingsModal';
+import { EmojiPickerPopover } from './EmojiPickerPopover';
+import { ChatCategoryMenu } from './ChatCategoryMenu';
 
 const REACTION_LABELS: Record<string, string> = {
   '👍': 'Like',
@@ -133,6 +135,7 @@ export const ChatView: React.FC = () => {
   const [isSendingMessage, setIsSendingMessage] = useState(false);
   const [sendMessageError, setSendMessageError] = useState<string | null>(null);
   const [isAttachmentMenuOpen, setIsAttachmentMenuOpen] = useState(false);
+  const [isEmojiPickerOpen, setIsEmojiPickerOpen] = useState(false);
 
   // Social suite modal states
   const [isMediaModalOpen, setIsMediaModalOpen] = useState(false);
@@ -157,6 +160,23 @@ export const ChatView: React.FC = () => {
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
   const headerMenuRef = useRef<HTMLDivElement | null>(null);
   const attachmentMenuRef = useRef<HTMLDivElement | null>(null);
+  const messageInputRef = useRef<HTMLTextAreaElement | null>(null);
+
+  useEffect(() => {
+    const viewport = window.visualViewport;
+    const updateHeight = () => {
+      const height = viewport?.height ?? window.innerHeight;
+      document.documentElement.style.setProperty('--nv-chat-visual-height', `${height}px`);
+    };
+    updateHeight();
+    viewport?.addEventListener('resize', updateHeight);
+    window.addEventListener('resize', updateHeight);
+    return () => {
+      viewport?.removeEventListener('resize', updateHeight);
+      window.removeEventListener('resize', updateHeight);
+      document.documentElement.style.removeProperty('--nv-chat-visual-height');
+    };
+  }, []);
 
   useEffect(() => {
     if (!isHeaderMenuOpen && !isAttachmentMenuOpen) return;
@@ -395,55 +415,7 @@ export const ChatView: React.FC = () => {
     });
 
   return (
-    <div className="max-w-[1600px] mx-auto flex flex-col gap-3 p-2 sm:p-4 lg:p-5">
-      {/* Top Protocol & View Switcher + New Direct Chat Trigger */}
-      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between bg-white border border-[#e1eae3] rounded-2xl p-3.5 shadow-[0_8px_24px_rgba(29,73,47,0.04)] gap-3">
-        <div className="flex items-center gap-2 flex-wrap">
-          <button
-            id="tab-btn-direct-chat"
-            onClick={() => setActiveTab('conversations')}
-            className={`px-4 py-2 rounded-xl text-sm font-bold transition-all flex items-center gap-2 cursor-pointer ${
-              activeTab === 'conversations'
-                ? 'bg-emerald-500 text-slate-950 shadow'
-                : 'text-slate-300 hover:text-white hover:bg-slate-800'
-            }`}
-          >
-            <MessageSquare className="w-4 h-4" />
-            <span>Direct &amp; Group Chats</span>
-          </button>
-
-          <button
-            id="tab-btn-stream-chat"
-            onClick={() => setActiveTab('stream_channels')}
-            className={`px-4 py-2 rounded-xl text-sm font-bold transition-all flex items-center gap-2 cursor-pointer ${
-              activeTab === 'stream_channels'
-                ? 'bg-purple-600 text-white shadow'
-                : 'text-slate-300 hover:text-purple-300 hover:bg-slate-800'
-            }`}
-          >
-            <Layers className="w-4 h-4 text-purple-400" />
-            <span>Community Channels</span>
-          </button>
-        </div>
-        <div
-          role="status"
-          aria-live="polite"
-          title="Community channel connection status"
-          className="inline-flex items-center gap-2 px-1 text-xs font-semibold text-[#5c695f]"
-        >
-          <span
-            className={`h-2 w-2 rounded-full ${
-              streamState.status === 'CONNECTED'
-                ? 'bg-[#3d785b]'
-                : streamState.status === 'CONNECTING'
-                ? 'bg-[#c18c2e]'
-                : 'bg-[#a94a3d]'
-            }`}
-          />
-          <span>{streamConnectionLabel}</span>
-        </div>
-      </div>
-
+    <div className="nv-chat-page mx-auto flex min-h-0 w-full max-w-[1600px] flex-1 flex-col gap-3 p-2 sm:p-4 lg:p-5">
       {/* Dedicated Nanivio Number Direct Chat Entry Card */}
       {isQuickNvBarOpen && (
         <div className="bg-gradient-to-r from-[#0d1b2a] via-[#0b1626] to-[#091322] border border-emerald-500/30 rounded-2xl p-5 shadow-xl space-y-3.5 animate-in fade-in slide-in-from-top-2 duration-200">
@@ -520,18 +492,19 @@ export const ChatView: React.FC = () => {
 
       {/* Conditionally Render Stream Chat Interface or Standard Chat View */}
       {activeTab === 'stream_channels' ? (
-        <StreamChatInterface />
+        <StreamChatInterface onCategorySelect={setActiveTab} />
       ) : (
-        <div className="nv-chat-workspace flex flex-col md:flex-row gap-3">
+        <div className="nv-chat-workspace flex min-h-0 flex-1 flex-col lg:flex-row gap-3">
           {/* Left Sidebar: Conversations List */}
-          <div className={`w-full md:w-[340px] lg:w-[380px] bg-white border border-[#e1eae3] rounded-2xl flex flex-col overflow-hidden shrink-0 ${showMobileChatThread ? 'hidden md:flex' : 'flex'}`}>
+          <div className={`w-full lg:w-[340px] xl:w-[380px] bg-white border border-[#e1eae3] rounded-2xl flex flex-col overflow-hidden shrink-0 ${showMobileChatThread ? 'hidden lg:flex' : 'flex'}`}>
             {/* Header, Actions & Search */}
             <div className="p-4 border-b border-[#e8eee9] space-y-3">
-              <div className="flex items-center justify-between">
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                 <h1 className="text-base font-bold text-white flex items-center gap-2">
+                  <ChatCategoryMenu activeCategory="conversations" connectionStatus={streamState.status} connectionLabel={streamConnectionLabel} onSelect={setActiveTab} />
                   <span>Chats &amp; Groups</span>
                 </h1>
-                <div className="flex items-center gap-1.5">
+                <div className="flex items-center justify-end gap-1.5">
                   <button
                     id="btn-new-group-modal"
                     onClick={() => setIsCreateGroupOpen(true)}
@@ -738,14 +711,14 @@ export const ChatView: React.FC = () => {
 
           {/* Right Main Chat Thread */}
           {activeConv ? (
-            <div className={`chat-thread-surface flex-1 min-w-0 bg-white border border-[#e1eae3] rounded-2xl flex flex-col overflow-hidden ${showMobileChatThread ? 'flex' : 'hidden md:flex'}`}>
+            <div className={`chat-thread-surface flex-1 min-w-0 bg-white border border-[#e1eae3] rounded-2xl flex flex-col overflow-hidden ${showMobileChatThread ? 'flex' : 'hidden lg:flex'}`}>
               {/* Active Conversation Header */}
               <div className="p-3 sm:p-4 border-b border-slate-800 bg-slate-900/50 flex items-center justify-between gap-2">
                 <div className="flex items-center gap-2 sm:gap-3 min-w-0">
                   {/* Mobile back to conversations list */}
                   <button
                     onClick={() => setShowMobileChatThread(false)}
-                    className="md:hidden flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-bold shrink-0 border border-slate-700 cursor-pointer"
+                    className="lg:hidden flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-bold shrink-0 border border-slate-700 cursor-pointer"
                     title="Back to all conversations"
                   >
                     <ArrowLeft className="w-3.5 h-3.5 text-emerald-400" />
@@ -1427,11 +1400,13 @@ export const ChatView: React.FC = () => {
                   />
                 ) : (
                   <>
-                  <form onSubmit={handleSend} className="flex items-end gap-2 p-1">
+                  <form onSubmit={handleSend} className="flex w-full flex-col items-stretch gap-2 p-1 sm:flex-row sm:items-end">
                     {/* WhatsApp-Style Unified Rounded Input Bubble */}
-                    <div className="relative flex-1 flex items-center bg-slate-950/90 border border-slate-700/80 focus-within:border-emerald-500 rounded-2xl px-2 py-1 transition-colors">
+                    <div className="relative flex min-w-0 w-full flex-1 items-center bg-slate-950/90 border border-slate-700/80 focus-within:border-emerald-500 rounded-2xl px-2 py-1 transition-colors">
                       {/* Roomy WhatsApp-Sized Input / Auto-growing Textarea */}
                       <textarea
+                        ref={messageInputRef}
+                        aria-label="Write a message"
                         rows={1}
                         disabled={isSendingMessage}
                         placeholder={`Type a message (speaks in ${myLangInfo.name})...`}
@@ -1447,10 +1422,19 @@ export const ChatView: React.FC = () => {
                             handleSend();
                           }
                         }}
-                        className="flex-1 bg-transparent border-0 text-[15px] sm:text-base text-white placeholder-slate-400 focus:outline-none px-2.5 py-2 resize-none max-h-32 min-h-[38px] leading-relaxed"
+                        className="flex-1 min-w-0 w-full bg-transparent border-0 text-base text-white placeholder-slate-400 focus:outline-none px-1.5 py-2 resize-none max-h-32 min-h-[48px] leading-relaxed whitespace-pre-wrap break-words sm:px-2.5"
                       />
 
                       {/* One attachment menu keeps media and voice actions together. */}
+                      <button
+                        type="button"
+                        aria-label="Open emoji picker"
+                        aria-expanded={isEmojiPickerOpen}
+                        onClick={() => setIsEmojiPickerOpen((open) => !open)}
+                        className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl text-slate-300 hover:bg-slate-800 hover:text-amber-400"
+                      >
+                        <SmilePlus className="h-5 w-5" />
+                      </button>
                       <div className="relative shrink-0" ref={attachmentMenuRef}>
                         <button
                           type="button"
@@ -1458,7 +1442,7 @@ export const ChatView: React.FC = () => {
                           aria-haspopup="menu"
                           aria-expanded={isAttachmentMenuOpen}
                           onClick={() => setIsAttachmentMenuOpen((open) => !open)}
-                          className="inline-flex items-center gap-1.5 rounded-xl px-2.5 py-2 text-xs font-semibold text-slate-500 hover:bg-slate-800 hover:text-emerald-400 transition-colors"
+                          className="inline-flex items-center gap-1.5 rounded-xl px-1.5 py-2 text-xs font-semibold text-slate-500 hover:bg-slate-800 hover:text-emerald-400 transition-colors sm:px-2.5"
                           title="Attach media or record a voice note"
                         >
                           <Paperclip className="w-4 h-4" />
@@ -1484,11 +1468,28 @@ export const ChatView: React.FC = () => {
                       type="submit"
                       id="btn-chat-send-msg"
                       disabled={!inputMsg.trim() || isSendingMessage}
-                      className="chat-send-button h-11 min-w-[82px] rounded-xl px-3.5 font-bold text-sm transition-colors shrink-0 inline-flex items-center justify-center gap-2 disabled:opacity-75"
+                      className="chat-send-button h-11 min-w-[82px] self-end rounded-xl px-3.5 font-bold text-sm transition-colors shrink-0 inline-flex items-center justify-center gap-2 disabled:opacity-75 sm:self-auto"
                     >
                       {isSendingMessage ? <span className="animate-pulse">Sending</span> : <><Send className="w-4 h-4" /><span>Send</span></>}
                     </button>
                   </form>
+                  <EmojiPickerPopover
+                    isOpen={isEmojiPickerOpen}
+                    onClose={() => setIsEmojiPickerOpen(false)}
+                    onSelectEmoji={(emoji) => {
+                      const input = messageInputRef.current;
+                      if (!input) return;
+                      const start = input.selectionStart ?? input.value.length;
+                      const end = input.selectionEnd ?? start;
+                      const next = input.value.slice(0, start) + emoji + input.value.slice(end);
+                      setInputMsg(next);
+                      requestAnimationFrame(() => {
+                        input.focus();
+                        const cursor = start + emoji.length;
+                        input.setSelectionRange(cursor, cursor);
+                      });
+                    }}
+                  />
                   {sendMessageError && <p role="alert" className="mt-1 px-2 text-xs font-medium text-[#9d352c]">{sendMessageError}</p>}
                   </>
                 )}
