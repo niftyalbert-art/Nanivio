@@ -20,7 +20,9 @@ export function liveAvatarSetup() {
     mode: 'LITE' as const,
     idleSeconds: 60,
     maximumInitializationsPerHour: 10,
-    brainConnected: brain.configured,
+    brainConfigured: brain.configured,
+    // Setup is not a live-session probe. Only brain_ready confirms a connection.
+    brainConnected: false,
     brainProvider: brain.selectedProvider,
   };
 }

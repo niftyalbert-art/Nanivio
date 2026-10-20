@@ -1,7 +1,35 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { getLiveBrainProviderConfig } from '../src/server/assistant/brainProviderConfig.ts';
+import { liveAvatarSetup } from '../src/server/assistant/liveAvatarService.ts';
 import { hasSpeech, resamplePcm16kTo24k } from '../src/server/assistant/liveBrain.ts';
+
+test('configured provider credentials do not claim a live brain connection', () => {
+  const keys = ['HEYGEN_API_KEY', 'AVATAR_ID', 'REDIS_URL', 'GEMINI_API_KEY', 'MALVI_BRAIN_PROVIDER'];
+  const original = Object.fromEntries(keys.map(key => [key, process.env[key]]));
+  try {
+    process.env.HEYGEN_API_KEY = 'fixture-avatar-key';
+    process.env.AVATAR_ID = 'fixture-custom-avatar';
+    process.env.REDIS_URL = 'redis://fixture.invalid:6379';
+    process.env.GEMINI_API_KEY = 'fixture-brain-key';
+    process.env.MALVI_BRAIN_PROVIDER = 'gemini';
+    const setup = liveAvatarSetup();
+    assert.equal(setup.configured, true);
+    assert.equal(setup.brainConfigured, true);
+    assert.equal(setup.brainConnected, false);
+    delete process.env.GEMINI_API_KEY;
+    const missing = liveAvatarSetup();
+    assert.equal(missing.configured, false);
+    assert.equal(missing.brainConfigured, false);
+    assert.equal(missing.brainConnected, false);
+    assert.ok(missing.missing.includes('GEMINI_API_KEY'));
+  } finally {
+    for (const key of keys) {
+      if (original[key] === undefined) delete process.env[key];
+      else process.env[key] = original[key];
+    }
+  }
+});
 
 test('the live brain provider is selected explicitly and reports missing credentials without exposing values', () => {
   const oldProvider = process.env.MALVI_BRAIN_PROVIDER;

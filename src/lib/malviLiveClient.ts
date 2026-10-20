@@ -5,6 +5,7 @@ export interface LiveAvatarReadiness {
   enabled: boolean;
   missing: string[];
   brainConnected: boolean;
+  brainConfigured?: boolean;
   welcomeVoiceConfigured: boolean;
   brainProvider?: 'gemini' | 'openai' | null;
 }
