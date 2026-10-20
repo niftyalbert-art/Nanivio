@@ -1,5 +1,5 @@
 import type { ChatMessage, Conversation, SupportedLanguageCode } from '../types';
-import { streamClient, type StreamChannelData } from './streamClient';
+import { streamClient, type StreamChannelData, type StreamChatMessage } from './streamClient';
 import { realtimeClient } from './realtimeClient';
 
 // Deduplicate only in-flight creation, never cache membership or permissions.
@@ -49,4 +49,27 @@ export async function privateConversationChannel(conversation: Conversation, sen
 
 export async function publishPrivateMessage(conversation: Conversation, channelId: string, message: ChatMessage) {
   return realtimeClient.sendPrivateChatMessage(conversation.id, channelId, message);
+}
+
+export function restoredPrivateMessage(message: StreamChatMessage): ChatMessage {
+  const file = message.attachments?.[0];
+  const media = message.nanivio || {};
+  const type = file?.type === 'image' ? 'image' : /\.(mp4|mov|webm)(\?|$)/i.test(file?.url || '') ? 'video' : 'document';
+  return {
+    ...media,
+    id: message.id, senderId: message.userId, senderName: message.userName,
+    senderAvatar: message.userAvatar, senderLang: message.sourceLang || 'en',
+    text: message.text, translatedText: message.translatedText,
+    timestamp: message.createdAt, status: 'sent',
+    ...(file && !media.mediaUrl && !media.voiceNote && file.type !== 'audio' ? {
+      mediaType: type, mediaUrl: file.url, mediaFileName: file.name, mediaFileSize: file.size,
+    } : {}),
+    ...(file?.type === 'audio' && !media.voiceNote ? {
+      isVoiceNote: true, voiceNote: {
+        id: message.id, duration: message.voiceNoteDuration || 0, audioBlobUrl: file.url,
+        waveform: [], transcript: message.text, hasLangpretation: false,
+        sourceLang: message.sourceLang || 'en', targetLang: message.targetLang || 'en',
+      },
+    } : {}),
+  };
 }

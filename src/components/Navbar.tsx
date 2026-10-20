@@ -24,7 +24,7 @@ export const Navbar: React.FC = () => {
   const currentLangObj = SUPPORTED_LANGUAGES.find((l) => l.code === myLanguage) || SUPPORTED_LANGUAGES[0];
 
   return (
-    <header className="sticky top-0 z-40 bg-white/95 backdrop-blur-xl border-b border-[#e3ebe4] shadow-[0_4px_20px_rgba(29,73,47,0.035)]">
+    <header className="sticky top-0 z-40 bg-[#fbf9f2] border-b border-[#d9d4c8]">
       {/* Maintenance Mode Alert Banner if active */}
       {adminFeatures.maintenanceMode && (
         <div className="bg-amber-50 border-b border-amber-200 px-4 py-1.5 text-center text-xs text-amber-900 flex items-center justify-center gap-2">
@@ -43,8 +43,8 @@ export const Navbar: React.FC = () => {
               title="Nanivio Home — Connects me with the world"
             >
               <NanivioLogo size="md" showTagline={false} />
-              <span className="text-[10px] font-bold tracking-[.12em] px-2 py-1 rounded-full bg-emerald-50 text-emerald-800 border border-emerald-100 hidden xs:inline-block">
-                CONNECTED
+              <span className="text-[10px] font-bold tracking-[.12em] px-2 py-1 rounded-full bg-[#f0e8d6] text-[#765519] border border-[#e4d7b7] hidden xs:inline-block">
+                GHANA · GLOBAL
               </span>
             </button>
           </div>
@@ -61,7 +61,9 @@ export const Navbar: React.FC = () => {
               className="flex items-center gap-1.5 sm:gap-2 px-2.5 sm:px-3 py-2 rounded-xl bg-[#f6faf7] border border-[#e1ebe3] hover:border-emerald-300 text-xs text-[#294a38] transition-all hover:bg-emerald-50 shadow-sm cursor-pointer"
               title="Change your consumer My Language setting"
             >
-              <span className="text-sm sm:text-base leading-none">{currentLangObj.flag}</span>
+              <span className="font-mono text-[10px] font-bold tracking-wide text-[#174e3c] border-r border-[#d9d4c8] pr-2">
+                {currentLangObj.code.toUpperCase()}
+              </span>
               <div className="text-left hidden sm:block">
                 <div className="text-[10px] text-[#809087] leading-none">Language</div>
                 <div className="text-xs font-semibold text-[#294a38] leading-tight">{currentLangObj.name}</div>

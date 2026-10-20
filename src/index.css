@@ -1,230 +1,191 @@
-@import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Manrope:wght@500;600;700;800&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Manrope:wght@500;600;700;800&family=Space+Mono:wght@400;700&display=swap');
 @import "tailwindcss";
 
 :root {
   font-family: 'DM Sans', sans-serif;
-  color: #19382b;
-  background: #f5f8f5;
+  color: #18231f;
+  background: #f3efe5;
   font-synthesis: none;
   text-rendering: optimizeLegibility;
-  --nv-forest: #176b49;
-  --nv-leaf: #249766;
-  --nv-mist: #f5f8f5;
-  --nv-ink: #19382b;
-  --nv-muted: #718278;
-  --nv-border: #e2ebe4;
+  --nv-forest: #174e3c;
+  --nv-leaf: #19785b;
+  --nv-mist: #f3efe5;
+  --nv-paper: #fbf9f2;
+  --nv-ink: #18231f;
+  --nv-muted: #68736d;
+  --nv-border: #d9d4c8;
+  --nv-gold: #dda82d;
+  --nv-rust: #c7543d;
   --font-display: 'Manrope', sans-serif;
+  --font-mono: 'Space Mono', monospace;
 }
 
 @layer base {
-  html {
-    font-size: 16px;
-    -webkit-text-size-adjust: 100%;
-    text-size-adjust: 100%;
-    background: #f5f8f5;
-  }
+  html { font-size: 16px; -webkit-text-size-adjust: 100%; text-size-adjust: 100%; background: #f3efe5; }
   body {
-    margin: 0;
-    min-width: 320px;
-    width: 100%;
-    max-width: 100vw;
-    min-height: 100dvh;
-    overflow-x: hidden;
-    touch-action: pan-y;
-    -webkit-overflow-scrolling: touch;
-    background: #f5f8f5;
-    color: #19382b;
-    font-family: 'DM Sans', sans-serif;
-    font-size: 15.5px;
-    line-height: 1.5;
-    -webkit-font-smoothing: antialiased;
+    margin: 0; min-width: 320px; width: 100%; max-width: 100vw; min-height: 100dvh;
+    overflow-x: hidden; touch-action: pan-y; -webkit-overflow-scrolling: touch;
+    background: #f3efe5; color: #18231f; font-family: 'DM Sans', sans-serif;
+    font-size: 15.5px; line-height: 1.5; -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
   }
-  #root {
-    width: 100%;
-    max-width: 100vw;
-    min-height: 100dvh;
-    overflow-x: clip;
-  }
+  #root { width: 100%; max-width: 100vw; min-height: 100dvh; overflow-x: clip; }
   button, input, textarea, select { font: inherit; }
   button { -webkit-tap-highlight-color: transparent; }
 }
 
-/* Keep the familiar utility vocabulary, but give workspaces a readable daylight palette.
-   Scope this to the main content so live call/media overlays retain their dark treatment. */
+.nanivio-app { background: #f3efe5; color: #18231f; }
+.nanivio-app::after { content: none; }
+.nanivio-app .nanivio-wordmark,
+.nanivio-auth .nanivio-wordmark { background-image: none; color: #174e3c; }
 .nanivio-main [class*="bg-[#0c1424]"],
 .nanivio-main [class*="bg-[#0b1424]"],
-.nanivio-main [class*="bg-[#070d18]"] { background-color: #fff !important; }
-.nanivio-main [class*="bg-slate-950"] { background-color: #f4f8f5 !important; }
-.nanivio-main [class*="bg-slate-900"] { background-color: #f8faf8 !important; }
-.nanivio-main [class*="bg-slate-800"] { background-color: #edf4ef !important; }
-.nanivio-main [class*="bg-slate-700"] { background-color: #e3ede6 !important; }
+.nanivio-main [class*="bg-[#070d18]"],
+.nanivio-main [class*="bg-[#0b1424]"],
+.nanivio-main [class*="bg-[#0a1828]"],
+.nanivio-main [class*="bg-[#0b1828]"],
+.nanivio-main [class*="bg-[#0c1a2e]"],
+.nanivio-main [class*="bg-[#08101d]"],
+.nanivio-main [class*="bg-[#081220]"] { background-color: #fbf9f2 !important; }
+.nanivio-main [class*="bg-gradient-to-"][class*="from-[#0"] { background: #fbf9f2 !important; }
+.nanivio-main [class*="bg-slate-950"],
+.nanivio-main [class*="bg-slate-900"] { background-color: #f5f1e8 !important; }
+.nanivio-main [class*="bg-slate-800"] { background-color: #ebe6da !important; }
+.nanivio-main [class*="bg-slate-700"] { background-color: #ded8ca !important; }
 .nanivio-main [class*="border-slate-900"],
 .nanivio-main [class*="border-slate-800"],
-.nanivio-main [class*="border-slate-700"] { border-color: #e1eae3 !important; }
-.nanivio-main [class*="divide-slate-800"] > :not([hidden]) ~ :not([hidden]) { border-color: #edf2ee !important; }
+.nanivio-main [class*="border-slate-700"] { border-color: #ded8ca !important; }
+.nanivio-main [class*="divide-slate-800"] > :not([hidden]) ~ :not([hidden]) { border-color: #e6e1d6 !important; }
 .nanivio-main [class*="text-slate-100"],
-.nanivio-main [class*="text-slate-200"] { color: #20382c !important; }
-.nanivio-main [class*="text-slate-300"] { color: #52675b !important; }
-.nanivio-main [class*="text-slate-400"] { color: #728278 !important; }
-.nanivio-main [class*="text-slate-500"] { color: #89978e !important; }
-.nanivio-main :is(h1, h2, h3, h4)[class*="text-white"] { color: #19382b !important; }
-.nanivio-main .media-dark-surface [class*="text-white"] { color: #fff !important; }
+.nanivio-main [class*="text-slate-200"],
+.nanivio-main [class*="text-white"] { color: #18231f !important; }
+.nanivio-main [class*="text-slate-300"] { color: #46544c !important; }
+.nanivio-main [class*="text-slate-400"] { color: #68736d !important; }
+.nanivio-main [class*="text-slate-500"] { color: #7b837c !important; }
 .nanivio-main [class*="text-emerald-300"],
-.nanivio-main [class*="text-emerald-400"] { color: #17764c !important; }
+.nanivio-main [class*="text-emerald-400"] { color: #17654b !important; }
 .nanivio-main [class*="text-cyan-300"],
 .nanivio-main [class*="text-cyan-400"] { color: #176b67 !important; }
-.nanivio-main [class*="placeholder-slate-500"]::placeholder { color: #8a9890 !important; }
-.nanivio-main [class*="bg-gradient-to-r"][class*="from-[#0b1424]"],
-.nanivio-main [class*="bg-gradient-to-r"][class*="from-[#0e1c33]"] {
-  background: linear-gradient(115deg, #edf7f0, #f8fbf8 60%, #eaf5ee) !important;
+.nanivio-main [class*="placeholder-slate-500"]::placeholder { color: #7b837c !important; }
+.nanivio-main button[class*="bg-emerald-500"],
+.nanivio-main button[class*="bg-emerald-600"],
+.nanivio-main button[class*="bg-emerald-700"],
+.nanivio-main button[class*="bg-rose-600"] { color: #fff !important; }
+.nanivio-main input, .nanivio-main textarea, .nanivio-main select {
+  color: #18231f; background-color: #fffdf8; border-color: #d9d4c8;
 }
-.calls-view [class*="text-white"] { color: #19382b !important; }
+.nanivio-main input:focus, .nanivio-main textarea:focus, .nanivio-main select:focus { outline-color: #19785b; }
+.calls-view [class*="text-white"] { color: #18231f !important; }
 .calls-view button[class*="text-white"],
 .calls-view button [class*="text-white"] { color: inherit !important; }
 .calls-view button[class*="bg-blue-600"][class*="text-white"],
 .calls-view button[class*="bg-purple-600"][class*="text-white"],
 .calls-view button[class*="bg-purple-500"][class*="text-white"] { color: #fff !important; }
-.calls-view .media-dark-surface [class*="text-white"] { color: #fff !important; }
-.calls-view [class*="bg-gradient-to-br"][class*="from-[#0a1828]"] {
-  background: linear-gradient(120deg, #edf7f0, #f8fbf8 58%, #e7f3ea) !important;
-}
-.nanivio-main input,
-.nanivio-main textarea,
-.nanivio-main select {
-  color: #20382c;
-  background-color: #fff;
-  border-color: #dce7df;
-}
-.nanivio-main input:focus,
-.nanivio-main textarea:focus,
-.nanivio-main select:focus { outline-color: #279568; }
-
-.whatsapp-msg-text { font-size: 15.5px; line-height: 1.55; letter-spacing: -0.01em; }
-.text-xs { font-size: .8125rem !important; line-height: 1.25rem !important; }
-.text-sm { font-size: .90625rem !important; line-height: 1.375rem !important; }
-.text-base { font-size: 1rem !important; line-height: 1.5rem !important; }
-.scrollbar-none { -ms-overflow-style: none; scrollbar-width: none; }
-.scrollbar-none::-webkit-scrollbar { display: none; }
-::-webkit-scrollbar { width: 6px; height: 6px; }
-::-webkit-scrollbar-track { background: #edf3ee; }
-::-webkit-scrollbar-thumb { background: #cbd9cf; border-radius: 999px; }
-::-webkit-scrollbar-thumb:hover { background: #9bb4a2; }
-
-.nanivio-app { background: #f5f8f5; color: #19382b; }
-.nanivio-app::after {
-  content: "";
-  position: fixed;
-  inset: 0;
-  z-index: 0;
-  pointer-events: none;
-  opacity: .12;
-  background-image: radial-gradient(#a9c7b3 .55px, transparent .55px);
-  background-size: 7px 7px;
-}
-.nanivio-app > main { position: relative; z-index: 1; }
-.nanivio-app .nanivio-wordmark,
-.nanivio-auth .nanivio-wordmark {
-  background-image: linear-gradient(to right, #174b36, #237753);
-}
-.nanivio-main [class*="bg-[#0"] { background-color: #fff !important; }
-.nanivio-main [class*="text-white"] { color: #20382c !important; }
-.nanivio-main button[class*="bg-emerald-500"],
-.nanivio-main button[class*="bg-emerald-600"],
-.nanivio-main button[class*="bg-emerald-700"],
-.nanivio-main button[class*="bg-rose-600"] { color: #fff !important; }
-.nanivio-main button[class*="bg-emerald-"] > span,
-.nanivio-main button[class*="bg-rose-600"] > span { color: inherit !important; }
+.calls-view [class*="bg-slate-950"],
+.calls-view [class*="bg-slate-900"] { background-color: #f5f1e8 !important; }
+.calls-view [class*="bg-gradient-to-"][class*="from-[#0"] { background: #fbf9f2 !important; }
+.calls-view [class*="bg-slate-800"] { background-color: #ebe6da !important; }
+.calls-view [class*="border-slate-800"],
+.calls-view [class*="border-slate-700"] { border-color: #ded8ca !important; }
+.calls-view [class*="text-slate-400"] { color: #68736d !important; }
+.calls-view [class*="text-slate-300"] { color: #46544c !important; }
+.calls-view [class*="text-slate-200"] { color: #26342d !important; }
+.calls-view [class*="text-emerald-300"],
+.calls-view [class*="text-emerald-400"] { color: #17654b !important; }
+.calls-view [class*="text-cyan-300"],
+.calls-view [class*="text-cyan-400"] { color: #176b67 !important; }
+.calls-view button[class*="bg-emerald-500"],
+.calls-view button[class*="bg-emerald-600"] { color: #fff !important; }
+.calls-view [class*="bg-gradient-to-br"][class*="from-[#0a1828]"],
+.calls-view [class*="bg-gradient-to-br"][class*="from-[#0b1828]"],
+.calls-view [class*="bg-gradient-to-br"][class*="from-[#0c1a2e]"] { background: #fbf9f2 !important; }
 
 .nanivio-auth {
-  background:
-    radial-gradient(ellipse at 14% 8%, rgba(197, 231, 205, .46), transparent 35%),
-    radial-gradient(ellipse at 92% 88%, rgba(214, 235, 218, .6), transparent 34%),
-    #f5f8f5;
-  color: #19382b;
+  background: #f3efe5;
+  color: #18231f;
 }
-.nanivio-auth::before {
-  content: "";
-  position: fixed;
-  inset: 0;
-  pointer-events: none;
-  opacity: .18;
-  background-image: radial-gradient(#a9c7b3 .55px, transparent .55px);
-  background-size: 8px 8px;
-}
-.nanivio-auth > :not(.absolute):not(.fixed) { position: relative; z-index: 1; }
+.nanivio-auth::before { content: none; }
 .nanivio-auth [class*="bg-[#070d18]"],
 .nanivio-auth [class*="bg-[#0c1524]"],
-.nanivio-auth [class*="bg-[#091120]"] { background-color: #fff !important; }
-.nanivio-auth [class*="bg-slate-950"] { background-color: #f4f8f5 !important; }
-.nanivio-auth [class*="bg-slate-900"] { background-color: #f8faf8 !important; }
-.nanivio-auth [class*="bg-slate-800"] { background-color: #edf4ef !important; }
-.nanivio-auth [class*="bg-slate-700"] { background-color: #e3ede6 !important; }
+.nanivio-auth [class*="bg-[#091120]"] { background-color: #fbf9f2 !important; }
+.nanivio-auth [class*="bg-slate-950"],
+.nanivio-auth [class*="bg-slate-900"] { background-color: #f5f1e8 !important; }
+.nanivio-auth [class*="bg-slate-800"] { background-color: #ebe6da !important; }
+.nanivio-auth [class*="bg-slate-700"] { background-color: #ded8ca !important; }
 .nanivio-auth [class*="border-slate-900"],
 .nanivio-auth [class*="border-slate-800"],
-.nanivio-auth [class*="border-slate-700"] { border-color: #e1eae3 !important; }
+.nanivio-auth [class*="border-slate-700"] { border-color: #ded8ca !important; }
 .nanivio-auth [class*="text-slate-100"],
 .nanivio-auth [class*="text-slate-200"],
-.nanivio-auth [class*="text-slate-300"] { color: #30483a !important; }
-.nanivio-auth [class*="text-slate-400"] { color: #68796e !important; }
-.nanivio-auth [class*="text-slate-500"] { color: #7f8d83 !important; }
-.nanivio-auth [class*="text-white"] { color: #20382c !important; }
+.nanivio-auth [class*="text-slate-300"],
+.nanivio-auth [class*="text-white"] { color: #26342d !important; }
+.nanivio-auth [class*="text-slate-400"] { color: #68736d !important; }
+.nanivio-auth [class*="text-slate-500"] { color: #7b837c !important; }
 .nanivio-auth button[class*="bg-emerald-600"],
 .nanivio-auth button[class*="bg-emerald-700"] { color: #fff !important; }
 .nanivio-auth [class*="text-emerald-300"],
-.nanivio-auth [class*="text-emerald-400"] { color: #17764c !important; }
+.nanivio-auth [class*="text-emerald-400"] { color: #17654b !important; }
 .nanivio-auth input:not([type="checkbox"]):not([type="radio"]),
-.nanivio-auth textarea,
-.nanivio-auth select {
-  min-height: 44px;
-  color: #20382c;
-  background-color: #fff;
-  border-color: #dce7df;
-  font-size: 16px !important;
+.nanivio-auth textarea, .nanivio-auth select {
+  min-height: 44px; color: #18231f; background-color: #fffdf8; border-color: #d9d4c8; font-size: 16px !important;
 }
-.nanivio-auth input::placeholder,
-.nanivio-auth textarea::placeholder { color: #89978e; opacity: 1; }
-.nanivio-auth input:focus,
-.nanivio-auth textarea:focus,
-.nanivio-auth select:focus {
-  outline: 2px solid rgba(36, 151, 102, .25);
-  outline-offset: 1px;
-  border-color: #249766;
+.nanivio-auth input::placeholder, .nanivio-auth textarea::placeholder { color: #7b837c; opacity: 1; }
+.nanivio-auth input:focus, .nanivio-auth textarea:focus, .nanivio-auth select:focus {
+  outline: 2px solid rgba(25, 120, 91, .25); outline-offset: 1px; border-color: #19785b;
 }
 .nanivio-auth button { min-height: 40px; }
-.nanivio-auth button:focus-visible,
-.nanivio-auth input:focus-visible,
-.nanivio-auth select:focus-visible,
-.nanivio-auth textarea:focus-visible {
-  outline: 3px solid rgba(36, 151, 102, .4);
-  outline-offset: 2px;
+.nanivio-auth button:focus-visible, .nanivio-auth input:focus-visible,
+.nanivio-auth select:focus-visible, .nanivio-auth textarea:focus-visible {
+  outline: 3px solid rgba(25, 120, 91, .4); outline-offset: 2px;
 }
-.nanivio-auth [class*="bg-red-950"] { background-color: #fff3f2 !important; }
-.nanivio-auth [class*="text-red-200"] { color: #9f2d2a !important; }
-.nanivio-auth [class*="bg-amber-950"] { background-color: #fff9e9 !important; }
-.nanivio-auth [class*="text-amber-200"] { color: #765519 !important; }
+.nanivio-auth [class*="bg-red-950"] { background-color: #fff1ed !important; }
+.nanivio-auth [class*="text-red-200"] { color: #9d352c !important; }
+.nanivio-auth [class*="bg-amber-950"] { background-color: #fff7df !important; }
+.nanivio-auth [class*="text-amber-200"],
 .nanivio-auth [class*="text-amber-300"] { color: #765519 !important; }
-.nanivio-auth [class*="placeholder-slate-500"]::placeholder { color: #89978e !important; }
-.nanivio-auth .country-selector-choice {
-  min-width: 132px;
-  flex: 0 0 auto;
-}
+.nanivio-auth [class*="placeholder-slate-500"]::placeholder { color: #7b837c !important; }
+.nanivio-auth .country-selector-choice { min-width: 132px; flex: 0 0 auto; }
 .nanivio-auth .country-selector-choice > div { width: 100%; }
-.nanivio-auth .country-selector-choice > div > button { width: 100%; min-height: 44px; background: #f8faf8; }
-.nanivio-auth > .fixed.inset-0 { background-color: rgba(25, 56, 43, .52) !important; }
+.nanivio-auth .country-selector-choice > div > button { width: 100%; min-height: 44px; background: #f8f5ed; }
+.nanivio-auth > .fixed.inset-0 { background-color: rgba(24, 35, 31, .62) !important; }
 
 .nv-chat-workspace {
-  height: calc(100dvh - 18.5rem);
-  min-height: 500px;
+  height: max(0px, calc(100dvh - 18rem - env(safe-area-inset-bottom)));
+  min-height: 0;
 }
-.nv-chat-workspace > [class*="bg-[#0c1424]"] { box-shadow: 0 14px 40px rgba(28, 74, 47, .07); }
-.nv-chat-workspace input { font-size: 15px; }
-.nv-chat-workspace [class*="rounded-2xl"] { border-radius: 18px; }
+.nv-chat-workspace > * { min-height: 0; }
+.nv-chat-workspace > [class*="bg-[#0c1424]"] {
+  box-shadow: 0 8px 24px rgba(24, 35, 31, .08);
+}
+.nv-chat-workspace input, .nv-chat-workspace textarea { font-size: 15px; }
+.nv-chat-workspace [class*="rounded-2xl"] { border-radius: 14px; }
+.nv-chat-workspace .chat-thread-surface { background: #f8f5ed; }
+.nv-chat-workspace .chat-outgoing-bubble { background: #174e3c !important; color: #fff !important; border-color: #174e3c !important; }
+.nv-chat-workspace .chat-outgoing-bubble p { color: #fff !important; }
+.nv-chat-workspace .chat-incoming-bubble { background: #fffdf8 !important; color: #18231f !important; border-color: #e5dfd2 !important; }
+.nv-chat-workspace .chat-composer { background: #fbf9f2; border-color: #d9d4c8; }
+.nv-chat-workspace .chat-composer textarea { color: #18231f; }
+.nv-chat-workspace .chat-send-button { background: #174e3c; color: white; }
+.nv-chat-workspace .chat-send-button:disabled { background: #d9d4c8; color: #68736d; cursor: not-allowed; }
 
+.nanivio-app header { background: #fbf9f2; border-color: #d9d4c8; box-shadow: 0 1px 0 rgba(24, 35, 31, .05); }
+#nanivio-bottom-navigation { background: #fbf9f2; border-color: #d9d4c8; box-shadow: 0 -1px 0 rgba(24, 35, 31, .05); }
+#nanivio-bottom-navigation { padding-bottom: max(.25rem, env(safe-area-inset-bottom)); }
+.scrollbar-none { -ms-overflow-style: none; scrollbar-width: none; }
+.scrollbar-none::-webkit-scrollbar { display: none; }
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: #ebe6da; }
+::-webkit-scrollbar-thumb { background: #c9c1b1; border-radius: 999px; }
+::-webkit-scrollbar-thumb:hover { background: #a99e89; }
+.whatsapp-msg-text { font-size: 15.5px; line-height: 1.55; letter-spacing: -.01em; }
+.text-xs { font-size: .8125rem !important; line-height: 1.25rem !important; }
+.text-sm { font-size: .90625rem !important; line-height: 1.375rem !important; }
+.text-base { font-size: 1rem !important; line-height: 1.5rem !important; }
 @media (max-width: 767px) {
-  .nv-chat-workspace { height: calc(100dvh - 23rem); min-height: 420px; }
+  .nv-chat-workspace { height: max(0px, calc(100dvh - 15rem - env(safe-area-inset-bottom))); min-height: 0; }
+  .nv-chat-workspace .chat-thread-surface { border-radius: 0; }
 }
 @media (prefers-reduced-motion: no-preference) {
-  .nanivio-app main > * { animation: settle-in .35s ease-out both; }
-  @keyframes settle-in { from { opacity: .75; transform: translateY(5px); } to { opacity: 1; transform: none; } }
+  .nanivio-app main > * { animation: settle-in .22s ease-out both; }
+  @keyframes settle-in { from { opacity: .86; transform: translateY(3px); } to { opacity: 1; transform: none; } }
 }

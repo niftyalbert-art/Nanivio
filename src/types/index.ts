@@ -25,7 +25,7 @@ export type LangpretationState = 'OFF' | 'Starting' | 'ON' | 'Translating' | 'Un
 
 export type CallType = 'audio_1on1' | 'video_1on1' | 'group_audio' | 'group_video';
 
-export type CallStatus = 'idle' | 'calling' | 'ringing' | 'connected' | 'ended';
+export type CallStatus = 'idle' | 'calling' | 'ringing' | 'connecting' | 'connected' | 'ended';
 
 export interface Participant {
   id: string;
@@ -56,6 +56,7 @@ export interface Participant {
 
 export interface CallSession {
   id: string;
+  mediaError?: string;
   channelName?: string;
   type: CallType;
   status: CallStatus;

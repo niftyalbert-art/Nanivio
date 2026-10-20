@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   PhoneCall,
   Video,
@@ -27,6 +27,8 @@ import {
   Maximize2,
   UserPlus,
   Copy,
+  MoreHorizontal,
+  X,
 } from 'lucide-react';
 import { useNanivio } from '../../context/NanivioContext';
 import { WorkspaceHeaderSwitcher } from '../common/WorkspaceHeaderSwitcher';
@@ -68,31 +70,30 @@ export const CommunicationSpaceView: React.FC = () => {
 
   // Active sub-tab inside Communication Space
   const [commSubTab, setCommSubTab] = useState<'overview' | 'logs' | 'contacts' | 'group' | 'specialists'>('overview');
+  const [showMoreCallTools, setShowMoreCallTools] = useState(false);
+  const callToolsRef = useRef<HTMLDivElement | null>(null);
 
-  // Currency selection for global pricing view
-  const [savingsCurrency, setSavingsCurrency] = useState<'USD' | 'EUR' | 'GBP' | 'AED' | 'GHS' | 'NGN'>('USD');
-  const currencySymbols: Record<string, string> = {
-    USD: '$',
-    EUR: '€',
-    GBP: '£',
-    AED: 'د.إ',
-    GHS: 'GH₵',
-    NGN: '₦',
-  };
-  const currencyRates: Record<string, number> = {
-    USD: 1.5,
-    EUR: 1.4,
-    GBP: 1.2,
-    AED: 5.5,
-    GHS: 22.5,
-    NGN: 2400,
-  };
+  useEffect(() => {
+    if (!showMoreCallTools) return;
+    const onPointerDown = (event: PointerEvent) => {
+      const target = event.target;
+      if (target instanceof Node && !callToolsRef.current?.contains(target)) setShowMoreCallTools(false);
+    };
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setShowMoreCallTools(false);
+    };
+    document.addEventListener('pointerdown', onPointerDown);
+    document.addEventListener('keydown', onKeyDown);
+    return () => {
+      document.removeEventListener('pointerdown', onPointerDown);
+      document.removeEventListener('keydown', onKeyDown);
+    };
+  }, [showMoreCallTools]);
 
   const planMinutesRemaining = currentPlan?.langpretationMinutesRemaining ?? 0;
   const planMinutesQuota = currentPlan?.langpretationMinutesQuota ?? 0;
   const usedMinutes = usedLangpretationMinutes ?? 0;
   const quotaPercent = planMinutesQuota > 0 ? Math.min(100, Math.max(0, Math.round((planMinutesRemaining / planMinutesQuota) * 100))) : 0;
-  const estimatedSavings = (usedMinutes * (currencyRates[savingsCurrency] || 1.5)).toFixed(0);
 
   // Modals hidden behind individual button clicks
   const [isDialerModalOpen, setIsDialerModalOpen] = useState(false);
@@ -307,12 +308,12 @@ export const CommunicationSpaceView: React.FC = () => {
               <div className="flex items-center justify-between text-xs font-mono mb-1">
                 <span className="text-slate-400 uppercase">Audio Calling</span>
                 <span className={isAudioEnabled ? 'text-emerald-400 font-bold' : 'text-rose-400 font-bold'}>
-                  {isAudioEnabled ? 'ENABLED • 100% FREE' : 'DISABLED BY ADMIN'}
+                  {isAudioEnabled ? 'ENABLED · FREE' : 'DISABLED BY ADMIN'}
                 </span>
               </div>
               <div className="text-lg font-bold text-white flex items-center gap-2">
                 <PhoneCall className={`w-5 h-5 ${isAudioEnabled ? 'text-emerald-400' : 'text-rose-400'}`} />
-                <span>{isAudioEnabled ? 'Free HD Voice Calls' : 'Audio Calls Turned Off'}</span>
+                <span>{isAudioEnabled ? 'Free voice calls' : 'Audio Calls Turned Off'}</span>
               </div>
               <div className="text-[11px] text-slate-400 mt-1">
                 {isAudioEnabled ? 'Voice calls between Nanivio members' : 'Temporarily suspended by administrator'}
@@ -323,12 +324,12 @@ export const CommunicationSpaceView: React.FC = () => {
               <div className="flex items-center justify-between text-xs font-mono mb-1">
                 <span className="text-slate-400 uppercase">Video Calling</span>
                 <span className={isVideoEnabled ? 'text-cyan-300 font-bold' : 'text-rose-400 font-bold'}>
-                  {isVideoEnabled ? 'ENABLED • 100% FREE' : 'DISABLED BY ADMIN'}
+                  {isVideoEnabled ? 'ENABLED · FREE' : 'DISABLED BY ADMIN'}
                 </span>
               </div>
               <div className="text-lg font-bold text-white flex items-center gap-2">
                 <Video className={`w-5 h-5 ${isVideoEnabled ? 'text-cyan-400' : 'text-rose-400'}`} />
-                <span>{isVideoEnabled ? 'Free HD Video Calls' : 'Video Calls Turned Off'}</span>
+                <span>{isVideoEnabled ? 'Free video calls' : 'Video Calls Turned Off'}</span>
               </div>
               <div className="text-[11px] text-slate-400 mt-1">
                 {isVideoEnabled ? 'Full screen camera & bilateral group video conferencing' : 'Temporarily suspended by administrator'}
@@ -338,11 +339,11 @@ export const CommunicationSpaceView: React.FC = () => {
             <div className="p-4 rounded-2xl bg-slate-950/80 border border-slate-800">
               <div className="flex items-center justify-between text-xs font-mono mb-1">
                 <span className="text-slate-400 uppercase">Calling Quota</span>
-                <span className="text-amber-400 font-bold">UNLIMITED</span>
+                <span className="text-amber-400 font-bold">NO MINUTE QUOTA</span>
               </div>
               <div className="text-lg font-bold text-white flex items-center gap-2">
                 <ShieldCheck className="w-5 h-5 text-amber-400" />
-                <span>Zero Minute Metering</span>
+                <span>No minute metering</span>
               </div>
               <div className="text-[11px] text-slate-400 mt-1">
                 Admin policy grants unlimited call duration without deduction
@@ -440,29 +441,10 @@ export const CommunicationSpaceView: React.FC = () => {
               <div className="text-[10px] text-slate-400 font-mono">Live call consumption</div>
             </div>
 
-            <div className="bg-slate-950/80 border border-slate-800/80 rounded-2xl p-4 space-y-1 relative">
-              <div className="flex items-center justify-between">
-                <div className="text-[11px] uppercase font-mono text-slate-400">Estimated Savings</div>
-                <select
-                  value={savingsCurrency}
-                  onChange={(e) => setSavingsCurrency(e.target.value as any)}
-                  className="text-[10px] font-mono bg-slate-900 text-amber-400 border border-slate-700 rounded px-1 py-0.5 focus:outline-none cursor-pointer"
-                  title="Select global currency"
-                >
-                  <option value="USD">USD ($)</option>
-                  <option value="EUR">EUR (€)</option>
-                  <option value="GBP">GBP (£)</option>
-                  <option value="AED">AED (د.إ)</option>
-                  <option value="GHS">GHS (GH₵)</option>
-                  <option value="NGN">NGN (₦)</option>
-                </select>
-              </div>
-              <div className="text-2xl sm:text-3xl font-black text-amber-400 font-mono">
-                {currencySymbols[savingsCurrency]}
-                {estimatedSavings}{' '}
-                <span className="text-xs font-normal text-slate-400">{savingsCurrency}</span>
-              </div>
-              <div className="text-[10px] text-amber-500/80 font-mono">vs standard human interpreters</div>
+            <div className="bg-slate-950/80 border border-slate-800/80 rounded-2xl p-4 space-y-1">
+              <div className="text-[11px] uppercase font-mono text-slate-400">Translation setting</div>
+              <div className="text-2xl sm:text-3xl font-black text-white">{globalLangpretationEnabled ? 'On' : 'Off'}</div>
+              <div className="text-[10px] text-slate-400 font-mono">Your current Langpretation setting</div>
             </div>
           </div>
 
@@ -483,14 +465,14 @@ export const CommunicationSpaceView: React.FC = () => {
       )}
 
       {/* 4. Usable Functions Toolbar & Sub-tabs */}
-      <div className="flex items-center gap-2 border-b border-slate-800 pb-2 overflow-x-auto scrollbar-none touch-pan-x w-full max-w-full">
+      <div className="relative flex items-center gap-2 border-b border-slate-800 pb-2 w-full max-w-full">
         {[
-          { id: 'overview', label: 'Communication Hub', icon: PhoneCall, color: 'text-emerald-400' },
-          { id: 'logs', label: 'Call & Meter Logs', icon: Clock, color: 'text-cyan-400', count: callLogs.length },
+          { id: 'overview', label: 'Call hub', icon: PhoneCall, color: 'text-emerald-400' },
+          { id: 'logs', label: 'Call history', icon: Clock, color: 'text-cyan-400', count: callLogs.length },
           { id: 'contacts', label: 'Direct Contacts', icon: Users, color: 'text-amber-400', count: contacts.length },
           { id: 'group', label: 'Group Conference', icon: Globe, color: 'text-blue-400' },
           { id: 'specialists', label: 'Live Specialists', icon: Award, color: 'text-purple-400', count: experts.length },
-        ].map((tab) => {
+        ].filter((tab) => ['overview', 'logs'].includes(tab.id)).map((tab) => {
           const Icon = tab.icon;
           const isActive = commSubTab === tab.id;
           return (
@@ -518,6 +500,51 @@ export const CommunicationSpaceView: React.FC = () => {
             </button>
           );
         })}
+        <div className="relative" ref={callToolsRef}>
+          <button
+            type="button"
+            aria-haspopup="menu"
+            aria-expanded={showMoreCallTools}
+            onClick={() => setShowMoreCallTools((open) => !open)}
+            className={`px-4 py-2.5 rounded-2xl text-xs font-bold flex items-center gap-2 border transition-colors ${
+              showMoreCallTools || ['contacts', 'group', 'specialists'].includes(commSubTab)
+                ? 'bg-[#174e3c] text-white border-[#174e3c]'
+                : 'bg-[#fbf9f2] text-[#46544c] border-[#ded8ca] hover:bg-[#f0ece2]'
+            }`}
+          >
+            <MoreHorizontal className="h-4 w-4" /> More
+          </button>
+          {showMoreCallTools && (
+            <div role="menu" aria-label="More calling tools" className="absolute left-0 top-full z-30 mt-2 w-60 max-w-[calc(100vw-1rem)] max-h-[min(18rem,50dvh)] overflow-y-auto rounded-2xl border border-[#d9d4c8] bg-[#fbf9f2] p-1.5 shadow-[0_12px_32px_rgba(24,35,31,.18)]">
+              {[
+                { id: 'contacts', label: 'Direct Contacts', icon: Users, count: contacts.length },
+                { id: 'group', label: 'Group Conference', icon: Globe },
+                { id: 'specialists', label: 'Live Specialists', icon: Award, count: experts.length },
+              ].map((tab) => {
+                const Icon = tab.icon;
+                const isActive = commSubTab === tab.id;
+                return (
+                  <button
+                    type="button"
+                    role="menuitem"
+                    key={tab.id}
+                    onClick={() => {
+                      setCommSubTab(tab.id as typeof commSubTab);
+                      setShowMoreCallTools(false);
+                    }}
+                    className={`flex w-full items-center gap-2.5 rounded-xl px-3 py-2.5 text-left text-xs font-semibold ${
+                      isActive ? 'bg-[#174e3c] text-white' : 'text-[#34443a] hover:bg-[#f0ece2]'
+                    }`}
+                  >
+                    <Icon className="h-4 w-4 text-[#17654b]" />
+                    <span className="flex-1">{tab.label}</span>
+                    {typeof tab.count === 'number' && <span className="font-mono text-[10px]">{tab.count}</span>}
+                  </button>
+                );
+              })}
+            </div>
+          )}
+        </div>
       </div>
 
       {/* 5. Sub-Tab Content Rendering */}
@@ -686,16 +713,16 @@ export const CommunicationSpaceView: React.FC = () => {
                 <span className="text-xs text-slate-400 font-mono">Multilateral Langpretation Core</span>
               </div>
               <p className="text-xs text-slate-300 leading-relaxed">
-                Both parties speak naturally in their native languages (e.g. Twi, Ga, Yoruba, French, English). Nanivio streams translated audio in under 600ms directly to the earpiece.
+                Speak in the language you know. When translation is available, it appears alongside the conversation.
               </p>
               <div className="space-y-1.5 pt-1">
                 <div className="flex items-center gap-2 text-[11px] font-mono text-emerald-400">
                   <Check className="w-3.5 h-3.5 stroke-[3]" />
-                  <span>Zero configuration required for recipient</span>
+                  <span>Choose your language in the call controls</span>
                 </div>
                 <div className="flex items-center gap-2 text-[11px] font-mono text-cyan-300">
                   <Check className="w-3.5 h-3.5 stroke-[3]" />
-                  <span>Real-time voice tone &amp; pitch preservation</span>
+                  <span>Translation status is shown during the call</span>
                 </div>
               </div>
             </div>
@@ -1105,7 +1132,7 @@ export const CommunicationSpaceView: React.FC = () => {
                           key={c.id}
                           className="inline-flex items-center gap-2 pl-2.5 pr-2 py-1.5 rounded-xl bg-slate-900 border border-slate-700 text-xs text-white"
                         >
-                          <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
+                          <Check className="h-3.5 w-3.5 text-emerald-700" aria-hidden="true" />
                           <span className="font-semibold">{c.name}</span>
                           <span className="text-[10px] text-slate-400 font-mono">
                             ({(c.preferredLanguage as any) || c.language || 'en'})
@@ -1114,8 +1141,9 @@ export const CommunicationSpaceView: React.FC = () => {
                             type="button"
                             onClick={() => handleToggleContactParticipant(c.id)}
                             className="text-slate-400 hover:text-white p-0.5 rounded cursor-pointer"
+                            aria-label={`Remove ${c.name} from conference`}
                           >
-                            ✕
+                            <X className="h-3.5 w-3.5" />
                           </button>
                         </div>
                       ))}
@@ -1126,15 +1154,16 @@ export const CommunicationSpaceView: React.FC = () => {
                         key={p.id}
                         className="inline-flex items-center gap-2 pl-2.5 pr-2 py-1.5 rounded-xl bg-cyan-950/50 border border-cyan-800/80 text-xs text-cyan-200"
                       >
-                        <span className="w-1.5 h-1.5 rounded-full bg-cyan-400" />
+                        <Check className="h-3.5 w-3.5 text-cyan-700" aria-hidden="true" />
                         <span className="font-semibold">{p.name}</span>
                         <span className="text-[10px] text-cyan-400 font-mono">({p.myLanguage})</span>
                         <button
                           type="button"
                           onClick={() => handleRemoveExternalParticipant(p.id)}
                           className="text-cyan-400 hover:text-white p-0.5 rounded cursor-pointer"
+                          aria-label={`Remove ${p.name} from conference`}
                         >
-                          ✕
+                          <X className="h-3.5 w-3.5" />
                         </button>
                       </div>
                     ))}

@@ -19,7 +19,6 @@ import {
   Activity,
   UserPlus,
   AlertCircle,
-  Hash,
   ArrowRight,
   ArrowLeft,
   ShieldCheck,
@@ -44,7 +43,6 @@ import {
   UserCheck,
   UserX,
   Camera,
-  Smile,
   SmilePlus,
   Volume2,
 } from 'lucide-react';
@@ -58,10 +56,26 @@ import { ForwardMessageModal } from './ForwardMessageModal';
 import { CreateGroupModal } from './CreateGroupModal';
 import { GroupDetailsModal } from './GroupDetailsModal';
 import { ReportSafetyModal } from './ReportSafetyModal';
-import { EmojiPickerPopover } from './EmojiPickerPopover';
 import { LiveCameraModal } from './LiveCameraModal';
 import { EditProfileModal } from '../account/EditProfileModal';
 import { SettingsModal } from '../settings/SettingsModal';
+
+const REACTION_LABELS: Record<string, string> = {
+  '👍': 'Like',
+  '❤️': 'Love',
+  '😂': 'Laugh',
+  '🔥': 'Fire',
+  '🚀': 'Celebrate',
+  '🇬🇭': 'Ghana',
+};
+const QUICK_REACTIONS = [
+  { value: '👍', label: 'Like' },
+  { value: '❤️', label: 'Love' },
+  { value: '😂', label: 'Laugh' },
+  { value: '🔥', label: 'Fire' },
+  { value: '🚀', label: 'Celebrate' },
+  { value: '🇬🇭', label: 'Ghana' },
+];
 
 export const ChatView: React.FC = () => {
   const {
@@ -96,7 +110,6 @@ export const ChatView: React.FC = () => {
     myLanguage,
     globalLangpretationEnabled,
     streamState,
-    setActiveTab: setNavTab,
     userSettings,
     blockUser,
     restrictUser,
@@ -112,10 +125,14 @@ export const ChatView: React.FC = () => {
   const [isRecordingVoice, setIsRecordingVoice] = useState(false);
   const [showOriginalMap, setShowOriginalMap] = useState<Record<string, boolean>>({});
   const [playingVoiceId, setPlayingVoiceId] = useState<string | null>(null);
+  const [voicePlaybackErrorId, setVoicePlaybackErrorId] = useState<string | null>(null);
   const [playingVoiceTrack, setPlayingVoiceTrack] = useState<Record<string, 'translated' | 'original'>>({});
   const audioPlayerRef = useRef<HTMLAudioElement | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [showMobileChatThread, setShowMobileChatThread] = useState(false);
+  const [isSendingMessage, setIsSendingMessage] = useState(false);
+  const [sendMessageError, setSendMessageError] = useState<string | null>(null);
+  const [isAttachmentMenuOpen, setIsAttachmentMenuOpen] = useState(false);
 
   // Social suite modal states
   const [isMediaModalOpen, setIsMediaModalOpen] = useState(false);
@@ -128,7 +145,6 @@ export const ChatView: React.FC = () => {
   const [chatSearchQuery, setChatSearchQuery] = useState('');
   const [isHeaderMenuOpen, setIsHeaderMenuOpen] = useState(false);
   const [lightboxImage, setLightboxImage] = useState<string | null>(null);
-  const [isEmojiPickerOpen, setIsEmojiPickerOpen] = useState(false);
   const [isLiveCameraOpen, setIsLiveCameraOpen] = useState(false);
   const [quickReactionMsgId, setQuickReactionMsgId] = useState<string | null>(null);
 
@@ -139,9 +155,42 @@ export const ChatView: React.FC = () => {
   const [isQuickNvBarOpen, setIsQuickNvBarOpen] = useState(false);
 
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
+  const headerMenuRef = useRef<HTMLDivElement | null>(null);
+  const attachmentMenuRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    if (!isHeaderMenuOpen && !isAttachmentMenuOpen) return;
+    const onPointerDown = (event: PointerEvent) => {
+      const target = event.target;
+      if (!(target instanceof Node)) return;
+      if (!headerMenuRef.current?.contains(target)) setIsHeaderMenuOpen(false);
+      if (!attachmentMenuRef.current?.contains(target)) setIsAttachmentMenuOpen(false);
+    };
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        setIsHeaderMenuOpen(false);
+        setIsAttachmentMenuOpen(false);
+      }
+    };
+    document.addEventListener('pointerdown', onPointerDown);
+    document.addEventListener('keydown', onKeyDown);
+    return () => {
+      document.removeEventListener('pointerdown', onPointerDown);
+      document.removeEventListener('keydown', onKeyDown);
+    };
+  }, [isHeaderMenuOpen, isAttachmentMenuOpen]);
 
   const activeConv = (conversations || []).find((c) => c?.id === activeConversationId) || (conversations || [])[0];
+  useEffect(() => {
+    if (activeConv && activeConv.id !== activeConversationId) setActiveConversationId(activeConv.id);
+  }, [activeConv?.id, activeConversationId, setActiveConversationId]);
   const rawActiveMessages = (activeConv && messages ? messages[activeConv.id] : []) || [];
+  const streamConnectionLabel =
+    streamState.status === 'CONNECTED'
+      ? 'Channels connected'
+      : streamState.status === 'CONNECTING'
+      ? 'Connecting to channels'
+      : 'Channels unavailable';
 
   // Filter messages by search in chat query if active
   const activeMessages = chatSearchQuery.trim()
@@ -185,10 +234,18 @@ export const ChatView: React.FC = () => {
 
   const handleSend = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
-    if (!inputMsg.trim()) return;
+    if (!inputMsg.trim() || isSendingMessage) return;
     const text = inputMsg;
-    setInputMsg('');
-    await sendMessage(text);
+    setIsSendingMessage(true);
+    setSendMessageError(null);
+    try {
+      await sendMessage(text);
+      setInputMsg('');
+    } catch {
+      setSendMessageError('Message not sent. Your draft is still here—try again.');
+    } finally {
+      setIsSendingMessage(false);
+    }
   };
 
   const handleVoiceSend = async (payload: any) => {
@@ -234,6 +291,7 @@ export const ChatView: React.FC = () => {
       try {
         const audio = new Audio(audioUrl);
         audioPlayerRef.current = audio;
+        setVoicePlaybackErrorId(null);
         setPlayingVoiceId(msg.id);
 
         audio.onended = () => {
@@ -243,19 +301,20 @@ export const ChatView: React.FC = () => {
         audio.onerror = () => {
           setPlayingVoiceId(null);
           audioPlayerRef.current = null;
+          setVoicePlaybackErrorId(msg.id);
         };
 
         audio.play().catch(() => {
           setPlayingVoiceId(null);
+          setVoicePlaybackErrorId(msg.id);
         });
       } catch (err) {
         console.warn('Audio playback error:', err);
         setPlayingVoiceId(null);
+        setVoicePlaybackErrorId(msg.id);
       }
     } else {
-      // Visual fallback if audio URL is absent
-      setPlayingVoiceId(msg.id);
-      setTimeout(() => setPlayingVoiceId(null), (msg.voiceNote.duration || 3) * 1000);
+      setVoicePlaybackErrorId(msg.id);
     }
   };
 
@@ -336,7 +395,7 @@ export const ChatView: React.FC = () => {
     });
 
   return (
-    <div className="max-w-[1600px] mx-auto flex flex-col gap-4 p-2 sm:p-5 lg:p-6">
+    <div className="max-w-[1600px] mx-auto flex flex-col gap-3 p-2 sm:p-4 lg:p-5">
       {/* Top Protocol & View Switcher + New Direct Chat Trigger */}
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between bg-white border border-[#e1eae3] rounded-2xl p-3.5 shadow-[0_8px_24px_rgba(29,73,47,0.04)] gap-3">
         <div className="flex items-center gap-2 flex-wrap">
@@ -366,26 +425,22 @@ export const ChatView: React.FC = () => {
             <span>Community Channels</span>
           </button>
         </div>
-
-        {/* Quick Direct Chat by Nanivio Number Trigger & Contacts shortcut */}
-        <div className="flex items-center gap-2 w-full sm:w-auto justify-end">
-          <button
-            id="btn-open-contacts-tab"
-            onClick={() => setNavTab('contacts')}
-            className="flex items-center gap-2 px-3.5 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 border border-slate-800 text-sm text-slate-200 hover:text-emerald-400 font-medium transition-colors cursor-pointer"
-          >
-            <Users className="w-4 h-4 text-emerald-400" />
-            <span>Contacts ({contacts.length})</span>
-          </button>
-
-          <button
-            id="btn-toggle-nv-chat-bar"
-            onClick={() => setIsQuickNvBarOpen((prev) => !prev)}
-            className="flex items-center gap-2 px-4 py-2 rounded-xl bg-emerald-500/15 hover:bg-emerald-500/25 border border-emerald-500/40 text-sm font-bold text-emerald-300 transition-all hover:scale-105 cursor-pointer"
-          >
-            <Hash className="w-4 h-4 text-emerald-400" />
-            <span>Chat by NV Number</span>
-          </button>
+        <div
+          role="status"
+          aria-live="polite"
+          title="Community channel connection status"
+          className="inline-flex items-center gap-2 px-1 text-xs font-semibold text-[#5c695f]"
+        >
+          <span
+            className={`h-2 w-2 rounded-full ${
+              streamState.status === 'CONNECTED'
+                ? 'bg-[#3d785b]'
+                : streamState.status === 'CONNECTING'
+                ? 'bg-[#c18c2e]'
+                : 'bg-[#a94a3d]'
+            }`}
+          />
+          <span>{streamConnectionLabel}</span>
         </div>
       </div>
 
@@ -408,7 +463,7 @@ export const ChatView: React.FC = () => {
               onClick={() => setIsQuickNvBarOpen(false)}
               className="text-slate-400 hover:text-slate-200 text-sm px-2 py-1 rounded cursor-pointer"
             >
-              ✕ Close
+                Close
             </button>
           </div>
 
@@ -467,7 +522,7 @@ export const ChatView: React.FC = () => {
       {activeTab === 'stream_channels' ? (
         <StreamChatInterface />
       ) : (
-        <div className="nv-chat-workspace flex flex-col md:flex-row gap-4">
+        <div className="nv-chat-workspace flex flex-col md:flex-row gap-3">
           {/* Left Sidebar: Conversations List */}
           <div className={`w-full md:w-[340px] lg:w-[380px] bg-white border border-[#e1eae3] rounded-2xl flex flex-col overflow-hidden shrink-0 ${showMobileChatThread ? 'hidden md:flex' : 'flex'}`}>
             {/* Header, Actions & Search */}
@@ -592,7 +647,7 @@ export const ChatView: React.FC = () => {
                         </div>
                         {pLang && !conv.isGroup && (
                           <span className="absolute -bottom-1 -right-1 text-sm bg-slate-950 rounded-full px-0.5 border border-slate-800">
-                            {pLang.flag}
+                            {pLang.code.toUpperCase()}
                           </span>
                         )}
                         {conv.isPinned && (
@@ -639,7 +694,7 @@ export const ChatView: React.FC = () => {
                       )}
 
                       {/* Hover action quick buttons */}
-                      <div className="absolute right-2 bottom-2 hidden group-hover:flex items-center gap-1 bg-slate-900/90 border border-slate-700/80 rounded-lg p-1 shadow-lg backdrop-blur-xs">
+                      <div className="absolute right-2 bottom-2 hidden group-hover:flex items-center gap-1 bg-slate-900 border border-slate-700/80 rounded-lg p-1 shadow-lg">
                         <button
                           type="button"
                           onClick={(e) => {
@@ -683,7 +738,7 @@ export const ChatView: React.FC = () => {
 
           {/* Right Main Chat Thread */}
           {activeConv ? (
-            <div className={`flex-1 min-w-0 bg-white border border-[#e1eae3] rounded-2xl flex flex-col overflow-hidden ${showMobileChatThread ? 'flex' : 'hidden md:flex'}`}>
+            <div className={`chat-thread-surface flex-1 min-w-0 bg-white border border-[#e1eae3] rounded-2xl flex flex-col overflow-hidden ${showMobileChatThread ? 'flex' : 'hidden md:flex'}`}>
               {/* Active Conversation Header */}
               <div className="p-3 sm:p-4 border-b border-slate-800 bg-slate-900/50 flex items-center justify-between gap-2">
                 <div className="flex items-center gap-2 sm:gap-3 min-w-0">
@@ -756,19 +811,6 @@ export const ChatView: React.FC = () => {
 
                 {/* Direct Call Actions & Tools */}
                 <div className="flex items-center gap-1.5 sm:gap-2 relative">
-                  {/* Search in chat toggle button */}
-                  <button
-                    onClick={() => setIsSearchInChatOpen((prev) => !prev)}
-                    className={`p-2 rounded-xl border transition-all ${
-                      isSearchInChatOpen
-                        ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40'
-                        : 'bg-slate-800 text-slate-400 hover:text-white border-slate-700'
-                    }`}
-                    title="Search messages in this conversation"
-                  >
-                    <Search className="w-4 h-4" />
-                  </button>
-
                   <button
                     id="btn-chat-start-audio"
                     onClick={() => {
@@ -801,27 +843,41 @@ export const ChatView: React.FC = () => {
                     <Video className="w-4 h-4" />
                   </button>
 
-                  {/* Settings gear */}
-                  <button
-                    onClick={() => setIsSettingsModalOpen(true)}
-                    className="p-2 rounded-xl bg-slate-800 text-slate-400 hover:text-white border border-slate-700 transition-colors"
-                    title="Privacy & Notification Settings"
-                  >
-                    <Settings className="w-4 h-4" />
-                  </button>
-
                   {/* Header Menu Dropdown Trigger */}
-                  <div className="relative">
+                  <div className="relative" ref={headerMenuRef}>
                     <button
                       onClick={() => setIsHeaderMenuOpen((prev) => !prev)}
                       className="p-2 rounded-xl bg-slate-800 text-slate-400 hover:text-white border border-slate-700 transition-colors"
-                      title="More chat options"
+                      aria-label="More conversation actions"
+                      aria-expanded={isHeaderMenuOpen}
+                      title="More"
                     >
                       <MoreVertical className="w-4 h-4" />
                     </button>
 
                     {isHeaderMenuOpen && (
-                      <div className="absolute right-0 top-full mt-2 w-56 bg-slate-900 border border-slate-800 rounded-2xl shadow-2xl p-1.5 z-40 space-y-1 text-xs animate-in fade-in zoom-in-95">
+                      <div role="menu" aria-label="More conversation actions" className="absolute right-0 top-full mt-2 w-56 max-w-[calc(100vw-1rem)] bg-slate-900 border border-slate-800 rounded-2xl shadow-2xl p-1.5 z-40 space-y-1 text-xs">
+                        <button
+                          onClick={() => {
+                            setIsHeaderMenuOpen(false);
+                            setIsSearchInChatOpen((prev) => !prev);
+                          }}
+                          className="w-full text-left px-3 py-2 rounded-xl hover:bg-slate-800 text-slate-200 flex items-center gap-2"
+                        >
+                          <Search className="w-4 h-4 text-slate-500" />
+                          <span>{isSearchInChatOpen ? 'Close chat search' : 'Search in conversation'}</span>
+                        </button>
+                        <button
+                          onClick={() => {
+                            setIsHeaderMenuOpen(false);
+                            setIsSettingsModalOpen(true);
+                          }}
+                          className="w-full text-left px-3 py-2 rounded-xl hover:bg-slate-800 text-slate-200 flex items-center gap-2"
+                        >
+                          <Settings className="w-4 h-4 text-slate-500" />
+                          <span>Privacy &amp; notification settings</span>
+                        </button>
+                        <div className="border-t border-slate-800 my-1" />
                         {activeConv.isGroup ? (
                           <button
                             onClick={() => {
@@ -943,13 +999,13 @@ export const ChatView: React.FC = () => {
                 <div className="mx-auto max-w-md bg-emerald-950/40 border border-emerald-500/30 rounded-xl p-2 text-center text-xs text-emerald-200/90 flex items-center justify-center gap-2">
                   <Sparkles className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
                   <span>
-                    Bilingual Langpretation active: messages translated into <strong>{myLangInfo.name}</strong>.
+                    Translations appear in {myLangInfo.name} when available.
                   </span>
                 </div>
 
                 {copiedMsgId && (
                   <div className="fixed top-20 left-1/2 -translate-x-1/2 px-3 py-1.5 rounded-xl bg-slate-900 border border-emerald-500 text-emerald-400 text-xs font-mono shadow-xl z-50 animate-in fade-in">
-                    ✓ Message copied to clipboard
+                    Message copied to clipboard
                   </div>
                 )}
 
@@ -964,13 +1020,17 @@ export const ChatView: React.FC = () => {
                       className={`group relative flex items-start gap-2.5 ${isMe ? 'flex-row-reverse' : 'flex-row'}`}
                     >
                       {!isMe && (
-                        <div className="w-8 h-8 rounded-full overflow-hidden border border-slate-700 shrink-0">
-                          <img
-                            src={msg.senderAvatar}
-                            alt={msg.senderName}
-                            className="w-full h-full object-cover"
-                            referrerPolicy="no-referrer"
-                          />
+                        <div className="w-8 h-8 rounded-full overflow-hidden border border-slate-700 bg-slate-800 shrink-0 flex items-center justify-center text-[10px] font-bold text-emerald-700">
+                          {msg.senderAvatar ? (
+                            <img
+                              src={msg.senderAvatar}
+                              alt={msg.senderName}
+                              className="w-full h-full object-cover"
+                              referrerPolicy="no-referrer"
+                            />
+                          ) : (
+                            (msg.senderName || 'NV').slice(0, 2).toUpperCase()
+                          )}
                         </div>
                       )}
 
@@ -1066,7 +1126,9 @@ export const ChatView: React.FC = () => {
                                   ))}
                                 </div>
                                 <div className="flex justify-between text-[10px] font-mono text-slate-400">
-                                  <span>0:{(msg.voiceNote.duration || 3).toString().padStart(2, '0')}</span>
+                                  {typeof msg.voiceNote.duration === 'number' && (
+                                    <span>0:{msg.voiceNote.duration.toString().padStart(2, '0')}</span>
+                                  )}
                                   <span className="flex items-center gap-1">
                                     <Volume2 className="w-3 h-3 text-emerald-400" />
                                     <span>
@@ -1079,12 +1141,18 @@ export const ChatView: React.FC = () => {
                               </div>
                             </div>
 
-                            {/* Transcript Area */}
+                            {voicePlaybackErrorId === msg.id && (
+                              <p role="alert" className="text-[11px] text-[#9d352c]">Audio unavailable for this voice note.</p>
+                            )}
+
+                            {/* Keep transcript detail compact until opened. */}
                             {msg.voiceNote.hasLangpretation && msg.voiceNote.translatedTranscript ? (
-                              <div className="bg-slate-950/90 rounded-xl p-2.5 text-xs border border-emerald-500/30 text-emerald-200 space-y-1">
+                              <details className="bg-slate-950/90 rounded-xl px-2.5 py-1.5 text-xs border border-emerald-500/30 text-emerald-200">
+                                <summary className="cursor-pointer font-semibold text-emerald-400">Translation &amp; transcript</summary>
+                                <div className="pt-2 space-y-1">
                                 <div className="flex items-center justify-between text-[9.5px] uppercase font-mono text-emerald-400 font-bold">
                                   <span>Translated to {myLangInfo.name}:</span>
-                                  <span className="text-slate-500">{msg.voiceNote.provider || 'Khaya / Palabra'}</span>
+                                  {msg.voiceNote.provider && <span className="text-slate-500">{msg.voiceNote.provider}</span>}
                                 </div>
                                 <p className="text-[13px] leading-relaxed text-white">
                                   "{msg.voiceNote.translatedTranscript}"
@@ -1097,12 +1165,13 @@ export const ChatView: React.FC = () => {
                                     <p className="mt-1 text-slate-300 italic">"{msg.voiceNote.transcript}"</p>
                                   </details>
                                 )}
-                              </div>
+                                </div>
+                              </details>
                             ) : msg.voiceNote.transcript ? (
-                              <div className="bg-slate-950/80 rounded-xl p-2 text-xs border border-slate-800 text-slate-300">
-                                <span className="text-[9.5px] font-mono text-slate-500 block">Transcription:</span>
-                                <p className="text-[12.5px] mt-0.5">"{msg.voiceNote.transcript}"</p>
-                              </div>
+                              <details className="bg-slate-950/80 rounded-xl px-2.5 py-1.5 text-xs border border-slate-800 text-slate-300">
+                                <summary className="cursor-pointer text-slate-500">View transcription</summary>
+                                <p className="text-[12.5px] mt-1">"{msg.voiceNote.transcript}"</p>
+                              </details>
                             ) : null}
                           </div>
                         ) : msg.mediaType === 'image' && msg.mediaUrl ? (
@@ -1167,8 +1236,8 @@ export const ChatView: React.FC = () => {
                           <div
                             className={`rounded-2xl px-4 py-2.5 border shadow-md space-y-1 ${
                               isMe
-                                ? 'bg-emerald-600 text-white border-emerald-500 rounded-tr-none'
-                                : 'bg-slate-900 text-slate-100 border-slate-700 rounded-tl-none'
+                                ? 'chat-outgoing-bubble bg-emerald-600 text-white border-emerald-500 rounded-tr-none'
+                                : 'chat-incoming-bubble bg-slate-900 text-slate-100 border-slate-700 rounded-tl-none'
                             }`}
                           >
                             {/* Display translated text in receiver's language — WhatsApp size */}
@@ -1201,19 +1270,19 @@ export const ChatView: React.FC = () => {
                           <div
                             className={`absolute -top-10 ${
                               isMe ? 'right-0' : 'left-0'
-                            } flex items-center gap-1 bg-slate-900/95 border border-slate-700/90 rounded-2xl px-2 py-1 shadow-2xl z-30 animate-in fade-in zoom-in-95 backdrop-blur-md`}
+                            } flex items-center gap-1 bg-slate-900 border border-slate-700/90 rounded-2xl px-2 py-1 shadow-2xl z-30`}
                           >
-                            {['👍', '❤️', '😂', '🔥', '🚀', '🇬🇭'].map((em) => (
+                            {QUICK_REACTIONS.map(({ value, label }) => (
                               <button
-                                key={em}
+                                key={value}
                                 type="button"
                                 onClick={() => {
-                                  reactToMessage(activeConv.id, msg.id, em);
+                                  reactToMessage(activeConv.id, msg.id, value);
                                   setQuickReactionMsgId(null);
                                 }}
-                                className="text-base hover:scale-135 transition-transform p-1 cursor-pointer"
+                                className="rounded-lg px-2 py-1 text-[10px] font-semibold text-slate-300 hover:bg-slate-800 hover:text-white transition-colors"
                               >
-                                {em}
+                                {label}
                               </button>
                             ))}
                             <button
@@ -1221,7 +1290,7 @@ export const ChatView: React.FC = () => {
                               onClick={() => setQuickReactionMsgId(null)}
                               className="text-xs text-slate-400 hover:text-white px-1 font-bold"
                             >
-                              ✕
+                              Close
                             </button>
                           </div>
                         )}
@@ -1230,7 +1299,7 @@ export const ChatView: React.FC = () => {
                         <div
                           className={`absolute top-0 ${
                             isMe ? '-left-36' : '-right-36'
-                          } hidden group-hover:flex items-center gap-0.5 bg-slate-900/95 border border-slate-700/80 rounded-xl px-1.5 py-1 shadow-xl backdrop-blur-xs z-20`}
+                          } hidden group-hover:flex items-center gap-0.5 bg-slate-900 border border-slate-700/80 rounded-xl px-1.5 py-1 shadow-xl z-20`}
                         >
                           <button
                             type="button"
@@ -1293,7 +1362,7 @@ export const ChatView: React.FC = () => {
                                   }`}
                                   title={`${rx.users.length} reaction${rx.users.length > 1 ? 's' : ''}`}
                                 >
-                                  <span>{rx.emoji}</span>
+                                  <span>{REACTION_LABELS[rx.emoji] || 'Reaction'}</span>
                                   <span className="text-[10px] font-bold">{rx.count}</span>
                                 </button>
                               );
@@ -1350,43 +1419,21 @@ export const ChatView: React.FC = () => {
               )}
 
               {/* Bottom Message Input or Voice Note Recorder */}
-              <div className="relative p-3 sm:p-4 border-t border-slate-800 bg-slate-900/60">
-                {/* Modern Chat Emoji Popover */}
-                <EmojiPickerPopover
-                  isOpen={isEmojiPickerOpen}
-                  onClose={() => setIsEmojiPickerOpen(false)}
-                  onSelectEmoji={(em) => {
-                    setInputMsg((prev) => prev + em);
-                  }}
-                />
-
+              <div className="chat-composer relative p-3 sm:p-4 border-t border-slate-800 bg-slate-900/60">
                 {isRecordingVoice ? (
                   <VoiceNoteRecorder
                     onCancel={() => setIsRecordingVoice(false)}
                     onSend={handleVoiceSend}
                   />
                 ) : (
+                  <>
                   <form onSubmit={handleSend} className="flex items-end gap-2 p-1">
                     {/* WhatsApp-Style Unified Rounded Input Bubble */}
-                    <div className="relative flex-1 flex items-center bg-slate-950/90 border border-slate-700/80 focus-within:border-emerald-500 rounded-3xl px-3 py-1.5 transition-all shadow-inner">
-                      {/* Left: Emoji Trigger Button */}
-                      <button
-                        type="button"
-                        id="btn-chat-toggle-emoji"
-                        onClick={() => setIsEmojiPickerOpen((prev) => !prev)}
-                        className={`p-2 rounded-full transition-all shrink-0 cursor-pointer ${
-                          isEmojiPickerOpen
-                            ? 'text-amber-400 bg-amber-500/15'
-                            : 'text-slate-400 hover:text-amber-400 hover:bg-slate-800/80'
-                        }`}
-                        title="Emoji & Reactions"
-                      >
-                        <Smile className="w-5 h-5 sm:w-6 sm:h-6" />
-                      </button>
-
+                    <div className="relative flex-1 flex items-center bg-slate-950/90 border border-slate-700/80 focus-within:border-emerald-500 rounded-2xl px-2 py-1 transition-colors">
                       {/* Roomy WhatsApp-Sized Input / Auto-growing Textarea */}
                       <textarea
                         rows={1}
+                        disabled={isSendingMessage}
                         placeholder={`Type a message (speaks in ${myLangInfo.name})...`}
                         value={inputMsg}
                         onChange={(e) => {
@@ -1403,51 +1450,47 @@ export const ChatView: React.FC = () => {
                         className="flex-1 bg-transparent border-0 text-[15px] sm:text-base text-white placeholder-slate-400 focus:outline-none px-2.5 py-2 resize-none max-h-32 min-h-[38px] leading-relaxed"
                       />
 
-                      {/* Right: Media Attachment Trigger */}
-                      <button
-                        type="button"
-                        id="btn-chat-attach-media"
-                        onClick={() => setIsMediaModalOpen(true)}
-                        className="p-2 rounded-full text-slate-400 hover:text-emerald-400 hover:bg-slate-800/80 transition-colors shrink-0 cursor-pointer"
-                        title="Attach photo, video or document (15MB limit)"
-                      >
-                        <Paperclip className="w-5 h-5 -rotate-45" />
-                      </button>
-
-                      {/* Right: Instant Live Camera Trigger */}
-                      <button
-                        type="button"
-                        id="btn-chat-live-camera"
-                        onClick={() => setIsLiveCameraOpen(true)}
-                        className="p-2 rounded-full text-slate-400 hover:text-emerald-400 hover:bg-slate-800/80 transition-colors shrink-0 cursor-pointer"
-                        title="Take Instant Live Photo or Video"
-                      >
-                        <Camera className="w-5 h-5" />
-                      </button>
+                      {/* One attachment menu keeps media and voice actions together. */}
+                      <div className="relative shrink-0" ref={attachmentMenuRef}>
+                        <button
+                          type="button"
+                          id="btn-chat-attach-media"
+                          aria-haspopup="menu"
+                          aria-expanded={isAttachmentMenuOpen}
+                          onClick={() => setIsAttachmentMenuOpen((open) => !open)}
+                          className="inline-flex items-center gap-1.5 rounded-xl px-2.5 py-2 text-xs font-semibold text-slate-500 hover:bg-slate-800 hover:text-emerald-400 transition-colors"
+                          title="Attach media or record a voice note"
+                        >
+                          <Paperclip className="w-4 h-4" />
+                          <span className="hidden sm:inline">Attach</span>
+                        </button>
+                        {isAttachmentMenuOpen && (
+                          <div role="menu" aria-label="Attachment options" className="absolute right-0 bottom-full mb-2 w-52 max-w-[calc(100vw-1rem)] max-h-[40dvh] overflow-y-auto rounded-xl border border-slate-700 bg-[#fbf9f2] p-1.5 shadow-[0_12px_32px_rgba(24,35,31,.2)] z-30">
+                            <button type="button" role="menuitem" onClick={() => { setIsAttachmentMenuOpen(false); setIsMediaModalOpen(true); }} className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2.5 text-left text-sm font-medium text-[#26342d] hover:bg-[#f0ece2]">
+                              <Paperclip className="h-4 w-4 text-[#17654b]" /> Photo, video or document
+                            </button>
+                            <button type="button" role="menuitem" onClick={() => { setIsAttachmentMenuOpen(false); setIsLiveCameraOpen(true); }} className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2.5 text-left text-sm font-medium text-[#26342d] hover:bg-[#f0ece2]">
+                              <Camera className="h-4 w-4 text-[#17654b]" /> Take photo or video
+                            </button>
+                            <button type="button" role="menuitem" onClick={() => { setIsAttachmentMenuOpen(false); setIsRecordingVoice(true); }} className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2.5 text-left text-sm font-medium text-[#26342d] hover:bg-[#f0ece2]">
+                              <Mic className="h-4 w-4 text-[#17654b]" /> Record voice note
+                            </button>
+                          </div>
+                        )}
+                      </div>
                     </div>
 
-                    {/* WhatsApp-Style Circular Action Button (Send or Mic) */}
-                    {inputMsg.trim() ? (
-                      <button
-                        type="submit"
-                        id="btn-chat-send-msg"
-                        className="w-12 h-12 rounded-full bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold transition-all shrink-0 hover:scale-105 flex items-center justify-center shadow-lg shadow-emerald-500/30 cursor-pointer"
-                        title="Send Message"
-                      >
-                        <Send className="w-5 h-5 ml-0.5" />
-                      </button>
-                    ) : (
-                      <button
-                        type="button"
-                        id="btn-chat-record-voice"
-                        onClick={() => setIsRecordingVoice(true)}
-                        className="w-12 h-12 rounded-full bg-emerald-500 hover:bg-emerald-400 text-slate-950 transition-all shrink-0 hover:scale-105 flex items-center justify-center shadow-lg shadow-emerald-500/30 cursor-pointer"
-                        title="Record Voice Note with Langpretation"
-                      >
-                        <Mic className="w-5 h-5" />
-                      </button>
-                    )}
+                    <button
+                      type="submit"
+                      id="btn-chat-send-msg"
+                      disabled={!inputMsg.trim() || isSendingMessage}
+                      className="chat-send-button h-11 min-w-[82px] rounded-xl px-3.5 font-bold text-sm transition-colors shrink-0 inline-flex items-center justify-center gap-2 disabled:opacity-75"
+                    >
+                      {isSendingMessage ? <span className="animate-pulse">Sending</span> : <><Send className="w-4 h-4" /><span>Send</span></>}
+                    </button>
                   </form>
+                  {sendMessageError && <p role="alert" className="mt-1 px-2 text-xs font-medium text-[#9d352c]">{sendMessageError}</p>}
+                  </>
                 )}
               </div>
             </div>
@@ -1550,7 +1593,7 @@ export const ChatView: React.FC = () => {
       {lightboxImage && (
         <div
           onClick={() => setLightboxImage(null)}
-          className="fixed inset-0 z-50 bg-black/90 backdrop-blur-md flex items-center justify-center p-4 cursor-pointer"
+          className="fixed inset-0 z-50 bg-black/90 flex items-center justify-center p-4 cursor-pointer"
         >
           <div className="relative max-w-4xl max-h-[90vh] overflow-hidden rounded-2xl">
             <img
@@ -1571,7 +1614,7 @@ export const ChatView: React.FC = () => {
 
       {/* Prominent "Wrong number or never exists" Alert Prompt Modal */}
       {nvErrorModal && (
-        <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-950/85 backdrop-blur-sm flex items-center justify-center p-4">
+        <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-950/85 flex items-center justify-center p-4">
           <div className="bg-[#0f172a] border border-rose-500/40 rounded-3xl max-w-md w-full p-6 shadow-2xl space-y-4 animate-in fade-in zoom-in-95 duration-200">
             <div className="flex items-center gap-3">
               <div className="w-12 h-12 rounded-2xl bg-rose-500/10 border border-rose-500/30 flex items-center justify-center text-rose-400 shrink-0">

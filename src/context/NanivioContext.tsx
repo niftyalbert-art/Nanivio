@@ -47,7 +47,8 @@ import {
 import { lookupNanivioUser, normalizeNanivioNumber } from '../utils/userLookup';
 import { agoraClient, AgoraTelemetryStats } from '../lib/agoraClient';
 import { streamClient, StreamClientState } from '../lib/streamClient';
-import { linkedPrivateConversation, privateConversationChannel, publishPrivateMessage } from '../lib/privateChat';
+import { linkedPrivateConversation, privateConversationChannel, publishPrivateMessage, restoredPrivateMessage } from '../lib/privateChat';
+import { durableChatMedia } from '../lib/chatAttachments';
 import { ownedChatSnapshot, readPrivateChatCache, writePrivateChatCache } from '../lib/privateChatStorage';
 import { realtimeClient, IncomingCallEvent, RealtimeUser } from '../lib/realtimeClient';
 import { buildMalviContextMemory } from '../lib/malviMemory';
@@ -784,6 +785,47 @@ export const NanivioProvider: React.FC<{ children: React.ReactNode }> = ({ child
     }
   }, [activeTab, activeConversationId]);
 
+  // Restore only provider-authorized conversations and their durable media.
+  useEffect(() => {
+    if (!isAuthenticated || streamState.status !== 'CONNECTED' || chatOwnerId !== currentUser.id) return;
+    const owner = currentUser.id;
+    let cancelled = false;
+    streamClient.fetchChannels().then(channels => {
+      if (cancelled || currentAccountIdRef.current !== owner) return;
+      const accessible = channels.filter(channel => channel.members.some(member => member.userId === owner));
+      setConversations(previous => {
+        const next = [...previous];
+        for (const channel of accessible) {
+          const index = next.findIndex(conversation => conversation.streamChannelId === channel.id || conversation.id === channel.id);
+          const base: Conversation = index >= 0 ? next[index] : {
+            id: channel.id, title: channel.name, participants: [], unreadCount: channel.unreadCount || 0,
+            isGroup: Boolean(channel.custom?.isGroup), lastMessage: channel.lastMessage, lastMessageTime: channel.lastMessageAt,
+          };
+          const linked = linkedPrivateConversation(base, channel);
+          if (index >= 0) next[index] = linked; else next.push(linked);
+        }
+        return next;
+      });
+    });
+    return () => { cancelled = true; };
+  }, [isAuthenticated, currentUser.id, chatOwnerId, streamState.status]);
+
+  const activePrivateChannel = conversations.find(conversation => conversation.id === activeConversationId)?.streamChannelId;
+  useEffect(() => {
+    if (!isAuthenticated || streamState.status !== 'CONNECTED' || !activePrivateChannel) return;
+    const owner = currentUser.id;
+    let cancelled = false;
+    streamClient.fetchMessages(activePrivateChannel).then(saved => {
+      if (cancelled || currentAccountIdRef.current !== owner) return;
+      setMessages(previous => {
+        const merged = new Map<string, ChatMessage>((previous[activeConversationId] || []).map(message => [message.id, message]));
+        saved.forEach(message => merged.set(message.id, restoredPrivateMessage(message)));
+        return { ...previous, [activeConversationId]: [...merged.values()].sort((a, b) => a.timestamp - b.timestamp) };
+      });
+    });
+    return () => { cancelled = true; };
+  }, [isAuthenticated, currentUser.id, streamState.status, activePrivateChannel, activeConversationId]);
+
   // Subscription & Live Langpretation Meter State
   const [isSubscribed, setIsSubscribed] = useState<boolean>(false);
   const [isFreeTrialActive, setIsFreeTrialActive] = useState<boolean>(false);
@@ -1008,6 +1050,27 @@ export const NanivioProvider: React.FC<{ children: React.ReactNode }> = ({ child
   const [incomingCall, setIncomingCall] = useState<IncomingCallEvent | null>(null);
   const [onlineUsers, setOnlineUsers] = useState<RealtimeUser[]>([]);
   const [agoraStats, setAgoraStats] = useState<AgoraTelemetryStats>(agoraClient.getStats());
+  const connectCallMedia = useCallback(async (
+    callId: string, channel: string, type: 'audio' | 'video', remoteId?: string,
+  ) => {
+    setActiveCall(prev => prev?.id === callId ? { ...prev, status: 'connecting', mediaError: undefined } : prev);
+    try {
+      await agoraClient.joinChannel(channel, currentUser.id, currentUser.name, type, remoteId);
+      if (currentAccountIdRef.current !== currentUser.id) return;
+      setActiveCall(prev => prev?.id === callId
+        ? { ...prev, status: 'connected', startedAt: Date.now() } : prev);
+      playCallConnectedTone();
+    } catch (error) {
+      if (currentAccountIdRef.current !== currentUser.id) return;
+      const denied = /permission|denied|notallowed/i.test(String(error));
+      setActiveCall(prev => prev?.id === callId ? { ...prev, status: 'ended',
+        mediaError: denied
+          ? 'Microphone or camera access was denied. Allow access in your browser and call again.'
+          : 'The call media could not connect. Check your connection and call again.' } : prev);
+      realtimeClient.endCall(callId, channel, currentUser.id, remoteId);
+      throw new Error('Call media connection failed.');
+    }
+  }, [currentUser.id, currentUser.name]);
   const callTimerRef = useRef<NodeJS.Timeout | null>(null);
   const callConnectTimerRef = useRef<NodeJS.Timeout | null>(null);
   const activeRingtoneRef = useRef<RingtoneHandle | null>(null);
@@ -1046,18 +1109,10 @@ export const NanivioProvider: React.FC<{ children: React.ReactNode }> = ({ child
         activeRingtoneRef.current.stop();
         activeRingtoneRef.current = null;
       }
-      playCallConnectedTone();
-      setActiveCall((prev) => (prev ? { ...prev, status: 'connected' } : null));
-
       const isVideo = data?.callType === 'video';
-      agoraClient.joinChannel(
-        data.channelName,
-        currentUser.id,
-        currentUser.name,
-        isVideo ? 'video' : 'audio',
-        data.responder?.id,
-        true // Caller is the initiator of WebRTC offer
-      );
+      const callId = data?.callId;
+      if (!callId || !data.channelName) return;
+      connectCallMedia(callId, data.channelName, isVideo ? 'video' : 'audio', data.responder?.id).catch(() => {});
     });
 
     const unsubDeclined = realtimeClient.on('call:declined', () => {
@@ -1088,7 +1143,7 @@ export const NanivioProvider: React.FC<{ children: React.ReactNode }> = ({ child
       }
       playCallEndedTone();
       agoraClient.leaveChannel();
-      setActiveCall(null);
+      setActiveCall(prev => prev?.mediaError ? prev : null);
       setIncomingCall((currIncoming) => {
         if (currIncoming && currIncoming.callId === data?.callId) {
           const logItem: CallLogRecord = {
@@ -1693,7 +1748,9 @@ export const NanivioProvider: React.FC<{ children: React.ReactNode }> = ({ child
     };
 
     if (type === 'video') {
-      agoraClient.startLocalPreview('video');
+      agoraClient.startLocalPreview('video').catch(() => {
+        setActiveCall(prev => prev ? { ...prev, mediaError: 'Camera preview unavailable. Check browser permissions.' } : prev);
+      });
     }
 
     setActiveCall(newCall);
@@ -1761,7 +1818,9 @@ export const NanivioProvider: React.FC<{ children: React.ReactNode }> = ({ child
     };
 
     if (type === 'video') {
-      agoraClient.startLocalPreview('video');
+      agoraClient.startLocalPreview('video').catch(() => {
+        setActiveCall(prev => prev ? { ...prev, mediaError: 'Camera preview unavailable. Check browser permissions.' } : prev);
+      });
     }
 
     setActiveCall(newCall);
@@ -1791,49 +1850,8 @@ export const NanivioProvider: React.FC<{ children: React.ReactNode }> = ({ child
   };
 
   const forceConnectCall = () => {
-    if (callConnectTimerRef.current) {
-      clearTimeout(callConnectTimerRef.current);
-      callConnectTimerRef.current = null;
-    }
-    if (activeRingtoneRef.current) {
-      activeRingtoneRef.current.stop();
-      activeRingtoneRef.current = null;
-    }
-    playCallConnectedTone();
-
-    setActiveCall(prev => {
-      if (!prev) return null;
-      const otherP = prev.participants.find(p => p.id !== currentUser.id) || prev.participants[1];
-      const isVideo = prev.type === 'video_1on1' || prev.type === 'group_video';
-      const chName = prev.channelName || `nanivio_call_${prev.id}`;
-      agoraClient.joinChannel(
-        chName,
-        currentUser.id,
-        currentUser.name,
-        isVideo ? 'video' : 'audio',
-        otherP?.id
-      );
-      realtimeClient.acceptCall(
-        prev.id,
-        chName,
-        otherP || { id: 'usr_partner', name: 'Nanivio Recipient' },
-        currentUser.id
-      );
-
-      // Server-authoritative live billing session initiation
-      startBillingSession({
-        sessionId: prev.id,
-        serviceType: prev.isPaidServiceCall ? 'EXPERT_SERVICE' : 'COMMUNICATION',
-        usageType: 'CALL_MINUTE',
-        currency: 'GHS',
-        isLangpretationActive: prev.langpretationEnabled,
-        providerId: otherP?.id,
-        sourceLang: (currentUser.myLanguage || 'en') as any,
-        targetLang: (otherP?.myLanguage || 'en') as any,
-      }).catch(() => {});
-
-      return { ...prev, status: 'connected', startedAt: Date.now() };
-    });
+    // Only a real recipient acceptance may establish a call.
+    setActiveCall(prev => prev ? { ...prev, mediaError: 'Waiting for the recipient to answer. A call cannot be connected on their behalf.' } : null);
   };
 
   const acceptIncomingCall = (callId?: string) => {
@@ -1843,8 +1861,6 @@ export const NanivioProvider: React.FC<{ children: React.ReactNode }> = ({ child
       incomingRingtoneRef.current.stop();
       incomingRingtoneRef.current = null;
     }
-    playCallConnectedTone();
-
     const callType: CallType = incomingCall.callType === 'video' ? 'video_1on1' : 'audio_1on1';
     const caller = incomingCall.caller as Participant;
 
@@ -1852,7 +1868,7 @@ export const NanivioProvider: React.FC<{ children: React.ReactNode }> = ({ child
       id: incomingCall.callId,
       channelName: incomingCall.channelName,
       type: callType,
-      status: 'connected',
+      status: 'connecting',
       host: caller,
       participants: [caller, currentUser],
       startedAt: Date.now(),
@@ -1876,18 +1892,8 @@ export const NanivioProvider: React.FC<{ children: React.ReactNode }> = ({ child
       caller.id
     );
 
-    // Join Agora RTC channel & WebRTC media tracks (Responder waits for offer)
-    agoraClient.joinChannel(
-      incomingCall.channelName,
-      currentUser.id,
-      currentUser.name,
-      incomingCall.callType,
-      caller.id,
-      false // Callee answers offer
-    );
-
-    // Server-authoritative live billing session initiation for responder
-    startBillingSession({
+    // Mark connected, and initiate local billing, only after real media publication.
+    connectCallMedia(session.id, incomingCall.channelName, incomingCall.callType, caller.id).then(() => startBillingSession({
       sessionId: session.id,
       serviceType: session.isPaidServiceCall ? 'EXPERT_SERVICE' : 'COMMUNICATION',
       usageType: 'CALL_MINUTE',
@@ -1896,7 +1902,7 @@ export const NanivioProvider: React.FC<{ children: React.ReactNode }> = ({ child
       providerId: caller.id,
       sourceLang: (currentUser.myLanguage || 'en') as any,
       targetLang: (caller.myLanguage || 'en') as any,
-    }).catch(() => {});
+    })).catch(() => {});
 
     setIncomingCall(null);
   };
@@ -2434,36 +2440,8 @@ export const NanivioProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
     let targetConvId = activeConversationId;
     let activeConv = conversations.find(c => c.id === targetConvId);
-    if (!activeConv && conversations.length > 0) {
-      activeConv = conversations[0];
-      targetConvId = activeConv.id;
-      setActiveConversationId(targetConvId);
-    }
-
     if (!activeConv) {
-      // Create a direct support / verified line so chat never fails to send
-      targetConvId = `conv_direct_${Date.now()}`;
-      activeConv = {
-        id: targetConvId,
-        title: 'Nanivio Live Support & Services',
-        participants: [
-          currentUser,
-          {
-            id: 'usr_nanivio_service',
-            nvId: '0486000000',
-            name: 'Nanivio Support Desk',
-            avatar: '',
-            initials: 'NS',
-            myLanguage: 'en',
-            role: 'expert',
-          }
-        ],
-        lastMessage: text,
-        lastMessageTime: Date.now(),
-        unreadCount: 0,
-      };
-      setConversations(prev => [activeConv!, ...prev]);
-      setActiveConversationId(targetConvId);
+      throw new Error('Choose a registered contact or conversation before sending.');
     }
 
     // Realtime translation if recipient speaks a different language
@@ -2516,7 +2494,9 @@ export const NanivioProvider: React.FC<{ children: React.ReactNode }> = ({ child
       lastMessageTime: Date.now(),
     } : c));
 
-    await sendPrivateConversationMessage(activeConv, newMsg);
+    if (!await sendPrivateConversationMessage(activeConv, newMsg)) {
+      throw new Error('Message was not sent. Check your connection and try again.');
+    }
   };
 
   const sendMediaMessage = async (media: {
@@ -2527,7 +2507,10 @@ export const NanivioProvider: React.FC<{ children: React.ReactNode }> = ({ child
     fileSize?: string;
   }) => {
     const activeConv = conversations.find(c => c.id === activeConversationId);
-    if (!activeConv) return;
+    if (!activeConv) throw new Error('Choose a conversation before attaching a file.');
+    const channel = await privateConversationChannel(activeConv, currentUser.id);
+    const extension = media.type === 'image' ? 'jpg' : media.type === 'video' ? 'webm' : 'pdf';
+    const mediaUrl = await durableChatMedia(channel.id, media.url, media.fileName || `attachment.${extension}`);
 
     const newMsg: ChatMessage = {
       id: `msg_media_${Date.now()}`,
@@ -2535,9 +2518,9 @@ export const NanivioProvider: React.FC<{ children: React.ReactNode }> = ({ child
       senderName: currentUser.name,
       senderAvatar: currentUser.avatar,
       senderLang: myLanguage,
-      text: media.caption || (media.type === 'document' ? `📄 ${media.fileName || 'Document'}` : media.type === 'video' ? '📹 Short Video' : '📷 Photo'),
+      text: media.caption || media.fileName || (media.type === 'document' ? 'Document' : media.type === 'video' ? 'Video' : 'Photo'),
       mediaType: media.type,
-      mediaUrl: media.url,
+      mediaUrl,
       mediaCaption: media.caption,
       mediaFileName: media.fileName,
       mediaFileSize: media.fileSize,
@@ -2563,7 +2546,9 @@ export const NanivioProvider: React.FC<{ children: React.ReactNode }> = ({ child
       lastMessageTime: Date.now(),
     } : c));
 
-    await sendPrivateConversationMessage(activeConv, newMsg);
+    if (!await sendPrivateConversationMessage(activeConv, newMsg)) {
+      throw new Error('Attachment uploaded, but the message was not sent. Please retry.');
+    }
   };
 
   const deleteMessage = useCallback((conversationId: string, messageId: string) => {
@@ -2780,14 +2765,19 @@ export const NanivioProvider: React.FC<{ children: React.ReactNode }> = ({ child
     targetLangParam?: string
   ) => {
     const activeConv = conversations.find(c => c.id === activeConversationId);
-    if (!activeConv) return;
+    if (!activeConv) throw new Error('Choose a conversation before sending a voice note.');
+    if (!audioBlobUrl) throw new Error('No microphone recording is available to send.');
+    const channel = await privateConversationChannel(activeConv, currentUser.id);
+    const durableOriginal = await durableChatMedia(channel.id, audioBlobUrl, 'voice-note.webm');
+    const durableTranslated = translatedAudioUrl
+      ? await durableChatMedia(channel.id, translatedAudioUrl, 'translated-voice-note.wav') : undefined;
 
     const otherParticipant = activeConv.participants.find(p => p.id !== currentUser.id);
     const resolvedTargetLang = targetLangParam || (otherParticipant ? otherParticipant.myLanguage : 'en');
     const shouldLangpretate = isLangpretation !== undefined ? isLangpretation : globalLangpretationEnabled;
 
     let finalTranslatedTranscript = translatedTranscriptParam || transcript;
-    let finalTranslatedAudioUrl = translatedAudioUrl;
+    let finalTranslatedAudioUrl = durableTranslated;
     let voiceNoteProvider = 'direct-passthrough';
 
     if (shouldLangpretate) {
@@ -2802,9 +2792,9 @@ export const NanivioProvider: React.FC<{ children: React.ReactNode }> = ({ child
     const voiceNoteData: VoiceNoteData = {
       id: `vn_${Date.now()}`,
       duration,
-      audioBlobUrl,
+      audioBlobUrl: durableOriginal,
       translatedAudioUrl: shouldLangpretate ? finalTranslatedAudioUrl : undefined,
-      waveform: [15, 30, 45, 60, 85, 70, 95, 80, 60, 40, 55, 75, 90, 65, 35, 20],
+      waveform: [],
       transcript,
       translatedTranscript: shouldLangpretate ? finalTranslatedTranscript : undefined,
       hasLangpretation: shouldLangpretate,
@@ -2841,7 +2831,7 @@ export const NanivioProvider: React.FC<{ children: React.ReactNode }> = ({ child
       lastMessageTime: Date.now(),
     } : c));
 
-    await sendPrivateConversationMessage(activeConv, newMsg);
+    if (!await sendPrivateConversationMessage(activeConv, newMsg)) throw new Error('Voice note was not sent. Please retry.');
   };
 
   // Start direct chat with a participant
