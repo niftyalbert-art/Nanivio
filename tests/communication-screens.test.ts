@@ -34,7 +34,7 @@ function fixture() {
     conversations: [{ id: 'test-conversation', title: 'Test conversation', participants: [me, peer], unreadCount: 0 }],
     messages: { 'test-conversation': [{ id: 'test-message', senderId: peer.id, senderName: peer.name,
       senderLang: 'en', text: 'Synthetic regression fixture', timestamp: 1, status: 'sent' }] },
-    contacts: [], currentPlan: { tier: 'free', groupCallLimit: 4 }, userSettings: { privacy: { blockedUsers: [], restrictedUsers: [] } },
+    contacts: [], replyingToMessage: null, currentPlan: { tier: 'free', groupCallLimit: 4 }, userSettings: { privacy: { blockedUsers: [], restrictedUsers: [] } },
     globalLangpretationEnabled: false, streamState: { status: 'DISCONNECTED' },
     activeCall: { id: 'test-call', type: 'audio_1on1', status: 'connecting', host: me,
       participants: [me, peer], durationSeconds: 42, langpretationEnabled: false, langpretationState: 'OFF' },
@@ -47,13 +47,16 @@ function fixture() {
   return values;
 }
 
-test('real ChatView renders a full thread, a visible disabled Send button and honest connection status', async () => {
+test('real ChatView renders a full thread, an accessible voice action for an empty draft and collapsed chat categories', async () => {
   fixture();
   const ChatView = await component('src/components/chat/ChatView.tsx', 'ChatView');
   const html = renderToStaticMarkup(React.createElement(ChatView));
   assert.match(html, /Synthetic regression fixture/);
-  assert.match(html, /id="btn-chat-send-msg"[^>]*disabled/);
-  assert.match(html, />Send<\/span>/);
+  const action = html.match(/<button[^>]*id="btn-chat-send-msg"[^>]*>/)?.[0];
+  assert.ok(action, 'Composer action must be present');
+  assert.match(action, /aria-label="Record voice note"/);
+  assert.doesNotMatch(action, /\sdisabled(?:=|\s|>)/);
+  assert.match(html, /aria-label="Choose chat category"/);
   assert.match(html, /Attachments|Attachment options|Attach/);
   assert.doesNotMatch(html, /Nanivio Live Support &amp; Services/);
 });

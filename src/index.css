@@ -294,9 +294,67 @@
   .navbar-brand { min-width: 0; }
   .navbar-actions { min-width: 0; gap: .3rem; }
   .navbar-install { display: none; }
-  .nv-chat-workspace .chat-composer { padding: .5rem !important; }
+  .nv-chat-workspace .chat-composer { padding: .5rem .25rem !important; }
 }
 @media (prefers-reduced-motion: no-preference) {
   .nv-theme-dark .nanivio-app main > * { animation: settle-in .22s ease-out both; }
   @keyframes settle-in { from { opacity: .86; transform: translateY(3px); } to { opacity: 1; transform: none; } }
+}
+
+/* Nanivio conversation-specific rhythm: compact messages, clear day changes,
+   and a composer that remains usable above the mobile keyboard. */
+.nv-chat-workspace .chat-thread-surface { min-height: 0; }
+.nv-chat-workspace .chat-thread-surface > .flex-1.overflow-y-auto {
+  overscroll-behavior: contain;
+  scroll-padding-block: 1rem;
+}
+.nv-chat-workspace .group.relative.flex.items-start > .max-w-md {
+  max-width: min(78%, 34rem);
+}
+.nv-chat-workspace .whatsapp-msg-text { overflow-wrap: anywhere; }
+.nv-chat-workspace .nv-chat-date-separator {
+  display: flex;
+  justify-content: center;
+  padding: .25rem 0;
+}
+.nv-chat-workspace .nv-chat-date-separator span {
+  max-width: 90%;
+  border: 1px solid #38342a;
+  border-radius: 999px;
+  background: #201e19;
+  padding: .25rem .7rem;
+  color: #c8b987;
+  font-size: .7rem;
+  line-height: 1.2;
+  letter-spacing: .025em;
+}
+.nv-chat-workspace .chat-composer {
+  padding-bottom: max(.65rem, env(safe-area-inset-bottom));
+}
+.nv-chat-workspace .chat-composer textarea {
+  max-height: min(8rem, 24dvh);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+.nv-chat-workspace #btn-chat-send-msg {
+  color: #17140d !important;
+  background: #d8b45a !important;
+}
+.nv-chat-workspace #btn-chat-send-msg:hover:not(:disabled) { background: #edcd78 !important; }
+.nv-chat-workspace #btn-chat-send-msg:disabled {
+  color: #8b846f !important;
+  background: #39362e !important;
+}
+@media (max-width: 767px) {
+  .nv-chat-page { padding: 0 !important; }
+  .nv-chat-workspace { gap: 0 !important; }
+  .nv-chat-workspace .group.relative.flex.items-start > .max-w-md { max-width: 86%; }
+  .nv-chat-workspace .chat-composer { padding-left: 2px; padding-right: 2px; }
+  .nv-chat-workspace .chat-composer form { gap: 4px; }
+  .nv-chat-workspace .chat-composer > form > div > button[aria-label="Open emoji picker"] {
+    width: 2rem;
+    height: 2rem;
+  }
+  .nv-chat-workspace #btn-chat-attach-media { width: 2rem; height: 2rem; }
+  .nv-chat-workspace .chat-composer > form > div { padding-left: .25rem; padding-right: .25rem; }
 }

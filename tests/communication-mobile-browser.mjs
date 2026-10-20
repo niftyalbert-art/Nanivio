@@ -14,6 +14,7 @@ const built = await build({
       import React from 'react';
       import {createRoot} from 'react-dom/client';
       import {ChatView} from './src/components/chat/ChatView';
+      import {ErrorBoundary} from './src/components/common/ErrorBoundary';
       import {VideoCallScreen} from './src/components/calls/VideoCallScreen';
       import {Navbar} from './src/components/Navbar';
       import {BottomNavigationBar} from './src/components/BottomNavigationBar';
@@ -24,7 +25,7 @@ const built = await build({
         conversations:[{id:'fixture-conversation',title:peer.name,participants:[me,peer],unreadCount:0}],
         messages:{'fixture-conversation':[{id:'fixture-message',senderId:peer.id,senderName:peer.name,
           senderLang:'en',text:'Isolated layout test: '+ 'LongUnbrokenMessage'.repeat(16),timestamp:1,status:'sent'}]},
-        contacts:[],callLogs:[],currentPlan:{tier:'free',groupCallLimit:4},
+        contacts:[],callLogs:[],replyingToMessage:null,currentPlan:{tier:'free',groupCallLimit:4},
         userSettings:{privacy:{blockedUsers:[],restrictedUsers:[]}},
         globalLangpretationEnabled:false,streamState:{status:'DISCONNECTED'},
         activeCall:{id:'fixture-call',type:'audio_1on1',status:'connected',host:me,participants:[me,peer],
@@ -42,7 +43,7 @@ const built = await build({
         values.activeCall.type=screen==='video'?'video_1on1':'audio_1on1';
         root.render(screen==='chat'
           ? <div className="nanivio-app nv-theme-dark chat-app-shell h-[100dvh] max-h-[100dvh] flex flex-col w-full max-w-full overflow-x-hidden relative"><Navbar/>
-              <main className="nanivio-main chat-main flex min-h-0 flex-1 flex-col overflow-hidden pb-[calc(4.5rem+env(safe-area-inset-bottom))] w-full max-w-full overflow-x-hidden"><ChatView/></main><BottomNavigationBar/></div>
+              <main className="nanivio-main chat-main flex min-h-0 flex-1 flex-col overflow-hidden pb-[calc(4.5rem+env(safe-area-inset-bottom))] w-full max-w-full overflow-x-hidden"><ErrorBoundary fallbackTitle="Fixture chat failure"><ChatView/></ErrorBoundary></main><BottomNavigationBar/></div>
           : <div className="nv-theme-dark"><VideoCallScreen onEndCall={()=>{}}/></div>);
       };
     `,
@@ -108,6 +109,37 @@ try {
   await call('Page.setDocumentContent', { frameId: frameTree.frame.id,
     html: `<html><head><meta name="viewport" content="width=device-width, initial-scale=1"><style>${css}</style></head><body><div id="fixture-root"></div></body></html>` });
   await evaluate(built.outputFiles[0].text);
+  await evaluate(`window.__originalChatFixture={
+    conversations:window.__communicationFixture.conversations,
+    messages:window.__communicationFixture.messages
+  }`);
+  const historyStates = [];
+  for (const waveform of [null, undefined, [], [15, 60, 30]]) {
+    await evaluate(`window.__communicationFixture.messages={'fixture-conversation':[{
+      id:'fixture-voice-note',senderId:'fixture-peer',senderName:'Fixture Peer',
+      senderLang:'en',text:'',timestamp:1,status:'sent',isVoiceNote:true,reactions:null,
+      voiceNote:{id:'fixture-voice-note',duration:7,audioBlobUrl:'/fixture-only-audio.webm',
+        waveform:${JSON.stringify(waveform) ?? 'undefined'},hasLangpretation:false,
+        sourceLang:'en',targetLang:'en'}
+    }]};window.__renderCommunicationFixture('chat')`);
+    await delay(150);
+    const voice = await evaluate(`({
+      failed:document.body.textContent.includes('Fixture chat failure'),
+      text:document.body.textContent,
+      composer:!!document.querySelector('textarea[aria-label="Write a message"]'),
+      playback:!!document.querySelector('button[title="Play Voice Note"]'),
+      bars:document.querySelectorAll('[aria-label="Voice note waveform"] > div').length
+    })`);
+    assert.equal(voice.failed, false, `Voice-note history crashed with waveform ${JSON.stringify(waveform)}: ${voice.text}`);
+    assert.ok(voice.composer && voice.playback, 'Voice-note history must preserve typing and playback controls');
+    assert.equal(voice.bars, waveform?.length || 0, 'Missing waveforms must not show invented activity');
+    historyStates.push(waveform === null ? 'null waveform' : waveform === undefined ? 'missing waveform' : `${waveform.length} waveform samples`);
+  }
+  await evaluate(`window.__communicationFixture.conversations=[];
+    window.__communicationFixture.messages={};window.__renderCommunicationFixture('chat')`);
+  await delay(100);
+  assert.equal(await evaluate(`document.body.textContent.includes('Fixture chat failure')`), false, 'Empty chat history crashed');
+  await evaluate(`Object.assign(window.__communicationFixture,window.__originalChatFixture);true`);
   const report = [];
   for (const [width, height] of [[320, 640], [390, 844], [390, 480], [768, 1024], [1366, 900]]) {
     await call('Emulation.setDeviceMetricsOverride', { width, height, deviceScaleFactor: 1, mobile: width < 768 });
@@ -127,6 +159,8 @@ try {
     assert.ok(chat.send.bottom <= chat.nav.top + 1, `Composer behind navigation at ${width}`);
     assert.ok(chat.pageWidth <= width + 1, `Page overflows horizontally at ${width}`);
     assert.ok(chat.categoryClosed && chat.categoryButton, 'Category destinations should be collapsed under one button');
+    assert.equal(await evaluate(`document.querySelector('#btn-chat-send-msg').getAttribute('aria-label')`), 'Record voice note');
+    assert.equal(await evaluate(`document.querySelectorAll('.nv-chat-date-separator').length`), 1, 'Date separator missing');
     await evaluate(`if(innerWidth<1024)document.querySelector('button[title="Back to all conversations"]').click()`);
     await delay(50);
     await evaluate(`document.querySelector('[aria-label="Choose chat category"]').click()`);
@@ -141,7 +175,32 @@ try {
     await evaluate(`document.querySelector('#emoji-picker-panel button[aria-label^="Insert "]').click()`);
     await delay(50);
     assert.ok(await evaluate(`document.querySelector('textarea[aria-label="Write a message"]').value.length > 0`), 'Emoji did not enter message');
-    await evaluate(`document.querySelector('button[title="Close emoji tray"]').click();document.querySelector('#btn-chat-send-msg').click()`);
+    assert.equal(await evaluate(`document.querySelector('#btn-chat-send-msg').getAttribute('aria-label')`), 'Send message');
+    const multiline = await evaluate(`(() => {
+      const input=document.querySelector('textarea[aria-label="Write a message"]');
+      const enter=new KeyboardEvent('keydown',{key:'Enter',shiftKey:true,bubbles:true,cancelable:true});
+      input.dispatchEvent(enter);return !enter.defaultPrevented;
+    })()`);
+    assert.ok(multiline, 'Shift+Enter must keep multiline typing available');
+    await evaluate(`document.querySelector('button[title="Close emoji tray"]').click()`);
+    if (width >= 768) {
+      const composing = await evaluate(`(() => {
+        const input=document.querySelector('textarea[aria-label="Write a message"]');
+        const enter=new KeyboardEvent('keydown',{key:'Enter',isComposing:true,bubbles:true,cancelable:true});
+        input.dispatchEvent(enter);return !enter.defaultPrevented;
+      })()`);
+      assert.ok(composing, 'IME composition must not send an unfinished message');
+      await evaluate(`document.querySelector('textarea[aria-label="Write a message"]').dispatchEvent(
+        new KeyboardEvent('keydown',{key:'Enter',bubbles:true,cancelable:true}))`);
+    } else {
+      const mobileEnter = await evaluate(`(() => {
+        const input=document.querySelector('textarea[aria-label="Write a message"]');
+        const enter=new KeyboardEvent('keydown',{key:'Enter',bubbles:true,cancelable:true});
+        input.dispatchEvent(enter);return !enter.defaultPrevented;
+      })()`);
+      assert.ok(mobileEnter, 'Mobile Enter must allow a newline');
+      await evaluate(`document.querySelector('#btn-chat-send-msg').click()`);
+    }
     await delay(50);
     assert.ok(await evaluate(`window.__fixtureSent?.text.length > 0`), 'Emoji message did not use sendMessage');
     for (const screen of ['audio', 'video']) {
@@ -157,7 +216,18 @@ try {
     }
     report.push({ width, height, typingWidth: chat.input.width, emojiAndSend: true, callsFit: true });
   }
-  console.log(JSON.stringify({ isolatedFixture: true, report }, null, 2));
+  await evaluate(`window.__communicationFixture.sendMessage=async()=>{throw new Error('Fixture send failure')};
+    window.__renderCommunicationFixture('chat')`);
+  await delay(100);
+  await evaluate(`document.querySelector('[aria-label="Open emoji picker"]').click()`);
+  await delay(50);
+  await evaluate(`document.querySelector('#emoji-picker-panel button[aria-label^="Insert "]').click()`);
+  await delay(50);
+  await evaluate(`document.querySelector('#btn-chat-send-msg').click()`);
+  await delay(100);
+  assert.ok(await evaluate(`!!document.querySelector('textarea[aria-label="Write a message"]').value`), 'Failed send erased draft');
+  assert.ok(await evaluate(`document.querySelector('[role="alert"]')?.textContent.includes('Message not sent')`), 'Failed send needs an explicit error');
+  console.log(JSON.stringify({ isolatedFixture: true, historyStates, emptyHistory: true, failedSendKeepsDraft: true, report }, null, 2));
 } finally {
   socket?.close();
   browser.kill('SIGTERM');

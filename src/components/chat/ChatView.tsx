@@ -150,6 +150,7 @@ export const ChatView: React.FC = () => {
   const [lightboxImage, setLightboxImage] = useState<string | null>(null);
   const [isLiveCameraOpen, setIsLiveCameraOpen] = useState(false);
   const [quickReactionMsgId, setQuickReactionMsgId] = useState<string | null>(null);
+  const [messageMenuMsgId, setMessageMenuMsgId] = useState<string | null>(null);
 
   // Nanivio Number Direct Chat Entry State
   const [directNvInput, setDirectNvInput] = useState('');
@@ -251,6 +252,13 @@ export const ChatView: React.FC = () => {
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [activeMessages.length]);
+
+  useEffect(() => {
+    const input = messageInputRef.current;
+    if (!input) return;
+    input.style.height = 'auto';
+    if (inputMsg) input.style.height = `${Math.min(input.scrollHeight, 130)}px`;
+  }, [inputMsg]);
 
   const handleSend = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
@@ -982,14 +990,23 @@ export const ChatView: React.FC = () => {
                   </div>
                 )}
 
-                {activeMessages.map((msg) => {
+                {activeMessages.map((msg, messageIndex) => {
                   const isMe = msg.senderId === currentUser.id;
                   const showOriginal = showOriginalMap[msg.id];
                   const senderLangObj = SUPPORTED_LANGUAGES.find((l) => l.code === msg.senderLang);
+                  const voiceWaveform = Array.isArray(msg.voiceNote?.waveform) ? msg.voiceNote.waveform : [];
+                  const messageDate = new Date(msg.timestamp);
+                  const previousMessageDate = messageIndex > 0 ? new Date(activeMessages[messageIndex - 1].timestamp) : null;
+                  const hasDateChanged = !previousMessageDate || messageDate.toDateString() !== previousMessageDate.toDateString();
 
                   return (
+                    <React.Fragment key={msg.id}>
+                    {hasDateChanged && (
+                      <div className="nv-chat-date-separator" aria-label={`Messages from ${messageDate.toLocaleDateString()}`}>
+                        <span>{messageDate.toLocaleDateString([], { weekday: 'long', month: 'long', day: 'numeric' })}</span>
+                      </div>
+                    )}
                     <div
-                      key={msg.id}
                       className={`group relative flex items-start gap-2.5 ${isMe ? 'flex-row-reverse' : 'flex-row'}`}
                     >
                       {!isMe && (
@@ -1085,8 +1102,11 @@ export const ChatView: React.FC = () => {
                               </button>
 
                               <div className="flex-1 space-y-1">
-                                <div className="flex items-center gap-1 h-6">
-                                  {msg.voiceNote.waveform.map((h, i) => (
+                                <div aria-label="Voice note waveform" className="flex items-center gap-1 h-6">
+                                  {voiceWaveform.length === 0 && (
+                                    <span className="sr-only">Waveform unavailable. Voice note playback is still available.</span>
+                                  )}
+                                  {voiceWaveform.map((h, i) => (
                                     <div
                                       key={i}
                                       style={{ height: `${h}%` }}
@@ -1239,6 +1259,27 @@ export const ChatView: React.FC = () => {
                         )}
 
                         {/* Quick Reaction Popup if active for this message */}
+                        <div className="nv-message-menu-trigger absolute -top-2 right-0 z-20 md:hidden">
+                          <button
+                            type="button"
+                            aria-label="More message actions"
+                            aria-expanded={messageMenuMsgId === msg.id}
+                            onClick={() => setMessageMenuMsgId((id) => id === msg.id ? null : msg.id)}
+                            className="flex h-8 w-8 items-center justify-center rounded-full border border-slate-700 bg-slate-900 text-slate-300 shadow-lg"
+                          >
+                            <MoreVertical className="h-4 w-4" />
+                          </button>
+                          {messageMenuMsgId === msg.id && (
+                            <div role="menu" aria-label="Message actions" className="absolute right-0 top-9 z-30 w-48 rounded-xl border border-slate-700 bg-slate-900 p-1.5 shadow-2xl">
+                              <button role="menuitem" onClick={() => { setQuickReactionMsgId(msg.id); setMessageMenuMsgId(null); }} className="w-full rounded-lg px-3 py-2 text-left text-sm text-slate-200 hover:bg-slate-800">React</button>
+                              <button role="menuitem" onClick={() => { setReplyingToMessage(msg); setMessageMenuMsgId(null); }} className="w-full rounded-lg px-3 py-2 text-left text-sm text-slate-200 hover:bg-slate-800">Reply</button>
+                              <button role="menuitem" onClick={() => { setForwardingMessage(msg); setMessageMenuMsgId(null); }} className="w-full rounded-lg px-3 py-2 text-left text-sm text-slate-200 hover:bg-slate-800">Forward</button>
+                              <button role="menuitem" onClick={() => { handleCopyMessage(msg.text || msg.voiceNote?.transcript || '', msg.id); setMessageMenuMsgId(null); }} className="w-full rounded-lg px-3 py-2 text-left text-sm text-slate-200 hover:bg-slate-800">Copy text</button>
+                              <button role="menuitem" onClick={() => { deleteMessage(activeConv.id, msg.id); setMessageMenuMsgId(null); }} className="w-full rounded-lg px-3 py-2 text-left text-sm text-rose-300 hover:bg-slate-800">Delete message</button>
+                            </div>
+                          )}
+                        </div>
+
                         {quickReactionMsgId === msg.id && (
                           <div
                             className={`absolute -top-10 ${
@@ -1366,6 +1407,7 @@ export const ChatView: React.FC = () => {
                         </div>
                       </div>
                     </div>
+                    </React.Fragment>
                   );
                 })}
 
@@ -1383,6 +1425,8 @@ export const ChatView: React.FC = () => {
                     </div>
                   </div>
                   <button
+                    type="button"
+                    aria-label="Cancel reply"
                     onClick={() => setReplyingToMessage(null)}
                     className="p-1 text-slate-400 hover:text-white"
                   >
@@ -1400,16 +1444,16 @@ export const ChatView: React.FC = () => {
                   />
                 ) : (
                   <>
-                  <form onSubmit={handleSend} className="flex w-full flex-col items-stretch gap-2 p-1 sm:flex-row sm:items-end">
+                  <form onSubmit={handleSend} className="flex w-full items-end gap-1 p-0.5 sm:gap-2">
                     {/* WhatsApp-Style Unified Rounded Input Bubble */}
-                    <div className="relative flex min-w-0 w-full flex-1 items-center bg-slate-950/90 border border-slate-700/80 focus-within:border-emerald-500 rounded-2xl px-2 py-1 transition-colors">
+                    <div className="relative flex min-w-0 w-full flex-1 items-end bg-slate-950/90 border border-slate-700/80 focus-within:border-emerald-500 rounded-[1.45rem] px-2 py-1 transition-colors">
                       {/* Roomy WhatsApp-Sized Input / Auto-growing Textarea */}
                       <textarea
                         ref={messageInputRef}
                         aria-label="Write a message"
                         rows={1}
                         disabled={isSendingMessage}
-                        placeholder={`Type a message (speaks in ${myLangInfo.name})...`}
+                        placeholder="Message"
                         value={inputMsg}
                         onChange={(e) => {
                           setInputMsg(e.target.value);
@@ -1417,12 +1461,13 @@ export const ChatView: React.FC = () => {
                           e.target.style.height = `${Math.min(e.target.scrollHeight, 130)}px`;
                         }}
                         onKeyDown={(e) => {
-                          if (e.key === 'Enter' && !e.shiftKey) {
+                          const isMobile = window.matchMedia('(max-width: 767px)').matches;
+                          if (e.key === 'Enter' && !e.shiftKey && !isMobile && !e.nativeEvent.isComposing && e.keyCode !== 229) {
                             e.preventDefault();
                             handleSend();
                           }
                         }}
-                        className="flex-1 min-w-0 w-full bg-transparent border-0 text-base text-white placeholder-slate-400 focus:outline-none px-1.5 py-2 resize-none max-h-32 min-h-[48px] leading-relaxed whitespace-pre-wrap break-words sm:px-2.5"
+                        className="flex-1 min-w-0 w-full bg-transparent border-0 text-base text-white placeholder-slate-400 focus:outline-none px-1.5 py-2 resize-none max-h-32 min-h-[44px] leading-[1.45] whitespace-pre-wrap break-words sm:px-2.5"
                       />
 
                       {/* One attachment menu keeps media and voice actions together. */}
@@ -1442,7 +1487,7 @@ export const ChatView: React.FC = () => {
                           aria-haspopup="menu"
                           aria-expanded={isAttachmentMenuOpen}
                           onClick={() => setIsAttachmentMenuOpen((open) => !open)}
-                          className="inline-flex items-center gap-1.5 rounded-xl px-1.5 py-2 text-xs font-semibold text-slate-500 hover:bg-slate-800 hover:text-emerald-400 transition-colors sm:px-2.5"
+                          className="inline-flex h-10 w-10 items-center justify-center rounded-xl p-0 text-xs font-semibold text-slate-300 hover:bg-slate-800 hover:text-amber-400 transition-colors sm:w-auto sm:px-2.5"
                           title="Attach media or record a voice note"
                         >
                           <Paperclip className="w-4 h-4" />
@@ -1465,12 +1510,15 @@ export const ChatView: React.FC = () => {
                     </div>
 
                     <button
-                      type="submit"
+                      type={inputMsg.trim() ? 'submit' : 'button'}
                       id="btn-chat-send-msg"
-                      disabled={!inputMsg.trim() || isSendingMessage}
-                      className="chat-send-button h-11 min-w-[82px] self-end rounded-xl px-3.5 font-bold text-sm transition-colors shrink-0 inline-flex items-center justify-center gap-2 disabled:opacity-75 sm:self-auto"
+                      aria-label={inputMsg.trim() ? 'Send message' : 'Record voice note'}
+                      title={inputMsg.trim() ? 'Send message' : 'Record voice note'}
+                      onClick={!inputMsg.trim() ? () => setIsRecordingVoice(true) : undefined}
+                      disabled={isSendingMessage}
+                      className="chat-send-button h-11 w-11 min-w-[44px] rounded-full font-bold text-sm transition-colors shrink-0 inline-flex items-center justify-center disabled:opacity-75 sm:w-12 sm:h-12"
                     >
-                      {isSendingMessage ? <span className="animate-pulse">Sending</span> : <><Send className="w-4 h-4" /><span>Send</span></>}
+                      {isSendingMessage ? <span className="animate-pulse text-xs">…</span> : inputMsg.trim() ? <Send className="w-4 h-4" /> : <Mic className="w-5 h-5" />}
                     </button>
                   </form>
                   <EmojiPickerPopover
