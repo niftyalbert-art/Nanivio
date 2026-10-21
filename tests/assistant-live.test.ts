@@ -244,9 +244,9 @@ test('wake word is on-device only; unsupported browsers never fall back to cloud
   class Recognition {
     static async available() { return 'available'; }
     processLocally = false;
-    onresult: any; onerror: any; onend: any;
+    onresult: any; onerror: any; onend: any; onstart: any;
     constructor() { instance = this; }
-    start() { assert.equal(this.processLocally, true); starts++; }
+    start() { assert.equal(this.processLocally, true); starts++; this.onstart?.(); }
     abort() { stopped++; }
   }
   Object.defineProperty(Recognition.prototype, 'processLocally', { value: false, writable: true });

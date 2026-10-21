@@ -2,6 +2,7 @@ import crypto from 'node:crypto';
 import { AssistantError, getAssistantStore, IDLE_MS, MAX_SESSION_MS, type AssistantSessionRecord, type AssistantStore } from './redisStore.ts';
 import { getLiveBrainProviderConfig } from './brainProviderConfig.ts';
 import { getMalviLanguage } from '../../lib/malviLanguages.ts';
+import { malviSpeechSetup } from './malviSpeech.ts';
 
 const API = 'https://api.liveavatar.com';
 export const AI_DISCLOSURE = "Hello, I'm Malvi, Nanivio's interactive AI assistant, not a human.";
@@ -9,11 +10,13 @@ export const ownerKey = (userId: string) => crypto.createHash('sha256').update(u
 
 export function liveAvatarSetup() {
   const brain = getLiveBrainProviderConfig();
+  const speech = malviSpeechSetup();
   const missing = [
     ...(!process.env.HEYGEN_API_KEY ? ['HEYGEN_API_KEY'] : []),
     ...(!process.env.AVATAR_ID ? ['AVATAR_ID'] : []),
     ...(!process.env.REDIS_URL ? ['REDIS_URL'] : []),
     ...brain.missing,
+    ...speech.missing,
   ];
   return {
     configured: missing.length === 0,
@@ -25,6 +28,7 @@ export function liveAvatarSetup() {
     // Setup is not a live-session probe. Only brain_ready confirms a connection.
     brainConnected: false,
     brainProvider: brain.selectedProvider,
+    speech,
   };
 }
 

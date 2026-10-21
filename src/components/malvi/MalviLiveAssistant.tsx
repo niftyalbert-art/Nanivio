@@ -134,7 +134,7 @@ export const MalviLiveAssistantProvider: React.FC<{ children: React.ReactNode }>
         setActiveLanguage(payload.language || languageRef.current);
         setBrainReady(true);
         if (voiceMode.current) setPhase('connected');
-        setCaption(`Malvi is ready using ${payload.provider === 'openai' ? 'OpenAI GPT-Live' : 'Gemini Live'}. Turn on the microphone when you’re ready.`);
+        setCaption(`Malvi is ready using ${payload.provider === 'openai' ? 'OpenAI GPT-Live' : 'Gemini Live'} with her ElevenLabs voice. Turn on the microphone when you’re ready.`);
       }
     });
     const offAudio = realtimeClient.on('malvi:brain_audio', (payload) => {
@@ -495,7 +495,8 @@ export const MalviLiveControls: React.FC = () => {
   const [checking, setChecking] = useState(false);
   if (!live) return null;
   const { readiness, phase, notice, wakeArmed, wakeChecking } = live;
-  const ready = Boolean(readiness?.configured && readiness?.enabled);
+  const languageSupported = !readiness?.speech || readiness.speech.supportedLanguages.includes(appLanguage || 'en');
+  const ready = Boolean(readiness?.configured && readiness?.enabled && languageSupported);
   return (
     <section aria-label="Malvi LiveAvatar" className="mb-6 rounded-3xl border border-[var(--nv-border)] bg-[var(--nv-surface)] p-5 sm:p-6">
       <div className="flex flex-wrap items-start justify-between gap-4">
@@ -507,7 +508,7 @@ export const MalviLiveControls: React.FC = () => {
         <span className="rounded-full border border-[var(--nv-border)] px-3 py-1.5 text-xs text-[var(--nv-gold)]">Video only after activation</span>
       </div>
       <div className="mt-5 flex flex-wrap gap-3">
-        {readiness?.canRunSetupTests && <button type="button" disabled={!readiness.voiceTestAvailable || phase !== 'idle'} onClick={() => void live.startVoiceTest()} className="rounded-xl border border-[var(--nv-gold)] px-4 py-3 text-sm font-semibold text-[var(--nv-gold)] disabled:opacity-45">
+        {readiness?.canRunSetupTests && <button type="button" disabled={!readiness.voiceTestAvailable || !languageSupported || phase !== 'idle'} onClick={() => void live.startVoiceTest()} className="rounded-xl border border-[var(--nv-gold)] px-4 py-3 text-sm font-semibold text-[var(--nv-gold)] disabled:opacity-45">
           Test voice only · admin
         </button>}
         <button type="button" onClick={() => void live.start('manual')} disabled={!ready || phase !== 'idle'} style={{ backgroundColor: 'var(--nv-gold)', color: 'var(--nv-bg)' }} className="inline-flex items-center gap-2 rounded-xl px-4 py-3 text-sm font-semibold transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-45">
@@ -522,7 +523,7 @@ export const MalviLiveControls: React.FC = () => {
         </button>}
       </div>
       {readiness?.canRunSetupTests && <div className="mt-4 text-xs leading-relaxed text-slate-300">
-        <p>Voice-only testing uses the selected brain provider and may incur inference charges. No avatar is started. Microphone access requires a separate tap. The same session limits apply.</p>
+        <p>Voice-only testing uses the selected brain plus ElevenLabs speech and may incur charges from both. No avatar is started. Microphone access requires a separate tap. The same session limits apply.</p>
         <button type="button" disabled={checking} className="mt-2 min-h-11 underline underline-offset-4 disabled:opacity-45" onClick={() => {
           setChecking(true); setDiagnostic('');
           void assistantRequest('/diagnostics', {}).then(data => {
@@ -548,6 +549,7 @@ export const MalviLiveControls: React.FC = () => {
         <AlertCircle className="mr-2 inline h-4 w-4" />
         {!readiness.enabled ? 'Malvi must be enabled in administrator settings. ' : ''}
         {!readiness.configured ? `Live setup required: ${readiness.missing.join(', ')}. The supplied face must be provisioned as your custom LiveAvatar asset.` : ''}
+        {!languageSupported ? 'Your selected language is not supported by Malvi’s current ElevenLabs voice model. Choose a supported language for voice; Malvi will not substitute English or another voice.' : ''}
         <button type="button" onClick={() => void live.refresh()} className="ml-2 underline underline-offset-4">Recheck setup</button>
       </div>}
       {notice && <p role="status" className="mt-3 text-sm text-amber-200">{notice}</p>}

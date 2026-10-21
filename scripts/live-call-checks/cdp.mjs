@@ -20,7 +20,7 @@ export async function launchBrowser() {
     });
   }).catch(async error => {
     child.kill();
-    await fs.rm(directory, { recursive: true, force: true });
+    await fs.rm(directory, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
     throw error;
   });
   const socket = new WebSocket(endpoint);
@@ -77,7 +77,8 @@ export async function launchBrowser() {
       await send('Browser.close').catch(() => {});
       socket.close();
       child.kill();
-      await fs.rm(directory, { recursive: true, force: true });
+      // Chromium may still finish profile writes after close/kill is signalled.
+      await fs.rm(directory, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
     },
   };
 }
