@@ -98,3 +98,17 @@ mtime_ms = 1792166028254
 storage_uri = "gcs://replit-rams-assets-sisko/rams/assets/repl:8a53f482-19ae-49f0-ab16-31b527f92091/74a5ab7a-229a-4bf0-9683-6b97e5ab1f06/17d4a84f-34bd-46f3-96a4-40c34ed360c5"
 storage_version_token = "1792166060200931"
 content_type = "image/png"
+
+[[outputs]]
+id = "zO0A2gEaNJVaXwXTR6LTY"
+uri = "file://generated-artifacts/malvi-elevenlabs-sample-1792591164771.mp3"
+type = "audio"
+title = "Malvi voice — short ElevenLabs test"
+description = "2.7-second English sample using the saved Malvi Voice ID; one generation, 36 reported credits. This is not yet the app’s live voice."
+logical_id = "82f2d96f-b107-48c8-9c41-faefad68becb"
+content_hash = "sha256:aef56fb483b373e072cfca8718fe40bd7d0d3f526a43ff7243d7078e0b8d6cee"
+size = 44346
+mtime_ms = 1792591164770
+storage_uri = "gcs://replit-rams-assets-sisko/rams/assets/repl:8a53f482-19ae-49f0-ab16-31b527f92091/82f2d96f-b107-48c8-9c41-faefad68becb/ae73d543-fece-4739-9f3d-1335862f423c"
+storage_version_token = "1792591271949434"
+content_type = "audio/mpeg"

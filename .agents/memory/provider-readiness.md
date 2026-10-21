@@ -44,8 +44,8 @@ Optional metadata access and the required synthesis permission are separate.
 
 **Why:** ElevenLabs repeatedly denied voice listing with `voices_read` missing,
 while the user's key settings showed Text to Speech access and did not expose
-the requested Voices permission. That listing failure alone did not establish
-whether synthesis with the already-known voice ID would work.
+the requested Voices permission. Direct synthesis with the known voice ID
+subsequently succeeded without adding that optional metadata permission.
 
 **How to apply:** Do not repeatedly ask the user to find an absent dashboard
 setting or remove key restrictions. Offer one explicitly approved, short synthesis
