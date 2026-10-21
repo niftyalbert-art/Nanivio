@@ -5,6 +5,7 @@ import crypto from "crypto";
 import proxyaddr from "proxy-addr";
 import { GoogleGenAI, FunctionDeclaration, Type } from "@google/genai";
 import dotenv from "dotenv";
+import { malviSpeechSetup } from "./src/server/assistant/malviSpeech.ts";
 import {
   setupRealtimeServer,
   getActiveConnectedUsersList,
@@ -3683,6 +3684,11 @@ async function startServer() {
 
   httpServer.listen(PORT, "0.0.0.0", () => {
     console.log(`Nanivio real-time telecom platform server running on http://localhost:${PORT}`);
+    const speech = malviSpeechSetup();
+    console.info("[Malvi] Speech configuration", {
+      transport: speech.transport,
+      configured: speech.configured,
+    });
   });
 }
 
