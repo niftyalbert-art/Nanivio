@@ -32,7 +32,7 @@ Treat SDK microphone settings as a privacy boundary, not just an audio setting.
 
 **How to apply:** Recheck capture behavior when updating the SDK; the renderer must not publish the user's microphone to the provider-managed voice component.
 
-Malvi’s speaking voice should match the user-supplied ElevenLabs recording across users’ selected languages. The standard Gemini test voice is not her approved final voice.
+Malvi’s speaking voice should match the user-supplied ElevenLabs recording across users’ selected languages. The standard Gemini test voice is not her approved final voice. The user confirmed that the original voice is saved in their ElevenLabs account.
 
 **Why:** The user identified the supplied recording as Malvi’s voice and requested that identity in every selected user language.
 
