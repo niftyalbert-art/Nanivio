@@ -234,6 +234,7 @@ export const MalviLiveOverlay: React.FC<MalviLiveOverlayProps> = ({
         <footer className="flex flex-col items-center gap-3 p-4 pb-[max(1rem,env(safe-area-inset-bottom))] sm:p-7">
           <p id="malvi-live-disclosure" className="max-w-lg rounded-xl bg-[#10201f]/60 px-3 py-2 text-center text-[11px] leading-relaxed text-[#e0e8e2]/80 backdrop-blur-md">
             AI disclosure · Malvi is an interactive AI assistant.
+            {' '}Her response text is sent to ElevenLabs for her voice.
             {' '}Relevant topic queries may be sent automatically to Wikipedia/Wikidata or arXiv/PubMed for reference lookup.
           </p>
           <button

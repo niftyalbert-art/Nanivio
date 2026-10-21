@@ -5,7 +5,7 @@ import { liveAvatarSetup } from '../src/server/assistant/liveAvatarService.ts';
 import { hasSpeech, resamplePcm16kTo24k } from '../src/server/assistant/liveBrain.ts';
 
 test('configured provider credentials do not claim a live brain connection', () => {
-  const keys = ['HEYGEN_API_KEY', 'AVATAR_ID', 'REDIS_URL', 'GEMINI_API_KEY', 'MALVI_BRAIN_PROVIDER'];
+  const keys = ['HEYGEN_API_KEY', 'AVATAR_ID', 'REDIS_URL', 'GEMINI_API_KEY', 'MALVI_BRAIN_PROVIDER', 'ELEVENLABS_API_KEY', 'MALVI_TTS_TRANSPORT'];
   const original = Object.fromEntries(keys.map(key => [key, process.env[key]]));
   try {
     process.env.HEYGEN_API_KEY = 'fixture-avatar-key';
@@ -13,6 +13,8 @@ test('configured provider credentials do not claim a live brain connection', () 
     process.env.REDIS_URL = 'redis://fixture.invalid:6379';
     process.env.GEMINI_API_KEY = 'fixture-brain-key';
     process.env.MALVI_BRAIN_PROVIDER = 'gemini';
+    process.env.ELEVENLABS_API_KEY = 'fixture-speech-key';
+    process.env.MALVI_TTS_TRANSPORT = 'direct';
     const setup = liveAvatarSetup();
     assert.equal(setup.configured, true);
     assert.equal(setup.brainConfigured, true);

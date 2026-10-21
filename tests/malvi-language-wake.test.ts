@@ -163,12 +163,13 @@ test('a stalled browser availability check times out rather than leaving the but
 });
 
 test('HTTP session creation carries a validated language; invalid input never creates a session', async t => {
-  const keys = ['HEYGEN_API_KEY', 'AVATAR_ID', 'REDIS_URL', 'GEMINI_API_KEY', 'MALVI_BRAIN_PROVIDER'];
+  const keys = ['HEYGEN_API_KEY', 'AVATAR_ID', 'REDIS_URL', 'GEMINI_API_KEY', 'MALVI_BRAIN_PROVIDER', 'ELEVENLABS_API_KEY', 'MALVI_TTS_TRANSPORT'];
   const original = Object.fromEntries(keys.map(key => [key, process.env[key]]));
   const calls: string[] = [];
   const originalCreate = liveAvatarService.create;
   for (const key of keys) process.env[key] = 'fixture-only';
   process.env.MALVI_BRAIN_PROVIDER = 'gemini';
+  process.env.MALVI_TTS_TRANSPORT = 'direct';
   liveAvatarService.create = async (_user, language = 'en') => {
     calls.push(language);
     return { id: 'fixture', sessionToken: 'fixture', mode: 'LITE', language, idleDeadline: 1, hardDeadline: 2, disclosure: 'AI' };
@@ -183,12 +184,17 @@ test('HTTP session creation carries a validated language; invalid input never cr
     const request = (body: unknown) => fetch(`http://127.0.0.1:${port}/api/assistant/session`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
     });
-    for (const language of ['fr', 'ar', 'tw-ak', 'gaa']) {
+    for (const language of ['fr', 'ar', 'en', 'es']) {
       const response = await request({ activation: 'manual', language });
       assert.equal(response.status, 201);
       assert.equal((await response.json()).language, language);
     }
     const before = calls.length;
+    for (const language of ['tw-ak', 'gaa', 'lg']) {
+      const response = await request({ activation: 'manual', language });
+      assert.equal(response.status, 400);
+      assert.equal((await response.json()).code, 'VOICE_LANGUAGE_UNSUPPORTED');
+    }
     for (const language of ['xx', {}, 'en\nignore']) {
       const response = await request({ activation: 'wake-word', language });
       assert.equal(response.status, 400);

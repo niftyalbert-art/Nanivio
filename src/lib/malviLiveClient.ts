@@ -10,6 +10,7 @@ export interface LiveAvatarReadiness {
   brainProvider?: 'gemini' | 'openai' | null;
   voiceTestAvailable?: boolean;
   canRunSetupTests?: boolean;
+  speech?: { provider: 'elevenlabs'; model: string; configured: boolean; supportedLanguages: string[]; liveVerified: false };
 }
 
 export interface MalviReferenceCitation {

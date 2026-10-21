@@ -1,8 +1,10 @@
 # Malvi: LiveAvatar LITE visual foundation
 
-This phase implements the custom identity, video session lifecycle, local-only
-wake-word boundary, and cost controls. It deliberately does **not** implement
-the new conversational brain. A still portrait is never presented as live video.
+This foundation implements the custom identity, video session lifecycle,
+local-only wake-word boundary and cost controls. The selected live brain now
+supplies response transcripts to Malvi's approved ElevenLabs voice; see
+[voice setup and language limits](MALVI_ELEVENLABS_VOICE.md).
+A still portrait is never presented as live video.
 
 ## Repository structure
 
@@ -57,10 +59,11 @@ attached_assets/
   Use a private or TLS-protected connection and keep credentials in secrets.
 - `NANIVIO_MALVI_ENABLED=false` explicitly disables the assistant. Administrators
   can also disable the Malvi feature switch.
-- The optional first spoken welcome uses the existing backend English TTS route
-  (`AZURE_SPEECH_KEY` and `AZURE_SPEECH_REGION` configuration). If it is not
-  configured or returns invalid audio, the visual session displays that fact;
-  it does not use browser TTS or provider-owned voice as a fallback.
+- `ELEVENLABS_API_KEY` and `ELEVENLABS_VOICE_ID`: Malvi's approved voice.
+  Use `MALVI_TTS_TRANSPORT=direct` on Render or the connected integration with
+  `MALVI_TTS_TRANSPORT=connector` on Replit. The live brain's localized AI
+  greeting and responses use this voice, not Azure, browser TTS or the brain's
+  native voice. Unsupported speech languages fail clearly before initialization.
 
 No new wallet charges or paid-plan minute settlement are implemented by this
 visual phase. Before charging for live-avatar time, connect the authoritative
@@ -91,8 +94,8 @@ The actual provider mode is uppercase `LITE`, the API origin is
 LiveKit/WebRTC negotiation. Do not fabricate an SDP response.
 
 The SDK's default-muted voice component still opens/publishes a microphone.
-This renderer disables its `voiceChat.start` before session start. Our future
-brain owns audio input; no user microphone is published to HeyGen by this phase.
+This renderer disables its `voiceChat.start` before session start. The selected
+brain owns audio input; no user microphone is published to HeyGen.
 
 ## HTTP surface
 

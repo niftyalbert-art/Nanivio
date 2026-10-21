@@ -67,12 +67,19 @@ globalThis.__malviAdapter = {
   openaiConnects: 0, openaiCloses: 0, openaiEvents: [], activity: 0,
 };
 const state = globalThis.__malviAdapter;
+state.speechRequests = [];
+const originalFetch = globalThis.fetch;
+globalThis.fetch = async (url, init) => {
+  assert.match(String(url), /^https:\/\/api\.elevenlabs\.io\/v1\/text-to-speech\/kW71iH6myeMHEvxKthQ6\?output_format=pcm_24000$/);
+  state.speechRequests.push({ body: JSON.parse(init.body), signal: init.signal });
+  return new Response(Buffer.alloc(480, 12), { headers: { 'Content-Type': 'audio/pcm' } });
+};
 const isolatedModule = { exports: {} };
 new Function('require', 'module', 'exports', output.outputFiles[0].text)(
   createRequire(import.meta.url), isolatedModule, isolatedModule.exports,
 );
 const { malviLiveBrainController: controller } = isolatedModule.exports;
-const keys = ['MALVI_BRAIN_PROVIDER', 'GEMINI_API_KEY', 'OPENAI_API_KEY'];
+const keys = ['MALVI_BRAIN_PROVIDER', 'GEMINI_API_KEY', 'OPENAI_API_KEY', 'ELEVENLABS_API_KEY', 'ELEVENLABS_VOICE_ID', 'MALVI_TTS_TRANSPORT'];
 const original = Object.fromEntries(keys.map(key => [key, process.env[key]]));
 const socket = () => ({ readyState: 1, OPEN: 1, events: [], send(value) { this.events.push(JSON.parse(value)); } });
 const gemini = socket(), openai = socket();
@@ -82,6 +89,9 @@ try {
   process.env.GEMINI_API_KEY = 'isolated-fixture';
   process.env.OPENAI_API_KEY = 'isolated-fixture';
   process.env.MALVI_BRAIN_PROVIDER = 'gemini';
+  process.env.ELEVENLABS_API_KEY = 'isolated-fixture';
+  process.env.ELEVENLABS_VOICE_ID = 'kW71iH6myeMHEvxKthQ6';
+  process.env.MALVI_TTS_TRANSPORT = 'direct';
   await controller.start(gemini, 'owner', id1, 'fr');
   await new Promise(resolve => setImmediate(resolve));
   assert.equal(state.geminiConnects, 1);
@@ -92,15 +102,26 @@ try {
   const spokenChunk = { inlineData: { data: Buffer.alloc(480).toString('base64'), mimeType: 'audio/pcm;rate=24000' } };
   state.geminiOptions.callbacks.onmessage({ serverContent: { modelTurn: { parts: [spokenChunk] } } });
   await controller.language(gemini, 'owner', id1, 'tw-ak');
-  assert.match(state.geminiContent.at(-1).turns[0].parts[0].text, /Akuapem Twi \(tw-ak;/);
+  assert.equal(gemini.events.at(-1).type, 'malvi:brain_language_error');
+  assert.match(gemini.events.at(-1).payload.message, /Akuapem Twi.*not supported/);
+  await controller.language(gemini, 'owner', id1, 'en');
+  assert.match(state.geminiContent.at(-1).turns[0].parts[0].text, /English \(en;/);
   assert.equal(state.geminiContent.at(-1).turnComplete, false);
   assert.equal(gemini.events.at(-1).type, 'malvi:brain_language');
-  assert.equal(gemini.events.at(-1).payload.language, 'tw-ak');
-  assert.equal(gemini.events.at(-1).payload.coverage.providerListed, false);
-  state.geminiOptions.callbacks.onmessage({ serverContent: { modelTurn: { parts: [spokenChunk] }, turnComplete: true } });
+  assert.equal(gemini.events.at(-1).payload.language, 'en');
+  state.geminiOptions.callbacks.onmessage({ serverContent: { modelTurn: { parts: [spokenChunk] }, outputTranscription: { text: 'Old language' }, turnComplete: true } });
   assert.equal(gemini.events.filter(event => event.type === 'malvi:brain_audio').length, 0, 'Discard the previous language’s buffered and late audio');
-  state.geminiOptions.callbacks.onmessage({ serverContent: { modelTurn: { parts: [spokenChunk] }, turnComplete: true } });
-  assert.equal(gemini.events.find(event => event.type === 'malvi:brain_audio').payload.language, 'tw-ak');
+  state.geminiOptions.callbacks.onmessage({ serverContent: { modelTurn: { parts: [spokenChunk] }, outputTranscription: { text: 'Hello, I am Malvi, your AI assistant.' }, turnComplete: true } });
+  await new Promise(resolve => setImmediate(resolve));
+  const audioEvent = gemini.events.find(event => event.type === 'malvi:brain_audio');
+  assert.equal(audioEvent.payload.language, 'en');
+  assert.equal(audioEvent.payload.speechProvider, 'elevenlabs');
+  assert.equal(audioEvent.payload.pcm24k, Buffer.alloc(480, 12).toString('base64'), 'Only ElevenLabs audio may reach the renderer');
+  assert.equal(state.speechRequests.length, 1, 'Exactly one request for the completed Gemini turn');
+  assert.equal(state.speechRequests[0].body.text, 'Hello, I am Malvi, your AI assistant.');
+  state.geminiOptions.callbacks.onmessage({ serverContent: { turnComplete: true } });
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(state.speechRequests.length, 1, 'Duplicate completion must not create billable speech');
   assert.equal(state.activity, 0, 'A language preference must not reset the cost-protection deadline');
   const contentCount = state.geminiContent.length;
   await controller.language(gemini, 'intruder', id1, 'en');
@@ -119,11 +140,13 @@ try {
   assert.match(start.session.delegation.responses.instructions, /Arabic \(ar;/);
   assert.match(start.session.instructions, /AI assistant, not a human/);
   await controller.language(openai, 'owner', id2, 'gaa');
+  assert.match(openai.events.at(-1).payload.message, /Ga.*not supported/);
+  await controller.language(openai, 'owner', id2, 'fr');
   const update = state.openaiEvents.at(-1);
   assert.equal(update.type, 'session.instructions.append');
   assert.equal(update.delegation_id, null);
-  assert.match(update.content, /Ga \(gaa;/);
-  assert.equal(openai.events.at(-1).payload.language, 'gaa');
+  assert.match(update.content, /French \(fr;/);
+  assert.equal(openai.events.at(-1).payload.language, 'fr');
   assert.equal(state.openaiConnects, 1);
   assert.equal(state.geminiConnects, 1, 'No hidden cross-provider fallback');
   assert.equal(state.activity, 0);
@@ -138,9 +161,10 @@ try {
   assert.equal(voice.events.filter(e => e.type === 'malvi:brain_interrupted').length, 0);
   controller.interrupt(voice, 'owner', voiceId);
   assert.equal(voice.events.filter(e => e.type === 'malvi:brain_interrupted').length, 1);
-  state.geminiOptions.callbacks.onmessage({ serverContent: { modelTurn: { parts: [spokenChunk] }, turnComplete: true } });
+  state.geminiOptions.callbacks.onmessage({ serverContent: { modelTurn: { parts: [spokenChunk] }, outputTranscription: { text: 'Cancelled speech' }, turnComplete: true } });
   assert.equal(voice.events.filter(e => e.type === 'malvi:brain_audio').length, 0, 'Interrupted response must not resume playback');
-  state.geminiOptions.callbacks.onmessage({ serverContent: { modelTurn: { parts: [spokenChunk] }, turnComplete: true } });
+  state.geminiOptions.callbacks.onmessage({ serverContent: { modelTurn: { parts: [spokenChunk] }, outputTranscription: { text: 'New speech' }, turnComplete: true } });
+  await new Promise(resolve => setImmediate(resolve));
   assert.equal(voice.events.filter(e => e.type === 'malvi:brain_audio').length, 1, 'Next response must still be playable');
   controller.closeSocket(voice);
   await new Promise(resolve => setImmediate(resolve));
@@ -153,4 +177,5 @@ try {
     else process.env[key] = original[key];
   }
   delete globalThis.__malviAdapter;
+  globalThis.fetch = originalFetch;
 }

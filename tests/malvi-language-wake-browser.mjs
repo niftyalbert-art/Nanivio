@@ -81,7 +81,7 @@ const output = await build({
         const url=String(input),body=init.body?JSON.parse(init.body):null;
         window.checks.requests.push({url,body});
         const data=url.endsWith('/status')
-          ? {success:true,configured:window.setupReady!==false,enabled:true,missing:window.setupReady===false?['AVATAR_ID']:[],brainProvider:'gemini',welcomeVoiceConfigured:true,brainConnected:false,canRunSetupTests:true,voiceTestAvailable:true}
+           ? {success:true,configured:window.setupReady!==false,enabled:true,missing:window.setupReady===false?['AVATAR_ID']:[],brainProvider:'gemini',welcomeVoiceConfigured:true,brainConnected:false,canRunSetupTests:true,voiceTestAvailable:true,speech:window.speechSupport?{provider:'elevenlabs',model:'eleven_multilingual_v2',configured:true,supportedLanguages:window.speechSupport,liveVerified:false}:undefined}
           : url.endsWith('/diagnostics')
           ? {success:true,redis:'connected',brain:{configured:true},providerSessionStarted:false}
           : url.endsWith('/session') || url.endsWith('/voice-session')
@@ -269,6 +269,11 @@ try {
   await page.evaluate(`window.overlay.onClose();true`);
   await page.wait('window.checks.audioClosed>=1');
   assert.equal(await page.evaluate('window.checks.sdkCreations'), 1);
+  await page.evaluate(`window.speechSupport=['en','fr','ar'];window.refreshFixture();true`);
+  await page.wait(`Boolean(document.body.textContent.includes('current ElevenLabs voice model'))`);
+  assert.equal(await page.evaluate(`Array.from(document.querySelectorAll('button')).find(b=>b.textContent.includes('Start live avatar')).disabled`), true);
+  assert.equal(await page.evaluate(`Array.from(document.querySelectorAll('button')).find(b=>b.textContent.includes('Test voice only')).disabled`), true);
+  assert.ok(await page.evaluate(`document.body.textContent.includes('not substitute English or another voice')`));
   console.log(JSON.stringify({ mobileWidths: [320,390,768], appLanguageSelector: true, noIdleProviderOrMicrophone: true, cancellableWakeSetup: true, explicitLocalPackInstall: true, stoppedAndHiddenWakeCannotActivate: true, onceOnlyHeyMalviActivation: true, selectedLanguageSentToBackend: true, noEnglishWelcome: true, activeLanguageUpdateWithoutNewAvatar: true, unverifiedLanguageWarning: true, failedUpdatesCloseRatherThanFallBack: true }));
 } finally {
   await browser.close();
