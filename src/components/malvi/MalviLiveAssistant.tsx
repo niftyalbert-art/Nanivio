@@ -1,5 +1,5 @@
 import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
-import { AlertCircle, ArrowUpRight, Mic, MicOff, Video } from 'lucide-react';
+import { AlertCircle, ArrowUpRight, CheckCircle2, Mic, Video } from 'lucide-react';
 import { useNanivio } from '../../context/NanivioContext';
 import { assistantRequest, deliverMalviAudio, parseMalviReferenceCitations, type MalviReferenceCitation, type LiveAvatarReadiness } from '../../lib/malviLiveClient';
 import { startLocalMalviWakeWord, installLocalMalviWakeWordPack, LocalWakeWordError } from '../../lib/localMalviWakeWord';
@@ -513,9 +513,9 @@ export const MalviLiveControls: React.FC = () => {
         <button type="button" onClick={() => void live.start('manual')} disabled={!ready || phase !== 'idle'} style={{ backgroundColor: 'var(--nv-gold)', color: 'var(--nv-bg)' }} className="inline-flex items-center gap-2 rounded-xl px-4 py-3 text-sm font-semibold transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-45">
           <Video className="h-4 w-4" /> Start live avatar <ArrowUpRight className="h-4 w-4" />
         </button>
-        <button type="button" onClick={() => wakeArmed || wakeChecking ? live.disarmWake() : void live.armWake()} disabled={phase !== 'idle' || live.wakePackInstalling} aria-pressed={wakeArmed} aria-describedby="malvi-wake-help" className="inline-flex items-center gap-2 rounded-xl border border-slate-600 px-4 py-3 text-sm font-medium text-slate-100 transition hover:border-emerald-300 disabled:opacity-45">
-          {wakeArmed ? <MicOff className="h-4 w-4" /> : <Mic className="h-4 w-4" />}
-          {wakeChecking ? 'Cancel wake setup' : wakeArmed ? 'Stop local listening' : 'Enable local wake word'}
+        <button type="button" onClick={() => wakeArmed || wakeChecking ? live.disarmWake() : void live.armWake()} disabled={phase !== 'idle' || live.wakePackInstalling} aria-pressed={wakeArmed} aria-describedby="malvi-wake-help" title={wakeArmed ? 'Disable local wake word' : undefined} className={`inline-flex items-center gap-2 rounded-xl border px-4 py-3 text-sm font-medium transition disabled:opacity-45 ${wakeArmed ? 'border-[var(--nv-gold)] bg-[var(--nv-gold)]/10 text-[var(--nv-gold)]' : 'border-slate-600 text-slate-100 hover:border-[var(--nv-gold)]'}`}>
+          {wakeArmed ? <CheckCircle2 className="h-4 w-4" /> : <Mic className="h-4 w-4" />}
+          {wakeChecking ? 'Cancel wake setup' : wakeArmed ? 'Enabled' : 'Enable local wake word'}
         </button>
         {live.wakePackRequired && <button type="button" onClick={() => void live.installWakePack()} disabled={live.wakePackInstalling} className="rounded-xl border border-slate-600 px-4 py-3 text-sm text-slate-100 disabled:opacity-45">
           {live.wakePackInstalling ? 'Installing local speech pack…' : 'Install local speech pack'}
@@ -543,7 +543,7 @@ export const MalviLiveControls: React.FC = () => {
           : 'Choose a valid app language before starting Malvi.'}
       </p>
       <p id="malvi-wake-help" className="mt-3 text-xs leading-relaxed text-slate-400">Local wake setup checks your browser independently of avatar setup. Most mobile browsers do not support on-device wake recognition; use manual activation there. Say “Malvi”, “Hey Malvi”, or “Nanivio” after enabling local listening. Recognition stays on-device and uses an English speech pack, independently of your conversation language. A detected wake word only starts a session when Malvi’s live setup is ready. No cloud fallback or screen-locked listening. Sessions end after 60 seconds without input; maximum 10 starts per hour.</p>
-      {wakeArmed && <p role="status" className="mt-3 text-sm text-[var(--nv-gold)]">Listening locally for “Malvi”, “Hey Malvi”, or “Nanivio”. No avatar connection is running.</p>}
+      {wakeArmed && <p role="status" className="mt-3 text-sm text-[var(--nv-gold)]">Enabled — Listening locally for “Malvi”, “Hey Malvi”, or “Nanivio”. Tap Enabled again to turn it off. No avatar connection is running.</p>}
       {readiness && !ready && <div role="status" className="mt-4 rounded-xl border border-amber-300/20 bg-amber-950/20 p-3 text-sm leading-relaxed text-amber-100">
         <AlertCircle className="mr-2 inline h-4 w-4" />
         {!readiness.enabled ? 'Malvi must be enabled in administrator settings. ' : ''}
