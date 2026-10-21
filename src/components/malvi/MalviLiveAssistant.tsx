@@ -8,6 +8,7 @@ import { realtimeClient } from '../../lib/realtimeClient';
 import { MalviLiveOverlay } from './MalviLiveOverlay';
 import type { LiveAvatarSession } from '@heygen/liveavatar-web-sdk';
 import { MalviVoicePlayback } from '../../lib/malviVoicePlayback';
+import { malviAvatarSoundBlocked, playMalviAvatar } from '../../lib/malviAvatarPlayback';
 
 type Phase = 'idle' | 'connecting' | 'connected' | 'error';
 interface LiveControls {
@@ -57,6 +58,7 @@ export const MalviLiveAssistantProvider: React.FC<{ children: React.ReactNode }>
   const playback = useRef<MalviVoicePlayback | null>(null);
   const pendingAudio = useRef<string | null>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
+  const removeVideoListeners = useRef<(() => void) | null>(null);
   const mediaReady = useRef(false);
   const sdk = useRef<LiveAvatarSession | null>(null);
   const sessionId = useRef<string | null>(null);
@@ -114,11 +116,24 @@ export const MalviLiveAssistantProvider: React.FC<{ children: React.ReactNode }>
     if (mounted.current) { setError(message); setPhase('error'); }
   }, [cleanup]);
   const attachVideo = useCallback((video: HTMLVideoElement | null) => {
+    removeVideoListeners.current?.();
+    removeVideoListeners.current = null;
     videoRef.current = video;
-    if (!video || !sdk.current || !mediaReady.current) return;
+    if (!video) return;
+    const checkSound = () => {
+      if (videoRef.current === video && sdk.current && mediaReady.current) {
+        setAudioBlocked(malviAvatarSoundBlocked(video));
+      }
+    };
+    const events = ['volumechange', 'playing', 'pause'] as const;
+    events.forEach(event => video.addEventListener(event, checkSound));
+    removeVideoListeners.current = () => events.forEach(event => video.removeEventListener(event, checkSound));
+    if (!sdk.current || !mediaReady.current) return;
     try {
       sdk.current.attach(video);
-      void video.play().catch(() => setAudioBlocked(true));
+      void playMalviAvatar(video).then(checkSound).catch(() => {
+        if (videoRef.current === video && sdk.current && mediaReady.current) setAudioBlocked(true);
+      });
     } catch (error) {
       fail(error instanceof Error ? error.message : 'The live video could not be attached.');
     }
@@ -134,7 +149,7 @@ export const MalviLiveAssistantProvider: React.FC<{ children: React.ReactNode }>
         setActiveLanguage(payload.language || languageRef.current);
         setBrainReady(true);
         if (voiceMode.current) setPhase('connected');
-        setCaption(`Malvi is ready using ${payload.provider === 'openai' ? 'OpenAI GPT-Live' : 'Gemini Live'} with her ElevenLabs voice. Turn on the microphone when you’re ready.`);
+        setCaption('');
       }
     });
     const offAudio = realtimeClient.on('malvi:brain_audio', (payload) => {
@@ -148,7 +163,6 @@ export const MalviLiveAssistantProvider: React.FC<{ children: React.ReactNode }>
           } }, payload);
         } else if (sdk.current) deliverMalviAudio(sdk.current, payload);
         else return;
-        if (payload.greeting) setCaption('Malvi is ready to talk. Turn on the microphone when you’re ready.');
       } catch {
         setMicrophoneError('Malvi’s voice audio could not be played.');
       }
@@ -475,7 +489,15 @@ export const MalviLiveAssistantProvider: React.FC<{ children: React.ReactNode }>
             void (audio ? playback.current.play(audio) : playback.current.resume()).then(() => {
               pendingAudio.current = null; setAudioBlocked(false);
             }).catch(() => setAudioBlocked(true));
-          } else void videoRef.current?.play().then(() => setAudioBlocked(false)).catch(() => setAudioBlocked(true));
+          } else {
+            const video = videoRef.current;
+            if (!video) return;
+            void playMalviAvatar(video, true).then(() => {
+              if (videoRef.current === video && sdk.current) setAudioBlocked(false);
+            }).catch(() => {
+              if (videoRef.current === video && sdk.current) setAudioBlocked(true);
+            });
+          }
         }}
         brainReady={brainReady}
         microphoneOn={microphoneOn}

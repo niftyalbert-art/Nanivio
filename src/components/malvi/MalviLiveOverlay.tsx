@@ -1,6 +1,6 @@
 import React, { useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
-import { AlertCircle, AudioLines, Check, LoaderCircle, Mic, MicOff, X } from 'lucide-react';
+import { AlertCircle, AudioLines, LoaderCircle, Mic, MicOff, X } from 'lucide-react';
 import { MALVI_PROFILE } from '../../lib/malviIdentity';
 import type { MalviReferenceCitation } from '../../lib/malviLiveClient';
 
@@ -35,7 +35,6 @@ const formatTime = (seconds: number) => {
 
 export const MalviLiveOverlay: React.FC<MalviLiveOverlayProps> = ({
   voiceOnly = false,
-  videoRef,
   onVideoElement,
   phase,
   error,
@@ -103,8 +102,6 @@ export const MalviLiveOverlay: React.FC<MalviLiveOverlayProps> = ({
 
   const handleEnableAudio = () => {
     onPlayAudio();
-    const playback = videoRef.current?.play();
-    if (playback) void playback.catch(() => undefined);
   };
 
   const phaseCopy = {
@@ -145,7 +142,7 @@ export const MalviLiveOverlay: React.FC<MalviLiveOverlayProps> = ({
         tabIndex={-1}
         className="relative z-10 flex min-h-[100dvh] w-full flex-col justify-between outline-none"
       >
-        <header className="flex items-start justify-between gap-4 p-4 sm:p-7">
+        <header className="flex items-start justify-between gap-3 px-4 pt-[max(1rem,env(safe-area-inset-top))] sm:gap-4 sm:px-7 sm:pt-[max(1.75rem,env(safe-area-inset-top))]">
           <div className="flex items-center gap-3 rounded-2xl border border-white/15 bg-[#10201f]/65 px-3.5 py-2.5 backdrop-blur-md sm:px-4">
             <span className="grid h-10 w-10 place-items-center rounded-full border border-[#bad5c7]/35 bg-[#28453d] text-sm font-semibold text-[#e2eee4]">
               M
@@ -154,7 +151,9 @@ export const MalviLiveOverlay: React.FC<MalviLiveOverlayProps> = ({
               <h1 id="malvi-live-title" className="text-sm font-semibold tracking-wide text-white">
                 Malvi <span className="font-normal text-[#cfddd4]">· {voiceOnly ? 'Voice-only test' : 'Nanivio'}</span>
               </h1>
-              <p className="mt-0.5 text-[11px] text-[#dae4dd]/80">{phaseCopy}</p>
+              <p id="malvi-live-disclosure" className="mt-0.5 text-[11px] text-[#dae4dd]/80">
+                AI assistant · {phase === 'connected' ? (voiceOnly ? 'Voice connected · no avatar' : 'Live session connected') : phaseCopy}
+              </p>
             </div>
           </div>
 
@@ -184,12 +183,6 @@ export const MalviLiveOverlay: React.FC<MalviLiveOverlayProps> = ({
               <p className="mt-1 text-xs text-[#d5e1d9]/75">{voiceOnly ? 'Connecting the selected brain. No avatar session is running.' : 'Malvi’s portrait is a preview until the live video connects.'}</p>
             </div>
           )}
-          {phase === 'connected' && (
-            <div className="inline-flex items-center gap-2 rounded-full border border-[#c6e0cd]/30 bg-[#142720]/65 px-3.5 py-2 text-xs text-[#e6f0e7] backdrop-blur-md">
-              <Check size={14} className="text-[#b4d8ba]" />
-              {voiceOnly ? 'Voice connected · no avatar' : 'Live session connected'}
-            </div>
-          )}
           {phase === 'error' && (
             <div role="alert" className="max-w-md rounded-2xl border border-[#e8c2aa]/35 bg-[#372720]/85 px-5 py-4 backdrop-blur-md">
               <AlertCircle className="mx-auto mb-2 h-5 w-5 text-[#e6c4a9]" />
@@ -197,46 +190,21 @@ export const MalviLiveOverlay: React.FC<MalviLiveOverlayProps> = ({
               <p className="mt-1 text-xs leading-relaxed text-[#f0ded0]/80">{error || 'Please close this window and try again.'}</p>
             </div>
           )}
-          {caption && phase === 'connected' && (
-            <p aria-live="polite" className="max-w-full rounded-2xl border border-white/15 bg-[#10201f]/70 px-4 py-3 text-sm leading-relaxed text-white backdrop-blur-md">
-              {caption}
-            </p>
-          )}
-          {phase === 'connected' && referenceStatus !== 'idle' && (
-            <div className="w-full max-w-md rounded-2xl border border-white/15 bg-[#10201f]/85 px-4 py-3 text-left text-xs backdrop-blur-md">
-              <p role="status" className="text-[#e6f0e7]">
-                {referenceStatus === 'searching' ? 'Checking relevant reference sources…'
-                  : references.length ? `${references.length} reference results retrieved`
-                  : referenceStatus === 'unavailable' ? 'Reference lookup unavailable. No sources were verified.'
-                  : 'No reference results were returned.'}
-              </p>
-              {unavailableSources.length > 0 && <p className="mt-1 text-amber-200">Unavailable: {unavailableSources.join(', ')}</p>}
-              {references.length > 0 && (
-                <details className="mt-2">
-                  <summary className="cursor-pointer font-medium underline underline-offset-4">View reference links and limitations</summary>
-                  <ul className="mt-3 max-h-36 space-y-3 overflow-y-auto pr-2">
-                    {references.map((reference, index) => (
-                      <li key={`${reference.url}-${index}`}>
-                        <a href={reference.url} target="_blank" rel="noopener noreferrer" className="font-medium text-emerald-200 underline underline-offset-2">
-                          {reference.title}
-                        </a>
-                        <p className="mt-1 text-white/70">{reference.source}{reference.published ? ` · ${reference.published}` : ''}</p>
-                        <p className="mt-1 text-white/60">{reference.caveat}</p>
-                      </li>
-                    ))}
-                  </ul>
-                </details>
-              )}
-            </div>
-          )}
         </div>
 
-        <footer className="flex flex-col items-center gap-3 p-4 pb-[max(1rem,env(safe-area-inset-bottom))] sm:p-7">
-          <p id="malvi-live-disclosure" className="max-w-lg rounded-xl bg-[#10201f]/60 px-3 py-2 text-center text-[11px] leading-relaxed text-[#e0e8e2]/80 backdrop-blur-md">
-            AI disclosure · Malvi is an interactive AI assistant.
-            {' '}Her response text is sent to ElevenLabs for her voice.
-            {' '}Relevant topic queries may be sent automatically to Wikipedia/Wikidata or arXiv/PubMed for reference lookup.
-          </p>
+        <footer className="flex flex-col items-center gap-3 px-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-3 sm:gap-3 sm:px-7 sm:pb-[max(1.75rem,env(safe-area-inset-bottom))]">
+          {caption && phase === 'connected' && (
+            <div
+              role="region"
+              aria-label="Live subtitles"
+              aria-live="polite"
+              aria-relevant="text"
+              tabIndex={0}
+              className="max-h-[4.8rem] w-full max-w-xl overflow-y-auto overscroll-contain rounded-2xl border border-white/15 bg-[#10201f]/85 px-4 py-2.5 text-center text-sm leading-6 text-white shadow-lg backdrop-blur-md focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#d6e7da]"
+            >
+              {caption}
+            </div>
+          )}
           <button
             type="button"
             onClick={onToggleMicrophone}
@@ -247,11 +215,6 @@ export const MalviLiveOverlay: React.FC<MalviLiveOverlayProps> = ({
             {microphoneOn ? <MicOff size={18} /> : <Mic size={18} />}
             {microphoneOn ? 'Turn microphone off' : brainReady ? 'Start talking' : 'Connecting Malvi’s brain…'}
           </button>
-          <p className="max-w-lg text-center text-[11px] leading-relaxed text-[#e0e8e2]/80">
-            {microphoneOn
-              ? `Microphone on · audio is sent to ${brainProvider === 'openai' ? 'OpenAI GPT-Live' : 'Gemini Live'} through Nanivio.`
-              : 'Your microphone stays off until you choose Start talking.'}
-          </p>
           {microphoneError && <p role="alert" className="max-w-lg text-center text-xs text-[#ffe0d4]">{microphoneError}</p>}
           <div className="flex flex-wrap items-center justify-center gap-2">
             <div className="flex items-center gap-2 rounded-full border border-white/15 bg-[#10201f]/65 px-3.5 py-2.5 text-xs text-[#f1f3eb] backdrop-blur-md sm:hidden">
@@ -279,6 +242,44 @@ export const MalviLiveOverlay: React.FC<MalviLiveOverlayProps> = ({
               </button>
             )}
           </div>
+          <details className="max-w-lg rounded-xl bg-[#10201f]/60 px-3 py-2 text-center text-[11px] leading-relaxed text-[#e0e8e2]/80 backdrop-blur-md">
+            <summary className="cursor-pointer underline underline-offset-4">Audio &amp; sources</summary>
+            <p className="mt-2">
+              Voice responses are sent to ElevenLabs. Relevant topic queries may be sent automatically to Wikipedia/Wikidata or arXiv/PubMed for reference lookup.
+            </p>
+            <p className="mt-2">
+              {microphoneOn
+                ? `Microphone on · audio is sent to ${brainProvider === 'openai' ? 'OpenAI GPT-Live' : 'Gemini Live'} through Nanivio.`
+                : 'Your microphone stays off until you choose Start talking.'}
+            </p>
+            {phase === 'connected' && referenceStatus !== 'idle' && (
+              <div className="mt-3 rounded-lg border border-white/10 bg-[#10201f]/70 px-3 py-2 text-left">
+                <p role="status" className="text-[#e6f0e7]">
+                  {referenceStatus === 'searching' ? 'Checking relevant reference sources…'
+                    : references.length ? `${references.length} reference results retrieved`
+                    : referenceStatus === 'unavailable' ? 'Reference lookup unavailable. No sources were verified.'
+                    : 'No reference results were returned.'}
+                </p>
+                {unavailableSources.length > 0 && <p className="mt-1 text-amber-200">Unavailable: {unavailableSources.join(', ')}</p>}
+                {references.length > 0 && (
+                  <details className="mt-2">
+                    <summary className="cursor-pointer font-medium underline underline-offset-4">View reference links and limitations</summary>
+                    <ul className="mt-3 max-h-36 space-y-3 overflow-y-auto pr-2">
+                      {references.map((reference, index) => (
+                        <li key={`${reference.url}-${index}`}>
+                          <a href={reference.url} target="_blank" rel="noopener noreferrer" className="font-medium text-emerald-200 underline underline-offset-2">
+                            {reference.title}
+                          </a>
+                          <p className="mt-1 text-white/70">{reference.source}{reference.published ? ` · ${reference.published}` : ''}</p>
+                          <p className="mt-1 text-white/60">{reference.caveat}</p>
+                        </li>
+                      ))}
+                    </ul>
+                  </details>
+                )}
+              </div>
+            )}
+          </details>
         </footer>
       </div>
     </div>,
