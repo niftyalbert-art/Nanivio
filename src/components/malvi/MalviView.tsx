@@ -33,6 +33,7 @@ import {
 import { MalviAvatar } from './MalviAvatar';
 import { MalviVoiceWaveform } from './MalviVoiceWaveform';
 import { MalviStage3DVisual } from './MalviStage3DVisual';
+import { MalviLiveControls } from './MalviLiveAssistant';
 import { MalviChatHistoryModal } from './MalviChatHistoryModal';
 import { MalviMemoryInspectorModal } from './MalviMemoryInspectorModal';
 import { MalviSubscriptionHub } from './MalviSubscriptionHub';
@@ -699,7 +700,7 @@ export const MalviView: React.FC = () => {
                 : 'bg-slate-900 text-slate-400 hover:text-white border-slate-800'
             }`}
           >
-            {immersiveMode ? 'Standard Split' : '3D Stage View'}
+            {immersiveMode ? 'Standard Split' : 'Portrait Focus'}
           </button>
         </div>
       </div>
@@ -826,6 +827,8 @@ export const MalviView: React.FC = () => {
           <ChevronRight className="w-3.5 h-3.5" />
         </button>
       </div>
+
+      <MalviLiveControls />
 
       {/* View Toggle: Companion vs Business Collaboration Room */}
       {activeSubTab === 'business' ? (
