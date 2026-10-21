@@ -9,6 +9,7 @@ import { MalviLiveOverlay } from './MalviLiveOverlay';
 import type { LiveAvatarSession } from '@heygen/liveavatar-web-sdk';
 import { MalviVoicePlayback } from '../../lib/malviVoicePlayback';
 import { malviAvatarSoundBlocked, playMalviAvatar } from '../../lib/malviAvatarPlayback';
+import { MalviCaptionPlayer, malviInputLevel, type MalviCaptionTrack } from '../../lib/malviSpeechTiming';
 
 type Phase = 'idle' | 'connecting' | 'connected' | 'error';
 interface LiveControls {
@@ -43,6 +44,18 @@ export const MalviLiveAssistantProvider: React.FC<{ children: React.ReactNode }>
   const [brainReady, setBrainReady] = useState(false);
   const [microphoneOn, setMicrophoneOn] = useState(false);
   const [microphoneError, setMicrophoneError] = useState('');
+  const [inputLevel, setInputLevel] = useState(0);
+  const [processing, setProcessing] = useState(false);
+  const [speaking, setSpeaking] = useState(false);
+  const [userTranscript, setUserTranscript] = useState('');
+  const lastSpeechAt = useRef(0);
+  const userSpeech = useRef(false);
+  const userText = useRef('');
+  const captions = useRef<MalviCaptionPlayer | null>(null);
+  if (!captions.current) captions.current = new MalviCaptionPlayer((text, playing) => {
+    setCaption(text); setSpeaking(playing);
+    if (playing) setProcessing(false);
+  });
   const [referenceStatus, setReferenceStatus] = useState('idle');
   const [references, setReferences] = useState<MalviReferenceCitation[]>([]);
   const [unavailableSources, setUnavailableSources] = useState<string[]>([]);
@@ -56,7 +69,7 @@ export const MalviLiveAssistantProvider: React.FC<{ children: React.ReactNode }>
   const [voiceOnly, setVoiceOnly] = useState(false);
   const voiceMode = useRef(false);
   const playback = useRef<MalviVoicePlayback | null>(null);
-  const pendingAudio = useRef<string | null>(null);
+  const pendingAudio = useRef<{ audio: string; track: MalviCaptionTrack } | null>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
   const removeVideoListeners = useRef<(() => void) | null>(null);
   const mediaReady = useRef(false);
@@ -84,6 +97,7 @@ export const MalviLiveAssistantProvider: React.FC<{ children: React.ReactNode }>
     micStream.current = null;
     micContext.current = null;
     setMicrophoneOn(false);
+    setInputLevel(0); lastSpeechAt.current = 0; userSpeech.current = false;
   }, []);
   const disarmWake = useCallback(() => {
     wakeController.current?.abort(); wakeController.current = null;
@@ -94,6 +108,8 @@ export const MalviLiveAssistantProvider: React.FC<{ children: React.ReactNode }>
   const cleanup = useCallback(async () => {
     const live = sdk.current, id = sessionId.current;
     stopMicrophone();
+    captions.current?.cancel();
+    setProcessing(false); setUserTranscript(''); userText.current = '';
     playback.current?.close(); playback.current = null; pendingAudio.current = null;
     if (id) realtimeClient.send('malvi:brain_stop', { sessionId: id });
     sdk.current = null; sessionId.current = null; deadline.current = 0; mediaReady.current = false;
@@ -155,20 +171,34 @@ export const MalviLiveAssistantProvider: React.FC<{ children: React.ReactNode }>
     const offAudio = realtimeClient.on('malvi:brain_audio', (payload) => {
       if (!isCurrent(payload) || (payload.language && payload.language !== languageRef.current)) return;
       try {
+        if (!voiceMode.current && !sdk.current) return;
+        const track = captions.current!.enqueue({ alignment: payload.alignment, durationMs: payload.durationMs });
+        setProcessing(true);
         if (voiceMode.current && playback.current) {
           deliverMalviAudio({ repeatAudio: audio => {
-            void playback.current?.play(audio).catch(() => {
-              if (isCurrent(payload)) { pendingAudio.current = audio; setAudioBlocked(true); }
+            void playback.current?.play(audio, {
+              onStart: clock => captions.current?.start(clock, track),
+              onEnd: () => captions.current?.finish(track),
+            }).catch(() => {
+              if (isCurrent(payload)) { pendingAudio.current = { audio, track }; setAudioBlocked(true); }
             });
           } }, payload);
         } else if (sdk.current) deliverMalviAudio(sdk.current, payload);
         else return;
       } catch {
+        captions.current?.cancel(); setProcessing(false);
         setMicrophoneError('Malvi’s voice audio could not be played.');
       }
     });
     const offCaption = realtimeClient.on('malvi:brain_caption', (payload) => {
-      if (isCurrent(payload) && (!payload.language || payload.language === languageRef.current) && typeof payload.text === 'string') setCaption(payload.text);
+      if (!isCurrent(payload) || (payload.language && payload.language !== languageRef.current) || typeof payload.text !== 'string') return;
+      if (payload.role === 'user') {
+        userText.current = (userText.current + payload.text).slice(-300);
+        setUserTranscript(userText.current);
+      } else if (payload.role === 'assistant') {
+        // Brain tokens arrive before TTS; only playback may expose their text.
+        setProcessing(true);
+      }
     });
     const offActivity = realtimeClient.on('malvi:brain_activity', (payload) => {
       if (isCurrent(payload) && Number.isFinite(payload.idleDeadline)) deadline.current = payload.idleDeadline;
@@ -187,14 +217,16 @@ export const MalviLiveAssistantProvider: React.FC<{ children: React.ReactNode }>
       }
     });
     const offInterrupted = realtimeClient.on('malvi:brain_interrupted', payload => {
-      if (isCurrent(payload)) { playback.current?.interrupt(); pendingAudio.current = null; sdk.current?.interrupt(); }
+      if (isCurrent(payload)) {
+        captions.current?.cancel(); setProcessing(false);
+        playback.current?.interrupt(); pendingAudio.current = null; sdk.current?.interrupt();
+      }
     });
     const offLanguage = realtimeClient.on('malvi:brain_language', payload => {
       if (!isCurrent(payload) || typeof payload.language !== 'string') return;
       setActiveLanguage(payload.language);
       setBrainReady(true);
-      const selected = MALVI_LANGUAGES.find(item => item.code === payload.language);
-      setCaption(`Malvi’s language preference is now ${selected?.name || payload.language}. Turn on the microphone when ready.`);
+      setCaption(''); setUserTranscript(''); userText.current = '';
     });
     const offLanguageError = realtimeClient.on('malvi:brain_language_error', payload => {
       if (isCurrent(payload)) fail(typeof payload.message === 'string' ? payload.message : 'The selected language could not be applied. Start a new conversation.');
@@ -208,10 +240,11 @@ export const MalviLiveAssistantProvider: React.FC<{ children: React.ReactNode }>
     try {
       const language = getMalviLanguage(preferredLanguage);
       stopMicrophone();
+      captions.current?.cancel(); setProcessing(false);
       sdk.current?.interrupt();
       playback.current?.interrupt(); pendingAudio.current = null;
       setBrainReady(false);
-      setCaption(`Applying ${language.name} to Malvi’s conversation…`);
+      setCaption('');
       realtimeClient.send('malvi:brain_language', { sessionId: id, language: language.code });
     } catch (error) {
       fail(error instanceof Error ? error.message : 'Choose a valid language for Malvi.');
@@ -253,6 +286,18 @@ export const MalviLiveAssistantProvider: React.FC<{ children: React.ReactNode }>
       silentOutput.gain.value = 0;
       processor.port.onmessage = (event) => {
         if (sessionId.current === id && typeof event.data === 'string') {
+          const level = malviInputLevel(event.data);
+          setInputLevel(level);
+          const now = performance.now();
+          if (level > 0.075) {
+            if (!userSpeech.current) {
+              userText.current = ''; setUserTranscript('');
+            }
+            userSpeech.current = true; lastSpeechAt.current = now;
+            setProcessing(false);
+          } else if (userSpeech.current && now - lastSpeechAt.current > 700) {
+            userSpeech.current = false; setProcessing(true);
+          }
           realtimeClient.send('malvi:brain_audio', { sessionId: id, audio: event.data });
         }
       };
@@ -263,8 +308,22 @@ export const MalviLiveAssistantProvider: React.FC<{ children: React.ReactNode }>
       micContext.current = context;
       micSource.current = source;
       micProcessor.current = processor;
+      const activeContext = context;
+      activeContext.onstatechange = () => {
+        if (sessionId.current !== id || micContext.current !== activeContext || activeContext.state === 'running') return;
+        stopMicrophone();
+        setMicrophoneError('Microphone audio was paused by your browser. Tap Start talking to resume.');
+      };
+      stream.getAudioTracks().forEach(track => {
+        const interrupted = () => {
+          if (sessionId.current !== id || micStream.current !== stream) return;
+          stopMicrophone();
+          setMicrophoneError('Microphone capture was interrupted. Tap Start talking to resume.');
+        };
+        track.onended = interrupted;
+        track.onmute = interrupted;
+      });
       setMicrophoneOn(true);
-      setCaption('Microphone is on. Your speech is sent to the selected Nanivio brain provider.');
     } catch (error) {
       stream?.getTracks().forEach((track) => track.stop());
       context?.close().catch(() => {});
@@ -302,7 +361,7 @@ export const MalviLiveAssistantProvider: React.FC<{ children: React.ReactNode }>
         return;
       }
       sessionId.current = info.id; deadline.current = info.idleDeadline;
-      const { LiveAvatarSession, SessionEvent, SessionMode } = await import('@heygen/liveavatar-web-sdk');
+      const { LiveAvatarSession, SessionEvent, SessionMode, AgentEventsEnum } = await import('@heygen/liveavatar-web-sdk');
       if (run !== generation.current) return;
       const live = new LiveAvatarSession(info.sessionToken, {
         autoKeepAlive: false,
@@ -314,12 +373,26 @@ export const MalviLiveAssistantProvider: React.FC<{ children: React.ReactNode }>
       // or published to HeyGen. Our later brain pipeline owns input capture.
       live.voiceChat.start = async () => {};
       sdk.current = live;
+      live.on(AgentEventsEnum.AVATAR_SPEAK_STARTED, () => {
+        if (run !== generation.current) return;
+        const video = videoRef.current;
+        if (!video) return;
+        const startedAt = video.currentTime;
+        captions.current?.start(() => {
+          const current = videoRef.current;
+          return !current || current !== video || malviAvatarSoundBlocked(current)
+            ? null : Math.max(0, current.currentTime - startedAt) * 1000;
+        });
+      });
+      live.on(AgentEventsEnum.AVATAR_SPEAK_ENDED, () => {
+        if (run === generation.current) captions.current?.finish();
+      });
       let welcomed = false;
       let streamReady = false, sessionStarted = false;
       const welcome = () => {
         if (!welcomed && streamReady && sessionStarted && run === generation.current) {
           welcomed = true;
-          setCaption('Starting Malvi’s selected live brain and language-specific AI greeting.');
+          setCaption('');
           realtimeClient.send('malvi:brain_start', { sessionId: info.id, language: languageRef.current });
         }
       };
@@ -327,7 +400,7 @@ export const MalviLiveAssistantProvider: React.FC<{ children: React.ReactNode }>
         if (run !== generation.current) return;
         streamReady = true;
         setPhase('connected');
-        setCaption('Live visual session connected. Starting the selected brain provider.');
+        setCaption('');
         mediaReady.current = true;
         attachVideo(videoRef.current);
         welcome();
@@ -468,6 +541,7 @@ export const MalviLiveAssistantProvider: React.FC<{ children: React.ReactNode }>
     return () => window.removeEventListener('pagehide', leave);
   }, [cleanup, disarmWake]);
   const interrupt = () => {
+    captions.current?.cancel(); setProcessing(false);
     playback.current?.interrupt(); pendingAudio.current = null;
     try { sdk.current?.interrupt(); } catch {}
     const id = sessionId.current;
@@ -485,8 +559,11 @@ export const MalviLiveAssistantProvider: React.FC<{ children: React.ReactNode }>
         voiceOnly={voiceOnly}
         onPlayAudio={() => {
           if (voiceMode.current && playback.current) {
-            const audio = pendingAudio.current;
-            void (audio ? playback.current.play(audio) : playback.current.resume()).then(() => {
+            const pending = pendingAudio.current;
+            void (pending ? playback.current.play(pending.audio, {
+              onStart: clock => captions.current?.start(clock, pending.track),
+              onEnd: () => captions.current?.finish(pending.track),
+            }) : playback.current.resume()).then(() => {
               pendingAudio.current = null; setAudioBlocked(false);
             }).catch(() => setAudioBlocked(true));
           } else {
@@ -501,6 +578,10 @@ export const MalviLiveAssistantProvider: React.FC<{ children: React.ReactNode }>
         }}
         brainReady={brainReady}
         microphoneOn={microphoneOn}
+        inputLevel={inputLevel}
+        inputState={!microphoneOn ? 'off' : inputLevel > 0.075 ? 'hearing' : processing ? 'processing' : 'listening'}
+        speaking={speaking}
+        userTranscript={userTranscript}
         microphoneError={microphoneError}
         brainProvider={readiness?.brainProvider || null}
         references={references} referenceStatus={referenceStatus} unavailableSources={unavailableSources}

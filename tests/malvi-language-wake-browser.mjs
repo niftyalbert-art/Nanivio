@@ -24,13 +24,14 @@ const realtimeFixture = `
 const sdkFixture = `
   export const SessionMode = {LITE:'LITE'};
   export const SessionEvent = {SESSION_STREAM_READY:'stream', SESSION_DISCONNECTED:'disconnected'};
+  export const AgentEventsEnum = {AVATAR_SPEAK_STARTED:'speak-start',AVATAR_SPEAK_ENDED:'speak-end'};
   export class LiveAvatarSession {
     mode='LITE'; events={};
     voiceChat={
       start:async()=>{window.checks.providerMicrophones++;},
       stop:async()=>{}
     };
-    constructor() { window.checks.sdkCreations++; }
+    constructor() { window.checks.sdkCreations++; window.emitAvatar=(type)=>this.events[type]?.(); }
     on(type,fn) { this.events[type]=fn; }
     async start() { await this.voiceChat.start(); this.events.stream?.(); }
     async stop() { window.checks.sdkStops++; }
@@ -50,13 +51,28 @@ const output = await build({
       window.checks={requests:[],messages:[],sdkCreations:0,sdkStops:0,providerMicrophones:0,interrupts:0,playedAudio:[],localStarts:0,localStops:0,installs:0};
       window.availability='available';
       class TestAudioContext {
-        state='running';currentTime=0;destination={};
+        state='running';currentTime=0;destination={};sampleRate=16000;
+        constructor(){window.fixtureAudioContext=this;}
+        get audioWorklet(){return {addModule:async()=>{}};}
+        createMediaStreamSource(){return {connect(){},disconnect(){}};}
+        createGain(){return {gain:{value:0},connect(){}};}
         async resume(){this.state='running';}
         async close(){this.state='closed';window.checks.audioClosed=(window.checks.audioClosed||0)+1;}
         createBuffer(channels,length,rate){return {duration:length/rate,getChannelData:()=>new Float32Array(length)};}
         createBufferSource(){return {connect(){},disconnect(){},start(){window.checks.voicePlayed=(window.checks.voicePlayed||0)+1;},stop(){window.checks.voiceInterrupted=(window.checks.voiceInterrupted||0)+1;}};}
       }
       window.AudioContext=TestAudioContext;
+      window.AudioWorkletNode=class {
+        port={onmessage:null};
+        constructor(){window.inputProcessor=this;}
+        connect(){} disconnect(){}
+      };
+      Object.defineProperty(navigator,'mediaDevices',{configurable:true,value:{
+        getUserMedia:async()=> {
+          window.inputTrack={stop(){window.checks.micStopped=(window.checks.micStopped||0)+1;},onended:null,onmute:null};
+          return {getTracks:()=>[window.inputTrack],getAudioTracks:()=>[window.inputTrack]};
+        }
+      }});
       class Recognition {
         static available(options) {
           if(!options.processLocally) throw Error('Cloud recognition is forbidden');
@@ -235,7 +251,20 @@ try {
   assert.equal(before.messages.find(m => m.type === 'malvi:brain_start').payload.language, 'fr');
   assert.equal(before.requests.filter(r => r.url.endsWith('/welcome')).length, 0, 'Never inject an English welcome into a selected-language conversation');
   await page.evaluate(`window.emitBrain('malvi:brain_ready',{sessionId:'11111111-1111-4111-8111-111111111111',provider:'gemini',language:'fr'});true`);
-  await page.evaluate(`window.emitBrain('malvi:brain_caption',{sessionId:'11111111-1111-4111-8111-111111111111',language:'fr',text:'Bonjour. '.repeat(100)});true`);
+  await page.evaluate(`window.emitBrain('malvi:brain_caption',{sessionId:'11111111-1111-4111-8111-111111111111',language:'fr',role:'assistant',text:'Bonjour. '.repeat(100)});true`);
+  assert.equal(await page.evaluate('window.overlay.caption'), '', 'Brain tokens must never become pre-speech subtitles');
+  await page.evaluate(`(()=>{
+    const video=document.querySelector('video'); window.fixtureVideoTime=0;window.fixtureVideoPaused=false;
+    Object.defineProperty(video,'currentTime',{configurable:true,get:()=>window.fixtureVideoTime});
+    Object.defineProperty(video,'paused',{configurable:true,get:()=>window.fixtureVideoPaused});
+    video.muted=false;video.volume=1;
+    const chars=Array.from('Bonjour. '.repeat(40));
+    window.emitBrain('malvi:brain_audio',{sessionId:'11111111-1111-4111-8111-111111111111',language:'fr',pcm24k:'AAAAAA==',sampleRate:24000,format:'pcm_s16le',channels:1,durationMs:5000,
+      alignment:{characters:chars,character_start_times_seconds:chars.map((_,i)=>i/100),character_end_times_seconds:chars.map((_,i)=>(i+1)/100)}});
+    return true;
+  })()`);
+  assert.equal(await page.evaluate('window.overlay.caption'), '', 'Queued audio must wait for avatar playback');
+  await page.evaluate(`window.emitAvatar('speak-start');window.fixtureVideoTime=2;true`);
   await page.wait(`Boolean(document.querySelector('[aria-label="Live subtitles"]'))`);
   for (const width of [320,390,768,1280]) {
     await page.command('Emulation.setDeviceMetricsOverride', { width, height: 844, deviceScaleFactor: 1, mobile: width < 768 });
@@ -248,12 +277,41 @@ try {
     assert.ok(box.top > box.screen / 2, `Subtitles should be at the bottom at ${width}px`);
     assert.ok(box.bottom <= box.screen, `Subtitles must remain in the viewport at ${width}px`);
     assert.ok(box.height <= 80, `Long subtitles must not cover the avatar at ${width}px`);
-    assert.ok(box.scroll > box.client, 'Full long subtitle text should remain accessible by scrolling');
+    assert.ok(await page.evaluate('window.overlay.caption.length<=220'), 'Only a compact spoken-text window is displayed');
     assert.equal(box.detailsOpen, false);
     assert.equal(box.disclosure, false, 'The repeated full disclosure must be removed');
     if (process.env.NANIVIO_SCREENSHOT_DIR) await page.screenshot(path.join(process.env.NANIVIO_SCREENSHOT_DIR, `malvi-subtitles-${width}.png`));
   }
   await page.command('Emulation.setDeviceMetricsOverride', { width: 390, height: 844, deviceScaleFactor: 1, mobile: true });
+  await page.evaluate(`window.emitAvatar('speak-end');true`);
+  await page.wait('window.overlay.caption===""');
+  await click('Start talking');
+  await page.wait('window.overlay.microphoneOn===true');
+  assert.equal(await page.evaluate('window.overlay.inputState'), 'listening');
+  await page.evaluate(`(()=>{
+    const samples=new Int16Array(3200).fill(8000);
+    const bytes=new Uint8Array(samples.buffer);
+    window.fixtureHeardAt=performance.now();
+    window.inputProcessor.port.onmessage({data:btoa(String.fromCharCode(...bytes))});
+    return true;
+  })()`);
+  await page.wait('window.overlay.inputState==="hearing"');
+  assert.ok(await page.evaluate('window.overlay.inputLevel>0'));
+  await page.evaluate(`window.emitBrain('malvi:brain_caption',{sessionId:'11111111-1111-4111-8111-111111111111',role:'user',text:'Bonjour Malvi'});true`);
+  await page.wait('window.overlay.userTranscript==="Bonjour Malvi"');
+  assert.equal(await page.evaluate('window.overlay.caption'), '', 'User speech is separate from Malvi subtitles');
+  if (process.env.NANIVIO_SCREENSHOT_DIR) await page.screenshot(path.join(process.env.NANIVIO_SCREENSHOT_DIR, 'malvi-listening.png'));
+  await page.wait('performance.now()-window.fixtureHeardAt>750');
+  await page.evaluate(`window.inputProcessor.port.onmessage({data:btoa(String.fromCharCode(...new Uint8Array(6400)))});true`);
+  await page.wait('window.overlay.inputState==="processing"');
+  await page.evaluate(`window.inputTrack.onmute();true`);
+  await page.wait('window.overlay.microphoneOn===false');
+  assert.equal(await page.evaluate('window.overlay.inputLevel'), 0);
+  await click('Start talking');
+  await page.wait('window.overlay.microphoneOn===true');
+  await page.evaluate(`window.fixtureAudioContext.state='suspended';window.fixtureAudioContext.onstatechange();true`);
+  await page.wait('window.overlay.microphoneOn===false');
+  assert.equal(await page.evaluate('window.overlay.inputState'), 'off', 'Suspended browser audio must not falsely appear to be listening');
   await page.evaluate(`(()=>{
     const el=document.querySelector('video');
     window.fixtureVideoPaused=false;
@@ -299,7 +357,8 @@ try {
   await select('gaa');
   await page.wait(`window.checks.messages.some(m=>m.type==='malvi:brain_language'&&m.payload.language==='gaa')`);
   await page.evaluate(`window.emitBrain('malvi:brain_language',{sessionId:'11111111-1111-4111-8111-111111111111',provider:'gemini',language:'gaa'});true`);
-  await page.wait(`Boolean(document.body.textContent.includes('language preference is now Ga'))`);
+  await page.wait('window.overlay.brainReady===true');
+  assert.equal(await page.evaluate('window.overlay.caption'), '', 'Setup acknowledgments are not spoken subtitles');
   assert.equal(await sessionCount(), 1, 'A language change must not open another avatar session');
   assert.equal(await page.evaluate('window.checks.providerMicrophones'), 0);
   assert.equal(await page.evaluate(`document.querySelector('select').value`), 'gaa');
@@ -322,7 +381,7 @@ try {
   assert.ok(await page.evaluate(`document.body.textContent.includes('Voice connected · no avatar')`));
   if (process.env.NANIVIO_SCREENSHOT_DIR) await page.screenshot(path.join(process.env.NANIVIO_SCREENSHOT_DIR, 'malvi-voice-only-mobile.png'));
   assert.equal(await page.evaluate('window.overlay.microphoneOn'), false, 'Voice-only connection must not start microphone automatically');
-  await page.evaluate(`window.emitBrain('malvi:brain_audio',{sessionId:'11111111-1111-4111-8111-111111111111',language:'gaa',pcm24k:'AAAAAA==',sampleRate:24000,format:'pcm_s16le',channels:1});true`);
+  await page.evaluate(`window.emitBrain('malvi:brain_audio',{sessionId:'11111111-1111-4111-8111-111111111111',language:'gaa',pcm24k:'AAAAAA==',sampleRate:24000,format:'pcm_s16le',channels:1,durationMs:1,alignment:{characters:['H'],character_start_times_seconds:[0],character_end_times_seconds:[0.00008]}});true`);
   await page.wait('window.checks.voicePlayed===1');
   await page.evaluate(`window.overlay.onInterrupt();true`);
   await page.wait(`window.checks.messages.some(m=>m.type==='malvi:brain_interrupt')`);

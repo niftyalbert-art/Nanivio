@@ -1,6 +1,9 @@
 import { ReplitConnectors } from '@replit/connectors-sdk';
 import { getMalviLanguage } from '../../lib/malviLanguages.ts';
 import { malviSpeechFailure } from './malviSpeechErrors.ts';
+import { validMalviAlignment, type MalviAlignment } from '../../lib/malviSpeechTiming.ts';
+
+export type MalviSpeechBuffer = Buffer & { alignment?: MalviAlignment };
 
 type Env = Record<string, string | undefined>;
 export const MALVI_VOICE_ID = 'kW71iH6myeMHEvxKthQ6';
@@ -41,19 +44,20 @@ export function createMalviSpeechSynthesizer(
   env: () => Env = () => process.env,
   fetcher: typeof fetch = fetch,
   proxy: (path: string, init: RequestInit) => Promise<Response> = connectorSpeech,
+  withTiming = false,
 ) {
-  return async (text: string, language: string, signal: AbortSignal): Promise<Buffer> => {
+  return async (text: string, language: string, signal: AbortSignal): Promise<MalviSpeechBuffer> => {
     const current = env();
     const config = malviSpeechSetup(current);
     if (!config.configured) throw new Error(`Malvi’s voice setup requires ${config.missing.join(', ')}.`);
     assertMalviSpeechLanguage(language);
     if (!text.trim() || text.length > MAX_SPEECH_TEXT) throw new Error('Malvi’s spoken response exceeded the text safety limit.');
     signal.throwIfAborted();
-    const path = `/v1/text-to-speech/${config.voiceId}?output_format=pcm_24000`;
+    const path = `/v1/text-to-speech/${config.voiceId}${withTiming ? '/with-timestamps' : ''}?output_format=pcm_24000`;
     const init: RequestInit = {
       method: 'POST', redirect: 'error',
       signal: AbortSignal.any([signal, AbortSignal.timeout(15_000)]),
-      headers: { 'Content-Type': 'application/json', Accept: 'audio/pcm',
+      headers: { 'Content-Type': 'application/json', Accept: withTiming ? 'application/json' : 'audio/pcm',
         ...(config.transport === 'direct' ? { 'xi-api-key': current.ELEVENLABS_API_KEY! } : {}) },
       body: JSON.stringify({
         text, model_id: config.model,
@@ -77,7 +81,7 @@ export function createMalviSpeechSynthesizer(
       throw new Error(message);
     }
     const contentType = response.headers.get('content-type') || '';
-    if (!/^(audio\/(pcm|x-pcm|raw)|application\/octet-stream)(;|$)/i.test(contentType)) {
+    if (!(withTiming ? /^application\/json(;|$)/i : /^(audio\/(pcm|x-pcm|raw)|application\/octet-stream)(;|$)/i).test(contentType)) {
       await response.body?.cancel().catch(() => {});
       throw new Error('Malvi’s speech provider did not return raw PCM audio.');
     }
@@ -91,12 +95,25 @@ export function createMalviSpeechSynthesizer(
         if (result.done) break;
         signal.throwIfAborted();
         bytes += result.value.length;
-        if (bytes > MAX_SPEECH_BYTES) throw new Error('Malvi’s spoken response exceeded the playback safety limit.');
+        if (bytes > (withTiming ? MAX_SPEECH_BYTES * 1.5 : MAX_SPEECH_BYTES)) throw new Error('Malvi’s spoken response exceeded the playback safety limit.');
         chunks.push(Buffer.from(result.value));
       }
       signal.throwIfAborted();
-      const audio = Buffer.concat(chunks, bytes);
-      if (!bytes || bytes % 2 || ['RIFF', 'OggS'].includes(audio.subarray(0, 4).toString()) || audio.subarray(0, 3).toString() === 'ID3') {
+      let audio: MalviSpeechBuffer = Buffer.concat(chunks, bytes);
+      if (withTiming) {
+        const result = JSON.parse(audio.toString('utf8'));
+        if (typeof result.audio_base64 !== 'string' || result.audio_base64.length > MAX_SPEECH_BYTES * 1.34
+          || !/^[A-Za-z0-9+/]*={0,2}$/.test(result.audio_base64)) {
+          throw new Error('Malvi’s speech provider returned invalid PCM audio.');
+        }
+        audio = Buffer.from(result.audio_base64, 'base64');
+        const alignment = result.normalized_alignment || result.alignment;
+        if (!validMalviAlignment(alignment, audio.length / 48)) {
+          throw new Error('Malvi’s speech provider returned no usable subtitle timestamps.');
+        }
+        audio.alignment = alignment;
+      }
+      if (!audio.length || audio.length > MAX_SPEECH_BYTES || audio.length % 2 || ['RIFF', 'OggS'].includes(audio.subarray(0, 4).toString()) || audio.subarray(0, 3).toString() === 'ID3') {
         throw new Error('Malvi’s speech provider returned invalid PCM audio.');
       }
       return audio;
@@ -111,10 +128,12 @@ export function createMalviSpeechSynthesizer(
 }
 
 export const synthesizeMalviSpeech = createMalviSpeechSynthesizer();
+// Same voice/model and one TTS request, now including provider timing metadata.
+export const synthesizeTimedMalviSpeech = createMalviSpeechSynthesizer(undefined, undefined, undefined, true);
 
 /** One text segment → one request. Interrupted requests are not retried. */
 export function createMalviSpeechQueue(
-  synthesize = synthesizeMalviSpeech,
+  synthesize = synthesizeTimedMalviSpeech,
   limits = { characters: 6000, turns: 30 },
 ) {
   let generation = 0;
@@ -128,7 +147,7 @@ export function createMalviSpeechQueue(
     get pending() { return waiting.size > 0; },
     cancel() { generation++; active?.abort(); active = null; waiting.clear(); tail = Promise.resolve(); },
     close() { closed = true; this.cancel(); },
-    async speak(text: string, language: string): Promise<Buffer | null> {
+    async speak(text: string, language: string): Promise<MalviSpeechBuffer | null> {
       if (closed) return null;
       assertMalviSpeechLanguage(language);
       if (!text.trim() || text.length > MAX_SPEECH_TEXT) throw new Error('Malvi’s spoken response is empty or exceeds the text safety limit.');

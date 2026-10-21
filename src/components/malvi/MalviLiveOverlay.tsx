@@ -24,6 +24,10 @@ export interface MalviLiveOverlayProps {
   references: MalviReferenceCitation[];
   referenceStatus: string;
   unavailableSources: string[];
+  inputLevel?: number;
+  inputState?: 'off' | 'listening' | 'hearing' | 'processing';
+  userTranscript?: string;
+  speaking?: boolean;
 }
 
 const formatTime = (seconds: number) => {
@@ -52,6 +56,10 @@ export const MalviLiveOverlay: React.FC<MalviLiveOverlayProps> = ({
   references,
   referenceStatus,
   unavailableSources,
+  inputLevel = 0,
+  inputState,
+  userTranscript,
+  speaking = false,
 }) => {
   const dialogRef = useRef<HTMLDivElement>(null);
   const closeButtonRef = useRef<HTMLButtonElement>(null);
@@ -109,6 +117,15 @@ export const MalviLiveOverlay: React.FC<MalviLiveOverlayProps> = ({
     connected: 'Connected',
     error: 'Connection issue',
   }[phase];
+  const listeningState = !microphoneOn ? 'off' : inputState ?? 'listening';
+  const listeningCopy = {
+    off: 'Microphone off',
+    listening: 'Listening…',
+    hearing: 'Hearing you…',
+    processing: 'Malvi is thinking…',
+  }[listeningState];
+  const safeInputLevel = Number.isFinite(inputLevel) ? Math.min(1, Math.max(0, inputLevel)) : 0;
+  const meterBars = [0.16, 0.34, 0.53, 0.72, 0.91];
 
   return createPortal(
     <div className="fixed inset-0 z-[100] isolate flex min-h-[100dvh] items-center justify-center overflow-x-hidden overflow-y-auto bg-[#071311] text-[#f1f3eb]">
@@ -187,7 +204,35 @@ export const MalviLiveOverlay: React.FC<MalviLiveOverlayProps> = ({
               tabIndex={0}
               className="max-h-[4.8rem] w-full max-w-xl overflow-y-auto overscroll-contain rounded-2xl border border-white/15 bg-[#10201f]/85 px-4 py-2.5 text-center text-sm leading-6 text-white shadow-lg backdrop-blur-md focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#d6e7da]"
             >
+              {speaking && <span className="mb-0.5 block text-[10px] font-medium uppercase tracking-[0.16em] text-[#c0d1c8]/75">Malvi is speaking</span>}
               {caption}
+            </div>
+          )}
+          {phase === 'connected' && (
+            <div className="flex min-h-7 items-center justify-center gap-2.5 text-[11px] text-[#e0e8e2]/90" aria-label={`Microphone status: ${listeningCopy}`}>
+              <span aria-hidden="true" className="flex h-4 items-center gap-[3px]">
+                {meterBars.map((threshold, index) => (
+                  <span
+                    key={threshold}
+                    className={`w-[3px] rounded-full ${microphoneOn && safeInputLevel >= threshold ? 'bg-[#c9e2cf]' : 'bg-white/25'}`}
+                    style={{ height: `${5 + index * 1.5}px` }}
+                  />
+                ))}
+              </span>
+              <span role="status" aria-live="polite">{listeningCopy}</span>
+            </div>
+          )}
+          {userTranscript?.trim() && phase === 'connected' && (
+            <div
+              role="region"
+              aria-label="Your recognized speech"
+              aria-live="polite"
+              aria-relevant="text"
+              tabIndex={0}
+              className="max-h-12 w-full max-w-xl overflow-y-auto overscroll-contain rounded-lg border border-white/10 bg-[#10201f]/70 px-3 py-1.5 text-center text-xs leading-5 text-[#e3ebe5]/90 backdrop-blur-md focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#d6e7da]"
+            >
+              <span className="font-medium text-[#c9e2cf]">You:</span>{' '}
+              <span className="break-words">{userTranscript}</span>
             </div>
           )}
           <button
