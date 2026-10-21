@@ -1,5 +1,6 @@
 import { ReplitConnectors } from '@replit/connectors-sdk';
 import { getMalviLanguage } from '../../lib/malviLanguages.ts';
+import { malviSpeechFailure } from './malviSpeechErrors.ts';
 
 type Env = Record<string, string | undefined>;
 export const MALVI_VOICE_ID = 'kW71iH6myeMHEvxKthQ6';
@@ -71,11 +72,9 @@ export function createMalviSpeechSynthesizer(
       throw new Error('Malvi’s ElevenLabs voice request timed out or could not connect. No alternate voice was used.');
     }
     if (!response.ok) {
-      await response.body?.cancel().catch(() => {});
-      const reason = response.status === 401 || response.status === 403 ? 'Check the key’s Text to Speech access and voice access.'
-        : response.status === 429 ? 'The speech rate or credit limit was reached.'
-        : 'The speech provider could not complete the request.';
-      throw new Error(`Malvi’s ElevenLabs voice is unavailable. ${reason}`);
+      const message = await malviSpeechFailure(response);
+      signal.throwIfAborted();
+      throw new Error(message);
     }
     const contentType = response.headers.get('content-type') || '';
     if (!/^(audio\/(pcm|x-pcm|raw)|application\/octet-stream)(;|$)/i.test(contentType)) {

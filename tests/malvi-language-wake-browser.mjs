@@ -235,6 +235,42 @@ try {
   assert.equal(before.messages.find(m => m.type === 'malvi:brain_start').payload.language, 'fr');
   assert.equal(before.requests.filter(r => r.url.endsWith('/welcome')).length, 0, 'Never inject an English welcome into a selected-language conversation');
   await page.evaluate(`window.emitBrain('malvi:brain_ready',{sessionId:'11111111-1111-4111-8111-111111111111',provider:'gemini',language:'fr'});true`);
+  await page.evaluate(`window.emitBrain('malvi:brain_caption',{sessionId:'11111111-1111-4111-8111-111111111111',language:'fr',text:'Bonjour. '.repeat(100)});true`);
+  await page.wait(`Boolean(document.querySelector('[aria-label="Live subtitles"]'))`);
+  for (const width of [320,390,768,1280]) {
+    await page.command('Emulation.setDeviceMetricsOverride', { width, height: 844, deviceScaleFactor: 1, mobile: width < 768 });
+    const box = await page.evaluate(`(()=>{
+      const el=document.querySelector('[aria-label="Live subtitles"]');
+      const rect=el.getBoundingClientRect();
+      const panel=Array.from(document.querySelectorAll('details')).find(d=>d.querySelector('summary')?.textContent==='Audio & sources');
+      return {top:rect.top,bottom:rect.bottom,height:rect.height,screen:innerHeight,scroll:el.scrollHeight,client:el.clientHeight,detailsOpen:panel?.open,disclosure:document.body.textContent.includes('AI disclosure ·')};
+    })()`);
+    assert.ok(box.top > box.screen / 2, `Subtitles should be at the bottom at ${width}px`);
+    assert.ok(box.bottom <= box.screen, `Subtitles must remain in the viewport at ${width}px`);
+    assert.ok(box.height <= 80, `Long subtitles must not cover the avatar at ${width}px`);
+    assert.ok(box.scroll > box.client, 'Full long subtitle text should remain accessible by scrolling');
+    assert.equal(box.detailsOpen, false);
+    assert.equal(box.disclosure, false, 'The repeated full disclosure must be removed');
+    if (process.env.NANIVIO_SCREENSHOT_DIR) await page.screenshot(path.join(process.env.NANIVIO_SCREENSHOT_DIR, `malvi-subtitles-${width}.png`));
+  }
+  await page.command('Emulation.setDeviceMetricsOverride', { width: 390, height: 844, deviceScaleFactor: 1, mobile: true });
+  await page.evaluate(`(()=>{
+    const el=document.querySelector('video');
+    window.fixtureVideoPaused=false;
+    Object.defineProperty(el,'paused',{configurable:true,get:()=>window.fixtureVideoPaused});
+    el.play=async()=>{window.fixtureVideoPaused=false;};
+    el.muted=true;el.volume=0;el.dispatchEvent(new Event('volumechange'));
+    return true;
+  })()`);
+  await page.wait('window.overlay.audioBlocked===true');
+  await click('Enable sound');
+  await page.wait('window.overlay.audioBlocked===false');
+  assert.equal(await page.evaluate('document.querySelector("video").muted'), false);
+  assert.equal(await page.evaluate('document.querySelector("video").volume'), 1);
+  await page.evaluate(`document.querySelector('video').muted=true;document.querySelector('video').dispatchEvent(new Event('volumechange'));true`);
+  await page.wait('window.overlay.audioBlocked===true');
+  await click('Enable sound');
+  await page.wait('window.overlay.audioBlocked===false');
   await select('gaa');
   await page.wait(`window.checks.messages.some(m=>m.type==='malvi:brain_language'&&m.payload.language==='gaa')`);
   await page.evaluate(`window.emitBrain('malvi:brain_language',{sessionId:'11111111-1111-4111-8111-111111111111',provider:'gemini',language:'gaa'});true`);
