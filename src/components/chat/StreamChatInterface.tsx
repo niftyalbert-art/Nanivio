@@ -1,3 +1,4 @@
+import { TranslationUnavailableNotice } from './TranslationUnavailableNotice';
 import React, { useState, useEffect, useRef } from 'react';
 import {
   Send,
@@ -499,6 +500,7 @@ export const StreamChatInterface: React.FC<StreamChatInterfaceProps> = ({ onCate
                     </p>
 
                     {/* Translation Pill & Switcher */}
+                    <TranslationUnavailableNotice state={msg.nanivio || {}} isMe={isMe} viewerLanguage={myLanguage} />
                     {!isMe && msg.translatedText && (
                       <div className="pt-1.5 border-t border-slate-700/60 flex items-center justify-between text-[11.5px] text-purple-300 font-mono">
                         <span className="flex items-center gap-1">

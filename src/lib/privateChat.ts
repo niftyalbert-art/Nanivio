@@ -59,7 +59,8 @@ export function restoredPrivateMessage(message: StreamChatMessage): ChatMessage 
     ...media,
     id: message.id, senderId: message.userId, senderName: message.userName,
     senderAvatar: message.userAvatar, senderLang: message.sourceLang || 'en',
-    text: message.text, translatedText: message.translatedText,
+    text: message.text, translatedText: media.translationStatus === 'unavailable'
+      ? undefined : message.translatedText || media.translatedText,
     timestamp: message.createdAt, status: 'sent',
     ...(file && !media.mediaUrl && !media.voiceNote && file.type !== 'audio' ? {
       mediaType: type, mediaUrl: file.url, mediaFileName: file.name, mediaFileSize: file.size,

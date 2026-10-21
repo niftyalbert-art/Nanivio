@@ -108,6 +108,8 @@ export interface ChatMessage {
   senderLang: SupportedLanguageCode;
   text: string;
   translatedText?: string; // Translated into viewer's My Language
+  translationStatus?: 'translated' | 'unavailable';
+  translationTargetLang?: string;
   timestamp: number;
   isVoiceNote?: boolean;
   voiceNote?: VoiceNoteData;

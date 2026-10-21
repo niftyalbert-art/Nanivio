@@ -52,6 +52,9 @@ export function privateMessageMedia(message: any) {
     sourceLang: text(voice.sourceLang, 25), targetLang: text(voice.targetLang, 25), waveform: [],
   } : undefined;
   return {
+    translationStatus: ['translated', 'unavailable'].includes(message.translationStatus) ? message.translationStatus : undefined,
+    translationTargetLang: text(message.translationTargetLang, 25),
+    translatedText: message.translationStatus === 'unavailable' ? undefined : text(message.translatedText, 20000),
     mediaType: mediaUrl ? mediaType : undefined, mediaUrl,
     mediaCaption: text(message.mediaCaption), mediaFileName: text(message.mediaFileName, 180),
     mediaFileSize: text(message.mediaFileSize, 40),

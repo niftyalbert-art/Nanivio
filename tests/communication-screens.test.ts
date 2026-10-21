@@ -72,6 +72,19 @@ test('real call screen reports media errors and does not claim a working remote 
   assert.match(html, /Connecting|connecting|Waiting|waiting/);
 });
 
+test('real ChatView labels an untranslated original when translation failed', async () => {
+  const values = fixture();
+  Object.assign(values.messages['test-conversation'][0], {
+    translationStatus: 'unavailable', translationTargetLang: 'en',
+  });
+  const ChatView = await component('src/components/chat/ChatView.tsx', 'ChatView');
+  const html = renderToStaticMarkup(React.createElement(ChatView));
+  assert.match(html, /Synthetic regression fixture/);
+  assert.match(html, /Translation unavailable/);
+  assert.match(html, /showing original message/);
+  assert.doesNotMatch(html, /Translated to/);
+});
+
 for (const type of ['audio_1on1', 'video_1on1']) {
   test(`${type} shows the local media stage before the remote participant publishes`, async () => {
     const values = fixture();

@@ -142,6 +142,16 @@ try {
   await delay(100);
   assert.equal(await evaluate(`document.body.textContent.includes('Fixture chat failure')`), false, 'Empty chat history crashed');
   await evaluate(`Object.assign(window.__communicationFixture,window.__originalChatFixture);true`);
+  // Failed translation must not displace the original or the composer.
+  await call('Emulation.setDeviceMetricsOverride', { width: 390, height: 844, deviceScaleFactor: 1, mobile: true });
+  await evaluate(`window.__communicationFixture.messages['fixture-conversation'][0].translationStatus='unavailable';
+    window.__communicationFixture.messages['fixture-conversation'][0].translationTargetLang='en';
+    window.__renderCommunicationFixture('chat');true`);
+  await delay(150);
+  assert.ok(await evaluate(`document.body.textContent.includes('Translation unavailable')`), 'Failed translation needs a visible warning');
+  assert.ok(await evaluate(`!!document.querySelector('textarea[aria-label="Write a message"]')`), 'Translation failure must preserve the composer');
+  await evaluate(`delete window.__communicationFixture.messages['fixture-conversation'][0].translationStatus;
+    delete window.__communicationFixture.messages['fixture-conversation'][0].translationTargetLang;true`);
   const report = [];
   for (const [width, height] of [[320, 640], [390, 844], [390, 480], [768, 1024], [1366, 900]]) {
     await call('Emulation.setDeviceMetricsOverride', { width, height, deviceScaleFactor: 1, mobile: width < 768 });

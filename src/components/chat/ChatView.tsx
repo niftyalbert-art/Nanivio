@@ -1,3 +1,4 @@
+import { TranslationUnavailableNotice } from './TranslationUnavailableNotice';
 import React, { useState, useRef, useEffect } from 'react';
 import {
   Send,
@@ -1241,6 +1242,7 @@ export const ChatView: React.FC = () => {
                             </p>
 
                             {/* Translation indicator and toggle */}
+                            <TranslationUnavailableNotice state={msg} isMe={isMe} viewerLanguage={myLanguage} />
                             {!isMe && msg.translatedText && (
                               <div className="pt-1 border-t border-slate-700/60 flex items-center justify-between text-[11.5px] text-emerald-300 font-mono">
                                 <span className="flex items-center gap-1">

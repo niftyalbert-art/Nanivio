@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, useLayoutEffect, useRef, useCallback } from 'react';
 import confetti from 'canvas-confetti';
+import { prepareChatTranslation } from '../lib/chatTranslation';
 import {
   SupportedLanguageCode,
   SUPPORTED_LANGUAGES,
@@ -2459,21 +2460,12 @@ export const NanivioProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
     // Realtime translation if recipient speaks a different language
     const otherParticipant = activeConv.participants.find(p => p.id !== currentUser.id);
-    let translatedText: string | undefined;
-    if (globalLangpretationEnabled && otherParticipant && otherParticipant.myLanguage && otherParticipant.myLanguage !== myLanguage) {
-      try {
-        const transResult = await NanivioTranslatorEngine.getInstance().translateText(
-          text,
-          myLanguage,
-          otherParticipant.myLanguage
-        );
-        if (transResult && transResult.translatedText && transResult.translatedText !== text) {
-          translatedText = transResult.translatedText;
-          recordLangpretationUsage('TEXT_CHAT', 0.2, myLanguage, otherParticipant.myLanguage).catch(() => {});
-        }
-      } catch (err) {
-        console.warn('Realtime chat translation notice:', err);
-      }
+    const translation = await prepareChatTranslation(
+      text, myLanguage, otherParticipant?.myLanguage, globalLangpretationEnabled,
+      (input, source, target) => NanivioTranslatorEngine.getInstance().translateText(input, source, target),
+    );
+    if (translation.translationStatus === 'translated') {
+      recordLangpretationUsage('TEXT_CHAT', 0.2, myLanguage, otherParticipant!.myLanguage).catch(() => {});
     }
 
     const newMsg: ChatMessage = {
@@ -2483,7 +2475,7 @@ export const NanivioProvider: React.FC<{ children: React.ReactNode }> = ({ child
       senderAvatar: currentUser.avatar,
       senderLang: myLanguage,
       text,
-      translatedText,
+      ...translation,
       timestamp: Date.now(),
       status: 'sending',
       replyTo: replyingToMessage ? {
