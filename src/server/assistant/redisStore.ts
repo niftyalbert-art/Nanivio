@@ -54,6 +54,7 @@ export interface AssistantSessionRecord {
   id: string;
   owner: string;
   language?: string;
+  mode?: 'LITE' | 'VOICE_TEST';
   providerId?: string;
   deadline: number;
   hardDeadline: number;
@@ -70,6 +71,9 @@ export function redisSessionStore(redis: any) {
   const evalScript = (script: string, keys: string[], args: string[]) =>
     redis.eval(script, { keys, arguments: args });
   return {
+    async ping() {
+      return (await redis.ping()) === 'PONG';
+    },
     async reserve(owner: string, id: string, now: number) {
       const result = await evalScript(RESERVE_SESSION, [`${PREFIX}rate:${owner}`, activeKey(owner)], [String(now), id]);
       if (Number(result[0]) !== 1) {

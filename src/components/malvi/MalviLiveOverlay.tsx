@@ -5,6 +5,7 @@ import { MALVI_PROFILE } from '../../lib/malviIdentity';
 import type { MalviReferenceCitation } from '../../lib/malviLiveClient';
 
 export interface MalviLiveOverlayProps {
+  voiceOnly?: boolean;
   videoRef: React.RefObject<HTMLVideoElement | null>;
   onVideoElement: (video: HTMLVideoElement | null) => void;
   phase: 'connecting' | 'connected' | 'error';
@@ -33,6 +34,7 @@ const formatTime = (seconds: number) => {
 };
 
 export const MalviLiveOverlay: React.FC<MalviLiveOverlayProps> = ({
+  voiceOnly = false,
   videoRef,
   onVideoElement,
   phase,
@@ -113,15 +115,15 @@ export const MalviLiveOverlay: React.FC<MalviLiveOverlayProps> = ({
 
   return createPortal(
     <div className="fixed inset-0 z-[100] isolate flex min-h-[100dvh] items-center justify-center overflow-hidden bg-[#071311] text-[#f1f3eb]">
-      <video
+      {!voiceOnly && <video
         ref={onVideoElement}
         autoPlay
         playsInline
         aria-label="Malvi live video"
         className="absolute inset-0 h-full w-full object-cover"
-      />
+      />}
 
-      {(phase === 'connecting' || phase === 'error') && (
+      {!voiceOnly && (phase === 'connecting' || phase === 'error') && (
         <div className="absolute inset-0 -z-0 overflow-hidden bg-[#172e2d]">
           <img
             src={MALVI_PROFILE}
@@ -150,7 +152,7 @@ export const MalviLiveOverlay: React.FC<MalviLiveOverlayProps> = ({
             </span>
             <div>
               <h1 id="malvi-live-title" className="text-sm font-semibold tracking-wide text-white">
-                Malvi <span className="font-normal text-[#cfddd4]">· Nanivio</span>
+                Malvi <span className="font-normal text-[#cfddd4]">· {voiceOnly ? 'Voice-only test' : 'Nanivio'}</span>
               </h1>
               <p className="mt-0.5 text-[11px] text-[#dae4dd]/80">{phaseCopy}</p>
             </div>
@@ -179,13 +181,13 @@ export const MalviLiveOverlay: React.FC<MalviLiveOverlayProps> = ({
             <div className="rounded-2xl border border-white/15 bg-[#10201f]/70 px-5 py-4 backdrop-blur-md">
               <LoaderCircle className="mx-auto mb-2 h-5 w-5 animate-spin text-[#d3e4d7] motion-reduce:animate-none" />
               <p className="text-sm font-medium">Joining your conversation</p>
-              <p className="mt-1 text-xs text-[#d5e1d9]/75">Malvi’s portrait is a preview until the live video connects.</p>
+              <p className="mt-1 text-xs text-[#d5e1d9]/75">{voiceOnly ? 'Connecting the selected brain. No avatar session is running.' : 'Malvi’s portrait is a preview until the live video connects.'}</p>
             </div>
           )}
           {phase === 'connected' && (
             <div className="inline-flex items-center gap-2 rounded-full border border-[#c6e0cd]/30 bg-[#142720]/65 px-3.5 py-2 text-xs text-[#e6f0e7] backdrop-blur-md">
               <Check size={14} className="text-[#b4d8ba]" />
-              Live session connected
+              {voiceOnly ? 'Voice connected · no avatar' : 'Live session connected'}
             </div>
           )}
           {phase === 'error' && (

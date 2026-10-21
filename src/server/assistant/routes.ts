@@ -1,5 +1,5 @@
 import type { Express, Request, Response, NextFunction } from 'express';
-import { AssistantError } from './redisStore.ts';
+import { AssistantError, getAssistantStore } from './redisStore.ts';
 import { AI_DISCLOSURE, liveAvatarService, liveAvatarSetup } from './liveAvatarService.ts';
 import { speechConfigured, synthesizeProviderAudio } from '../speechProviders.ts';
 import { wavToPcm24k } from './pcm.ts';
@@ -10,6 +10,9 @@ import { getMalviLanguage } from '../../lib/malviLanguages.ts';
 type Auth = (req: Request, res: Response, next: NextFunction) => unknown;
 export function registerAssistantRoutes(app: Express, auth: Auth, enabled: () => boolean, startSweeper = true) {
   const userId = (req: Request) => (req as any).authUser.id as string;
+  const admin = (req: Request) => {
+    if ((req as any).authUser?.role !== 'ADMIN') throw new AssistantError(403, 'ADMIN_REQUIRED', 'Only administrators can run Malvi setup tests.');
+  };
   const validId = (req: Request) => {
     const id = String(req.params.id);
     if (!/^[a-f0-9-]{36}$/i.test(id)) throw new AssistantError(400, 'INVALID_SESSION', 'Invalid live session ID.');
@@ -33,7 +36,34 @@ export function registerAssistantRoutes(app: Express, auth: Auth, enabled: () =>
       enabled: enabled(),
       welcomeVoiceConfigured: speechConfigured('en', 'tts'),
       brainProviders: getLiveBrainProviderConfig(),
+      voiceTestAvailable: (_req as any).authUser?.role === 'ADMIN' && enabled()
+        && getLiveBrainProviderConfig().configured && Boolean(process.env.REDIS_URL),
+      canRunSetupTests: (_req as any).authUser?.role === 'ADMIN',
     });
+  }));
+  // Explicit administrator action only: no session creation, Redis writes or
+  // external inference/avatar calls. Never return connection URLs or raw errors.
+  app.post('/api/assistant/diagnostics', auth, run(async (req, res) => {
+    admin(req);
+    let redis: 'missing' | 'connected' | 'unavailable' = 'missing';
+    if (process.env.REDIS_URL) {
+      try { redis = await (await getAssistantStore()).ping() ? 'connected' : 'unavailable'; }
+      catch { redis = 'unavailable'; }
+    }
+    res.json({ success: true, redis, brain: getLiveBrainProviderConfig(),
+      avatar: { configured: Boolean(process.env.HEYGEN_API_KEY && process.env.AVATAR_ID), readinessVerified: false },
+      providerSessionStarted: false });
+  }));
+  app.post('/api/assistant/voice-session', auth, run(async (req, res) => {
+    admin(req);
+    if (!enabled()) throw new AssistantError(403, 'MALVI_DISABLED', 'Malvi is currently disabled by the administrator.');
+    const brain = getLiveBrainProviderConfig();
+    if (!brain.configured) throw new AssistantError(503, 'BRAIN_SETUP_REQUIRED', 'Configure the selected live brain provider before testing voice.');
+    if (req.body?.activation !== 'manual') throw new AssistantError(400, 'ACTIVATION_REQUIRED', 'Start the voice-only test manually.');
+    let language;
+    try { language = getMalviLanguage(req.body?.language ?? 'en'); }
+    catch { throw new AssistantError(400, 'INVALID_LANGUAGE', 'Choose a valid Nanivio language for Malvi.'); }
+    res.status(201).json({ success: true, ...await liveAvatarService.create(userId(req), language.code, 'VOICE_TEST') });
   }));
   app.post('/api/assistant/session', auth, run(async (req, res) => {
     if (!enabled()) throw new AssistantError(403, 'MALVI_DISABLED', 'Malvi is currently disabled by the administrator.');
@@ -68,7 +98,7 @@ export function registerAssistantRoutes(app: Express, auth: Auth, enabled: () =>
   // The distributed stop claim prevents duplicate provider calls.
   if (startSweeper) {
     const timer = setInterval(() => {
-      if (liveAvatarSetup().configured) void liveAvatarService.sweep().catch(() => {});
+      if (process.env.REDIS_URL) void liveAvatarService.sweep().catch(() => {});
     }, 1000);
     timer.unref();
   }

@@ -59,16 +59,19 @@ export function createLiveAvatarService(deps: {
     await store.release(record);
   }
   return {
-    async create(userId: string, languageCode = 'en') {
+    async create(userId: string, languageCode = 'en', mode: 'LITE' | 'VOICE_TEST' = 'LITE') {
       const language = getMalviLanguage(languageCode);
       const store = await deps.store();
       const now = deps.now();
       const record: AssistantSessionRecord = {
-        id: deps.uuid(), owner: ownerKey(userId), language: language.code, deadline: now + IDLE_MS, hardDeadline: now + MAX_SESSION_MS,
+        id: deps.uuid(), owner: ownerKey(userId), language: language.code, mode, deadline: now + IDLE_MS, hardDeadline: now + MAX_SESSION_MS,
       };
       await store.reserve(record.owner, record.id, now);
       try {
         await store.save(record);
+        if (mode === 'VOICE_TEST') {
+          return { id: record.id, mode, language: language.code, idleDeadline: record.deadline, hardDeadline: record.hardDeadline, disclosure: AI_DISCLOSURE };
+        }
         // LITE only: no provider LLM, voice agent, automatic opening text, or idle microphone streaming.
         const data = await deps.provider('/v1/sessions/token', {
           mode: 'LITE',

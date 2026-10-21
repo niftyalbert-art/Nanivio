@@ -26,6 +26,7 @@ type BrainConnection = {
   closed: boolean;
   lastActivityAt: number;
   idleTimer: ReturnType<typeof setTimeout> | null;
+  hardTimer: ReturnType<typeof setTimeout> | null;
   frameWindowStartedAt: number;
   framesInWindow: number;
   audioBuffer: Buffer[];
@@ -148,6 +149,7 @@ async function connectGemini(
         const serverContent = message.serverContent;
         if (serverContent?.interrupted) {
           connection.audioBuffer = []; connection.transcript = ''; connection.outputLanguage = null;
+          send(socket, 'malvi:brain_interrupted', { sessionId: connection.sessionId });
           return;
         }
         for (const part of serverContent?.modelTurn?.parts || []) {
@@ -284,7 +286,7 @@ async function connectOpenAI(
   };
 }
 
-function createConnection(socket: WebSocket, userId: string, sessionId: string, language: string): BrainConnection {
+function createConnection(socket: WebSocket, userId: string, sessionId: string, language: string, voiceOnly = false): BrainConnection {
   const connection: BrainConnection = {
     socket,
     owner: userId,
@@ -301,11 +303,14 @@ function createConnection(socket: WebSocket, userId: string, sessionId: string, 
       if (connection.closed) return;
       connection.closed = true;
       if (connection.idleTimer) clearTimeout(connection.idleTimer);
+      if (connection.hardTimer) clearTimeout(connection.hardTimer);
       connection.audioBuffer = [];
       connection.closeProvider();
+      if (voiceOnly) void liveAvatarService.stop(userId, sessionId).catch(() => {});
     },
     lastActivityAt: 0,
     idleTimer: null,
+    hardTimer: null,
     frameWindowStartedAt: 0,
     framesInWindow: 0,
     audioBuffer: [],
@@ -339,6 +344,19 @@ function createConnection(socket: WebSocket, userId: string, sessionId: string, 
   return connection;
 }
 
+function armIdleDeadline(connection: BrainConnection, deadline: number, expired: () => void) {
+  if (connection.idleTimer) clearTimeout(connection.idleTimer);
+  connection.idleTimer = setTimeout(() => {
+    // An explicit interrupt can extend the shared deadline through HTTP.
+    // Re-read it rather than closing an active conversation using a stale timer.
+    void liveAvatarService.owned(connection.owner, connection.sessionId).then(record => {
+      if (connection.closed) return;
+      if (record.deadline > Date.now()) armIdleDeadline(connection, record.deadline, expired);
+      else expired();
+    }).catch(() => { if (!connection.closed) expired(); });
+  }, Math.max(1, deadline - Date.now() + 50));
+}
+
 export const malviLiveBrainController = {
   async start(socket: WebSocket, userId: string, sessionId: string, requestedLanguage?: unknown) {
     try {
@@ -348,14 +366,21 @@ export const malviLiveBrainController = {
       if (existing) return;
       const current = activeBySession.get(sessionId);
       if (current) throw new Error('This live session already has an active brain connection.');
-      const connection = createConnection(socket, userId, sessionId, language.code);
+      const connection = createConnection(socket, userId, sessionId, language.code, session.mode === 'VOICE_TEST');
       if (!activeBySocket.has(socket)) activeBySocket.set(socket, new Map());
       activeBySocket.get(socket)!.set(sessionId, connection);
       activeBySession.set(sessionId, connection);
       connection.lastActivityAt = Date.now();
-      connection.idleTimer = setTimeout(() => {
+      armIdleDeadline(connection, session.deadline || Date.now() + IDLE_MS, () => {
+        send(socket, 'malvi:brain_error', { sessionId, message: 'Malvi stopped after 60 seconds without input.' });
         void this.stopSession(userId, sessionId);
-      }, IDLE_MS + 1000);
+      });
+      if (Number.isFinite(session.hardDeadline)) {
+        connection.hardTimer = setTimeout(() => {
+          send(socket, 'malvi:brain_error', { sessionId, message: 'Malvi reached the maximum session duration.' });
+          void this.stopSession(userId, sessionId);
+        }, Math.max(0, session.hardDeadline - Date.now()));
+      }
     } catch (error) {
       send(socket, 'malvi:brain_error', {
         sessionId,
@@ -419,10 +444,10 @@ export const malviLiveBrainController = {
         const activity = await liveAvatarService.activity(userId, sessionId);
         send(socket, 'malvi:brain_activity', { sessionId, idleDeadline: activity.idleDeadline });
         connection.lastActivityAt = Date.now();
-        if (connection.idleTimer) clearTimeout(connection.idleTimer);
-        connection.idleTimer = setTimeout(() => {
+        armIdleDeadline(connection, activity.idleDeadline, () => {
+          send(socket, 'malvi:brain_error', { sessionId, message: 'Malvi stopped after 60 seconds without input.' });
           void this.stopSession(userId, sessionId);
-        }, IDLE_MS + 1000);
+        });
       } catch {
         send(socket, 'malvi:brain_error', { sessionId, message: 'The live session timed out. End it and start a new conversation.' });
         await this.stopSession(userId, sessionId);
@@ -434,6 +459,16 @@ export const malviLiveBrainController = {
   endAudio(socket: WebSocket, userId: string, sessionId: string) {
     const connection = activeBySocket.get(socket)?.get(sessionId);
     if (connection?.owner === userId) connection.endAudio();
+  },
+  interrupt(socket: WebSocket, userId: string, sessionId: string) {
+    const connection = activeBySocket.get(socket)?.get(sessionId);
+    if (!connection || connection.owner !== userId || connection.closed) return;
+    connection.audioBuffer = [];
+    connection.transcript = '';
+    // Discard the remainder of the interrupted response, not just its currently
+    // buffered chunks. The next complete turn resets this marker.
+    connection.outputLanguage = 'interrupted';
+    send(socket, 'malvi:brain_interrupted', { sessionId });
   },
   async stopSession(userId: string, sessionId: string) {
     const connection = activeBySession.get(sessionId);

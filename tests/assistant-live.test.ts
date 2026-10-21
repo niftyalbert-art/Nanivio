@@ -44,6 +44,29 @@ test('real Redis enforces shared LiveAvatar rate, ownership, deadlines and clean
         return null;
       },
     });
+    await t.test('voice-only sessions share real Redis limits and never contact LiveAvatar', async () => {
+      assert.equal(await store.ping(), true);
+      const before = creates, stopsBefore = stopped.length;
+      const voice = await service.create('voice-owner', 'fr', 'VOICE_TEST');
+      assert.equal(voice.mode, 'VOICE_TEST');
+      assert.equal('sessionToken' in voice, false);
+      assert.equal((await service.owned('voice-owner', voice.id)).mode, 'VOICE_TEST');
+      await assert.rejects(service.create('voice-owner'), (e: AssistantError) => e.code === 'SESSION_ACTIVE');
+      await assert.rejects(service.owned('another-user', voice.id), (e: AssistantError) => e.status === 404);
+      await service.stop('voice-owner', voice.id);
+      assert.equal(await store.get(voice.id), null);
+      for (let i = 1; i < 10; i++) {
+        const next = await service.create('voice-owner', 'en', 'VOICE_TEST');
+        await service.stop('voice-owner', next.id);
+      }
+      await assert.rejects(service.create('voice-owner', 'en', 'VOICE_TEST'), (e: AssistantError) => e.status === 429);
+      const idle = await service.create('voice-idle', 'en', 'VOICE_TEST');
+      now += 60_001;
+      await service.sweep();
+      assert.equal(await store.get(idle.id), null);
+      assert.equal(creates, before);
+      assert.equal(stopped.length, stopsBefore);
+    });
     await t.test('parallel initializations reserve only one session for an account', async () => {
       const outcomes = await Promise.allSettled(Array.from({ length: 8 }, () => service.create('parallel-user')));
       assert.equal(outcomes.filter(x => x.status === 'fulfilled').length, 1);
@@ -145,9 +168,32 @@ test('all assistant HTTP endpoints require authentication', async () => {
   await new Promise<void>(resolve => server.once('listening', resolve));
   try {
     const base = `http://127.0.0.1:${(server.address() as net.AddressInfo).port}/api/assistant`;
-    for (const [method, path] of [['GET', '/status'], ['POST', '/session'], ['POST', '/session/fixture/activity'], ['POST', '/session/fixture/welcome'], ['POST', '/session/fixture/end']]) {
+    for (const [method, path] of [['GET', '/status'], ['POST', '/diagnostics'], ['POST', '/voice-session'], ['POST', '/session'], ['POST', '/session/fixture/activity'], ['POST', '/session/fixture/welcome'], ['POST', '/session/fixture/end']]) {
       assert.equal((await fetch(base + path, { method })).status, 401);
     }
+  } finally { await new Promise<void>(resolve => server.close(() => resolve())); }
+});
+
+test('setup tests are administrator-only and diagnostics do not start provider sessions', async () => {
+  let role = 'PERSONAL';
+  const app = express(); app.use(express.json());
+  registerAssistantRoutes(app, (req, _res, next) => { (req as any).authUser = { id: 'fixture', role }; next(); }, () => true, false);
+  const server = app.listen(0, '127.0.0.1');
+  await new Promise<void>(resolve => server.once('listening', resolve));
+  try {
+    const base = `http://127.0.0.1:${(server.address() as net.AddressInfo).port}/api/assistant`;
+    for (const path of ['/voice-session', '/diagnostics']) {
+      const response = await fetch(base + path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
+      assert.equal(response.status, 403);
+      assert.equal((await response.json()).code, 'ADMIN_REQUIRED');
+    }
+    role = 'ADMIN';
+    const data = await (await fetch(base + '/diagnostics', { method: 'POST' })).json();
+    assert.equal(data.success, true);
+    assert.equal(data.providerSessionStarted, false);
+    assert.equal(data.avatar.readinessVerified, false);
+    assert.ok(['missing', 'connected', 'unavailable'].includes(data.redis));
+    assert.equal(JSON.stringify(data).includes('redis://'), false);
   } finally { await new Promise<void>(resolve => server.close(() => resolve())); }
 });
 

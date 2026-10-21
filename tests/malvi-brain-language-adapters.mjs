@@ -36,8 +36,9 @@ const fixtures = {
     export const liveAvatarService = {
       owned: async (user, id) => {
         if(user !== 'owner') throw new Error('Live session not found.');
-        return { id, owner:user, language:'ar' };
+        return { id, owner:user, language:'ar', mode:globalThis.__malviAdapter.voiceMode?'VOICE_TEST':'LITE' };
       },
+      stop: async () => { globalThis.__malviAdapter.voiceStops=(globalThis.__malviAdapter.voiceStops||0)+1; },
       activity: async () => {
         globalThis.__malviAdapter.activity++;
         return { idleDeadline: Date.now()+60000 };
@@ -126,6 +127,24 @@ try {
   assert.equal(state.openaiConnects, 1);
   assert.equal(state.geminiConnects, 1, 'No hidden cross-provider fallback');
   assert.equal(state.activity, 0);
+  controller.closeSocket(openai);
+  process.env.MALVI_BRAIN_PROVIDER = 'gemini';
+  state.voiceMode = true;
+  const voice = socket();
+  const voiceId = '33333333-3333-4333-8333-333333333333';
+  await controller.start(voice, 'owner', voiceId, 'en');
+  await new Promise(resolve => setImmediate(resolve));
+  controller.interrupt(voice, 'intruder', voiceId);
+  assert.equal(voice.events.filter(e => e.type === 'malvi:brain_interrupted').length, 0);
+  controller.interrupt(voice, 'owner', voiceId);
+  assert.equal(voice.events.filter(e => e.type === 'malvi:brain_interrupted').length, 1);
+  state.geminiOptions.callbacks.onmessage({ serverContent: { modelTurn: { parts: [spokenChunk] }, turnComplete: true } });
+  assert.equal(voice.events.filter(e => e.type === 'malvi:brain_audio').length, 0, 'Interrupted response must not resume playback');
+  state.geminiOptions.callbacks.onmessage({ serverContent: { modelTurn: { parts: [spokenChunk] }, turnComplete: true } });
+  assert.equal(voice.events.filter(e => e.type === 'malvi:brain_audio').length, 1, 'Next response must still be playable');
+  controller.closeSocket(voice);
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(state.voiceStops, 1, 'Socket disconnect must release the voice-only Redis reservation');
   console.log(JSON.stringify({ geminiAndOpenAI: true, exactLanguageAndDialect: true, localizedFirstGreeting: true, livePreferenceUpdates: true, ownerOnly: true, noProviderFanoutOrReconnect: true, idleDeadlineUnchanged: true }));
 } finally {
   controller.closeSocket(gemini); controller.closeSocket(openai);

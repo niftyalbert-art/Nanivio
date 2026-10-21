@@ -446,6 +446,12 @@ export function setupRealtimeServer(httpServer: HttpServer) {
             break;
           }
 
+          case 'malvi:brain_interrupt': {
+            if (typeof payload?.sessionId === 'string') {
+              malviLiveBrainController.interrupt(socket, currentUser.userId, payload.sessionId);
+            }
+            break;
+          }
           case 'malvi:brain_stop': {
             if (typeof payload?.sessionId === 'string') {
               await malviLiveBrainController.stopSession(currentUser.userId, payload.sessionId);

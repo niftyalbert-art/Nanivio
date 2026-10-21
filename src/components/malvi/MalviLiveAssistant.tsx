@@ -7,6 +7,7 @@ import { getMalviLanguage, MALVI_LANGUAGES, malviLanguageCoverage } from '../../
 import { realtimeClient } from '../../lib/realtimeClient';
 import { MalviLiveOverlay } from './MalviLiveOverlay';
 import type { LiveAvatarSession } from '@heygen/liveavatar-web-sdk';
+import { MalviVoicePlayback } from '../../lib/malviVoicePlayback';
 
 type Phase = 'idle' | 'connecting' | 'connected' | 'error';
 interface LiveControls {
@@ -19,6 +20,7 @@ interface LiveControls {
   wakePackInstalling: boolean;
   installWakePack: () => Promise<void>;
   start: (activation: 'manual' | 'wake-word') => Promise<void>;
+  startVoiceTest: () => Promise<void>;
   armWake: () => Promise<void>;
   disarmWake: () => void;
   refresh: () => Promise<void>;
@@ -48,6 +50,10 @@ export const MalviLiveAssistantProvider: React.FC<{ children: React.ReactNode }>
   const [wakePackRequired, setWakePackRequired] = useState(false);
   const [wakePackInstalling, setWakePackInstalling] = useState(false);
   const [activeLanguage, setActiveLanguage] = useState<string | null>(null);
+  const [voiceOnly, setVoiceOnly] = useState(false);
+  const voiceMode = useRef(false);
+  const playback = useRef<MalviVoicePlayback | null>(null);
+  const pendingAudio = useRef<string | null>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
   const mediaReady = useRef(false);
   const sdk = useRef<LiveAvatarSession | null>(null);
@@ -84,6 +90,7 @@ export const MalviLiveAssistantProvider: React.FC<{ children: React.ReactNode }>
   const cleanup = useCallback(async () => {
     const live = sdk.current, id = sessionId.current;
     stopMicrophone();
+    playback.current?.close(); playback.current = null; pendingAudio.current = null;
     if (id) realtimeClient.send('malvi:brain_stop', { sessionId: id });
     sdk.current = null; sessionId.current = null; deadline.current = 0; mediaReady.current = false;
     setActiveLanguage(null);
@@ -124,13 +131,21 @@ export const MalviLiveAssistantProvider: React.FC<{ children: React.ReactNode }>
       if (isCurrent(payload)) {
         setActiveLanguage(payload.language || languageRef.current);
         setBrainReady(true);
+        if (voiceMode.current) setPhase('connected');
         setCaption(`Malvi is ready using ${payload.provider === 'openai' ? 'OpenAI GPT-Live' : 'Gemini Live'}. Turn on the microphone when you’re ready.`);
       }
     });
     const offAudio = realtimeClient.on('malvi:brain_audio', (payload) => {
-      if (!isCurrent(payload) || !sdk.current || (payload.language && payload.language !== languageRef.current)) return;
+      if (!isCurrent(payload) || (payload.language && payload.language !== languageRef.current)) return;
       try {
-        deliverMalviAudio(sdk.current, payload);
+        if (voiceMode.current && playback.current) {
+          deliverMalviAudio({ repeatAudio: audio => {
+            void playback.current?.play(audio).catch(() => {
+              if (isCurrent(payload)) { pendingAudio.current = audio; setAudioBlocked(true); }
+            });
+          } }, payload);
+        } else if (sdk.current) deliverMalviAudio(sdk.current, payload);
+        else return;
         if (payload.greeting) setCaption('Malvi is ready to talk. Turn on the microphone when you’re ready.');
       } catch {
         setMicrophoneError('Malvi’s voice audio could not be played.');
@@ -152,10 +167,11 @@ export const MalviLiveAssistantProvider: React.FC<{ children: React.ReactNode }>
     });
     const offError = realtimeClient.on('malvi:brain_error', (payload) => {
       if (isCurrent(payload) && typeof payload.message === 'string') {
-        setMicrophoneError(payload.message);
-        setBrainReady(false);
-        stopMicrophone();
+        fail(payload.message);
       }
+    });
+    const offInterrupted = realtimeClient.on('malvi:brain_interrupted', payload => {
+      if (isCurrent(payload)) { playback.current?.interrupt(); pendingAudio.current = null; sdk.current?.interrupt(); }
     });
     const offLanguage = realtimeClient.on('malvi:brain_language', payload => {
       if (!isCurrent(payload) || typeof payload.language !== 'string') return;
@@ -167,7 +183,7 @@ export const MalviLiveAssistantProvider: React.FC<{ children: React.ReactNode }>
     const offLanguageError = realtimeClient.on('malvi:brain_language_error', payload => {
       if (isCurrent(payload)) fail(typeof payload.message === 'string' ? payload.message : 'The selected language could not be applied. Start a new conversation.');
     });
-    return () => { offReady(); offAudio(); offCaption(); offActivity(); offSources(); offError(); offLanguage(); offLanguageError(); };
+    return () => { offReady(); offAudio(); offCaption(); offActivity(); offSources(); offError(); offLanguage(); offLanguageError(); offInterrupted(); };
   }, [stopMicrophone, fail]);
 
   useEffect(() => {
@@ -177,6 +193,7 @@ export const MalviLiveAssistantProvider: React.FC<{ children: React.ReactNode }>
       const language = getMalviLanguage(preferredLanguage);
       stopMicrophone();
       sdk.current?.interrupt();
+      playback.current?.interrupt(); pendingAudio.current = null;
       setBrainReady(false);
       setCaption(`Applying ${language.name} to Malvi’s conversation…`);
       realtimeClient.send('malvi:brain_language', { sessionId: id, language: language.code });
@@ -252,7 +269,8 @@ export const MalviLiveAssistantProvider: React.FC<{ children: React.ReactNode }>
   }, [cleanup, currentUser?.id]);
 
   const start = useCallback(async (activation: 'manual' | 'wake-word') => {
-    if (busy.current || sdk.current) return;
+    if (busy.current || sdk.current || sessionId.current) return;
+    voiceMode.current = false; setVoiceOnly(false);
     busy.current = true;
     const run = ++generation.current;
     disarmWake(); setError(null); setCaption('Connecting your live avatar and selected brain provider.');
@@ -324,6 +342,41 @@ export const MalviLiveAssistantProvider: React.FC<{ children: React.ReactNode }>
     }
   }, [attachVideo, close, disarmWake, fail]);
 
+  const startVoiceTest = useCallback(async () => {
+    if (busy.current || sessionId.current || sdk.current) return;
+    busy.current = true;
+    const run = ++generation.current;
+    voiceMode.current = true; setVoiceOnly(true);
+    disarmWake(); setError(null); setBrainReady(false); setActiveLanguage(null);
+    setMicrophoneError(''); setMicrophoneOn(false); setAudioBlocked(false);
+    setReferences([]); setReferenceStatus('idle'); setUnavailableSources([]);
+    setSecondsRemaining(60); setPhase('connecting');
+    setCaption('Connecting the selected brain. No avatar session will be started.');
+    try {
+      // Unlock browser playback within the explicit user gesture, before HTTP.
+      playback.current = new MalviVoicePlayback();
+      await playback.current.resume();
+      if (run !== generation.current) return;
+      const language = getMalviLanguage(languageRef.current);
+      const info = await assistantRequest('/voice-session', { activation: 'manual', language: language.code });
+      if (run !== generation.current || !mounted.current) {
+        await assistantRequest(`/session/${info.id}/end`, {}, true).catch(() => {});
+        return;
+      }
+      sessionId.current = info.id; deadline.current = info.idleDeadline;
+      realtimeClient.send('malvi:brain_start', { sessionId: info.id, language: language.code });
+      busy.current = false;
+    } catch (error) {
+      if (run === generation.current) fail(error instanceof Error ? error.message : 'The voice-only test could not start.');
+    }
+  }, [disarmWake, fail]);
+
+  useEffect(() => {
+    if (phase !== 'connecting' || !voiceOnly) return;
+    const timeout = setTimeout(() => fail('The live brain did not become ready within 20 seconds. The voice-only test was stopped.'), 20_000);
+    return () => clearTimeout(timeout);
+  }, [phase, voiceOnly, fail]);
+
   const armWake = useCallback(async () => {
     if (wakeController.current || wakeChecking || wakeArmed || busy.current || sdk.current) return;
     const controller = new AbortController();
@@ -394,19 +447,29 @@ export const MalviLiveAssistantProvider: React.FC<{ children: React.ReactNode }>
     return () => window.removeEventListener('pagehide', leave);
   }, [cleanup, disarmWake]);
   const interrupt = () => {
+    playback.current?.interrupt(); pendingAudio.current = null;
     try { sdk.current?.interrupt(); } catch {}
     const id = sessionId.current;
+    if (id) realtimeClient.send('malvi:brain_interrupt', { sessionId: id });
     if (id) void assistantRequest(`/session/${id}/activity`, { kind: 'interrupt' }).then(data => {
       if (id === sessionId.current) deadline.current = data.idleDeadline;
     }).catch(err => fail(err instanceof Error ? err.message : 'The session has ended.'));
   };
   return (
-    <LiveContext.Provider value={{ readiness, notice, phase, wakeArmed, wakeChecking, wakePackRequired, wakePackInstalling, installWakePack, start, armWake, disarmWake, refresh }}>
+    <LiveContext.Provider value={{ readiness, notice, phase, wakeArmed, wakeChecking, wakePackRequired, wakePackInstalling, installWakePack, start, startVoiceTest, armWake, disarmWake, refresh }}>
       {children}
       {phase !== 'idle' && <MalviLiveOverlay
         videoRef={videoRef} onVideoElement={attachVideo} phase={phase} error={error} secondsRemaining={secondsRemaining}
         onClose={close} onInterrupt={interrupt} audioBlocked={audioBlocked} caption={caption}
-        onPlayAudio={() => { void videoRef.current?.play().then(() => setAudioBlocked(false)).catch(() => setAudioBlocked(true)); }}
+        voiceOnly={voiceOnly}
+        onPlayAudio={() => {
+          if (voiceMode.current && playback.current) {
+            const audio = pendingAudio.current;
+            void (audio ? playback.current.play(audio) : playback.current.resume()).then(() => {
+              pendingAudio.current = null; setAudioBlocked(false);
+            }).catch(() => setAudioBlocked(true));
+          } else void videoRef.current?.play().then(() => setAudioBlocked(false)).catch(() => setAudioBlocked(true));
+        }}
         brainReady={brainReady}
         microphoneOn={microphoneOn}
         microphoneError={microphoneError}
@@ -421,6 +484,8 @@ export const MalviLiveAssistantProvider: React.FC<{ children: React.ReactNode }>
 export const MalviLiveControls: React.FC = () => {
   const { appLanguage, setAppLanguage } = useNanivio();
   const live = useContext(LiveContext);
+  const [diagnostic, setDiagnostic] = useState('');
+  const [checking, setChecking] = useState(false);
   if (!live) return null;
   const { readiness, phase, notice, wakeArmed, wakeChecking } = live;
   const ready = Boolean(readiness?.configured && readiness?.enabled);
@@ -435,6 +500,9 @@ export const MalviLiveControls: React.FC = () => {
         <span className="rounded-full border border-[var(--nv-border)] px-3 py-1.5 text-xs text-[var(--nv-gold)]">Video only after activation</span>
       </div>
       <div className="mt-5 flex flex-wrap gap-3">
+        {readiness?.canRunSetupTests && <button type="button" disabled={!readiness.voiceTestAvailable || phase !== 'idle'} onClick={() => void live.startVoiceTest()} className="rounded-xl border border-[var(--nv-gold)] px-4 py-3 text-sm font-semibold text-[var(--nv-gold)] disabled:opacity-45">
+          Test voice only · admin
+        </button>}
         <button type="button" onClick={() => void live.start('manual')} disabled={!ready || phase !== 'idle'} style={{ backgroundColor: 'var(--nv-gold)', color: 'var(--nv-bg)' }} className="inline-flex items-center gap-2 rounded-xl px-4 py-3 text-sm font-semibold transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-45">
           <Video className="h-4 w-4" /> Start live avatar <ArrowUpRight className="h-4 w-4" />
         </button>
@@ -446,6 +514,16 @@ export const MalviLiveControls: React.FC = () => {
           {live.wakePackInstalling ? 'Installing local speech pack…' : 'Install local speech pack'}
         </button>}
       </div>
+      {readiness?.canRunSetupTests && <div className="mt-4 text-xs leading-relaxed text-slate-300">
+        <p>Voice-only testing uses the selected brain provider and may incur inference charges. No avatar is started. Microphone access requires a separate tap. The same session limits apply.</p>
+        <button type="button" disabled={checking} className="mt-2 min-h-11 underline underline-offset-4 disabled:opacity-45" onClick={() => {
+          setChecking(true); setDiagnostic('');
+          void assistantRequest('/diagnostics', {}).then(data => {
+            setDiagnostic(`Redis: ${data.redis}. Brain credentials: ${data.brain.configured ? 'configured, not live-tested' : 'missing'}. Avatar readiness: not verified. No provider session started.`);
+          }).catch(error => setDiagnostic(error instanceof Error ? error.message : 'Setup check failed.')).finally(() => setChecking(false));
+        }}>{checking ? 'Checking connection…' : 'Check Redis connection (no provider session)'}</button>
+        {diagnostic && <p role="status">{diagnostic}</p>}
+      </div>}
       <label className="mt-4 block text-sm text-slate-200">
         Malvi’s language · follows your app language
         <select aria-label="Malvi conversation language" value={appLanguage} onChange={event => setAppLanguage(event.target.value)} className="mt-2 block w-full max-w-full rounded-xl border border-slate-600 bg-slate-900 p-3 text-white">

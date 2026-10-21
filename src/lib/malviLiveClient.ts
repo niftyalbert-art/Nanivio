@@ -8,6 +8,8 @@ export interface LiveAvatarReadiness {
   brainConfigured?: boolean;
   welcomeVoiceConfigured: boolean;
   brainProvider?: 'gemini' | 'openai' | null;
+  voiceTestAvailable?: boolean;
+  canRunSetupTests?: boolean;
 }
 
 export interface MalviReferenceCitation {

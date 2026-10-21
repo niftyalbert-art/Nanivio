@@ -49,6 +49,14 @@ const output = await build({
       import {MalviLiveAssistantProvider,MalviLiveControls} from './src/components/malvi/MalviLiveAssistant';
       window.checks={requests:[],messages:[],sdkCreations:0,sdkStops:0,providerMicrophones:0,interrupts:0,playedAudio:[],localStarts:0,localStops:0,installs:0};
       window.availability='available';
+      class TestAudioContext {
+        state='running';currentTime=0;destination={};
+        async resume(){this.state='running';}
+        async close(){this.state='closed';window.checks.audioClosed=(window.checks.audioClosed||0)+1;}
+        createBuffer(channels,length,rate){return {duration:length/rate,getChannelData:()=>new Float32Array(length)};}
+        createBufferSource(){return {connect(){},disconnect(){},start(){window.checks.voicePlayed=(window.checks.voicePlayed||0)+1;},stop(){window.checks.voiceInterrupted=(window.checks.voiceInterrupted||0)+1;}};}
+      }
+      window.AudioContext=TestAudioContext;
       class Recognition {
         static available(options) {
           if(!options.processLocally) throw Error('Cloud recognition is forbidden');
@@ -69,8 +77,10 @@ const output = await build({
         const url=String(input),body=init.body?JSON.parse(init.body):null;
         window.checks.requests.push({url,body});
         const data=url.endsWith('/status')
-          ? {success:true,configured:true,enabled:true,missing:[],brainProvider:'gemini',welcomeVoiceConfigured:true,brainConnected:false}
-          : url.endsWith('/session')
+          ? {success:true,configured:true,enabled:true,missing:[],brainProvider:'gemini',welcomeVoiceConfigured:true,brainConnected:false,canRunSetupTests:true,voiceTestAvailable:true}
+          : url.endsWith('/diagnostics')
+          ? {success:true,redis:'connected',brain:{configured:true},providerSessionStarted:false}
+          : url.endsWith('/session') || url.endsWith('/voice-session')
           ? {success:true,id:'11111111-1111-4111-8111-111111111111',sessionToken:'isolated-fixture',language:body.language,idleDeadline:Date.now()+60000}
           : {success:true};
         return new Response(JSON.stringify(data),{status:200,headers:{'Content-Type':'application/json'}});
@@ -87,7 +97,7 @@ const output = await build({
       createRoot(document.getElementById('root')).render(<Fixture/>);
     `,
   },
-  bundle: true, format: 'iife', platform: 'browser', write: false,
+  bundle: true, format: 'iife', platform: 'browser', write: false, loader: { '.png': 'dataurl' },
   define: { 'process.env.NODE_ENV': '"production"' },
   plugins: [{
     name: 'isolated-malvi-context-and-providers',
@@ -102,7 +112,7 @@ const output = await build({
         contents: ({
           context: contextFixture, realtime: realtimeFixture, sdk: sdkFixture,
           auth: `export const authClient={getToken:()=>null};`,
-          overlay: `import React from 'react';export function MalviLiveOverlay(props){window.overlay=props;return React.createElement('div',{'data-live-overlay':true},props.error||props.caption);}`,
+          overlay: `import React from 'react';import {MalviLiveOverlay as Overlay} from './src/components/malvi/MalviLiveOverlay.tsx';export function MalviLiveOverlay(props){window.overlay=props;return React.createElement(React.Fragment,null,React.createElement('span',{'data-live-overlay':true,hidden:true}),React.createElement(Overlay,props));}`,
         })[args.path],
       }));
     },
@@ -198,6 +208,29 @@ try {
   await page.evaluate(`window.emitBrain('malvi:brain_language_error',{sessionId:'11111111-1111-4111-8111-111111111111',message:'Selected language could not be applied.'});true`);
   await page.wait(`window.checks.sdkStops===1`);
   assert.equal(await sessionCount(), 1, 'Failed updates must not auto-start another paid session');
+  await page.evaluate(`window.overlay.onClose();true`);
+  await page.wait(`!document.querySelector('[data-live-overlay]')`);
+  await click('Check Redis connection');
+  await page.wait(`document.body.textContent.includes('Redis: connected')`);
+  assert.equal(await sessionCount(), 1, 'Diagnostics must not initialize a session');
+  await click('Test voice only');
+  await page.wait(`window.checks.requests.some(r=>r.url.endsWith('/voice-session'))`);
+  assert.equal(await page.evaluate('window.checks.sdkCreations'), 1, 'Voice-only test must never create an avatar SDK');
+  assert.equal(await page.evaluate('window.overlay.voiceOnly'), true);
+  await page.evaluate(`window.emitBrain('malvi:brain_ready',{sessionId:'11111111-1111-4111-8111-111111111111',provider:'gemini',language:'gaa'});true`);
+  await page.wait(`window.overlay.brainReady===true && window.overlay.phase==='connected'`);
+  assert.equal(await page.evaluate('Boolean(document.querySelector("video"))'), false, 'Voice-only UI must not show a fake live video');
+  assert.ok(await page.evaluate(`document.body.textContent.includes('Voice connected · no avatar')`));
+  if (process.env.NANIVIO_SCREENSHOT_DIR) await page.screenshot(path.join(process.env.NANIVIO_SCREENSHOT_DIR, 'malvi-voice-only-mobile.png'));
+  assert.equal(await page.evaluate('window.overlay.microphoneOn'), false, 'Voice-only connection must not start microphone automatically');
+  await page.evaluate(`window.emitBrain('malvi:brain_audio',{sessionId:'11111111-1111-4111-8111-111111111111',language:'gaa',pcm24k:'AAAAAA==',sampleRate:24000,format:'pcm_s16le',channels:1});true`);
+  await page.wait('window.checks.voicePlayed===1');
+  await page.evaluate(`window.overlay.onInterrupt();true`);
+  await page.wait(`window.checks.messages.some(m=>m.type==='malvi:brain_interrupt')`);
+  assert.ok(await page.evaluate('window.checks.voiceInterrupted>=1'));
+  await page.evaluate(`window.overlay.onClose();true`);
+  await page.wait('window.checks.audioClosed>=1');
+  assert.equal(await page.evaluate('window.checks.sdkCreations'), 1);
   console.log(JSON.stringify({ mobileWidths: [320,390,768], appLanguageSelector: true, noIdleProviderOrMicrophone: true, cancellableWakeSetup: true, explicitLocalPackInstall: true, stoppedAndHiddenWakeCannotActivate: true, onceOnlyHeyMalviActivation: true, selectedLanguageSentToBackend: true, noEnglishWelcome: true, activeLanguageUpdateWithoutNewAvatar: true, unverifiedLanguageWarning: true, failedUpdatesCloseRatherThanFallBack: true }));
 } finally {
   await browser.close();
