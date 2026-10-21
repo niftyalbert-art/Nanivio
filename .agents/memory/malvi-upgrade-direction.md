@@ -32,11 +32,11 @@ Keep Malvi’s live subtitles and feedback messages at the bottom and remove the
 
 **How to apply:** Keep subtitles and feedback compact and bottom-aligned in every session state, including connection errors. Do not restore central message cards or a large disclosure paragraph over the avatar.
 
-Subtitles must follow played speech, not the arrival of brain-generated text. Microphone feedback must distinguish local audio capture from speech actually recognized by the brain.
+Subtitles must follow played speech, not the arrival of brain-generated text. Audio-to-lip synchronization is a separate acceptance check. Microphone feedback must distinguish local audio capture from speech actually recognized by the brain.
 
-**Why:** The user confirmed Malvi can speak on Render, but reported that subtitles finished before she started talking and that microphone activation gave no visible listening feedback.
+**Why:** The user confirmed Malvi can speak on Render, but reported that subtitles finished before she started talking and that microphone activation gave no visible listening feedback. They subsequently clarified that the voice and lip movements themselves are also out of time.
 
-**How to apply:** Preserve playback-gated, voice-timed subtitles and truthful input feedback when changing providers or rendering paths. Do not use a cosmetic typing effect or simulated microphone activity as evidence of synchronization or listening.
+**How to apply:** Preserve playback-gated, voice-timed subtitles and truthful input feedback when changing providers or rendering paths. Do not use a cosmetic typing effect or simulated microphone activity as evidence of synchronization or listening. Do not describe timestamp or UI fixture checks as verification of live audible voice matching the avatar’s mouth movements.
 
 Treat SDK microphone settings as a privacy boundary, not just an audio setting.
 
