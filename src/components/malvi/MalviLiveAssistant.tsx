@@ -49,6 +49,8 @@ export const MalviLiveAssistantProvider: React.FC<{ children: React.ReactNode }>
   const [wakeChecking, setWakeChecking] = useState(false);
   const [wakePackRequired, setWakePackRequired] = useState(false);
   const [wakePackInstalling, setWakePackInstalling] = useState(false);
+  const wakeReadiness = useRef(readiness);
+  wakeReadiness.current = readiness;
   const [activeLanguage, setActiveLanguage] = useState<string | null>(null);
   const [voiceOnly, setVoiceOnly] = useState(false);
   const voiceMode = useRef(false);
@@ -84,7 +86,7 @@ export const MalviLiveAssistantProvider: React.FC<{ children: React.ReactNode }>
   const disarmWake = useCallback(() => {
     wakeController.current?.abort(); wakeController.current = null;
     stopWake.current?.(); stopWake.current = null; setWakeArmed(false);
-    setWakeChecking(false);
+    setWakeChecking(false); setNotice('');
   }, []);
 
   const cleanup = useCallback(async () => {
@@ -381,13 +383,18 @@ export const MalviLiveAssistantProvider: React.FC<{ children: React.ReactNode }>
     if (wakeController.current || wakeChecking || wakeArmed || busy.current || sdk.current) return;
     const controller = new AbortController();
     wakeController.current = controller;
-    setWakeChecking(true); setNotice('');
+    setWakeChecking(true); setNotice('Checking browser support and starting local microphone listening…');
     const run = generation.current;
     try {
       const stop = await startLocalMalviWakeWord(
         () => {
           if (controller.signal.aborted || !mounted.current) return;
-          wakeController.current = null; stopWake.current = null; setWakeArmed(false); void start('wake-word');
+          wakeController.current = null; stopWake.current = null; setWakeArmed(false);
+          if (!wakeReadiness.current?.enabled || !wakeReadiness.current?.configured) {
+            setNotice('“Malvi” was detected locally, but the live assistant is not ready. Complete the setup shown below, then enable local listening again. No provider session was started.');
+            return;
+          }
+          void start('wake-word');
         },
         message => {
           if (controller.signal.aborted || !mounted.current) return;
@@ -397,7 +404,7 @@ export const MalviLiveAssistantProvider: React.FC<{ children: React.ReactNode }>
       );
       if (controller.signal.aborted || run !== generation.current || !mounted.current) { stop(); return; }
       setWakePackRequired(false);
-      stopWake.current = stop; setWakeArmed(true);
+      stopWake.current = stop; setWakeArmed(true); setNotice('');
     } catch (err) {
       if (!controller.signal.aborted && mounted.current) {
         wakeController.current = null;
@@ -506,7 +513,7 @@ export const MalviLiveControls: React.FC = () => {
         <button type="button" onClick={() => void live.start('manual')} disabled={!ready || phase !== 'idle'} style={{ backgroundColor: 'var(--nv-gold)', color: 'var(--nv-bg)' }} className="inline-flex items-center gap-2 rounded-xl px-4 py-3 text-sm font-semibold transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-45">
           <Video className="h-4 w-4" /> Start live avatar <ArrowUpRight className="h-4 w-4" />
         </button>
-        <button type="button" onClick={() => wakeArmed || wakeChecking ? live.disarmWake() : void live.armWake()} disabled={(!ready && !wakeArmed && !wakeChecking) || phase !== 'idle'} className="inline-flex items-center gap-2 rounded-xl border border-slate-600 px-4 py-3 text-sm font-medium text-slate-100 transition hover:border-emerald-300 disabled:opacity-45">
+        <button type="button" onClick={() => wakeArmed || wakeChecking ? live.disarmWake() : void live.armWake()} disabled={phase !== 'idle' || live.wakePackInstalling} aria-pressed={wakeArmed} aria-describedby="malvi-wake-help" className="inline-flex items-center gap-2 rounded-xl border border-slate-600 px-4 py-3 text-sm font-medium text-slate-100 transition hover:border-emerald-300 disabled:opacity-45">
           {wakeArmed ? <MicOff className="h-4 w-4" /> : <Mic className="h-4 w-4" />}
           {wakeChecking ? 'Cancel wake setup' : wakeArmed ? 'Stop local listening' : 'Enable local wake word'}
         </button>
@@ -535,7 +542,7 @@ export const MalviLiveControls: React.FC = () => {
           ? malviLanguageCoverage(appLanguage, readiness?.brainProvider).notice
           : 'Choose a valid app language before starting Malvi.'}
       </p>
-      <p className="mt-3 text-xs leading-relaxed text-slate-400">Say “Malvi”, “Hey Malvi”, or “Nanivio” after enabling local listening. Wake recognition stays on-device and uses an English speech pack, independently of your conversation language. No cloud fallback or screen-locked listening. Sessions end after 60 seconds without input; maximum 10 starts per hour.</p>
+      <p id="malvi-wake-help" className="mt-3 text-xs leading-relaxed text-slate-400">Local wake setup checks your browser independently of avatar setup. Most mobile browsers do not support on-device wake recognition; use manual activation there. Say “Malvi”, “Hey Malvi”, or “Nanivio” after enabling local listening. Recognition stays on-device and uses an English speech pack, independently of your conversation language. A detected wake word only starts a session when Malvi’s live setup is ready. No cloud fallback or screen-locked listening. Sessions end after 60 seconds without input; maximum 10 starts per hour.</p>
       {wakeArmed && <p role="status" className="mt-3 text-sm text-[var(--nv-gold)]">Listening locally for “Malvi”, “Hey Malvi”, or “Nanivio”. No avatar connection is running.</p>}
       {readiness && !ready && <div role="status" className="mt-4 rounded-xl border border-amber-300/20 bg-amber-950/20 p-3 text-sm leading-relaxed text-amber-100">
         <AlertCircle className="mr-2 inline h-4 w-4" />
