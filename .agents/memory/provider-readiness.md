@@ -60,3 +60,14 @@ refreshing authentication, even when the application does not implement retries.
 **How to apply:** Check SDK retry behavior and count underlying provider requests
 in cost-sensitive verification. Suppress extra synthesis attempts in a test that
 the user approved for only one request; never silently switch transports.
+
+Avatar speaking notifications are not proof of browser audio/video playout timing.
+
+**Why:** A real LiveAvatar-only recording showed the speaking-start notification
+preceding audible speech. Paired audio/video tracks and successful rendering did
+not establish that phonemes matched lip movements on the user's Render device.
+
+**How to apply:** Separate provider processing events, returned-stream recordings,
+subtitle pacing, and physical-device lip-sync acceptance. Do not anchor a claim of
+accurate synchronization solely to SDK speaking events or apply a global delay
+from a headless recording without reproducing the target browser's mismatch.

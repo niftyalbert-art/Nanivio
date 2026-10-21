@@ -126,3 +126,17 @@ mtime_ms = 1792616952802
 storage_uri = "gcs://replit-rams-assets-sisko/rams/assets/repl:8a53f482-19ae-49f0-ab16-31b527f92091/114b0fd4-b59c-43e3-8495-17f485f8157a/7ff39dd1-0304-47cc-b2ea-17d4f57f1a1b"
 storage_version_token = "1792616988287776"
 content_type = "audio/wav"
+
+[[outputs]]
+id = "rAkkp9aa4HruLQMapaPji"
+uri = "file://generated-artifacts/malvi-sync-test/returned-stream.webm"
+type = "video"
+title = "Malvi live lip-sync test — unadjusted"
+description = "Actual audio and video returned by one LiveAvatar session using an existing six-second Malvi voice clip. No artificial timing adjustment, new ElevenLabs speech generation, or Gemini conversation. The session was stopped afterward."
+logical_id = "1417b02c-6e94-4c81-8917-d38f9cc8040c"
+content_hash = "sha256:b936d20d68bffc0a391383483635aae6ea90e617970c3ec783d5161a706789b5"
+size = 2684382
+mtime_ms = 1792623532448
+storage_uri = "gcs://replit-rams-assets-sisko/rams/assets/repl:8a53f482-19ae-49f0-ab16-31b527f92091/1417b02c-6e94-4c81-8917-d38f9cc8040c/87339f89-0bf5-46a2-a0f4-a3dbba2562a0"
+storage_version_token = "1792623763191960"
+content_type = "video/webm"
