@@ -199,7 +199,15 @@ try {
   assert.equal(await page.evaluate('window.checks.localStarts'), 0);
   await click('Enable local wake word');
   await page.wait('window.checks.localStarts===1');
-  await click('Stop local listening');
+  await page.wait(`Boolean([...document.querySelectorAll('button')].find(b=>b.textContent.trim()==='Enabled'&&b.getAttribute('aria-pressed')==='true'))`);
+  assert.equal(await page.evaluate(`document.body.textContent.includes('Enabled — Listening locally')`), true);
+  if (process.env.NANIVIO_SCREENSHOT_DIR) {
+    fs.mkdirSync(process.env.NANIVIO_SCREENSHOT_DIR, { recursive: true });
+    await page.screenshot(path.join(process.env.NANIVIO_SCREENSHOT_DIR, 'malvi-wake-enabled-mobile.png'));
+  }
+  await click('Enabled');
+  await page.wait(`Boolean([...document.querySelectorAll('button')].find(b=>b.textContent.includes('Enable local wake word')&&b.getAttribute('aria-pressed')==='false'))`);
+  assert.equal(await page.evaluate(`document.body.textContent.includes('Enabled — Listening locally')`), false);
   await page.evaluate(`(()=>{const r=[{transcript:'Hey Malvi'}];r.isFinal=true;window.recognizer.onresult({resultIndex:0,results:[r]});return true;})()`);
   assert.equal(await sessionCount(), 0, 'Late wake events after Stop must be ignored');
 
