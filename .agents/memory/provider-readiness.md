@@ -39,3 +39,15 @@ whitelists, and ASR/TTS coverage differs from MT coverage.
 **How to apply:** Check the operation-specific contract and real response using
 the distinct ISO code. Record the actual service/version result; never silently
 substitute a generic language for a promised dialect.
+
+Optional metadata access and the required synthesis permission are separate.
+
+**Why:** ElevenLabs repeatedly denied voice listing with `voices_read` missing,
+while the user's key settings showed Text to Speech access and did not expose
+the requested Voices permission. That listing failure alone did not establish
+whether synthesis with the already-known voice ID would work.
+
+**How to apply:** Do not repeatedly ask the user to find an absent dashboard
+setting or remove key restrictions. Offer one explicitly approved, short synthesis
+test using the known voice ID; distinguish its result from metadata access and
+from full application integration.
