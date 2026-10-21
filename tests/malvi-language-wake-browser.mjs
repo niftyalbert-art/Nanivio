@@ -118,7 +118,7 @@ const output = await build({
         contents: ({
           context: contextFixture, realtime: realtimeFixture, sdk: sdkFixture,
           auth: `export const authClient={getToken:()=>null};`,
-          overlay: `import React from 'react';import {MalviLiveOverlay as Overlay} from './src/components/malvi/MalviLiveOverlay.tsx';export function MalviLiveOverlay(props){window.overlay=props;return React.createElement(React.Fragment,null,React.createElement('span',{'data-live-overlay':true,hidden:true}),React.createElement(Overlay,props));}`,
+          overlay: `import React from 'react';import {MalviLiveOverlay as Overlay} from './src/components/malvi/MalviLiveOverlay.tsx';export function MalviLiveOverlay(props){const [feedback,setFeedback]=React.useState({});window.setOverlayFeedback=setFeedback;window.overlay=props;return React.createElement(React.Fragment,null,React.createElement('span',{'data-live-overlay':true,hidden:true}),React.createElement(Overlay,{...props,...feedback}));}`,
         })[args.path],
       }));
     },
@@ -271,6 +271,31 @@ try {
   await page.wait('window.overlay.audioBlocked===true');
   await click('Enable sound');
   await page.wait('window.overlay.audioBlocked===false');
+  const feedbackMessage = 'The speech provider could not complete the request. '.repeat(40);
+  for (const [width, height] of [[320,640],[390,844],[1280,900]]) {
+    await page.command('Emulation.setDeviceMetricsOverride', { width, height, deviceScaleFactor: 1, mobile: width < 768 });
+    for (const [phase, microphoneError] of [['connecting',''], ['error',''], ['connected',feedbackMessage]]) {
+      const feedback = phase === 'connecting' ? 'Joining your conversation' : feedbackMessage;
+      await page.evaluate(`window.setOverlayFeedback(${JSON.stringify({ phase, caption: '', audioBlocked: false, microphoneError, error: feedbackMessage })});true`);
+      await page.wait(`Boolean(Array.from(document.querySelectorAll('p,span')).find(e=>e.textContent===${JSON.stringify(feedback)}))`);
+      const position = await page.evaluate(`(()=>{
+        const message=Array.from(document.querySelectorAll('p,span')).find(e=>e.textContent===${JSON.stringify(feedback)});
+        const box=message.closest('[aria-label="Session status and feedback"]');
+        const rect=box.getBoundingClientRect();
+        return {inFooter:Boolean(message.closest('footer')),top:rect.top,bottom:rect.bottom,height:rect.height,screen:innerHeight,width:document.documentElement.scrollWidth,viewport:innerWidth,scroll:box.scrollHeight,client:box.clientHeight,closeVisible:document.querySelector('[aria-label="End session and close"]').getBoundingClientRect().bottom<=innerHeight};
+      })()`);
+      assert.equal(position.inFooter, true, `${phase} feedback must not cover the central portrait`);
+      assert.ok(position.top > position.screen / 2, `${phase} feedback must remain at the bottom at ${width}px`);
+      assert.ok(position.bottom <= position.screen, `${phase} feedback must fit the viewport`);
+      assert.ok(position.height <= 130, `${phase} feedback must have a bounded height`);
+      assert.ok(position.width <= position.viewport + 1, 'Feedback must not create horizontal overflow');
+      assert.equal(position.closeVisible, true, 'End session must remain reachable');
+      if (phase !== 'connecting') assert.ok(position.scroll > position.client, 'Full long feedback must remain accessible by scrolling');
+      if (phase === 'error' && process.env.NANIVIO_SCREENSHOT_DIR) await page.screenshot(path.join(process.env.NANIVIO_SCREENSHOT_DIR, `malvi-feedback-${width}.png`));
+    }
+  }
+  await page.evaluate('window.setOverlayFeedback({});true');
+  await page.command('Emulation.setDeviceMetricsOverride', { width: 390, height: 844, deviceScaleFactor: 1, mobile: true });
   await select('gaa');
   await page.wait(`window.checks.messages.some(m=>m.type==='malvi:brain_language'&&m.payload.language==='gaa')`);
   await page.evaluate(`window.emitBrain('malvi:brain_language',{sessionId:'11111111-1111-4111-8111-111111111111',provider:'gemini',language:'gaa'});true`);

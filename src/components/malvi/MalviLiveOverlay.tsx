@@ -111,7 +111,7 @@ export const MalviLiveOverlay: React.FC<MalviLiveOverlayProps> = ({
   }[phase];
 
   return createPortal(
-    <div className="fixed inset-0 z-[100] isolate flex min-h-[100dvh] items-center justify-center overflow-hidden bg-[#071311] text-[#f1f3eb]">
+    <div className="fixed inset-0 z-[100] isolate flex min-h-[100dvh] items-center justify-center overflow-x-hidden overflow-y-auto bg-[#071311] text-[#f1f3eb]">
       {!voiceOnly && <video
         ref={onVideoElement}
         autoPlay
@@ -142,7 +142,7 @@ export const MalviLiveOverlay: React.FC<MalviLiveOverlayProps> = ({
         tabIndex={-1}
         className="relative z-10 flex min-h-[100dvh] w-full flex-col justify-between outline-none"
       >
-        <header className="flex items-start justify-between gap-3 px-4 pt-[max(1rem,env(safe-area-inset-top))] sm:gap-4 sm:px-7 sm:pt-[max(1.75rem,env(safe-area-inset-top))]">
+        <header className="flex shrink-0 items-start justify-between gap-3 px-4 pt-[max(1rem,env(safe-area-inset-top))] sm:gap-4 sm:px-7 sm:pt-[max(1.75rem,env(safe-area-inset-top))]">
           <div className="flex items-center gap-3 rounded-2xl border border-white/15 bg-[#10201f]/65 px-3.5 py-2.5 backdrop-blur-md sm:px-4">
             <span className="grid h-10 w-10 place-items-center rounded-full border border-[#bad5c7]/35 bg-[#28453d] text-sm font-semibold text-[#e2eee4]">
               M
@@ -175,24 +175,9 @@ export const MalviLiveOverlay: React.FC<MalviLiveOverlayProps> = ({
           </div>
         </header>
 
-        <div className="mx-auto flex w-full max-w-xl flex-col items-center gap-4 px-5 text-center">
-          {phase === 'connecting' && (
-            <div className="rounded-2xl border border-white/15 bg-[#10201f]/70 px-5 py-4 backdrop-blur-md">
-              <LoaderCircle className="mx-auto mb-2 h-5 w-5 animate-spin text-[#d3e4d7] motion-reduce:animate-none" />
-              <p className="text-sm font-medium">Joining your conversation</p>
-              <p className="mt-1 text-xs text-[#d5e1d9]/75">{voiceOnly ? 'Connecting the selected brain. No avatar session is running.' : 'Malvi’s portrait is a preview until the live video connects.'}</p>
-            </div>
-          )}
-          {phase === 'error' && (
-            <div role="alert" className="max-w-md rounded-2xl border border-[#e8c2aa]/35 bg-[#372720]/85 px-5 py-4 backdrop-blur-md">
-              <AlertCircle className="mx-auto mb-2 h-5 w-5 text-[#e6c4a9]" />
-              <p className="text-sm font-medium">We couldn’t connect just now</p>
-              <p className="mt-1 text-xs leading-relaxed text-[#f0ded0]/80">{error || 'Please close this window and try again.'}</p>
-            </div>
-          )}
-        </div>
+        <div aria-hidden="true" className="min-h-0 flex-1" />
 
-        <footer className="flex flex-col items-center gap-3 px-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-3 sm:gap-3 sm:px-7 sm:pb-[max(1.75rem,env(safe-area-inset-bottom))]">
+        <footer className="flex shrink-0 flex-col items-center gap-3 px-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-3 sm:gap-3 sm:px-7 sm:pb-[max(1.75rem,env(safe-area-inset-bottom))]">
           {caption && phase === 'connected' && (
             <div
               role="region"
@@ -215,7 +200,6 @@ export const MalviLiveOverlay: React.FC<MalviLiveOverlayProps> = ({
             {microphoneOn ? <MicOff size={18} /> : <Mic size={18} />}
             {microphoneOn ? 'Turn microphone off' : brainReady ? 'Start talking' : 'Connecting Malvi’s brain…'}
           </button>
-          {microphoneError && <p role="alert" className="max-w-lg text-center text-xs text-[#ffe0d4]">{microphoneError}</p>}
           <div className="flex flex-wrap items-center justify-center gap-2">
             <div className="flex items-center gap-2 rounded-full border border-white/15 bg-[#10201f]/65 px-3.5 py-2.5 text-xs text-[#f1f3eb] backdrop-blur-md sm:hidden">
               <span className="text-[#c0d1c8]/75">Idle session</span>
@@ -242,6 +226,40 @@ export const MalviLiveOverlay: React.FC<MalviLiveOverlayProps> = ({
               </button>
             )}
           </div>
+          {(phase === 'connecting' || phase === 'error' || microphoneError) && (
+            <div
+              role="region"
+              aria-label="Session status and feedback"
+              tabIndex={0}
+              className="max-h-24 w-full max-w-lg overflow-y-auto overscroll-contain rounded-xl border border-white/15 bg-[#10201f]/85 px-3.5 py-2.5 text-center text-xs leading-relaxed text-[#f1f3eb] backdrop-blur-md focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#d6e7da]"
+            >
+              {phase === 'connecting' && (
+                <div role="status" className="flex items-start justify-center gap-2 text-[#e6f0e7]">
+                  <LoaderCircle className="mt-0.5 h-4 w-4 shrink-0 animate-spin text-[#d3e4d7] motion-reduce:animate-none" />
+                  <span>
+                    <span className="block font-medium">Joining your conversation</span>
+                    <span className="text-[#d5e1d9]/75">
+                      {voiceOnly ? 'Connecting the selected brain. No avatar session is running.' : 'Malvi’s portrait is a preview until the live video connects.'}
+                    </span>
+                  </span>
+                </div>
+              )}
+              {phase === 'error' && (
+                <div role="alert" className="text-[#f0ded0]">
+                  <p className="flex items-center justify-center gap-2 font-medium">
+                    <AlertCircle size={15} className="shrink-0 text-[#e6c4a9]" />
+                    We couldn’t connect just now
+                  </p>
+                  <p className="mt-1">{error || 'Please close this window and try again.'}</p>
+                </div>
+              )}
+              {microphoneError && (
+                <p role="alert" className={`${phase !== 'connected' ? 'mt-2 border-t border-white/10 pt-2 ' : ''}text-[#ffe0d4]`}>
+                  {microphoneError}
+                </p>
+              )}
+            </div>
+          )}
           <details className="max-w-lg rounded-xl bg-[#10201f]/60 px-3 py-2 text-center text-[11px] leading-relaxed text-[#e0e8e2]/80 backdrop-blur-md">
             <summary className="cursor-pointer underline underline-offset-4">Audio &amp; sources</summary>
             <p className="mt-2">

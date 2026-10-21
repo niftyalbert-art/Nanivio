@@ -26,6 +26,12 @@ Malvi should follow the user’s selected Nanivio app language, including the fi
 
 **How to apply:** Carry the selected language into the live brain and apply explicit preference changes without silently changing providers, substituting English, or opening another avatar session. Keep live-provider and real-device verification separate from fixture tests.
 
+Keep Malvi’s live subtitles and feedback messages at the bottom and remove the full AI-disclosure descriptions from over her image.
+
+**Why:** The user said the subtitles and full disclosure were covering her image, then reiterated that feedback messages must also be repositioned to leave her full image visible.
+
+**How to apply:** Keep subtitles and feedback compact and bottom-aligned in every session state, including connection errors. Do not restore central message cards or a large disclosure paragraph over the avatar.
+
 Treat SDK microphone settings as a privacy boundary, not just an audio setting.
 
 **Why:** The official SDK's default-muted voice component still acquires and publishes a microphone. Muting alone does not satisfy independently owned input capture.
