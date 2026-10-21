@@ -68,7 +68,11 @@ const output = await build({
           if(!options.processLocally) throw Error('Cloud installation is forbidden');
           window.checks.installs++; window.availability='available'; return true;
         }
-        start(){window.checks.localStarts++;window.recognizer=this;}
+        start(){
+          window.checks.localStarts++;window.recognizer=this;
+          if(window.recognitionFailure)this.onerror({error:window.recognitionFailure});
+          else queueMicrotask(()=>this.onstart?.());
+        }
         abort(){window.checks.localStops++;}
       }
       Object.defineProperty(Recognition.prototype,'processLocally',{value:false,writable:true});
@@ -77,7 +81,7 @@ const output = await build({
         const url=String(input),body=init.body?JSON.parse(init.body):null;
         window.checks.requests.push({url,body});
         const data=url.endsWith('/status')
-          ? {success:true,configured:true,enabled:true,missing:[],brainProvider:'gemini',welcomeVoiceConfigured:true,brainConnected:false,canRunSetupTests:true,voiceTestAvailable:true}
+          ? {success:true,configured:window.setupReady!==false,enabled:true,missing:window.setupReady===false?['AVATAR_ID']:[],brainProvider:'gemini',welcomeVoiceConfigured:true,brainConnected:false,canRunSetupTests:true,voiceTestAvailable:true}
           : url.endsWith('/diagnostics')
           ? {success:true,redis:'connected',brain:{configured:true},providerSessionStarted:false}
           : url.endsWith('/session') || url.endsWith('/voice-session')
@@ -87,8 +91,10 @@ const output = await build({
       };
       function Fixture(){
         const [appLanguage,setAppLanguage]=useState('en');
+        const [statusVersion,setStatusVersion]=useState(0);
+        window.refreshFixture=()=>setStatusVersion(value=>value+1);
         window.setAppLanguage=setAppLanguage;
-        return <Context.Provider value={{appLanguage,setAppLanguage,currentUser:{id:'isolated-user',appLanguage,myLanguage:'en'}}}>
+        return <Context.Provider value={{appLanguage,setAppLanguage,currentUser:{id:'isolated-user-'+statusVersion,appLanguage,myLanguage:'en'}}}>
           <div className="nanivio-app nv-theme-dark" style={{minHeight:'100vh',padding:12}}>
             <MalviLiveAssistantProvider><MalviLiveControls/></MalviLiveAssistantProvider>
           </div>
@@ -150,6 +156,30 @@ try {
     assert.ok(sizing.left >= 0 && sizing.right <= sizing.viewport + 1);
   }
   await page.command('Emulation.setDeviceMetricsOverride', { width: 390, height: 844, deviceScaleFactor: 1, mobile: true });
+
+  // These are browser fixtures, not evidence of a real user's microphone or browser support.
+  await page.evaluate(`window.originalRecognition=window.SpeechRecognition;window.SpeechRecognition=undefined;true`);
+  await click('Enable local wake word');
+  await page.wait(`document.body.textContent.includes('This browser cannot verify on-device')`);
+  assert.equal(await sessionCount(), 0);
+  await page.evaluate(`window.SpeechRecognition=window.originalRecognition;window.availability='unavailable';true`);
+  await click('Enable local wake word');
+  await page.wait(`document.body.textContent.includes('cannot download the required English')`);
+  assert.equal(await page.evaluate(`Boolean([...document.querySelectorAll('button')].find(b=>b.textContent.includes('Install local speech pack')))`), false);
+  await page.evaluate(`window.availability='available';window.recognitionFailure='not-allowed';true`);
+  await click('Enable local wake word');
+  await page.wait(`document.body.textContent.includes('access was blocked')`);
+  assert.equal(await page.evaluate(`document.querySelector('button[aria-pressed="true"]')!==null`), false);
+  assert.equal(await sessionCount(), 0);
+  await page.evaluate(`window.recognitionFailure=null;window.checks.localStarts=0;window.setupReady=false;window.refreshFixture();true`);
+  await page.wait(`document.body.textContent.includes('Live setup required: AVATAR_ID')`);
+  await click('Enable local wake word');
+  await page.wait(`document.body.textContent.includes('Listening locally for')`);
+  await page.evaluate(`(()=>{const r=[{transcript:'Hey Malvi'}];r.isFinal=true;window.recognizer.onresult({resultIndex:0,results:[r]});return true;})()`);
+  await page.wait(`document.body.textContent.includes('live assistant is not ready')`);
+  assert.equal(await sessionCount(), 0, 'Incomplete live setup must not open a paid session from a local wake event');
+  await page.evaluate(`window.checks.localStarts=0;window.setupReady=true;window.refreshFixture();true`);
+  await page.wait(`Boolean([...document.querySelectorAll('button')].find(b=>b.textContent.includes('Start live avatar')&&!b.disabled))`);
 
   await page.evaluate(`window.availability='pending';true`);
   await click('Enable local wake word');

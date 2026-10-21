@@ -52,9 +52,9 @@ test('local wake listening is cancellable, once-only, and never installs a pack 
       return true;
     }
     processLocally = false;
-    onresult: any; onend: any; onerror: any;
+    onresult: any; onend: any; onerror: any; onstart: any;
     constructor() { instance = this; }
-    start() { assert.equal(this.processLocally, true); starts++; }
+    start() { assert.equal(this.processLocally, true); starts++; this.onstart?.(); }
     abort() { stops++; }
   }
   Object.defineProperty(Recognition.prototype, 'processLocally', { value: false, writable: true });
@@ -100,9 +100,63 @@ test('local wake listening is cancellable, once-only, and never installs a pack 
     assert.equal(wakes, 1);
     assert.equal(stops, 2);
     Object.defineProperty(globalThis, 'window', { configurable: true, value: { webkitSpeechRecognition: Recognition } });
-    await assert.rejects(startLocalMalviWakeWord(() => wakes++, assert.fail), /no cloud/);
+    await assert.rejects(startLocalMalviWakeWord(() => wakes++, assert.fail), /no cloud/i);
     assert.equal(starts, 2, 'Never fall back to the cloud-backed recognizer');
   } finally {
+    if (original) Object.defineProperty(globalThis, 'window', original);
+    else delete (globalThis as any).window;
+  }
+});
+
+test('wake setup waits for microphone start, distinguishes unavailable packs, and reports blocked permission', async () => {
+  const original = Object.getOwnPropertyDescriptor(globalThis, 'window');
+  let instance: any;
+  let availability = 'available';
+  let blocked = false;
+  class Recognition {
+    static async available() { return availability; }
+    onstart: any; onerror: any; onend: any;
+    constructor() { instance = this; }
+    start() { if (blocked) this.onerror({ error: 'not-allowed' }); }
+    abort() {}
+  }
+  Object.defineProperty(Recognition.prototype, 'processLocally', { value: false, writable: true });
+  Object.defineProperty(globalThis, 'window', { configurable: true, value: { SpeechRecognition: Recognition } });
+  try {
+    let settled = false;
+    const pending = startLocalMalviWakeWord(assert.fail, assert.fail).then(stop => { settled = true; return stop; });
+    await new Promise(resolve => setImmediate(resolve));
+    assert.equal(settled, false, 'Calling recognition.start() is not evidence that microphone listening started');
+    instance.onstart();
+    const stop = await pending;
+    assert.equal(settled, true);
+    stop();
+
+    availability = 'unavailable';
+    await assert.rejects(startLocalMalviWakeWord(assert.fail, assert.fail), (error: any) => error.code === 'PACK_UNAVAILABLE');
+    availability = 'available';
+    blocked = true;
+    await assert.rejects(startLocalMalviWakeWord(assert.fail, assert.fail), /access was blocked/);
+  } finally {
+    if (original) Object.defineProperty(globalThis, 'window', original);
+    else delete (globalThis as any).window;
+  }
+});
+
+test('a stalled browser availability check times out rather than leaving the button stuck', async t => {
+  const original = Object.getOwnPropertyDescriptor(globalThis, 'window');
+  class Recognition {
+    static available() { return new Promise<string>(() => {}); }
+  }
+  Object.defineProperty(Recognition.prototype, 'processLocally', { value: false, writable: true });
+  Object.defineProperty(globalThis, 'window', { configurable: true, value: { SpeechRecognition: Recognition } });
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  try {
+    const checked = assert.rejects(startLocalMalviWakeWord(assert.fail, assert.fail), /did not finish checking/);
+    t.mock.timers.tick(10_001);
+    await checked;
+  } finally {
+    t.mock.timers.reset();
     if (original) Object.defineProperty(globalThis, 'window', original);
     else delete (globalThis as any).window;
   }
