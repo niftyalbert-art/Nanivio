@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import { malviSpeechFailure } from '../src/server/assistant/malviSpeechErrors.ts';
 import {
   assertMalviSpeechLanguage, createMalviSpeechQueue, createMalviSpeechSynthesizer,
   MALVI_SPEECH_MODEL, MALVI_VOICE_ID, malviSpeechSetup, MAX_SPEECH_BYTES, MAX_SPEECH_TEXT,
@@ -78,7 +79,7 @@ test('empty, oversized and cancelled input never reach the speech provider', asy
 });
 
 test('permission, quota and provider failures are explicit, sanitized and never retried', async () => {
-  for (const status of [401, 403, 429, 500]) {
+  for (const status of [400, 401, 402, 403, 404, 406, 415, 422, 429, 500, 502]) {
     let calls = 0;
     const speak = createMalviSpeechSynthesizer(fixtureEnv, async () => {
       calls++;
@@ -86,11 +87,58 @@ test('permission, quota and provider failures are explicit, sanitized and never 
     });
     await assert.rejects(speak('Hello.', 'en', signal()), error => {
       assert.match((error as Error).message, /ElevenLabs voice is unavailable/);
+      assert.ok((error as Error).message.includes(`HTTP ${status}`));
       assert.doesNotMatch((error as Error).message, /private upstream payload/);
       return true;
     });
     assert.equal(calls, 1);
   }
+});
+
+test('speech errors distinguish credit failures from permissions without leaking provider messages', async () => {
+  for (const field of ['code', 'status']) {
+    const response = new Response(JSON.stringify({ detail: {
+      [field]: 'quota_exceeded', message: 'private user speech and key fixture-secret',
+    } }), { status: 401 });
+    const message = await malviSpeechFailure(response);
+    assert.match(message, /HTTP 401; quota_exceeded/);
+    assert.match(message, /credit allowance/);
+    assert.doesNotMatch(message, /private user|fixture-secret|Check the key/);
+  }
+  const message = await malviSpeechFailure(new Response(JSON.stringify({
+    detail: { code: 'invalid_parameters', message: 'private data' },
+  }), { status: 422 }));
+  assert.match(message, /HTTP 422; invalid_parameters/);
+});
+
+test('unknown codes, nested validation data and gateway HTML never escape speech diagnostics', async () => {
+  for (const body of [
+    JSON.stringify({ detail: { code: 'fixture-secret', status: 'someone@example.test', message: 'private speech' } }),
+    JSON.stringify({ detail: [{ input: 'fixture-secret', msg: 'private speech' }] }),
+    '<html>fixture-secret private speech</html>',
+    'fixture-secret'.repeat(1000),
+  ]) {
+    const message = await malviSpeechFailure(new Response(body, { status: 422 }));
+    assert.match(message, /HTTP 422/);
+    assert.doesNotMatch(message, /fixture-secret|someone@|private speech|<html>/);
+  }
+});
+
+test('oversized and stalled provider error bodies are cancelled with a bounded diagnostic', async () => {
+  let cancelled = false;
+  const large = new Response(new ReadableStream({
+    pull(controller) { controller.enqueue(new Uint8Array(9000)); },
+    cancel() { cancelled = true; },
+  }), { status: 502 });
+  assert.match(await malviSpeechFailure(large), /HTTP 502/);
+  assert.equal(cancelled, true);
+  cancelled = false;
+  const stalled = new Response(new ReadableStream({
+    start() {},
+    cancel() { cancelled = true; },
+  }), { status: 503 });
+  assert.match(await malviSpeechFailure(stalled), /HTTP 503/);
+  assert.equal(cancelled, true);
 });
 
 test('compressed audio, containers, empty PCM and odd sample sizes cannot reach LiveAvatar', async () => {
