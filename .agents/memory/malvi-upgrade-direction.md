@@ -32,6 +32,12 @@ Treat SDK microphone settings as a privacy boundary, not just an audio setting.
 
 **How to apply:** Recheck capture behavior when updating the SDK; the renderer must not publish the user's microphone to the provider-managed voice component.
 
+Malvi’s speaking voice should match the user-supplied ElevenLabs recording across users’ selected languages. The standard Gemini test voice is not her approved final voice.
+
+**Why:** The user identified the supplied recording as Malvi’s voice and requested that identity in every selected user language.
+
+**How to apply:** Resolve the original usable voice and verify its multilingual coverage before changing live speech. Do not promise unsupported languages, silently substitute a different voice, or treat an uploaded MP3 as an already-configured synthesis voice.
+
 Use the LiveAvatar image-avatar creation route when preparing Malvi from the supplied still portraits; do not insist on training video as the only option.
 
 **Why:** The user supplied still images, and the official LiveAvatar documentation confirms photo-based custom avatars support LITE with independently supplied audio. Ordinary HeyGen video avatars are not interchangeable with LiveAvatar assets.
