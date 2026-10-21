@@ -53,6 +53,7 @@ return 1`;
 export interface AssistantSessionRecord {
   id: string;
   owner: string;
+  language?: string;
   providerId?: string;
   deadline: number;
   hardDeadline: number;

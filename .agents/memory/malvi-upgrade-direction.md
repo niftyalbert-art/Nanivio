@@ -14,11 +14,17 @@ Malvi uses the supplied Nanivio signature portraits as her identity. Preserve th
 
 **How to apply:** Keep rendering separate from reasoning, tools, and TTS. Develop the independent engine separately rather than replacing the HeyGen path before measured quality and latency tests. Do not substitute a public/sample avatar for the custom Malvi identity or present a static poster as a live stream.
 
-Wake-word detection for “Nanivio” must remain strictly on-device. No provider audio/video or session initialization while idle. Sessions must close after 60 seconds without user input, with a Redis-backed limit of 10 initializations per hour and an AI disclosure in the first spoken greeting.
+Wake-word activation should recognise Malvi by name as well as retain “Nanivio”, and must remain opt-in and strictly on-device. No provider audio/video or session initialization while idle. Sessions must close after 60 seconds without user input, with a Redis-backed limit of 10 initializations per hour and an AI disclosure in the first spoken greeting.
 
-**Why:** These are the user's explicit privacy and cost-protection requirements.
+**Why:** These are the user's explicit privacy and cost-protection requirements; the user subsequently requested activation by mentioning Malvi’s name.
 
 **How to apply:** Never silently fall back to cloud wake recognition. Where verified local recognition is unavailable, disclose that limitation and require manual activation.
+
+Malvi should follow the user’s selected Nanivio app language, including the first spoken AI greeting, without changing call-translation preferences. Preserve distinct dialect identities and disclose unverified speech coverage instead of promising every language works.
+
+**Why:** The user requested preferred-language speech and name-based wake activation together. A language appearing in the app selector or provider documentation does not establish real spoken quality.
+
+**How to apply:** Carry the selected language into the live brain and apply explicit preference changes without silently changing providers, substituting English, or opening another avatar session. Keep live-provider and real-device verification separate from fixture tests.
 
 Treat SDK microphone settings as a privacy boundary, not just an audio setting.
 

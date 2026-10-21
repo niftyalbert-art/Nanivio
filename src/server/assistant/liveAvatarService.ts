@@ -1,6 +1,7 @@
 import crypto from 'node:crypto';
 import { AssistantError, getAssistantStore, IDLE_MS, MAX_SESSION_MS, type AssistantSessionRecord, type AssistantStore } from './redisStore.ts';
 import { getLiveBrainProviderConfig } from './brainProviderConfig.ts';
+import { getMalviLanguage } from '../../lib/malviLanguages.ts';
 
 const API = 'https://api.liveavatar.com';
 export const AI_DISCLOSURE = "Hello, I'm Malvi, Nanivio's interactive AI assistant, not a human.";
@@ -58,11 +59,12 @@ export function createLiveAvatarService(deps: {
     await store.release(record);
   }
   return {
-    async create(userId: string) {
+    async create(userId: string, languageCode = 'en') {
+      const language = getMalviLanguage(languageCode);
       const store = await deps.store();
       const now = deps.now();
       const record: AssistantSessionRecord = {
-        id: deps.uuid(), owner: ownerKey(userId), deadline: now + IDLE_MS, hardDeadline: now + MAX_SESSION_MS,
+        id: deps.uuid(), owner: ownerKey(userId), language: language.code, deadline: now + IDLE_MS, hardDeadline: now + MAX_SESSION_MS,
       };
       await store.reserve(record.owner, record.id, now);
       try {
@@ -79,7 +81,7 @@ export function createLiveAvatarService(deps: {
           throw new AssistantError(502, 'INVALID_LIVEAVATAR_SESSION', 'LiveAvatar returned an incomplete session.');
         }
         await store.save(record);
-        return { id: record.id, sessionToken: data.session_token, mode: 'LITE', idleDeadline: record.deadline, hardDeadline: record.hardDeadline, disclosure: AI_DISCLOSURE };
+        return { id: record.id, sessionToken: data.session_token, mode: 'LITE', language: language.code, idleDeadline: record.deadline, hardDeadline: record.hardDeadline, disclosure: AI_DISCLOSURE };
       } catch (error) {
         // A token that could not be persisted must not leave an unmanaged session.
         if (record.providerId) {

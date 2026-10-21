@@ -5,6 +5,7 @@ import { speechConfigured, synthesizeProviderAudio } from '../speechProviders.ts
 import { wavToPcm24k } from './pcm.ts';
 import { getLiveBrainProviderConfig } from './brainProviderConfig.ts';
 import { malviLiveBrainController } from './liveBrain.ts';
+import { getMalviLanguage } from '../../lib/malviLanguages.ts';
 
 type Auth = (req: Request, res: Response, next: NextFunction) => unknown;
 export function registerAssistantRoutes(app: Express, auth: Auth, enabled: () => boolean, startSweeper = true) {
@@ -39,14 +40,18 @@ export function registerAssistantRoutes(app: Express, auth: Auth, enabled: () =>
     const setup = liveAvatarSetup();
     if (!setup.configured) throw new AssistantError(503, 'LIVEAVATAR_SETUP_REQUIRED', `LiveAvatar setup is required: ${setup.missing.join(', ')}. Use your provisioned Malvi custom avatar, not a sample avatar.`);
     if (!['wake-word', 'manual'].includes(req.body?.activation)) throw new AssistantError(400, 'ACTIVATION_REQUIRED', 'Activate Malvi with the local wake word or the start button.');
-    res.status(201).json({ success: true, ...await liveAvatarService.create(userId(req)) });
+    let language;
+    try { language = getMalviLanguage(req.body?.language ?? 'en'); }
+    catch { throw new AssistantError(400, 'INVALID_LANGUAGE', 'Choose a valid Nanivio language for Malvi.'); }
+    res.status(201).json({ success: true, ...await liveAvatarService.create(userId(req), language.code) });
   }));
   app.post('/api/assistant/session/:id/activity', auth, run(async (req, res) => {
     if (!['input', 'interrupt'].includes(req.body?.kind)) throw new AssistantError(400, 'INPUT_REQUIRED', 'Only explicit user input may extend the idle deadline.');
     res.json({ success: true, ...await liveAvatarService.activity(userId(req), validId(req)) });
   }));
   app.post('/api/assistant/session/:id/welcome', auth, run(async (req, res) => {
-    await liveAvatarService.owned(userId(req), validId(req));
+    const session = await liveAvatarService.owned(userId(req), validId(req));
+    if (session.language && session.language !== 'en') throw new AssistantError(409, 'LIVE_BRAIN_GREETING_REQUIRED', 'The live brain supplies Malvi’s greeting in your selected language. An English welcome was not played.');
     if (!speechConfigured('en', 'tts')) throw new AssistantError(503, 'WELCOME_VOICE_REQUIRED', 'The live visual connection is available, but the backend welcome voice is not configured. The conversational brain will be connected next.');
     await liveAvatarService.claimWelcome(validId(req));
     // The first spoken utterance always identifies Malvi as an AI. No LLM or provider persona controls this text.

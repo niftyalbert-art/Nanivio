@@ -422,10 +422,16 @@ export function setupRealtimeServer(httpServer: HttpServer) {
               socket.send(JSON.stringify({ type: 'malvi:brain_error', payload: { message: 'Invalid live session.' } }));
               break;
             }
-            await malviLiveBrainController.start(socket, currentUser.userId, payload.sessionId);
+            await malviLiveBrainController.start(socket, currentUser.userId, payload.sessionId, payload.language);
             break;
           }
 
+          case 'malvi:brain_language': {
+            if (typeof payload?.sessionId === 'string' && /^[a-f0-9-]{36}$/i.test(payload.sessionId)) {
+              await malviLiveBrainController.language(socket, currentUser.userId, payload.sessionId, payload.language);
+            }
+            break;
+          }
           case 'malvi:brain_audio': {
             if (typeof payload?.sessionId === 'string') {
               await malviLiveBrainController.audio(socket, currentUser.userId, payload.sessionId, payload.audio);

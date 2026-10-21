@@ -2,9 +2,10 @@ import { GoogleGenAI, Modality, type Session } from '@google/genai';
 import OpenAI from 'openai';
 import { LiveWS } from 'openai/resources/live/ws';
 import type { WebSocket } from 'ws';
-import { AI_DISCLOSURE, liveAvatarService } from './liveAvatarService.ts';
+import { liveAvatarService } from './liveAvatarService.ts';
 import { getLiveBrainProviderConfig, type LiveBrainProviderId } from './brainProviderConfig.ts';
-import { MALVI_SYSTEM_PROMPT } from './malviSystemPrompt.ts';
+import { buildMalviLiveInstructions, malviLanguageInstruction, malviGreetingInstruction } from './malviSystemPrompt.ts';
+import { getMalviLanguage, malviLanguageCoverage } from '../../lib/malviLanguages.ts';
 import { IDLE_MS } from './redisStore.ts';
 import { createReferenceToolRunner, REFERENCE_TOOL_NAME, REFERENCE_TOOL_DESCRIPTION, REFERENCE_TOOL_PARAMETERS } from './referenceTools.ts';
 import { createGeminiReferenceBridge, createOpenAIReferenceBridge } from './referenceToolBridges.ts';
@@ -15,6 +16,9 @@ type BrainConnection = {
   owner: string;
   sessionId: string;
   provider: LiveBrainProviderId;
+  language: string;
+  ready: boolean;
+  changeLanguage: (code: string) => void;
   sendAudio: (base64: string) => void;
   endAudio: () => void;
   close: () => void;
@@ -25,6 +29,7 @@ type BrainConnection = {
   frameWindowStartedAt: number;
   framesInWindow: number;
   audioBuffer: Buffer[];
+  outputLanguage: string | null;
   transcript: string;
   isFirstTurn: boolean;
   research: ReturnType<typeof createReferenceToolRunner>;
@@ -71,9 +76,21 @@ function resamplePcm16kTo24k(input: Buffer) {
   return output;
 }
 
+function acceptsOutput(connection: BrainConnection) {
+  connection.outputLanguage ??= connection.language;
+  return connection.outputLanguage === connection.language;
+}
+
 function flushAudio(socket: WebSocket, connection: BrainConnection, ended: boolean) {
+  if (connection.outputLanguage && connection.outputLanguage !== connection.language) {
+    connection.audioBuffer = [];
+    connection.transcript = '';
+    if (ended) connection.outputLanguage = null;
+    return;
+  }
   const total = connection.audioBuffer.reduce((sum, chunk) => sum + chunk.length, 0);
   if (!total) {
+    if (ended) connection.outputLanguage = null;
     if (ended) send(socket, 'malvi:brain_turn_end', { sessionId: connection.sessionId });
     return;
   }
@@ -86,6 +103,7 @@ function flushAudio(socket: WebSocket, connection: BrainConnection, ended: boole
   connection.audioBuffer = [];
   send(socket, 'malvi:brain_audio', {
     sessionId: connection.sessionId,
+    language: connection.language,
     pcm24k,
     sampleRate: 24000,
     format: 'pcm_s16le',
@@ -96,6 +114,7 @@ function flushAudio(socket: WebSocket, connection: BrainConnection, ended: boole
   });
   connection.isFirstTurn = false;
   if (ended) {
+    connection.outputLanguage = null;
     connection.transcript = '';
     send(socket, 'malvi:brain_turn_end', { sessionId: connection.sessionId });
   }
@@ -114,7 +133,7 @@ async function connectGemini(
     model: provider.model,
     config: {
       responseModalities: [Modality.AUDIO],
-      systemInstruction: MALVI_SYSTEM_PROMPT,
+      systemInstruction: buildMalviLiveInstructions(connection.language, connection.provider),
       speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: 'Kore' } } },
       inputAudioTranscription: {},
       outputAudioTranscription: {},
@@ -127,28 +146,31 @@ async function connectGemini(
         if (connection.closed || socket.readyState !== socket.OPEN) return;
         void handleReferences(message).catch(() => onFailure('The reference tool response could not reach the selected brain.'));
         const serverContent = message.serverContent;
+        if (serverContent?.interrupted) {
+          connection.audioBuffer = []; connection.transcript = ''; connection.outputLanguage = null;
+          return;
+        }
         for (const part of serverContent?.modelTurn?.parts || []) {
           if (part.inlineData?.data && part.inlineData.mimeType?.startsWith('audio/pcm')) {
             const audio = base64Buffer(part.inlineData.data);
-            if (audio) connection.audioBuffer.push(audio);
+            if (audio && acceptsOutput(connection)) connection.audioBuffer.push(audio);
             if (connection.audioBuffer.reduce((sum, chunk) => sum + chunk.length, 0) > MAX_OUTPUT_BYTES) {
               onFailure('Malvi’s voice response exceeded the safe playback limit.');
               return;
             }
           }
-          if (part.text) {
+          if (part.text && acceptsOutput(connection)) {
             connection.transcript += part.text;
-            send(socket, 'malvi:brain_caption', { sessionId: connection.sessionId, text: part.text, role: 'assistant' });
+            send(socket, 'malvi:brain_caption', { sessionId: connection.sessionId, language: connection.outputLanguage, text: part.text, role: 'assistant' });
           }
         }
         const inputText = serverContent?.inputTranscription?.text;
         if (inputText) send(socket, 'malvi:brain_caption', { sessionId: connection.sessionId, text: inputText, role: 'user' });
         const outputText = serverContent?.outputTranscription?.text;
-        if (outputText) {
+        if (outputText && acceptsOutput(connection)) {
           connection.transcript += outputText;
-          send(socket, 'malvi:brain_caption', { sessionId: connection.sessionId, text: outputText, role: 'assistant' });
+          send(socket, 'malvi:brain_caption', { sessionId: connection.sessionId, language: connection.outputLanguage, text: outputText, role: 'assistant' });
         }
-        if (serverContent?.interrupted) connection.audioBuffer = [];
         if (serverContent?.turnComplete) flushAudio(socket, connection, true);
       },
       onerror() { onFailure('The selected live voice provider reported an error.'); },
@@ -159,13 +181,19 @@ async function connectGemini(
     session.sendRealtimeInput({ audio: { data: base64, mimeType: 'audio/pcm;rate=16000' } });
   };
   connection.endAudio = () => session.sendRealtimeInput({ audioStreamEnd: true });
+  connection.changeLanguage = code => {
+    session.sendClientContent({
+      turns: [{ role: 'user', parts: [{ text: `${malviLanguageInstruction(code, connection.provider)}${connection.isFirstTurn ? `\n${malviGreetingInstruction(code)}` : ''}` }] }],
+      turnComplete: false,
+    });
+  };
   connection.closeProvider = () => { void session.close(); };
   if (connection.closed) { connection.closeProvider(); return; }
   onReady();
-  // Keep the disclosure audio deterministic when the configured backend speech
-  // service is absent: the first generated answer is instructed to identify Malvi.
+  // The selected brain provides the first spoken AI disclosure in the selected
+  // language. Do not play a separate English greeting through another provider.
   session.sendClientContent({
-    turns: [{ role: 'user', parts: [{ text: `Before anything else, say this exact sentence aloud: “${AI_DISCLOSURE}”` }] }],
+    turns: [{ role: 'user', parts: [{ text: malviGreetingInstruction(connection.language) }] }],
     turnComplete: true,
   });
 }
@@ -193,16 +221,16 @@ async function connectOpenAI(
       }
     } else if (event.type === 'session.output_audio.delta' && typeof event.delta === 'string') {
       const audio = base64Buffer(event.delta);
-      if (audio) connection.audioBuffer.push(audio);
+      if (audio && acceptsOutput(connection)) connection.audioBuffer.push(audio);
       if (connection.audioBuffer.reduce((sum, chunk) => sum + chunk.length, 0) > MAX_OUTPUT_BYTES) {
         onFailure('Malvi’s voice response exceeded the safe playback limit.');
         return;
       }
       if (outputTimer) clearTimeout(outputTimer);
       outputTimer = setTimeout(() => flushAudio(socket, connection, true), 700);
-    } else if (event.type === 'session.output_transcript.delta' && typeof event.delta === 'string') {
+    } else if (event.type === 'session.output_transcript.delta' && typeof event.delta === 'string' && acceptsOutput(connection)) {
       connection.transcript += event.delta;
-      send(socket, 'malvi:brain_caption', { sessionId: connection.sessionId, text: event.delta, role: 'assistant' });
+      send(socket, 'malvi:brain_caption', { sessionId: connection.sessionId, language: connection.outputLanguage, text: event.delta, role: 'assistant' });
     } else if (event.type === 'session.input_transcript.delta' && typeof event.delta === 'string') {
       send(socket, 'malvi:brain_caption', { sessionId: connection.sessionId, text: event.delta, role: 'user' });
     } else if (event.type === 'session.closed') {
@@ -217,13 +245,13 @@ async function connectOpenAI(
       type: 'session.start',
       session: {
         model: provider.model,
-        instructions: MALVI_SYSTEM_PROMPT,
+        instructions: `${buildMalviLiveInstructions(connection.language, connection.provider)}\n${malviGreetingInstruction(connection.language)}`,
         audio: { format: { type: 'audio/pcm', rate: 24000 }, output: { voice: process.env.MALVI_OPENAI_VOICE || 'marin' } },
         delegation: {
           type: 'responses',
           responses: {
             ...(process.env.MALVI_OPENAI_REASONING_MODEL ? { model: process.env.MALVI_OPENAI_REASONING_MODEL } : {}),
-            instructions: MALVI_SYSTEM_PROMPT,
+            instructions: buildMalviLiveInstructions(connection.language, connection.provider),
             tools: [{ type: 'function', name: REFERENCE_TOOL_NAME, description: REFERENCE_TOOL_DESCRIPTION, parameters: REFERENCE_TOOL_PARAMETERS, strict: true }],
             tool_choice: 'auto', parallel_tool_calls: false,
           },
@@ -242,6 +270,13 @@ async function connectOpenAI(
     live.send({ type: 'session.input_audio.append', audio: pcm24k } as any);
   };
   connection.endAudio = () => {};
+  connection.changeLanguage = code => {
+    live.send({
+      type: 'session.instructions.append',
+      content: `${malviLanguageInstruction(code, connection.provider)}${connection.isFirstTurn ? `\n${malviGreetingInstruction(code)}` : ''}`,
+      delegation_id: null,
+    });
+  };
   connection.closeProvider = () => {
     clearTimeout(timeout);
     if (outputTimer) clearTimeout(outputTimer);
@@ -249,12 +284,15 @@ async function connectOpenAI(
   };
 }
 
-function createConnection(socket: WebSocket, userId: string, sessionId: string): BrainConnection {
+function createConnection(socket: WebSocket, userId: string, sessionId: string, language: string): BrainConnection {
   const connection: BrainConnection = {
     socket,
     owner: userId,
     sessionId,
     provider: 'gemini',
+    language,
+    ready: false,
+    changeLanguage: () => {},
     sendAudio: () => {},
     endAudio: () => {},
     closed: false,
@@ -271,6 +309,7 @@ function createConnection(socket: WebSocket, userId: string, sessionId: string):
     frameWindowStartedAt: 0,
     framesInWindow: 0,
     audioBuffer: [],
+    outputLanguage: null,
     transcript: '',
     isFirstTurn: true,
     research: createReferenceToolRunner(
@@ -290,21 +329,26 @@ function createConnection(socket: WebSocket, userId: string, sessionId: string):
     activeBySession.delete(sessionId);
     activeBySocket.get(socket)?.delete(sessionId);
   };
-  const ready = () => send(socket, 'malvi:brain_ready', { sessionId, provider: providerConfig.selectedProvider });
+  const ready = () => {
+    if (connection.closed) return;
+    connection.ready = true;
+    send(socket, 'malvi:brain_ready', { sessionId, provider: connection.provider, language: connection.language, coverage: malviLanguageCoverage(connection.language, connection.provider) });
+  };
   if (connection.provider === 'gemini') void connectGemini(socket, connection, ready, fail).catch(() => fail('Gemini Live could not connect.'));
   else void connectOpenAI(socket, connection, ready, fail).catch(() => fail('OpenAI GPT-Live could not connect.'));
   return connection;
 }
 
 export const malviLiveBrainController = {
-  async start(socket: WebSocket, userId: string, sessionId: string) {
+  async start(socket: WebSocket, userId: string, sessionId: string, requestedLanguage?: unknown) {
     try {
-      await liveAvatarService.owned(userId, sessionId);
+      const session = await liveAvatarService.owned(userId, sessionId);
+      const language = getMalviLanguage(requestedLanguage ?? session.language ?? 'en');
       const existing = activeBySocket.get(socket)?.get(sessionId);
       if (existing) return;
       const current = activeBySession.get(sessionId);
       if (current) throw new Error('This live session already has an active brain connection.');
-      const connection = createConnection(socket, userId, sessionId);
+      const connection = createConnection(socket, userId, sessionId, language.code);
       if (!activeBySocket.has(socket)) activeBySocket.set(socket, new Map());
       activeBySocket.get(socket)!.set(sessionId, connection);
       activeBySession.set(sessionId, connection);
@@ -316,6 +360,32 @@ export const malviLiveBrainController = {
       send(socket, 'malvi:brain_error', {
         sessionId,
         message: error instanceof Error ? error.message : 'The live brain could not start.',
+      });
+    }
+  },
+  async language(socket: WebSocket, userId: string, sessionId: string, requestedLanguage: unknown) {
+    try {
+      const language = getMalviLanguage(requestedLanguage);
+      const connection = activeBySocket.get(socket)?.get(sessionId);
+      if (!connection || connection.owner !== userId || connection.closed || !connection.ready) {
+        throw new Error('Start Malvi’s live conversation before changing its language.');
+      }
+      await liveAvatarService.owned(userId, sessionId);
+      if (connection.closed) return;
+      // Updating a preference neither changes providers nor extends idle time.
+      // Discard the old spoken turn before applying the new preference.
+      connection.audioBuffer = [];
+      connection.transcript = '';
+      connection.changeLanguage(language.code);
+      connection.language = language.code;
+      send(socket, 'malvi:brain_language', {
+        sessionId, language: language.code, provider: connection.provider,
+        coverage: malviLanguageCoverage(language.code, connection.provider),
+      });
+    } catch (error) {
+      send(socket, 'malvi:brain_language_error', {
+        sessionId,
+        message: error instanceof Error ? error.message : 'The selected language could not be applied.',
       });
     }
   },

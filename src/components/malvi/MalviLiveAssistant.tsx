@@ -2,7 +2,8 @@ import React, { createContext, useCallback, useContext, useEffect, useRef, useSt
 import { AlertCircle, ArrowUpRight, Mic, MicOff, Video } from 'lucide-react';
 import { useNanivio } from '../../context/NanivioContext';
 import { assistantRequest, deliverMalviAudio, parseMalviReferenceCitations, type MalviReferenceCitation, type LiveAvatarReadiness } from '../../lib/malviLiveClient';
-import { startLocalMalviWakeWord } from '../../lib/localMalviWakeWord';
+import { startLocalMalviWakeWord, installLocalMalviWakeWordPack, LocalWakeWordError } from '../../lib/localMalviWakeWord';
+import { getMalviLanguage, MALVI_LANGUAGES, malviLanguageCoverage } from '../../lib/malviLanguages';
 import { realtimeClient } from '../../lib/realtimeClient';
 import { MalviLiveOverlay } from './MalviLiveOverlay';
 import type { LiveAvatarSession } from '@heygen/liveavatar-web-sdk';
@@ -14,6 +15,9 @@ interface LiveControls {
   phase: Phase;
   wakeArmed: boolean;
   wakeChecking: boolean;
+  wakePackRequired: boolean;
+  wakePackInstalling: boolean;
+  installWakePack: () => Promise<void>;
   start: (activation: 'manual' | 'wake-word') => Promise<void>;
   armWake: () => Promise<void>;
   disarmWake: () => void;
@@ -22,7 +26,10 @@ interface LiveControls {
 const LiveContext = createContext<LiveControls | null>(null);
 
 export const MalviLiveAssistantProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const { currentUser } = useNanivio();
+  const { currentUser, appLanguage } = useNanivio();
+  const preferredLanguage = appLanguage || currentUser?.appLanguage || currentUser?.myLanguage || 'en';
+  const languageRef = useRef(preferredLanguage);
+  languageRef.current = preferredLanguage;
   const [readiness, setReadiness] = useState<LiveAvatarReadiness | null>(null);
   const [phase, setPhase] = useState<Phase>('idle');
   const [notice, setNotice] = useState('');
@@ -38,6 +45,9 @@ export const MalviLiveAssistantProvider: React.FC<{ children: React.ReactNode }>
   const [unavailableSources, setUnavailableSources] = useState<string[]>([]);
   const [wakeArmed, setWakeArmed] = useState(false);
   const [wakeChecking, setWakeChecking] = useState(false);
+  const [wakePackRequired, setWakePackRequired] = useState(false);
+  const [wakePackInstalling, setWakePackInstalling] = useState(false);
+  const [activeLanguage, setActiveLanguage] = useState<string | null>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
   const mediaReady = useRef(false);
   const sdk = useRef<LiveAvatarSession | null>(null);
@@ -47,6 +57,7 @@ export const MalviLiveAssistantProvider: React.FC<{ children: React.ReactNode }>
   const micSource = useRef<MediaStreamAudioSourceNode | null>(null);
   const micProcessor = useRef<AudioWorkletNode | null>(null);
   const stopWake = useRef<(() => void) | null>(null);
+  const wakeController = useRef<AbortController | null>(null);
   const generation = useRef(0);
   const deadline = useRef(0);
   const busy = useRef(false);
@@ -65,7 +76,9 @@ export const MalviLiveAssistantProvider: React.FC<{ children: React.ReactNode }>
     setMicrophoneOn(false);
   }, []);
   const disarmWake = useCallback(() => {
+    wakeController.current?.abort(); wakeController.current = null;
     stopWake.current?.(); stopWake.current = null; setWakeArmed(false);
+    setWakeChecking(false);
   }, []);
 
   const cleanup = useCallback(async () => {
@@ -73,6 +86,7 @@ export const MalviLiveAssistantProvider: React.FC<{ children: React.ReactNode }>
     stopMicrophone();
     if (id) realtimeClient.send('malvi:brain_stop', { sessionId: id });
     sdk.current = null; sessionId.current = null; deadline.current = 0; mediaReady.current = false;
+    setActiveLanguage(null);
     const video = videoRef.current;
     if (video) { video.pause(); video.srcObject = null; }
     await Promise.allSettled([
@@ -108,12 +122,13 @@ export const MalviLiveAssistantProvider: React.FC<{ children: React.ReactNode }>
     const isCurrent = (payload: any) => Boolean(payload?.sessionId && payload.sessionId === sessionId.current);
     const offReady = realtimeClient.on('malvi:brain_ready', (payload) => {
       if (isCurrent(payload)) {
+        setActiveLanguage(payload.language || languageRef.current);
         setBrainReady(true);
         setCaption(`Malvi is ready using ${payload.provider === 'openai' ? 'OpenAI GPT-Live' : 'Gemini Live'}. Turn on the microphone when you’re ready.`);
       }
     });
     const offAudio = realtimeClient.on('malvi:brain_audio', (payload) => {
-      if (!isCurrent(payload) || !sdk.current) return;
+      if (!isCurrent(payload) || !sdk.current || (payload.language && payload.language !== languageRef.current)) return;
       try {
         deliverMalviAudio(sdk.current, payload);
         if (payload.greeting) setCaption('Malvi is ready to talk. Turn on the microphone when you’re ready.');
@@ -122,7 +137,7 @@ export const MalviLiveAssistantProvider: React.FC<{ children: React.ReactNode }>
       }
     });
     const offCaption = realtimeClient.on('malvi:brain_caption', (payload) => {
-      if (isCurrent(payload) && typeof payload.text === 'string') setCaption(payload.text);
+      if (isCurrent(payload) && (!payload.language || payload.language === languageRef.current) && typeof payload.text === 'string') setCaption(payload.text);
     });
     const offActivity = realtimeClient.on('malvi:brain_activity', (payload) => {
       if (isCurrent(payload) && Number.isFinite(payload.idleDeadline)) deadline.current = payload.idleDeadline;
@@ -142,8 +157,39 @@ export const MalviLiveAssistantProvider: React.FC<{ children: React.ReactNode }>
         stopMicrophone();
       }
     });
-    return () => { offReady(); offAudio(); offCaption(); offActivity(); offSources(); offError(); };
-  }, [stopMicrophone]);
+    const offLanguage = realtimeClient.on('malvi:brain_language', payload => {
+      if (!isCurrent(payload) || typeof payload.language !== 'string') return;
+      setActiveLanguage(payload.language);
+      setBrainReady(true);
+      const selected = MALVI_LANGUAGES.find(item => item.code === payload.language);
+      setCaption(`Malvi’s language preference is now ${selected?.name || payload.language}. Turn on the microphone when ready.`);
+    });
+    const offLanguageError = realtimeClient.on('malvi:brain_language_error', payload => {
+      if (isCurrent(payload)) fail(typeof payload.message === 'string' ? payload.message : 'The selected language could not be applied. Start a new conversation.');
+    });
+    return () => { offReady(); offAudio(); offCaption(); offActivity(); offSources(); offError(); offLanguage(); offLanguageError(); };
+  }, [stopMicrophone, fail]);
+
+  useEffect(() => {
+    const id = sessionId.current;
+    if (!id || !brainReady || !activeLanguage || activeLanguage === preferredLanguage) return;
+    try {
+      const language = getMalviLanguage(preferredLanguage);
+      stopMicrophone();
+      sdk.current?.interrupt();
+      setBrainReady(false);
+      setCaption(`Applying ${language.name} to Malvi’s conversation…`);
+      realtimeClient.send('malvi:brain_language', { sessionId: id, language: language.code });
+    } catch (error) {
+      fail(error instanceof Error ? error.message : 'Choose a valid language for Malvi.');
+    }
+  }, [preferredLanguage, activeLanguage, brainReady, stopMicrophone, fail]);
+
+  useEffect(() => {
+    if (phase !== 'connected' || brainReady || !activeLanguage || activeLanguage === preferredLanguage) return;
+    const timer = window.setTimeout(() => fail('Malvi’s language update was not acknowledged. Start a new conversation to use your selected language.'), 12_000);
+    return () => window.clearTimeout(timer);
+  }, [phase, brainReady, activeLanguage, preferredLanguage, fail]);
 
   const toggleMicrophone = useCallback(async () => {
     if (microphoneOn) { stopMicrophone(); return; }
@@ -200,6 +246,7 @@ export const MalviLiveAssistantProvider: React.FC<{ children: React.ReactNode }>
     mounted.current = true;
     return () => {
       mounted.current = false; generation.current++; busy.current = false;
+      wakeController.current?.abort(); wakeController.current = null;
       stopWake.current?.(); stopWake.current = null; void cleanup();
     };
   }, [cleanup, currentUser?.id]);
@@ -214,7 +261,8 @@ export const MalviLiveAssistantProvider: React.FC<{ children: React.ReactNode }>
     setSecondsRemaining(60); setAudioBlocked(false); setPhase('connecting');
     try {
       // No token exchange, SDK download, WebRTC, or provider audio before activation.
-      const info = await assistantRequest('/session', { activation });
+      const language = getMalviLanguage(languageRef.current);
+      const info = await assistantRequest('/session', { activation, language: language.code });
       if (run !== generation.current || !mounted.current) {
         await assistantRequest(`/session/${info.id}/end`, {}, true).catch(() => {});
         return;
@@ -237,23 +285,8 @@ export const MalviLiveAssistantProvider: React.FC<{ children: React.ReactNode }>
       const welcome = () => {
         if (!welcomed && streamReady && sessionStarted && run === generation.current) {
           welcomed = true;
-          const startBrain = () => {
-            if (run === generation.current) realtimeClient.send('malvi:brain_start', { sessionId: info.id });
-          };
-          if (!readiness?.welcomeVoiceConfigured) {
-            setCaption('The AI disclosure is shown on screen. Starting Malvi’s selected live brain.');
-            startBrain();
-          } else {
-            void assistantRequest(`/session/${info.id}/welcome`, {}).then(audio => {
-              if (run !== generation.current) return;
-              deliverMalviAudio(live, audio); setCaption(audio.text); startBrain();
-            }).catch(err => {
-              if (run === generation.current) {
-                setCaption(err instanceof Error ? err.message : 'The backend welcome voice is unavailable.');
-                startBrain();
-              }
-            });
-          }
+          setCaption('Starting Malvi’s selected live brain and language-specific AI greeting.');
+          realtimeClient.send('malvi:brain_start', { sessionId: info.id, language: languageRef.current });
         }
       };
       live.on(SessionEvent.SESSION_STREAM_READY, () => {
@@ -289,22 +322,61 @@ export const MalviLiveAssistantProvider: React.FC<{ children: React.ReactNode }>
     } catch (err) {
       if (run === generation.current) fail(err instanceof Error ? err.message : 'Unable to connect the live avatar.');
     }
-  }, [attachVideo, close, disarmWake, fail, readiness?.welcomeVoiceConfigured]);
+  }, [attachVideo, close, disarmWake, fail]);
 
   const armWake = useCallback(async () => {
-    if (wakeChecking || wakeArmed || busy.current || sdk.current) return;
+    if (wakeController.current || wakeChecking || wakeArmed || busy.current || sdk.current) return;
+    const controller = new AbortController();
+    wakeController.current = controller;
     setWakeChecking(true); setNotice('');
     const run = generation.current;
     try {
       const stop = await startLocalMalviWakeWord(
-        () => { stopWake.current = null; setWakeArmed(false); void start('wake-word'); },
-        message => { setWakeArmed(false); setNotice(message); },
+        () => {
+          if (controller.signal.aborted || !mounted.current) return;
+          wakeController.current = null; stopWake.current = null; setWakeArmed(false); void start('wake-word');
+        },
+        message => {
+          if (controller.signal.aborted || !mounted.current) return;
+          wakeController.current = null; stopWake.current = null; setWakeArmed(false); setNotice(message);
+        },
+        controller.signal,
       );
-      if (run !== generation.current || !mounted.current) { stop(); return; }
+      if (controller.signal.aborted || run !== generation.current || !mounted.current) { stop(); return; }
+      setWakePackRequired(false);
       stopWake.current = stop; setWakeArmed(true);
-    } catch (err) { setNotice(err instanceof Error ? err.message : 'On-device wake-word listening is unavailable.'); }
-    finally { setWakeChecking(false); }
+    } catch (err) {
+      if (!controller.signal.aborted && mounted.current) {
+        wakeController.current = null;
+        setWakePackRequired(err instanceof LocalWakeWordError && err.code === 'PACK_REQUIRED');
+        setNotice(err instanceof Error ? err.message : 'On-device wake-word listening is unavailable.');
+      }
+    } finally { if (mounted.current && !controller.signal.aborted) setWakeChecking(false); }
   }, [start, wakeArmed, wakeChecking]);
+
+  const installWakePack = useCallback(async () => {
+    if (wakePackInstalling) return;
+    setWakePackInstalling(true);
+    try {
+      const installed = await installLocalMalviWakeWordPack();
+      if (!mounted.current) return;
+      setWakePackRequired(!installed);
+      setNotice(installed ? 'Local speech pack installed. Tap Enable local wake word to begin listening.' : 'The speech pack could not be installed. You can still start Malvi manually.');
+    } catch (error) {
+      if (mounted.current) setNotice(error instanceof Error ? error.message : 'The local speech pack could not be installed.');
+    } finally { if (mounted.current) setWakePackInstalling(false); }
+  }, [wakePackInstalling]);
+
+  useEffect(() => {
+    const pause = () => {
+      if (document.hidden && wakeController.current) {
+        disarmWake();
+        setNotice('Local wake listening paused because Nanivio is no longer visible. Enable it again when ready.');
+      }
+    };
+    document.addEventListener('visibilitychange', pause);
+    return () => document.removeEventListener('visibilitychange', pause);
+  }, [disarmWake]);
 
   useEffect(() => {
     if (phase !== 'connecting' && phase !== 'connected') return;
@@ -317,10 +389,10 @@ export const MalviLiveAssistantProvider: React.FC<{ children: React.ReactNode }>
     return () => clearInterval(timer);
   }, [phase, close]);
   useEffect(() => {
-    const leave = () => { stopWake.current?.(); stopWake.current = null; generation.current++; void cleanup(); };
+    const leave = () => { disarmWake(); generation.current++; void cleanup(); };
     window.addEventListener('pagehide', leave);
     return () => window.removeEventListener('pagehide', leave);
-  }, [cleanup]);
+  }, [cleanup, disarmWake]);
   const interrupt = () => {
     try { sdk.current?.interrupt(); } catch {}
     const id = sessionId.current;
@@ -329,7 +401,7 @@ export const MalviLiveAssistantProvider: React.FC<{ children: React.ReactNode }>
     }).catch(err => fail(err instanceof Error ? err.message : 'The session has ended.'));
   };
   return (
-    <LiveContext.Provider value={{ readiness, notice, phase, wakeArmed, wakeChecking, start, armWake, disarmWake, refresh }}>
+    <LiveContext.Provider value={{ readiness, notice, phase, wakeArmed, wakeChecking, wakePackRequired, wakePackInstalling, installWakePack, start, armWake, disarmWake, refresh }}>
       {children}
       {phase !== 'idle' && <MalviLiveOverlay
         videoRef={videoRef} onVideoElement={attachVideo} phase={phase} error={error} secondsRemaining={secondsRemaining}
@@ -347,31 +419,46 @@ export const MalviLiveAssistantProvider: React.FC<{ children: React.ReactNode }>
 };
 
 export const MalviLiveControls: React.FC = () => {
+  const { appLanguage, setAppLanguage } = useNanivio();
   const live = useContext(LiveContext);
   if (!live) return null;
   const { readiness, phase, notice, wakeArmed, wakeChecking } = live;
   const ready = Boolean(readiness?.configured && readiness?.enabled);
   return (
-    <section aria-label="Malvi LiveAvatar" className="mb-6 rounded-3xl border border-emerald-300/20 bg-gradient-to-br from-emerald-950/70 to-slate-950 p-5 sm:p-6">
+    <section aria-label="Malvi LiveAvatar" className="mb-6 rounded-3xl border border-[var(--nv-border)] bg-[var(--nv-surface)] p-5 sm:p-6">
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div className="max-w-xl">
-          <p className="text-xs font-semibold uppercase tracking-[.2em] text-emerald-300">Nanivio · LiveAvatar LITE</p>
+          <p className="text-xs font-semibold uppercase tracking-[.2em] text-[var(--nv-gold)]">Nanivio · LiveAvatar LITE</p>
           <h2 className="mt-2 text-xl font-semibold text-white">Meet Malvi, face to face</h2>
           <p className="mt-2 text-sm leading-relaxed text-slate-300">A live video connection with your Nanivio AI assistant. The server-selected brain provider handles conversation; turn on the microphone only when you are ready to speak.</p>
         </div>
-        <span className="rounded-full border border-emerald-300/20 px-3 py-1.5 text-xs text-emerald-200">Video only after activation</span>
+        <span className="rounded-full border border-[var(--nv-border)] px-3 py-1.5 text-xs text-[var(--nv-gold)]">Video only after activation</span>
       </div>
       <div className="mt-5 flex flex-wrap gap-3">
-        <button type="button" onClick={() => void live.start('manual')} disabled={!ready || phase !== 'idle'} className="inline-flex items-center gap-2 rounded-xl bg-emerald-300 px-4 py-3 text-sm font-semibold text-slate-950 transition hover:bg-emerald-200 disabled:cursor-not-allowed disabled:opacity-45">
+        <button type="button" onClick={() => void live.start('manual')} disabled={!ready || phase !== 'idle'} style={{ backgroundColor: 'var(--nv-gold)', color: 'var(--nv-bg)' }} className="inline-flex items-center gap-2 rounded-xl px-4 py-3 text-sm font-semibold transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-45">
           <Video className="h-4 w-4" /> Start live avatar <ArrowUpRight className="h-4 w-4" />
         </button>
-        <button type="button" onClick={() => wakeArmed ? live.disarmWake() : void live.armWake()} disabled={!ready || wakeChecking || phase !== 'idle'} className="inline-flex items-center gap-2 rounded-xl border border-slate-600 px-4 py-3 text-sm font-medium text-slate-100 transition hover:border-emerald-300 disabled:opacity-45">
+        <button type="button" onClick={() => wakeArmed || wakeChecking ? live.disarmWake() : void live.armWake()} disabled={(!ready && !wakeArmed && !wakeChecking) || phase !== 'idle'} className="inline-flex items-center gap-2 rounded-xl border border-slate-600 px-4 py-3 text-sm font-medium text-slate-100 transition hover:border-emerald-300 disabled:opacity-45">
           {wakeArmed ? <MicOff className="h-4 w-4" /> : <Mic className="h-4 w-4" />}
-          {wakeChecking ? 'Checking on-device recognition…' : wakeArmed ? 'Stop local listening' : 'Enable local “Nanivio” wake word'}
+          {wakeChecking ? 'Cancel wake setup' : wakeArmed ? 'Stop local listening' : 'Enable local wake word'}
         </button>
+        {live.wakePackRequired && <button type="button" onClick={() => void live.installWakePack()} disabled={live.wakePackInstalling} className="rounded-xl border border-slate-600 px-4 py-3 text-sm text-slate-100 disabled:opacity-45">
+          {live.wakePackInstalling ? 'Installing local speech pack…' : 'Install local speech pack'}
+        </button>}
       </div>
-      <p className="mt-3 text-xs leading-relaxed text-slate-400">Wake-word listening is opt-in and on-device only, in supported browsers with an installed English speech pack. No cloud fallback. Sessions end after 60 seconds without input; maximum 10 starts per hour.</p>
-      {wakeArmed && <p role="status" className="mt-3 text-sm text-emerald-200">Listening locally for “Nanivio”. No avatar connection is running.</p>}
+      <label className="mt-4 block text-sm text-slate-200">
+        Malvi’s language · follows your app language
+        <select aria-label="Malvi conversation language" value={appLanguage} onChange={event => setAppLanguage(event.target.value)} className="mt-2 block w-full max-w-full rounded-xl border border-slate-600 bg-slate-900 p-3 text-white">
+          {MALVI_LANGUAGES.map(language => <option key={language.code} value={language.code}>{language.name} · {language.nativeName}</option>)}
+        </select>
+      </label>
+      <p role="status" className="mt-2 text-xs leading-relaxed text-amber-200">
+        {MALVI_LANGUAGES.some(language => language.code === appLanguage)
+          ? malviLanguageCoverage(appLanguage, readiness?.brainProvider).notice
+          : 'Choose a valid app language before starting Malvi.'}
+      </p>
+      <p className="mt-3 text-xs leading-relaxed text-slate-400">Say “Malvi”, “Hey Malvi”, or “Nanivio” after enabling local listening. Wake recognition stays on-device and uses an English speech pack, independently of your conversation language. No cloud fallback or screen-locked listening. Sessions end after 60 seconds without input; maximum 10 starts per hour.</p>
+      {wakeArmed && <p role="status" className="mt-3 text-sm text-[var(--nv-gold)]">Listening locally for “Malvi”, “Hey Malvi”, or “Nanivio”. No avatar connection is running.</p>}
       {readiness && !ready && <div role="status" className="mt-4 rounded-xl border border-amber-300/20 bg-amber-950/20 p-3 text-sm leading-relaxed text-amber-100">
         <AlertCircle className="mr-2 inline h-4 w-4" />
         {!readiness.enabled ? 'Malvi must be enabled in administrator settings. ' : ''}
