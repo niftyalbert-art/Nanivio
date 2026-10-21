@@ -42,12 +42,21 @@ substitute a generic language for a promised dialect.
 
 Optional metadata access and the required synthesis permission are separate.
 
-**Why:** ElevenLabs repeatedly denied voice listing with `voices_read` missing,
-while the user's key settings showed Text to Speech access and did not expose
-the requested Voices permission. Direct synthesis with the known voice ID
-subsequently succeeded without adding that optional metadata permission.
+**Why:** ElevenLabs denied optional voice and model listing while synthesis with
+the known voice ID succeeded. The user's key settings showed Text to Speech
+access and did not expose the previously requested Voices permission.
 
 **How to apply:** Do not repeatedly ask the user to find an absent dashboard
 setting or remove key restrictions. Offer one explicitly approved, short synthesis
 test using the known voice ID; distinguish its result from metadata access and
 from full application integration.
+
+Count actual synthesis HTTP requests when enforcing a single-attempt test or
+spending limit; an application-level call count is not sufficient.
+
+**Why:** The connector SDK can automatically repeat a request after HTTP 401 while
+refreshing authentication, even when the application does not implement retries.
+
+**How to apply:** Check SDK retry behavior and count underlying provider requests
+in cost-sensitive verification. Suppress extra synthesis attempts in a test that
+the user approved for only one request; never silently switch transports.

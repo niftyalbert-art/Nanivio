@@ -112,3 +112,17 @@ mtime_ms = 1792591164770
 storage_uri = "gcs://replit-rams-assets-sisko/rams/assets/repl:8a53f482-19ae-49f0-ab16-31b527f92091/82f2d96f-b107-48c8-9c41-faefad68becb/ae73d543-fece-4739-9f3d-1335862f423c"
 storage_version_token = "1792591271949434"
 content_type = "audio/mpeg"
+
+[[outputs]]
+id = "W6mliJ0jOgyLd3bK6byHe"
+uri = "file://generated-artifacts/malvi-preview-hello.wav"
+type = "audio"
+title = "Malvi voice test — Hello."
+description = "Generated through the preview’s ElevenLabs connection using Malvi’s approved voice. One six-character request returned non-silent 24 kHz mono PCM; converted locally to WAV for playback. No avatar or Gemini session was started."
+logical_id = "114b0fd4-b59c-43e3-8495-17f485f8157a"
+content_hash = "sha256:9c40d3eb699636bec913b728745daec042e1196372a3d3fff8cd4e896faaffc9"
+size = 29022
+mtime_ms = 1792616952802
+storage_uri = "gcs://replit-rams-assets-sisko/rams/assets/repl:8a53f482-19ae-49f0-ab16-31b527f92091/114b0fd4-b59c-43e3-8495-17f485f8157a/7ff39dd1-0304-47cc-b2ea-17d4f57f1a1b"
+storage_version_token = "1792616988287776"
+content_type = "audio/wav"
