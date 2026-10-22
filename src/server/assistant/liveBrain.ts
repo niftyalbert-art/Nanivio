@@ -469,15 +469,20 @@ export const malviLiveBrainController = {
       });
     }
   },
-  async audio(socket: WebSocket, userId: string, sessionId: string, encoded: unknown) {
+  inputReadiness(socket: WebSocket, userId: string, sessionId: string) {
     const connection = activeBySocket.get(socket)?.get(sessionId);
-    if (!connection || connection.owner !== userId) {
+    if (!connection || connection.owner !== userId || connection.closed || !connection.ready) return null;
+    return { provider: connection.provider, language: connection.language };
+  },
+  async audio(socket: WebSocket, userId: string, sessionId: string, encoded: unknown, current = () => true): Promise<boolean> {
+    const connection = activeBySocket.get(socket)?.get(sessionId);
+    if (!connection || connection.owner !== userId || connection.closed || !connection.ready || !current()) {
       send(socket, 'malvi:brain_error', { sessionId, message: 'The live brain session is not active for this account.' });
-      return;
+      return false;
     }
     if (typeof encoded !== 'string' || encoded.length > Math.ceil(MAX_INPUT_BYTES / 3) * 4 + 4) {
       send(socket, 'malvi:brain_error', { sessionId, message: 'The microphone audio frame exceeded the safe size limit.' });
-      return;
+      return false;
     }
     const now = Date.now();
     if (now - connection.frameWindowStartedAt >= 1000) {
@@ -487,12 +492,12 @@ export const malviLiveBrainController = {
     connection.framesInWindow += 1;
     if (connection.framesInWindow > 12) {
       send(socket, 'malvi:brain_error', { sessionId, message: 'The microphone is sending audio too quickly. Turn it off and try again.' });
-      return;
+      return false;
     }
     const pcm = base64Buffer(encoded);
     if (!pcm || pcm.length > MAX_INPUT_BYTES || pcm.length % 2 !== 0) {
       send(socket, 'malvi:brain_error', { sessionId, message: 'The microphone audio frame was invalid.' });
-      return;
+      return false;
     }
     if (hasSpeech(pcm) && (connection.speech.pending || connection.playbackUntil > now)) {
       connection.outputGeneration++;
@@ -512,10 +517,12 @@ export const malviLiveBrainController = {
       } catch {
         send(socket, 'malvi:brain_error', { sessionId, message: 'The live session timed out. End it and start a new conversation.' });
         await this.stopSession(userId, sessionId);
-        return;
+        return false;
       }
     }
+    if (connection.closed || !current() || socket.readyState !== socket.OPEN) return false;
     connection.sendAudio(pcm.toString('base64'));
+    return true;
   },
   endAudio(socket: WebSocket, userId: string, sessionId: string) {
     const connection = activeBySocket.get(socket)?.get(sessionId);

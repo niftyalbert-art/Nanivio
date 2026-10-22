@@ -25,7 +25,7 @@ export interface MalviLiveOverlayProps {
   referenceStatus: string;
   unavailableSources: string[];
   inputLevel?: number;
-  inputState?: 'off' | 'listening' | 'hearing' | 'processing';
+  inputState?: 'off' | 'connecting' | 'listening' | 'hearing' | 'processing';
   userTranscript?: string;
   speaking?: boolean;
 }
@@ -120,6 +120,7 @@ export const MalviLiveOverlay: React.FC<MalviLiveOverlayProps> = ({
   const listeningState = !microphoneOn ? 'off' : inputState ?? 'listening';
   const listeningCopy = {
     off: 'Microphone off',
+    connecting: 'Connecting Nanivio Mic…',
     listening: 'Listening…',
     hearing: 'Hearing you…',
     processing: 'Malvi is thinking…',

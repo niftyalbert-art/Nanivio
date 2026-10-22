@@ -129,7 +129,7 @@ class NanivioRealtimeClient {
     } else {
       // Live microphone frames must never be delayed/replayed after reconnect.
       // Let the caller stop capture and show the disconnected state instead.
-      if (type === 'malvi:brain_audio') return false;
+      if (type === 'malvi:brain_audio' || type.startsWith('nanivio:mic_')) return false;
       // Connect and queue
       this.connect();
       setTimeout(() => {

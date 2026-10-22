@@ -19,8 +19,11 @@ const realtimeFixture = `
       return () => listeners.get(type).delete(fn);
     },
     send(type,payload) {
-      if(type==='malvi:brain_audio'&&window.failMicrophoneSend)return false;
-      window.checks.messages.push({type,payload});return true;
+      if(type==='nanivio:mic_audio'&&window.failMicrophoneSend)return false;
+      window.checks.messages.push({type,payload});
+      if(type==='nanivio:mic_start')queueMicrotask(()=>window.emitBrain('nanivio:mic_status',{sessionId:payload.sessionId,streamId:payload.streamId,version:1,state:'ready',provider:'gemini',language:'fr'}));
+      if(type==='nanivio:mic_audio')queueMicrotask(()=>window.emitBrain('nanivio:mic_status',{sessionId:payload.sessionId,streamId:payload.streamId,version:1,state:'receiving',lastSequence:payload.sequence,receivedFrames:payload.sequence}));
+      return true;
     }
   };
 `;
@@ -339,8 +342,11 @@ try {
    await page.evaluate(`window.outputLevel=0;window.outputAudioContext.currentTime=5.2;true`);
   await page.wait('window.overlay.caption===""');
   await click('Start talking');
-  await page.wait('window.overlay.microphoneOn===true');
-  assert.equal(await page.evaluate('window.overlay.inputState'), 'listening');
+  await page.wait('window.overlay.microphoneOn===true').catch(async error=>{
+    console.error(await page.evaluate(`JSON.stringify({microphoneError:window.overlay.microphoneError,latestEvents:window.checks.messages.slice(-3).map(e=>e.type)})`));
+    throw error;
+  });
+  assert.equal(await page.evaluate('window.overlay.inputState'), 'connecting', 'Capture alone is not evidence of gateway receipt');
   await page.evaluate(`(()=>{
     const samples=new Int16Array(3200).fill(8000);
     const bytes=new Uint8Array(samples.buffer);
@@ -350,7 +356,7 @@ try {
   })()`);
   await page.wait('window.overlay.inputState==="hearing"');
   assert.ok(await page.evaluate('window.overlay.inputLevel>0'));
-  const sentMicrophone = await page.evaluate(`window.checks.messages.filter(m=>m.type==='malvi:brain_audio').at(-1)`);
+  const sentMicrophone = await page.evaluate(`window.checks.messages.filter(m=>m.type==='nanivio:mic_audio').at(-1)`);
   assert.equal(Buffer.from(sentMicrophone.payload.audio,'base64').length,6400);
   assert.equal(Buffer.from(sentMicrophone.payload.audio,'base64').readInt16LE(0),8000,'Binary worklet speech must reach the authenticated transport unchanged');
   await page.evaluate(`window.emitBrain('malvi:brain_caption',{sessionId:'11111111-1111-4111-8111-111111111111',role:'user',text:'Bonjour Malvi'});true`);
@@ -358,7 +364,7 @@ try {
   assert.equal(await page.evaluate('window.overlay.caption'), '', 'User speech is separate from Malvi subtitles');
   if (process.env.NANIVIO_SCREENSHOT_DIR) await page.screenshot(path.join(process.env.NANIVIO_SCREENSHOT_DIR, 'malvi-listening.png'));
   await page.wait('performance.now()-window.fixtureHeardAt>750');
-  await page.evaluate(`window.inputProcessor.port.onmessage({data:btoa(String.fromCharCode(...new Uint8Array(6400)))});true`);
+  await page.evaluate(`window.inputProcessor.port.onmessage({data:new ArrayBuffer(6400)});true`);
   await page.wait('window.overlay.inputState==="processing"');
   await page.evaluate(`window.inputTrack.onmute();true`);
   await page.wait('window.overlay.microphoneOn===false');
@@ -373,9 +379,9 @@ try {
   await page.evaluate(`window.staleMicrophoneHandler=window.inputProcessor.port.onmessage;window.inputProcessor.onprocessorerror();true`);
   await page.wait('window.overlay.microphoneOn===false');
   assert.match(await page.evaluate('window.overlay.microphoneError'),/recorder stopped/);
-  const stoppedAudioCount=await page.evaluate(`window.checks.messages.filter(m=>m.type==='malvi:brain_audio').length`);
+  const stoppedAudioCount=await page.evaluate(`window.checks.messages.filter(m=>m.type==='nanivio:mic_audio').length`);
   await page.evaluate(`window.staleMicrophoneHandler({data:new ArrayBuffer(6400)});true`);
-  assert.equal(await page.evaluate(`window.checks.messages.filter(m=>m.type==='malvi:brain_audio').length`),stoppedAudioCount,'A queued message cannot send microphone audio after capture stops');
+  assert.equal(await page.evaluate(`window.checks.messages.filter(m=>m.type==='nanivio:mic_audio').length`),stoppedAudioCount,'A queued message cannot send microphone audio after capture stops');
   await click('Start talking');
   await page.wait('window.overlay.microphoneOn===true');
   await page.evaluate(`window.failMicrophoneSend=true;window.inputProcessor.port.onmessage({data:new ArrayBuffer(6400)});window.failMicrophoneSend=false;true`);
