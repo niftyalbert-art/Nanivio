@@ -3,6 +3,31 @@ import test from 'node:test';
 import { getLiveBrainProviderConfig } from '../src/server/assistant/brainProviderConfig.ts';
 import { liveAvatarSetup } from '../src/server/assistant/liveAvatarService.ts';
 import { hasSpeech, resamplePcm16kTo24k } from '../src/server/assistant/liveBrain.ts';
+import { malviOpeningBoundary } from '../src/server/assistant/malviResponsePacing.ts';
+import { MALVI_INTRODUCTION, malviGreetingInstruction } from '../src/server/assistant/malviSystemPrompt.ts';
+
+test('Malvi introduces herself warmly without an unsolicited not-human disclaimer', () => {
+  assert.match(MALVI_INTRODUCTION, /AI companion at Nanivio/);
+  assert.doesNotMatch(MALVI_INTRODUCTION, /not a human|disclosure|cannot/i);
+  assert.match(MALVI_INTRODUCTION, /preferred language/);
+  assert.ok(malviGreetingInstruction('en').includes(MALVI_INTRODUCTION));
+  assert.match(malviGreetingInstruction('fr'), /selected language/);
+  assert.match(malviGreetingInstruction('fr'), /Do not give an English greeting/);
+});
+
+test('speech pacing releases a meaningful opening before the full response', () => {
+  const boundary = malviOpeningBoundary(MALVI_INTRODUCTION);
+  assert.equal(MALVI_INTRODUCTION.slice(0,boundary),"Hello, I'm Malvi, your AI companion at Nanivio.");
+  assert.equal(malviOpeningBoundary('Hello'),0,'Do not bill one request per token');
+  const decimal='Why is the value 1.25 useful here? More detail follows.';
+  assert.equal(malviOpeningBoundary(decimal),decimal.indexOf('?')+1);
+  const long = 'A clear and practical answer without punctuation '.repeat(6);
+  const cut = malviOpeningBoundary(long);
+  assert.ok(cut >= 64 && cut <= 180);
+  assert.equal(long[cut],' ','An unpunctuated opening splits at a word boundary');
+  const arabic = 'هذه إجابة واضحة ومفيدة عن السؤال المطروح؟ يمكن توضيح المزيد.';
+  assert.ok(arabic.slice(0,malviOpeningBoundary(arabic)).endsWith('؟'));
+});
 
 test('configured provider credentials do not claim a live brain connection', () => {
   const keys = ['HEYGEN_API_KEY', 'AVATAR_ID', 'REDIS_URL', 'GEMINI_API_KEY', 'MALVI_BRAIN_PROVIDER', 'ELEVENLABS_API_KEY', 'MALVI_TTS_TRANSPORT'];

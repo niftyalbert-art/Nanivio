@@ -3,9 +3,10 @@ import { AssistantError, getAssistantStore, IDLE_MS, MAX_SESSION_MS, type Assist
 import { getLiveBrainProviderConfig } from './brainProviderConfig.ts';
 import { getMalviLanguage } from '../../lib/malviLanguages.ts';
 import { malviSpeechSetup } from './malviSpeech.ts';
+import { MALVI_INTRODUCTION } from './malviSystemPrompt.ts';
 
 const API = 'https://api.liveavatar.com';
-export const AI_DISCLOSURE = "Hello, I'm Malvi, Nanivio's interactive AI assistant, not a human.";
+export const AI_DISCLOSURE = MALVI_INTRODUCTION;
 export const ownerKey = (userId: string) => crypto.createHash('sha256').update(userId).digest('hex');
 
 // A lighter video profile reduces decoder/bandwidth pressure on Android phones.

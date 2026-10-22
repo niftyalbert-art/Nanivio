@@ -14,10 +14,11 @@ test('every app language keeps its own identity and selected-language AI greetin
     assert.equal(getMalviLanguage(language.code).code, language.code);
     const instructions = buildMalviLiveInstructions(language.code, 'gemini');
     assert.ok(instructions.includes(`${language.name} (${language.code};`));
-    assert.match(instructions, /including your first greeting and AI disclosure/);
+    assert.match(instructions, /including your introduction/);
     assert.match(instructions, /do not substitute English/i);
     assert.ok(malviGreetingInstruction(language.code).includes(language.name));
-    assert.match(malviGreetingInstruction(language.code), /AI assistant, not a human/);
+    assert.match(malviGreetingInstruction(language.code), /AI companion at Nanivio/);
+    assert.doesNotMatch(malviGreetingInstruction(language.code), /assistant, not a human/);
     assert.equal(malviLanguageCoverage(language.code, 'gemini').liveVerified, false);
   }
   for (const code of ['tw-ak', 'fat', 'lg', 'ig', 'ee', 'gaa', 'xh']) {
