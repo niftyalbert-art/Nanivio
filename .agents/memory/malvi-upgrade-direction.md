@@ -20,6 +20,17 @@ Wake-word activation should recognise Malvi by name as well as retain “Nanivio
 
 **How to apply:** Never silently fall back to cloud wake recognition. Where verified local recognition is unavailable, disclose that limitation and require manual activation.
 
+Wake controls must visibly confirm “Enabled” only while the recognizer is actually
+listening, and put failure/restart feedback beside the control.
+
+**Why:** The user explicitly requested the “Enabled” confirmation and subsequently
+reported the wake button still not responding, asking for Firefox, Edge, and other
+browser checks. An offscreen notice does not satisfy that feedback requirement.
+
+**How to apply:** Preserve truthful status through startup, interruption, and
+restart. Distinguish browser capability fixtures and documentation from actual
+browser-engine or microphone testing; do not promise support from a browser name.
+
 Malvi should follow the user’s selected Nanivio app language, including the first spoken AI greeting, without changing call-translation preferences. Preserve distinct dialect identities and disclose unverified speech coverage instead of promising every language works.
 
 **Why:** The user requested preferred-language speech and name-based wake activation together. A language appearing in the app selector or provider documentation does not establish real spoken quality.

@@ -1,19 +1,22 @@
-// Only the browser's explicitly on-device recognizer is allowed here.
-// Never substitute webkitSpeechRecognition or a cloud recognizer.
+// Require explicit on-device capability even for a vendor-prefixed constructor.
+// A legacy webkitSpeechRecognition API alone is NOT a local recognizer.
 export class LocalWakeWordError extends Error {
   constructor(public code: 'UNSUPPORTED_BROWSER' | 'PACK_REQUIRED' | 'PACK_UNAVAILABLE' | 'SETUP_FAILED', message: string) { super(message); }
 }
 
-function waitForLocalCheck<T>(operation: Promise<T>, signal?: AbortSignal): Promise<T> {
+function waitForLocalCheck<T>(operation: Promise<T>, signal?: AbortSignal, timeoutMs = 10_000,
+  timeoutMessage = 'The browser did not finish checking on-device speech support. Try again, or open Nanivio directly in a supported desktop browser. No cloud listening was enabled.'): Promise<T> {
   return new Promise((resolve, reject) => {
+    let settled = false;
     const finish = (error?: unknown, value?: T) => {
+      if (settled) return;
+      settled = true;
       clearTimeout(timer);
       signal?.removeEventListener('abort', abort);
       if (error) reject(error); else resolve(value as T);
     };
     const abort = () => finish(new DOMException('Local listening was cancelled.', 'AbortError'));
-    const timer = setTimeout(() => finish(new LocalWakeWordError('SETUP_FAILED',
-      'The browser did not finish checking on-device speech support. Try again, or open Nanivio directly in a supported desktop browser. No cloud listening was enabled.')), 10_000);
+    const timer = setTimeout(() => finish(new LocalWakeWordError('SETUP_FAILED', timeoutMessage)), timeoutMs);
     signal?.addEventListener('abort', abort, { once: true });
     if (signal?.aborted) abort();
     operation.then(value => finish(undefined, value), error => finish(error));
@@ -34,22 +37,32 @@ export function isMalviWakePhrase(transcript: string) {
 }
 
 function localRecognition() {
-  const Recognition = typeof window === 'undefined' ? undefined : (window as any).SpeechRecognition;
-  if (!Recognition || typeof Recognition.available !== 'function' || !('processLocally' in Recognition.prototype)) {
-    throw new LocalWakeWordError('UNSUPPORTED_BROWSER', 'This browser cannot verify on-device wake-word recognition. Most mobile browsers do not support it. Try an up-to-date supported desktop browser, or use Start live avatar. No cloud listening is enabled.');
+  if (typeof window !== 'undefined' && window.isSecureContext === false) {
+    throw new LocalWakeWordError('UNSUPPORTED_BROWSER', 'Local wake listening needs a secure HTTPS page. Open Nanivio directly over HTTPS, or use Start live avatar. No cloud listening is enabled.');
   }
-  return Recognition;
+  const candidates = typeof window === 'undefined' ? [] : [(window as any).SpeechRecognition, (window as any).webkitSpeechRecognition];
+  const Recognition = candidates.find(candidate => typeof candidate === 'function'
+    && typeof candidate.available === 'function' && candidate.prototype && 'processLocally' in candidate.prototype);
+  if (Recognition) return Recognition;
+  throw new LocalWakeWordError('UNSUPPORTED_BROWSER', 'This browser cannot verify on-device wake-word recognition. Use Start live avatar here, or a supported desktop browser with its English speech pack. No cloud listening is enabled.');
 }
 
 export async function installLocalMalviWakeWordPack() {
   const Recognition = localRecognition();
   if (typeof Recognition.install !== 'function') throw new LocalWakeWordError('UNSUPPORTED_BROWSER', 'This browser cannot install an on-device speech pack. Use Start live avatar instead.');
   // Only called from an explicit user click; never download packs while idle.
-  return Boolean(await Recognition.install({ langs: ['en-US'], processLocally: true }));
+  try {
+    return Boolean(await waitForLocalCheck(Recognition.install({ langs: ['en-US'], processLocally: true }), undefined, 120_000,
+      'The browser has not confirmed the speech-pack installation after two minutes. The download may still continue in your browser. Retry when it finishes, or start Malvi manually.'));
+  } catch (error) {
+    if (error instanceof LocalWakeWordError) throw error;
+    throw new LocalWakeWordError('SETUP_FAILED', 'The browser blocked the local speech-pack installation. Open Nanivio directly, check site permissions, then retry. You can still start Malvi manually.');
+  }
 }
 
 export async function startLocalMalviWakeWord(
   onWake: () => void, onError: (message: string) => void, signal?: AbortSignal,
+  onState?: (state: 'listening' | 'restarting') => void,
 ) {
   const cancelled = () => { if (signal?.aborted) throw new DOMException('Local listening was cancelled.', 'AbortError'); };
   cancelled();
@@ -70,34 +83,51 @@ export async function startLocalMalviWakeWord(
   }
   const recognition = new Recognition();
   recognition.processLocally = true;
+  if (recognition.processLocally !== true) {
+    throw new LocalWakeWordError('UNSUPPORTED_BROWSER', 'The browser could not enforce on-device listening. Use Start live avatar instead. No cloud recognition was started.');
+  }
   recognition.lang = 'en-US';
   recognition.continuous = true;
   recognition.interimResults = false;
   let stopped = false;
   let timer: ReturnType<typeof setTimeout> | undefined;
   let starting = true;
+  let everStarted = false;
   let resolveStart!: () => void;
   let rejectStart!: (error: Error) => void;
   const started = new Promise<void>((resolve, reject) => { resolveStart = resolve; rejectStart = reject; });
-  const startTimer = setTimeout(() => {
-    rejectStart(new LocalWakeWordError('SETUP_FAILED', 'The microphone recognizer did not start. Check browser permissions and try again. No cloud listening was enabled.'));
-    stop();
-  }, 10_000);
+  let startTimer: ReturnType<typeof setTimeout> | undefined;
   const stop = () => {
     if (stopped) return;
     stopped = true;
     signal?.removeEventListener('abort', stop);
     clearTimeout(timer);
     clearTimeout(startTimer);
-    if (starting) rejectStart(new DOMException('Local listening was cancelled.', 'AbortError'));
-    recognition.abort();
+    if (!everStarted) rejectStart(new DOMException('Local listening was cancelled.', 'AbortError'));
+    try { recognition.abort(); } catch { /* Already stopped by the browser. */ }
+  };
+  const failed = (message: string) => {
+    if (stopped) return;
+    if (!everStarted) rejectStart(new LocalWakeWordError('SETUP_FAILED', message));
+    stop();
+    if (everStarted) onError(message);
+  };
+  const begin = () => {
+    if (stopped) return;
+    starting = true;
+    clearTimeout(startTimer);
+    startTimer = setTimeout(() => failed('The microphone recognizer did not start or restart. Check browser permissions and try again. No cloud listening was enabled.'), 10_000);
+    try { recognition.start(); }
+    catch { failed('The browser could not start local speech recognition. Check microphone permissions and open Nanivio directly in a supported browser.'); }
   };
   signal?.addEventListener('abort', stop, { once: true });
   recognition.onstart = () => {
     if (stopped) return;
     starting = false;
+    everStarted = true;
     clearTimeout(startTimer);
     resolveStart();
+    onState?.('listening');
   };
   recognition.onresult = (event: any) => {
     if (stopped || starting) return;
@@ -112,32 +142,26 @@ export async function startLocalMalviWakeWord(
   recognition.onerror = (event: { error?: string }) => {
     if (stopped) return;
     const message = recognitionError(event?.error);
-    if (starting) {
-      rejectStart(new LocalWakeWordError('SETUP_FAILED', message));
-      stop();
-      return;
-    }
-    stop();
-    onError(message);
+    failed(message);
   };
   recognition.onend = () => {
     if (starting && !stopped) {
-      rejectStart(new LocalWakeWordError('SETUP_FAILED', 'Local speech recognition ended before the microphone started. Check browser permissions and try again.'));
-      stop();
+      failed('Local speech recognition ended before the microphone started. Check browser permissions and try again.');
       return;
     }
-    if (!stopped) timer = setTimeout(() => {
-      if (!stopped) {
-        try { recognition.start(); } catch { stop(); onError('Local wake-word listening could not restart.'); }
-      }
-    }, 300);
+    if (!stopped) {
+      starting = true;
+      clearTimeout(timer);
+      onState?.('restarting');
+      timer = setTimeout(begin, 300);
+    }
   };
-  try { recognition.start(); } catch {
-    rejectStart(new LocalWakeWordError('SETUP_FAILED', 'The browser could not start local speech recognition. Check microphone permissions and open Nanivio directly in a supported browser.'));
-    stop();
-  }
+  begin();
   await started;
-  if (stopped) throw new LocalWakeWordError('SETUP_FAILED', 'Local microphone listening stopped during setup. Check browser permissions and try again.');
+  if (stopped || starting) {
+    stop();
+    throw new LocalWakeWordError('SETUP_FAILED', 'Local microphone listening stopped during setup. Check browser permissions and try again.');
+  }
   cancelled();
   return stop;
 }

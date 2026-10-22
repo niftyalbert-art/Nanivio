@@ -99,7 +99,7 @@ test('local wake listening is cancellable, once-only, and never installs a pack 
     instance.onresult({ resultIndex: 0, results: [result] });
     assert.equal(wakes, 1);
     assert.equal(stops, 2);
-    Object.defineProperty(globalThis, 'window', { configurable: true, value: { webkitSpeechRecognition: Recognition } });
+    Object.defineProperty(globalThis, 'window', { configurable: true, value: { webkitSpeechRecognition: class LegacyRecognition {} } });
     await assert.rejects(startLocalMalviWakeWord(() => wakes++, assert.fail), /no cloud/i);
     assert.equal(starts, 2, 'Never fall back to the cloud-backed recognizer');
   } finally {
