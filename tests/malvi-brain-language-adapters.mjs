@@ -204,6 +204,17 @@ try {
   state.geminiOptions.callbacks.onmessage({ serverContent: { modelTurn: { parts: [spokenChunk] }, outputTranscription: { text: 'New speech' }, turnComplete: true } });
   await new Promise(resolve => setImmediate(resolve));
   assert.equal(voice.events.filter(e => e.type === 'malvi:brain_audio').length, 1, 'Next response must still be playable');
+  const inputPcm=Buffer.alloc(6400);
+  for(let i=0;i<inputPcm.length;i+=2)inputPcm.writeInt16LE(i%4?8000:-8000,i);
+  const beforeInput=state.geminiInput.length;
+  await controller.audio(voice,'intruder',voiceId,inputPcm.toString('base64'));
+  assert.equal(state.geminiInput.length,beforeInput,'Other accounts cannot inject microphone audio');
+  await controller.audio(voice,'owner',voiceId,inputPcm.toString('base64'));
+  assert.deepEqual(state.geminiInput.at(-1),{audio:{data:inputPcm.toString('base64'),mimeType:'audio/pcm;rate=16000'}},'Forward the captured voice bytes to the one selected brain at the correct sample rate');
+  state.geminiOptions.callbacks.onmessage({serverContent:{inputTranscription:{text:'Hello Malvi'}}});
+  assert.equal(voice.events.filter(e=>e.type==='malvi:brain_caption'&&e.payload.role==='user').at(-1).payload.text,'Hello Malvi');
+  controller.endAudio(voice,'owner',voiceId);
+  assert.deepEqual(state.geminiInput.at(-1),{audioStreamEnd:true});
   controller.closeSocket(voice);
   await new Promise(resolve => setImmediate(resolve));
   assert.equal(state.voiceStops, 1, 'Socket disconnect must release the voice-only Redis reservation');

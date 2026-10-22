@@ -17,11 +17,9 @@ class MalviPcmProcessor extends AudioWorkletProcessor {
       const bytes = new Uint8Array(samples.length * 2);
       const view = new DataView(bytes.buffer);
       for (let i = 0; i < samples.length; i += 1) view.setInt16(i * 2, samples[i], true);
-      let binary = '';
-      for (let i = 0; i < bytes.length; i += 8192) {
-        binary += String.fromCharCode(...bytes.subarray(i, i + 8192));
-      }
-      this.port.postMessage(btoa(binary));
+      // AudioWorkletGlobalScope has no window.btoa. Transfer PCM to the
+      // browser thread; encoding here would crash the recorder silently.
+      this.port.postMessage(bytes.buffer, [bytes.buffer]);
     }
     return true;
   }

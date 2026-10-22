@@ -12,6 +12,7 @@ import { malviAvatarSoundBlocked, playMalviAvatar } from '../../lib/malviAvatarP
 import { MalviCaptionPlayer, malviInputLevel, type MalviCaptionTrack } from '../../lib/malviSpeechTiming';
 import { MalviAvatarPlayout } from '../../lib/malviAvatarPlayout';
 import MalviWakeControls from './MalviWakeControls';
+import { encodeMalviMicrophoneFrame } from '../../lib/malviMicrophone';
 
 type Phase = 'idle' | 'connecting' | 'connected' | 'error';
 interface LiveControls {
@@ -87,6 +88,9 @@ export const MalviLiveAssistantProvider: React.FC<{ children: React.ReactNode }>
   const micContext = useRef<AudioContext | null>(null);
   const micSource = useRef<MediaStreamAudioSourceNode | null>(null);
   const micProcessor = useRef<AudioWorkletNode | null>(null);
+  const micWatchdog = useRef<number | null>(null);
+  const micAttempt = useRef(0);
+  const micStarting = useRef(false);
   const stopWake = useRef<(() => void) | null>(null);
   const wakeController = useRef<AbortController | null>(null);
   const generation = useRef(0);
@@ -94,9 +98,16 @@ export const MalviLiveAssistantProvider: React.FC<{ children: React.ReactNode }>
   const busy = useRef(false);
   const mounted = useRef(true);
   const stopMicrophone = useCallback(() => {
+    micAttempt.current++; micStarting.current = false;
+    if (micWatchdog.current !== null) window.clearTimeout(micWatchdog.current);
+    micWatchdog.current = null;
     const id = sessionId.current;
     if (id) realtimeClient.send('malvi:brain_audio_end', { sessionId: id });
-    micProcessor.current?.disconnect();
+    if (micProcessor.current) {
+      micProcessor.current.port.onmessage = null;
+      micProcessor.current.onprocessorerror = null;
+      micProcessor.current.disconnect();
+    }
     micSource.current?.disconnect();
     micStream.current?.getTracks().forEach((track) => track.stop());
     if (micContext.current && micContext.current.state !== 'closed') void micContext.current.close();
@@ -288,8 +299,11 @@ export const MalviLiveAssistantProvider: React.FC<{ children: React.ReactNode }>
 
   const toggleMicrophone = useCallback(async () => {
     if (microphoneOn) { stopMicrophone(); return; }
+    if (micStarting.current) return;
     const id = sessionId.current;
     if (!id || !brainReady) return;
+    const attempt = ++micAttempt.current;
+    micStarting.current = true;
     setMicrophoneError('');
     let stream: MediaStream | null = null;
     let context: AudioContext | null = null;
@@ -297,14 +311,18 @@ export const MalviLiveAssistantProvider: React.FC<{ children: React.ReactNode }>
       if (!navigator.mediaDevices?.getUserMedia || typeof AudioContext === 'undefined' || !('audioWorklet' in AudioContext.prototype)) {
         throw new Error('This browser does not support live microphone streaming.');
       }
+      // Resume in the activation gesture, before an asynchronous permission
+      // prompt can consume mobile browsers' user-activation allowance.
+      context = new AudioContext({ sampleRate: 16000 });
+      micContext.current = context;
+      if (context.sampleRate !== 16000) throw new Error('This browser could not start a 16 kHz audio stream.');
+      await context.resume();
+      if (context.state !== 'running') throw new Error('Your browser paused microphone audio. Tap Start talking to resume.');
       stream = await navigator.mediaDevices.getUserMedia({
         audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true, autoGainControl: true },
       });
-      context = new AudioContext({ sampleRate: 16000 });
-      if (context.sampleRate !== 16000) throw new Error('This browser could not start a 16 kHz audio stream.');
-      await context.resume();
-      await context.audioWorklet.addModule('/audio/malvi-pcm-processor.js');
-      if (sessionId.current !== id || !mounted.current) {
+      await context.audioWorklet.addModule('/audio/malvi-pcm-processor.js?v=2');
+      if (sessionId.current !== id || !mounted.current || micAttempt.current !== attempt) {
         stream.getTracks().forEach((track) => track.stop());
         await context.close();
         return;
@@ -313,21 +331,43 @@ export const MalviLiveAssistantProvider: React.FC<{ children: React.ReactNode }>
       const processor = new AudioWorkletNode(context, 'malvi-pcm-processor');
       const silentOutput = context.createGain();
       silentOutput.gain.value = 0;
+      const checkFrames = () => {
+        if (micWatchdog.current !== null) window.clearTimeout(micWatchdog.current);
+        micWatchdog.current = window.setTimeout(() => {
+          if (micProcessor.current !== processor) return;
+          stopMicrophone();
+          setMicrophoneError('No microphone audio is arriving. Check microphone access and tap Start talking to retry.');
+        }, 4000);
+      };
+      processor.onprocessorerror = () => {
+        if (micProcessor.current !== processor) return;
+        stopMicrophone();
+        setMicrophoneError('The microphone recorder stopped. Tap Start talking to retry.');
+      };
       processor.port.onmessage = (event) => {
-        if (sessionId.current === id && typeof event.data === 'string') {
-          const level = malviInputLevel(event.data);
-          setInputLevel(level);
-          const now = performance.now();
-          if (level > 0.075) {
-            if (!userSpeech.current) {
-              userText.current = ''; setUserTranscript('');
+        if (sessionId.current === id && micProcessor.current === processor) {
+          try {
+            const audio = encodeMalviMicrophoneFrame(event.data);
+            checkFrames();
+            const level = malviInputLevel(audio);
+            setInputLevel(level);
+            const now = performance.now();
+            if (level > 0.075) {
+              if (!userSpeech.current) {
+                userText.current = ''; setUserTranscript('');
+              }
+              userSpeech.current = true; lastSpeechAt.current = now;
+              setProcessing(false);
+            } else if (userSpeech.current && now - lastSpeechAt.current > 700) {
+              userSpeech.current = false; setProcessing(true);
             }
-            userSpeech.current = true; lastSpeechAt.current = now;
-            setProcessing(false);
-          } else if (userSpeech.current && now - lastSpeechAt.current > 700) {
-            userSpeech.current = false; setProcessing(true);
+            if (realtimeClient.send('malvi:brain_audio', { sessionId: id, audio }) === false) {
+              throw new Error('The live connection stopped receiving microphone audio. End this conversation and reconnect.');
+            }
+          } catch (error) {
+            stopMicrophone();
+            setMicrophoneError(error instanceof Error ? error.message : 'Microphone audio could not be sent.');
           }
-          realtimeClient.send('malvi:brain_audio', { sessionId: id, audio: event.data });
         }
       };
       source.connect(processor);
@@ -337,6 +377,7 @@ export const MalviLiveAssistantProvider: React.FC<{ children: React.ReactNode }>
       micContext.current = context;
       micSource.current = source;
       micProcessor.current = processor;
+      checkFrames();
       const activeContext = context;
       activeContext.onstatechange = () => {
         if (sessionId.current !== id || micContext.current !== activeContext || activeContext.state === 'running') return;
@@ -356,10 +397,12 @@ export const MalviLiveAssistantProvider: React.FC<{ children: React.ReactNode }>
     } catch (error) {
       stream?.getTracks().forEach((track) => track.stop());
       context?.close().catch(() => {});
-      micStream.current?.getTracks().forEach((track) => track.stop());
-      micContext.current?.close().catch(() => {});
+      if (micAttempt.current !== attempt) return;
+      stopMicrophone();
       setMicrophoneError(error instanceof Error ? error.message : 'Microphone access could not start.');
       setMicrophoneOn(false);
+    } finally {
+      if (micAttempt.current === attempt) micStarting.current = false;
     }
   }, [brainReady, microphoneOn, stopMicrophone]);
   useEffect(() => { void refresh(); }, [refresh, currentUser?.id]);
