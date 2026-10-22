@@ -61,6 +61,19 @@ Malvi’s speaking voice should match the user-supplied ElevenLabs recording acr
 
 **How to apply:** Resolve the original usable voice and verify its multilingual coverage before changing live speech. Do not promise unsupported languages, silently substitute a different voice, or treat an uploaded MP3 as an already-configured synthesis voice.
 
+The user wants a proper, profound introduction without reminders such as “I'm not
+a human,” and wants a shorter wait before Malvi speaks.
+
+**Why:** The user said the long waiting time before Malvi speaks is discouraging
+and explicitly asked to remove that identity reminder.
+
+**How to apply:** Introduce Malvi naturally as Nanivio's AI companion, without
+reciting disclaimers or claiming to be human. Keep the opening meaningful and
+brief, in the selected language. Reduce serial startup and full-turn buffering
+where possible, but preserve the approved voice and playback-timed subtitles.
+Keep synthesis segmentation bounded rather than billing one request per word;
+validate live latency separately from fixture timing.
+
 Use the LiveAvatar image-avatar creation route when preparing Malvi from the supplied still portraits; do not insist on training video as the only option.
 
 **Why:** The user supplied still images, and the official LiveAvatar documentation confirms photo-based custom avatars support LITE with independently supplied audio. Ordinary HeyGen video avatars are not interchangeable with LiveAvatar assets.

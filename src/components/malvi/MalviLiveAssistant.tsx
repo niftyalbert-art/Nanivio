@@ -78,6 +78,9 @@ export const MalviLiveAssistantProvider: React.FC<{ children: React.ReactNode }>
   const avatarPlayout = useRef<MalviAvatarPlayout | null>(null);
   const removeVideoListeners = useRef<(() => void) | null>(null);
   const mediaReady = useRef(false);
+  const avatarAcceptingAudio = useRef(false);
+  const startupAudio = useRef<any[]>([]);
+  const receiveBrainAudio = useRef<((payload: any) => void) | null>(null);
   const sdk = useRef<LiveAvatarSession | null>(null);
   const sessionId = useRef<string | null>(null);
   const micStream = useRef<MediaStream | null>(null);
@@ -117,6 +120,7 @@ export const MalviLiveAssistantProvider: React.FC<{ children: React.ReactNode }>
     avatarPlayout.current?.close(); avatarPlayout.current = null;
     setProcessing(false); setUserTranscript(''); userText.current = '';
     playback.current?.close(); playback.current = null; pendingAudio.current = null;
+    avatarAcceptingAudio.current = false; startupAudio.current = [];
     if (id) realtimeClient.send('malvi:brain_stop', { sessionId: id });
     sdk.current = null; sessionId.current = null; deadline.current = 0; mediaReady.current = false;
     setActiveLanguage(null);
@@ -181,8 +185,13 @@ export const MalviLiveAssistantProvider: React.FC<{ children: React.ReactNode }>
         setCaption('');
       }
     });
-    const offAudio = realtimeClient.on('malvi:brain_audio', (payload) => {
+    const handleAudio = (payload: any) => {
       if (!isCurrent(payload) || (payload.language && payload.language !== languageRef.current)) return;
+      if (!voiceMode.current && !avatarAcceptingAudio.current) {
+        if (startupAudio.current.length >= 2) { fail('Malvi’s avatar did not become ready before the voice startup queue filled.'); return; }
+        startupAudio.current.push(payload);
+        return;
+      }
       try {
         if (!voiceMode.current && !sdk.current) return;
         const track = captions.current!.enqueue({ alignment: payload.alignment, durationMs: payload.durationMs });
@@ -205,7 +214,9 @@ export const MalviLiveAssistantProvider: React.FC<{ children: React.ReactNode }>
         captions.current?.cancel(); avatarPlayout.current?.cancel(); setProcessing(false);
         setMicrophoneError('Malvi’s voice audio could not be played.');
       }
-    });
+    };
+    receiveBrainAudio.current = handleAudio;
+    const offAudio = realtimeClient.on('malvi:brain_audio', handleAudio);
     const offCaption = realtimeClient.on('malvi:brain_caption', (payload) => {
       if (!isCurrent(payload) || (payload.language && payload.language !== languageRef.current) || typeof payload.text !== 'string') return;
       if (payload.role === 'user') {
@@ -234,6 +245,7 @@ export const MalviLiveAssistantProvider: React.FC<{ children: React.ReactNode }>
     });
     const offInterrupted = realtimeClient.on('malvi:brain_interrupted', payload => {
       if (isCurrent(payload)) {
+        startupAudio.current = [];
         captions.current?.cancel(); avatarPlayout.current?.cancel(); setProcessing(false);
         playback.current?.interrupt(); pendingAudio.current = null; sdk.current?.interrupt();
       }
@@ -259,6 +271,7 @@ export const MalviLiveAssistantProvider: React.FC<{ children: React.ReactNode }>
       captions.current?.cancel(); avatarPlayout.current?.cancel(); setProcessing(false);
       sdk.current?.interrupt();
       playback.current?.interrupt(); pendingAudio.current = null;
+      startupAudio.current = [];
       setBrainReady(false);
       setCaption('');
       realtimeClient.send('malvi:brain_language', { sessionId: id, language: language.code });
@@ -406,13 +419,12 @@ export const MalviLiveAssistantProvider: React.FC<{ children: React.ReactNode }>
       live.on(AgentEventsEnum.AVATAR_SPEAK_ENDED, () => {
         if (run === generation.current) avatarPlayout.current?.providerEnd();
       });
-      let welcomed = false;
       let streamReady = false, sessionStarted = false;
-      const welcome = () => {
-        if (!welcomed && streamReady && sessionStarted && run === generation.current) {
-          welcomed = true;
-          setCaption('');
-          realtimeClient.send('malvi:brain_start', { sessionId: info.id, language: languageRef.current });
+      const releaseReadyAudio = () => {
+        if (streamReady && sessionStarted && run === generation.current) {
+          avatarAcceptingAudio.current = true;
+          const queued = startupAudio.current.splice(0);
+          for (const audio of queued) receiveBrainAudio.current?.(audio);
         }
       };
       live.on(SessionEvent.SESSION_STREAM_READY, () => {
@@ -422,7 +434,7 @@ export const MalviLiveAssistantProvider: React.FC<{ children: React.ReactNode }>
         setCaption('');
         mediaReady.current = true;
         attachVideo(videoRef.current);
-        welcome();
+        releaseReadyAudio();
       });
       live.on(SessionEvent.SESSION_DISCONNECTED, () => {
         if (run === generation.current) {
@@ -430,6 +442,9 @@ export const MalviLiveAssistantProvider: React.FC<{ children: React.ReactNode }>
           close();
         }
       });
+      // Connect the one selected brain while the renderer starts. Never open
+      // the microphone here; at most two early speech packets wait for media.
+      realtimeClient.send('malvi:brain_start', { sessionId: info.id, language: languageRef.current });
       const starting = live.start().then(async () => {
         if (run !== generation.current) await live.stop();
       });
@@ -443,7 +458,7 @@ export const MalviLiveAssistantProvider: React.FC<{ children: React.ReactNode }>
       await live.voiceChat.stop();
       if (run !== generation.current) { await live.stop(); return; }
       sessionStarted = true;
-      welcome();
+      releaseReadyAudio();
       busy.current = false;
     } catch (err) {
       if (run === generation.current) fail(err instanceof Error ? err.message : 'Unable to connect the live avatar.');

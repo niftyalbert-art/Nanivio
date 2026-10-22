@@ -33,7 +33,11 @@ const sdkFixture = `
     };
     constructor() { window.checks.sdkCreations++; window.emitAvatar=(type)=>this.events[type]?.(); }
     on(type,fn) { this.events[type]=fn; }
-    async start() { await this.voiceChat.start(); this.events.stream?.(); }
+    async start() {
+      await this.voiceChat.start();
+      if(window.deferAvatarStart) await new Promise(resolve=>{window.releaseAvatarStart=resolve;});
+      this.events.stream?.();
+    }
     async stop() { window.checks.sdkStops++; }
     attach() {}
     interrupt() { window.checks.interrupts++; }
@@ -263,6 +267,7 @@ try {
     await page.screenshot(path.join(process.env.NANIVIO_SCREENSHOT_DIR, 'malvi-language-wake-mobile.png'));
   }
 
+  await page.evaluate('window.deferAvatarStart=true;true');
   await click('Enable local wake word');
   await page.wait('window.checks.localStarts===3');
   await page.evaluate(`(()=>{const r=[{transcript:'Hey Malvi'}];r.isFinal=true;window.recognizer.onresult({resultIndex:0,results:[r]});window.recognizer.onresult({resultIndex:0,results:[r]});return true;})()`);
@@ -275,6 +280,21 @@ try {
   assert.equal(before.requests.find(r => r.url.endsWith('/session')).body.language, 'fr');
   assert.equal(before.messages.find(m => m.type === 'malvi:brain_start').payload.language, 'fr');
   assert.equal(before.requests.filter(r => r.url.endsWith('/welcome')).length, 0, 'Never inject an English welcome into a selected-language conversation');
+  await page.wait('typeof window.releaseAvatarStart==="function"');
+  assert.equal(await page.evaluate('window.checks.playedAudio.length'),0);
+  assert.equal(await page.evaluate('window.overlay.phase'),'connecting','Brain startup must not wait for the renderer');
+  await page.evaluate(`(()=>{
+    window.emitBrain('malvi:brain_ready',{sessionId:'11111111-1111-4111-8111-111111111111',provider:'gemini',language:'fr'});
+    const chars=Array.from('Bonjour. '.repeat(40));
+    window.emitBrain('malvi:brain_audio',{sessionId:'11111111-1111-4111-8111-111111111111',language:'fr',pcm24k:'AAAAAA==',sampleRate:24000,format:'pcm_s16le',channels:1,durationMs:5000,
+      alignment:{characters:chars,character_start_times_seconds:chars.map((_,i)=>i/100),character_end_times_seconds:chars.map((_,i)=>(i+1)/100)}});
+    return true;
+  })()`);
+  assert.equal(await page.evaluate('window.checks.playedAudio.length'),0,'Early voice must wait for the renderer, without being lost or sent to an unready SDK');
+  assert.equal(await page.evaluate('window.overlay.caption'),'','Early speech must not expose subtitles');
+  await page.evaluate('window.deferAvatarStart=false;window.releaseAvatarStart();true');
+  await page.wait('window.overlay.phase==="connected"');
+  await page.wait('window.checks.playedAudio.length===1');
   await page.evaluate(`window.emitBrain('malvi:brain_ready',{sessionId:'11111111-1111-4111-8111-111111111111',provider:'gemini',language:'fr'});true`);
   await page.evaluate(`window.emitBrain('malvi:brain_caption',{sessionId:'11111111-1111-4111-8111-111111111111',language:'fr',role:'assistant',text:'Bonjour. '.repeat(100)});true`);
   assert.equal(await page.evaluate('window.overlay.caption'), '', 'Brain tokens must never become pre-speech subtitles');
@@ -284,9 +304,6 @@ try {
     Object.defineProperty(video,'paused',{configurable:true,get:()=>window.fixtureVideoPaused});
     video.muted=false;video.volume=1;
      video.dispatchEvent(new Event('playing'));
-    const chars=Array.from('Bonjour. '.repeat(40));
-    window.emitBrain('malvi:brain_audio',{sessionId:'11111111-1111-4111-8111-111111111111',language:'fr',pcm24k:'AAAAAA==',sampleRate:24000,format:'pcm_s16le',channels:1,durationMs:5000,
-      alignment:{characters:chars,character_start_times_seconds:chars.map((_,i)=>i/100),character_end_times_seconds:chars.map((_,i)=>(i+1)/100)}});
     return true;
   })()`);
   assert.equal(await page.evaluate('window.overlay.caption'), '', 'Queued audio must wait for avatar playback');

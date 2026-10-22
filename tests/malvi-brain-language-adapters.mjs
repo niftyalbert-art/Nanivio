@@ -72,6 +72,7 @@ const originalFetch = globalThis.fetch;
 globalThis.fetch = async (url, init) => {
   assert.match(String(url), /^https:\/\/api\.elevenlabs\.io\/v1\/text-to-speech\/kW71iH6myeMHEvxKthQ6\/with-timestamps\?output_format=pcm_24000$/);
   state.speechRequests.push({ body: JSON.parse(init.body), signal: init.signal });
+  if (state.holdSpeech) await new Promise(resolve => { state.releaseSpeech=resolve; });
   const characters = Array.from(JSON.parse(init.body).text);
   return Response.json({
     audio_base64: Buffer.alloc(480, 12).toString('base64'),
@@ -130,6 +131,34 @@ try {
   state.geminiOptions.callbacks.onmessage({ serverContent: { turnComplete: true } });
   await new Promise(resolve => setImmediate(resolve));
   assert.equal(state.speechRequests.length, 1, 'Duplicate completion must not create billable speech');
+  const opening='Here is a clear answer to your question.';
+  const remainder=' This useful detail follows after the opening sentence.';
+  state.geminiOptions.callbacks.onmessage({serverContent:{outputTranscription:{text:opening}}});
+  await new Promise(resolve=>setImmediate(resolve));
+  assert.equal(state.speechRequests.length,2,'Start the approved voice before the native-audio turn completes');
+  assert.equal(gemini.events.filter(e=>e.type==='malvi:brain_audio').length,2);
+  assert.equal(gemini.events.filter(e=>e.type==='malvi:brain_audio').at(-1).payload.ended,false);
+  state.geminiOptions.callbacks.onmessage({serverContent:{outputTranscription:{text:remainder}}});
+  await new Promise(resolve=>setImmediate(resolve));
+  assert.equal(state.speechRequests.length,2,'Do not synthesize every subsequent sentence separately');
+  state.geminiOptions.callbacks.onmessage({serverContent:{turnComplete:true}});
+  await new Promise(resolve=>setImmediate(resolve));
+  assert.equal(state.speechRequests.length,3);
+  assert.equal(state.speechRequests.slice(1,3).map(r=>r.body.text).join(''),opening+remainder);
+  const partials=gemini.events.filter(e=>e.type==='malvi:brain_audio').slice(1);
+  assert.deepEqual(partials.map(e=>e.payload.ended),[false,true]);
+  assert.ok(partials.every(e=>e.payload.alignment.characters.length),'Every segment retains provider subtitle timings');
+  state.holdSpeech=true;
+  const beforeInterrupted=gemini.events.filter(e=>e.type==='malvi:brain_audio').length;
+  state.geminiOptions.callbacks.onmessage({serverContent:{outputTranscription:{text:opening}}});
+  await new Promise(resolve=>setImmediate(resolve));
+  assert.equal(typeof state.releaseSpeech,'function');
+  controller.interrupt(gemini,'owner',id1);
+  state.holdSpeech=false;state.releaseSpeech();
+  await new Promise(resolve=>setImmediate(resolve));
+  state.geminiOptions.callbacks.onmessage({serverContent:{turnComplete:true}});
+  await new Promise(resolve=>setImmediate(resolve));
+  assert.equal(gemini.events.filter(e=>e.type==='malvi:brain_audio').length,beforeInterrupted,'Cancelled opening speech cannot arrive late');
   assert.equal(state.activity, 0, 'A language preference must not reset the cost-protection deadline');
   const contentCount = state.geminiContent.length;
   await controller.language(gemini, 'intruder', id1, 'en');
@@ -146,7 +175,8 @@ try {
   const start = state.openaiEvents.find(event => event.type === 'session.start');
   assert.match(start.session.instructions, /Arabic \(ar;/);
   assert.match(start.session.delegation.responses.instructions, /Arabic \(ar;/);
-  assert.match(start.session.instructions, /AI assistant, not a human/);
+  assert.match(start.session.instructions, /AI companion at Nanivio/);
+  assert.doesNotMatch(start.session.instructions, /AI assistant, not a human/);
   await controller.language(openai, 'owner', id2, 'gaa');
   assert.match(openai.events.at(-1).payload.message, /Ga.*not supported/);
   await controller.language(openai, 'owner', id2, 'fr');
