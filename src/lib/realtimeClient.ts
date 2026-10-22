@@ -125,7 +125,11 @@ class NanivioRealtimeClient {
   public send(type: string, payload: any) {
     if (this.socket && this.socket.readyState === WebSocket.OPEN) {
       this.socket.send(JSON.stringify({ type, payload }));
+      return true;
     } else {
+      // Live microphone frames must never be delayed/replayed after reconnect.
+      // Let the caller stop capture and show the disconnected state instead.
+      if (type === 'malvi:brain_audio') return false;
       // Connect and queue
       this.connect();
       setTimeout(() => {

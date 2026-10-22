@@ -18,7 +18,10 @@ const realtimeFixture = `
       listeners.get(type).add(fn);
       return () => listeners.get(type).delete(fn);
     },
-    send(type,payload) { window.checks.messages.push({type,payload}); }
+    send(type,payload) {
+      if(type==='malvi:brain_audio'&&window.failMicrophoneSend)return false;
+      window.checks.messages.push({type,payload});return true;
+    }
   };
 `;
 const sdkFixture = `
@@ -342,11 +345,14 @@ try {
     const samples=new Int16Array(3200).fill(8000);
     const bytes=new Uint8Array(samples.buffer);
     window.fixtureHeardAt=performance.now();
-    window.inputProcessor.port.onmessage({data:btoa(String.fromCharCode(...bytes))});
+    window.inputProcessor.port.onmessage({data:bytes.buffer});
     return true;
   })()`);
   await page.wait('window.overlay.inputState==="hearing"');
   assert.ok(await page.evaluate('window.overlay.inputLevel>0'));
+  const sentMicrophone = await page.evaluate(`window.checks.messages.filter(m=>m.type==='malvi:brain_audio').at(-1)`);
+  assert.equal(Buffer.from(sentMicrophone.payload.audio,'base64').length,6400);
+  assert.equal(Buffer.from(sentMicrophone.payload.audio,'base64').readInt16LE(0),8000,'Binary worklet speech must reach the authenticated transport unchanged');
   await page.evaluate(`window.emitBrain('malvi:brain_caption',{sessionId:'11111111-1111-4111-8111-111111111111',role:'user',text:'Bonjour Malvi'});true`);
   await page.wait('window.overlay.userTranscript==="Bonjour Malvi"');
   assert.equal(await page.evaluate('window.overlay.caption'), '', 'User speech is separate from Malvi subtitles');
@@ -362,6 +368,23 @@ try {
   await page.evaluate(`window.fixtureAudioContext.state='suspended';window.fixtureAudioContext.onstatechange();true`);
   await page.wait('window.overlay.microphoneOn===false');
   assert.equal(await page.evaluate('window.overlay.inputState'), 'off', 'Suspended browser audio must not falsely appear to be listening');
+  await click('Start talking');
+  await page.wait('window.overlay.microphoneOn===true');
+  await page.evaluate(`window.staleMicrophoneHandler=window.inputProcessor.port.onmessage;window.inputProcessor.onprocessorerror();true`);
+  await page.wait('window.overlay.microphoneOn===false');
+  assert.match(await page.evaluate('window.overlay.microphoneError'),/recorder stopped/);
+  const stoppedAudioCount=await page.evaluate(`window.checks.messages.filter(m=>m.type==='malvi:brain_audio').length`);
+  await page.evaluate(`window.staleMicrophoneHandler({data:new ArrayBuffer(6400)});true`);
+  assert.equal(await page.evaluate(`window.checks.messages.filter(m=>m.type==='malvi:brain_audio').length`),stoppedAudioCount,'A queued message cannot send microphone audio after capture stops');
+  await click('Start talking');
+  await page.wait('window.overlay.microphoneOn===true');
+  await page.evaluate(`window.failMicrophoneSend=true;window.inputProcessor.port.onmessage({data:new ArrayBuffer(6400)});window.failMicrophoneSend=false;true`);
+  await page.wait('window.overlay.microphoneOn===false');
+  assert.match(await page.evaluate('window.overlay.microphoneError'),/connection stopped receiving/);
+  await click('Start talking');
+  await page.wait('window.overlay.microphoneOn===true');
+  await page.wait('window.overlay.microphoneOn===false',7000);
+  assert.match(await page.evaluate('window.overlay.microphoneError'),/No microphone audio is arriving/,'A stalled recorder cannot stay falsely active');
   await page.evaluate(`(()=>{
     const el=document.querySelector('video');
     window.fixtureVideoPaused=false;
