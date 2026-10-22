@@ -19,3 +19,14 @@ training a proprietary speech model, self-hosting recognition, or consent to
 always-on cloud listening. Retain current AI providers; ask separately before
 replacing providers or creating a separate app. Preserve the approved voice and selected brain unless
 the user changes those decisions.
+
+Treat working conversational microphone input as a regression boundary while
+developing the owned engine.
+
+**Why:** The user confirmed that Malvi could hear and respond, and explicitly
+asked that committing and pushing the owned-engine changes not break that
+behavior. This confirmation does not establish which revision was deployed.
+
+**How to apply:** Preserve the successful capture-to-response path and verify it
+after deployment; do not treat a source push or local capture test as proof that
+the live conversation still works.
