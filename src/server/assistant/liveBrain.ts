@@ -113,6 +113,8 @@ async function flushAudio(socket: WebSocket, connection: BrainConnection, ended:
     ended,
     greeting: connection.isFirstTurn,
     text,
+    alignment: audio.alignment,
+    durationMs: audio.length / 48,
     speechProvider: 'elevenlabs',
   });
   connection.isFirstTurn = false;

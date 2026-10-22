@@ -70,9 +70,15 @@ const state = globalThis.__malviAdapter;
 state.speechRequests = [];
 const originalFetch = globalThis.fetch;
 globalThis.fetch = async (url, init) => {
-  assert.match(String(url), /^https:\/\/api\.elevenlabs\.io\/v1\/text-to-speech\/kW71iH6myeMHEvxKthQ6\?output_format=pcm_24000$/);
+  assert.match(String(url), /^https:\/\/api\.elevenlabs\.io\/v1\/text-to-speech\/kW71iH6myeMHEvxKthQ6\/with-timestamps\?output_format=pcm_24000$/);
   state.speechRequests.push({ body: JSON.parse(init.body), signal: init.signal });
-  return new Response(Buffer.alloc(480, 12), { headers: { 'Content-Type': 'audio/pcm' } });
+  const characters = Array.from(JSON.parse(init.body).text);
+  return Response.json({
+    audio_base64: Buffer.alloc(480, 12).toString('base64'),
+    normalized_alignment: { characters,
+      character_start_times_seconds: characters.map(() => 0),
+      character_end_times_seconds: characters.map(() => 0.009) },
+  });
 };
 const isolatedModule = { exports: {} };
 new Function('require', 'module', 'exports', output.outputFiles[0].text)(
@@ -116,6 +122,8 @@ try {
   const audioEvent = gemini.events.find(event => event.type === 'malvi:brain_audio');
   assert.equal(audioEvent.payload.language, 'en');
   assert.equal(audioEvent.payload.speechProvider, 'elevenlabs');
+  assert.ok(audioEvent.payload.alignment.characters.length > 0);
+  assert.equal(audioEvent.payload.durationMs, 10);
   assert.equal(audioEvent.payload.pcm24k, Buffer.alloc(480, 12).toString('base64'), 'Only ElevenLabs audio may reach the renderer');
   assert.equal(state.speechRequests.length, 1, 'Exactly one request for the completed Gemini turn');
   assert.equal(state.speechRequests[0].body.text, 'Hello, I am Malvi, your AI assistant.');
