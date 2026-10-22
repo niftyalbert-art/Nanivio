@@ -27,4 +27,4 @@
 - [Global product direction](global-product-direction.md) — international/Ghana-Africa roots; Bybit-inspired charcoal/gold, compact controls, no blur or fake activity; Malvi follows.
 - [Didit phone API restrictions](didit-phone-restrictions.md) — phone-specific 403 meanings differ from generic API-key docs; read the full endpoint Markdown.
 - [Malvi microphone verification](malvi-microphone-verification.md) — exercise the real audio worklet; simulated recorder controls do not prove frame capture or recognition.
-- [Nanivio Mic direction](nanivio-mic-direction.md) — dedicated owned voice engine across browsers, cloud, and apps; clarify self-hosted recognition versus provider adapters.
+- [Nanivio Mic direction](nanivio-mic-direction.md) — owned engine across browsers, cloud, and apps; user chose current AI providers, not self-hosted recognition.

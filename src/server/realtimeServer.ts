@@ -21,6 +21,8 @@ import { privateMessageMedia } from './chatAttachments.ts';
 import { callKhayaEngine as khaya, callSunbirdEngine as sunbird } from './translationProviders.ts';
 import { translateWithProductionProviders as callProductionTranslation } from './translationRouter.ts';
 import { malviLiveBrainController } from './assistant/liveBrain.ts';
+import { createNanivioMicGateway } from './assistant/nanivioMicGateway.ts';
+const nanivioMicGateway = createNanivioMicGateway(malviLiveBrainController);
 
 export interface ConnectedUser {
   socket: WebSocket;
@@ -432,6 +434,18 @@ export function setupRealtimeServer(httpServer: HttpServer) {
             }
             break;
           }
+          case 'nanivio:mic_start': {
+            nanivioMicGateway.start(socket, currentUser.userId, payload);
+            break;
+          }
+          case 'nanivio:mic_audio': {
+            await nanivioMicGateway.audio(socket, currentUser.userId, payload);
+            break;
+          }
+          case 'nanivio:mic_stop': {
+            nanivioMicGateway.stop(socket, currentUser.userId, payload);
+            break;
+          }
           case 'malvi:brain_audio': {
             if (typeof payload?.sessionId === 'string') {
               await malviLiveBrainController.audio(socket, currentUser.userId, payload.sessionId, payload.audio);
@@ -454,6 +468,7 @@ export function setupRealtimeServer(httpServer: HttpServer) {
           }
           case 'malvi:brain_stop': {
             if (typeof payload?.sessionId === 'string') {
+              nanivioMicGateway.stopSession(socket, currentUser.userId, payload.sessionId);
               await malviLiveBrainController.stopSession(currentUser.userId, payload.sessionId);
             }
             break;
@@ -858,6 +873,7 @@ export function setupRealtimeServer(httpServer: HttpServer) {
     socket.on('close', () => {
       clearInterval(pingInterval);
       allSockets.delete(socket);
+      nanivioMicGateway.closeSocket(socket);
       malviLiveBrainController.closeSocket(socket);
 
       if (currentUser) {

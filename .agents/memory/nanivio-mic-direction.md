@@ -6,6 +6,9 @@ The user wants Nanivio Mic to use a dedicated own-built engine, rather than bein
 built on the browser's speech engine, accessible across browsers and Nanivio's
 own cloud/app.
 
+The user selected “Build the Nanivio engine with current AI providers” rather
+than self-hosting speech recognition.
+
 **Why:** The user explicitly requested this direction after the Malvi microphone
 failure.
 
@@ -13,6 +16,6 @@ failure.
 microphone capture. Web access still needs browser permission; a native app uses
 the operating system's capture APIs. Do not equate engine ownership with
 training a proprietary speech model, self-hosting recognition, or consent to
-always-on cloud listening. Clarify these choices before replacing providers or
-creating a separate app. Preserve the approved voice and selected brain unless
+always-on cloud listening. Retain current AI providers; ask separately before
+replacing providers or creating a separate app. Preserve the approved voice and selected brain unless
 the user changes those decisions.

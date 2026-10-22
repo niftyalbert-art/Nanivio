@@ -9,10 +9,12 @@ import { MalviLiveOverlay } from './MalviLiveOverlay';
 import type { LiveAvatarSession } from '@heygen/liveavatar-web-sdk';
 import { MalviVoicePlayback } from '../../lib/malviVoicePlayback';
 import { malviAvatarSoundBlocked, playMalviAvatar } from '../../lib/malviAvatarPlayback';
-import { MalviCaptionPlayer, malviInputLevel, type MalviCaptionTrack } from '../../lib/malviSpeechTiming';
+import { MalviCaptionPlayer, type MalviCaptionTrack } from '../../lib/malviSpeechTiming';
 import { MalviAvatarPlayout } from '../../lib/malviAvatarPlayout';
 import MalviWakeControls from './MalviWakeControls';
-import { encodeMalviMicrophoneFrame } from '../../lib/malviMicrophone';
+import { NanivioMicEngine } from '../../lib/nanivioMic/NanivioMicEngine';
+import { BrowserMicCapture, browserMicStreamId } from '../../lib/nanivioMic/BrowserMicCapture';
+import { NANIVIO_MIC_EVENTS } from '../../shared/nanivioMicProtocol';
 
 type Phase = 'idle' | 'connecting' | 'connected' | 'error';
 interface LiveControls {
@@ -52,8 +54,7 @@ export const MalviLiveAssistantProvider: React.FC<{ children: React.ReactNode }>
   const [processing, setProcessing] = useState(false);
   const [speaking, setSpeaking] = useState(false);
   const [userTranscript, setUserTranscript] = useState('');
-  const lastSpeechAt = useRef(0);
-  const userSpeech = useRef(false);
+  const [micReceiving, setMicReceiving] = useState(false);
   const userText = useRef('');
   const captions = useRef<MalviCaptionPlayer | null>(null);
   if (!captions.current) captions.current = new MalviCaptionPlayer((text, playing) => {
@@ -84,13 +85,7 @@ export const MalviLiveAssistantProvider: React.FC<{ children: React.ReactNode }>
   const receiveBrainAudio = useRef<((payload: any) => void) | null>(null);
   const sdk = useRef<LiveAvatarSession | null>(null);
   const sessionId = useRef<string | null>(null);
-  const micStream = useRef<MediaStream | null>(null);
-  const micContext = useRef<AudioContext | null>(null);
-  const micSource = useRef<MediaStreamAudioSourceNode | null>(null);
-  const micProcessor = useRef<AudioWorkletNode | null>(null);
-  const micWatchdog = useRef<number | null>(null);
-  const micAttempt = useRef(0);
-  const micStarting = useRef(false);
+  const micEngine = useRef<NanivioMicEngine | null>(null);
   const stopWake = useRef<(() => void) | null>(null);
   const wakeController = useRef<AbortController | null>(null);
   const generation = useRef(0);
@@ -98,25 +93,10 @@ export const MalviLiveAssistantProvider: React.FC<{ children: React.ReactNode }>
   const busy = useRef(false);
   const mounted = useRef(true);
   const stopMicrophone = useCallback(() => {
-    micAttempt.current++; micStarting.current = false;
-    if (micWatchdog.current !== null) window.clearTimeout(micWatchdog.current);
-    micWatchdog.current = null;
-    const id = sessionId.current;
-    if (id) realtimeClient.send('malvi:brain_audio_end', { sessionId: id });
-    if (micProcessor.current) {
-      micProcessor.current.port.onmessage = null;
-      micProcessor.current.onprocessorerror = null;
-      micProcessor.current.disconnect();
-    }
-    micSource.current?.disconnect();
-    micStream.current?.getTracks().forEach((track) => track.stop());
-    if (micContext.current && micContext.current.state !== 'closed') void micContext.current.close();
-    micProcessor.current = null;
-    micSource.current = null;
-    micStream.current = null;
-    micContext.current = null;
+    const engine = micEngine.current; micEngine.current = null;
+    engine?.stop();
     setMicrophoneOn(false);
-    setInputLevel(0); lastSpeechAt.current = 0; userSpeech.current = false;
+    setInputLevel(0); setMicReceiving(false);
   }, []);
   const disarmWake = useCallback(() => {
     wakeController.current?.abort(); wakeController.current = null;
@@ -298,113 +278,32 @@ export const MalviLiveAssistantProvider: React.FC<{ children: React.ReactNode }>
   }, [phase, brainReady, activeLanguage, preferredLanguage, fail]);
 
   const toggleMicrophone = useCallback(async () => {
-    if (microphoneOn) { stopMicrophone(); return; }
-    if (micStarting.current) return;
+    if (micEngine.current) { stopMicrophone(); return; }
     const id = sessionId.current;
     if (!id || !brainReady) return;
-    const attempt = ++micAttempt.current;
-    micStarting.current = true;
     setMicrophoneError('');
-    let stream: MediaStream | null = null;
-    let context: AudioContext | null = null;
-    try {
-      if (!navigator.mediaDevices?.getUserMedia || typeof AudioContext === 'undefined' || !('audioWorklet' in AudioContext.prototype)) {
-        throw new Error('This browser does not support live microphone streaming.');
-      }
-      // Resume in the activation gesture, before an asynchronous permission
-      // prompt can consume mobile browsers' user-activation allowance.
-      context = new AudioContext({ sampleRate: 16000 });
-      micContext.current = context;
-      if (context.sampleRate !== 16000) throw new Error('This browser could not start a 16 kHz audio stream.');
-      await context.resume();
-      if (context.state !== 'running') throw new Error('Your browser paused microphone audio. Tap Start talking to resume.');
-      stream = await navigator.mediaDevices.getUserMedia({
-        audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true, autoGainControl: true },
-      });
-      await context.audioWorklet.addModule('/audio/malvi-pcm-processor.js?v=2');
-      if (sessionId.current !== id || !mounted.current || micAttempt.current !== attempt) {
-        stream.getTracks().forEach((track) => track.stop());
-        await context.close();
-        return;
-      }
-      const source = context.createMediaStreamSource(stream);
-      const processor = new AudioWorkletNode(context, 'malvi-pcm-processor');
-      const silentOutput = context.createGain();
-      silentOutput.gain.value = 0;
-      const checkFrames = () => {
-        if (micWatchdog.current !== null) window.clearTimeout(micWatchdog.current);
-        micWatchdog.current = window.setTimeout(() => {
-          if (micProcessor.current !== processor) return;
-          stopMicrophone();
-          setMicrophoneError('No microphone audio is arriving. Check microphone access and tap Start talking to retry.');
-        }, 4000);
-      };
-      processor.onprocessorerror = () => {
-        if (micProcessor.current !== processor) return;
-        stopMicrophone();
-        setMicrophoneError('The microphone recorder stopped. Tap Start talking to retry.');
-      };
-      processor.port.onmessage = (event) => {
-        if (sessionId.current === id && micProcessor.current === processor) {
-          try {
-            const audio = encodeMalviMicrophoneFrame(event.data);
-            checkFrames();
-            const level = malviInputLevel(audio);
-            setInputLevel(level);
-            const now = performance.now();
-            if (level > 0.075) {
-              if (!userSpeech.current) {
-                userText.current = ''; setUserTranscript('');
-              }
-              userSpeech.current = true; lastSpeechAt.current = now;
-              setProcessing(false);
-            } else if (userSpeech.current && now - lastSpeechAt.current > 700) {
-              userSpeech.current = false; setProcessing(true);
-            }
-            if (realtimeClient.send('malvi:brain_audio', { sessionId: id, audio }) === false) {
-              throw new Error('The live connection stopped receiving microphone audio. End this conversation and reconnect.');
-            }
-          } catch (error) {
-            stopMicrophone();
-            setMicrophoneError(error instanceof Error ? error.message : 'Microphone audio could not be sent.');
-          }
-        }
-      };
-      source.connect(processor);
-      processor.connect(silentOutput);
-      silentOutput.connect(context.destination);
-      micStream.current = stream;
-      micContext.current = context;
-      micSource.current = source;
-      micProcessor.current = processor;
-      checkFrames();
-      const activeContext = context;
-      activeContext.onstatechange = () => {
-        if (sessionId.current !== id || micContext.current !== activeContext || activeContext.state === 'running') return;
-        stopMicrophone();
-        setMicrophoneError('Microphone audio was paused by your browser. Tap Start talking to resume.');
-      };
-      stream.getAudioTracks().forEach(track => {
-        const interrupted = () => {
-          if (sessionId.current !== id || micStream.current !== stream) return;
-          stopMicrophone();
-          setMicrophoneError('Microphone capture was interrupted. Tap Start talking to resume.');
-        };
-        track.onended = interrupted;
-        track.onmute = interrupted;
-      });
-      setMicrophoneOn(true);
-    } catch (error) {
-      stream?.getTracks().forEach((track) => track.stop());
-      context?.close().catch(() => {});
-      if (micAttempt.current !== attempt) return;
-      stopMicrophone();
-      setMicrophoneError(error instanceof Error ? error.message : 'Microphone access could not start.');
-      setMicrophoneOn(false);
-    } finally {
-      if (micAttempt.current === attempt) micStarting.current = false;
-    }
-  }, [brainReady, microphoneOn, stopMicrophone]);
+    let streamId: string;
+    try { streamId = browserMicStreamId(); }
+    catch (error) { setMicrophoneError(error instanceof Error ? error.message : 'Nanivio Mic could not start securely.'); return; }
+    const engine = new NanivioMicEngine({
+      sessionId: id, streamId, capture: new BrowserMicCapture(),
+      transport: {
+        send: (type, payload) => realtimeClient.send(type, payload) === true,
+        subscribe: listener => realtimeClient.on(NANIVIO_MIC_EVENTS.status, listener),
+      },
+      onState: snapshot => {
+        if (micEngine.current !== engine || sessionId.current !== id || !mounted.current) return;
+        setMicrophoneOn(snapshot.captureActive);
+        setMicReceiving(snapshot.serverReceiving);
+        setInputLevel(snapshot.level);
+        if (snapshot.error) { setMicrophoneError(snapshot.error); micEngine.current = null; }
+      },
+      onSpeechStart: () => { userText.current = ''; setUserTranscript(''); setProcessing(false); },
+      onSpeechEnd: () => setProcessing(true),
+    });
+    micEngine.current = engine;
+    await engine.start();
+  }, [brainReady, stopMicrophone]);
   useEffect(() => { void refresh(); }, [refresh, currentUser?.id]);
   useEffect(() => {
     mounted.current = true;
@@ -673,7 +572,7 @@ export const MalviLiveAssistantProvider: React.FC<{ children: React.ReactNode }>
         brainReady={brainReady}
         microphoneOn={microphoneOn}
         inputLevel={inputLevel}
-        inputState={!microphoneOn ? 'off' : inputLevel > 0.075 ? 'hearing' : processing ? 'processing' : 'listening'}
+        inputState={!microphoneOn ? 'off' : !micReceiving ? 'connecting' : inputLevel > 0.075 ? 'hearing' : processing ? 'processing' : 'listening'}
         speaking={speaking}
         userTranscript={userTranscript}
         microphoneError={microphoneError}
