@@ -19,3 +19,15 @@ For a focused fix, verify the actual comparison against the intended remote pull
 **Why:** A branch containing the latest workspace can carry earlier upgrades absent from the target, even when the newest local commit changes only a small fix. Opening a pull request directly from it can unintentionally include unrelated work.
 
 **How to apply:** If the comparison exceeds the approved scope, start a separate patch branch at the current target and carry over only the fix. Preserve the existing upgrade branches and leave broader changes for their own review.
+
+Validate a selective release against the target branch's unchanged files, not
+only against the complete workspace.
+
+**Why:** A working workspace can contain excluded changes that accidentally
+satisfy dependencies of a focused release. Its build alone does not prove the
+selected release is self-contained.
+
+**How to apply:** Assemble a disposable target-plus-approved-files tree, reuse
+installed dependencies without copying secrets, and check types and the build
+before the non-forced branch update. Verify all selected blob hashes and the
+exact comparison against the current target.
