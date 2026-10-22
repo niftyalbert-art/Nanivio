@@ -8,6 +8,11 @@ const API = 'https://api.liveavatar.com';
 export const AI_DISCLOSURE = "Hello, I'm Malvi, Nanivio's interactive AI assistant, not a human.";
 export const ownerKey = (userId: string) => crypto.createHash('sha256').update(userId).digest('hex');
 
+// A lighter video profile reduces decoder/bandwidth pressure on Android phones.
+// This is a performance mitigation, not a measured lip-sync correction.
+export const malviVideoQuality = (userAgent: string): 'medium' | 'high' =>
+  /\bAndroid\b/i.test(userAgent) ? 'medium' : 'high';
+
 export function liveAvatarSetup() {
   const brain = getLiveBrainProviderConfig();
   const speech = malviSpeechSetup();
@@ -63,7 +68,7 @@ export function createLiveAvatarService(deps: {
     await store.release(record);
   }
   return {
-    async create(userId: string, languageCode = 'en', mode: 'LITE' | 'VOICE_TEST' = 'LITE') {
+    async create(userId: string, languageCode = 'en', mode: 'LITE' | 'VOICE_TEST' = 'LITE', quality: 'medium' | 'high' = 'high') {
       const language = getMalviLanguage(languageCode);
       const store = await deps.store();
       const now = deps.now();
@@ -80,7 +85,7 @@ export function createLiveAvatarService(deps: {
         const data = await deps.provider('/v1/sessions/token', {
           mode: 'LITE',
           avatar_id: process.env.AVATAR_ID,
-          video_settings: { quality: 'high', encoding: 'H264' },
+          video_settings: { quality, encoding: 'H264' },
           max_session_duration: MAX_SESSION_MS / 1000,
         });
         if (typeof data?.session_id === 'string') record.providerId = data.session_id;

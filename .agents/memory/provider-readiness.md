@@ -71,3 +71,5 @@ not establish that phonemes matched lip movements on the user's Render device.
 subtitle pacing, and physical-device lip-sync acceptance. Do not anchor a claim of
 accurate synchronization solely to SDK speaking events or apply a global delay
 from a headless recording without reproducing the target browser's mismatch.
+The user's reported voice-before-lips mismatch was on Android Chrome; a desktop
+browser replay does not verify that phone's decoder, audio output, or live stream.

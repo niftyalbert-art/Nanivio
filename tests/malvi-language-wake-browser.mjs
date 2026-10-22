@@ -55,13 +55,18 @@ const output = await build({
         constructor(){window.fixtureAudioContext=this;}
         get audioWorklet(){return {addModule:async()=>{}};}
         createMediaStreamSource(){return {connect(){},disconnect(){}};}
-        createGain(){return {gain:{value:0},connect(){}};}
+        createAnalyser(){window.outputAudioContext=this;return {fftSize:1024,connect(){},disconnect(){},getFloatTimeDomainData(samples){samples.fill(window.outputLevel||0);}};}
+        createGain(){return {gain:{value:0},connect(){},disconnect(){}};}
         async resume(){this.state='running';}
         async close(){this.state='closed';window.checks.audioClosed=(window.checks.audioClosed||0)+1;}
         createBuffer(channels,length,rate){return {duration:length/rate,getChannelData:()=>new Float32Array(length)};}
         createBufferSource(){return {connect(){},disconnect(){},start(){window.checks.voicePlayed=(window.checks.voicePlayed||0)+1;},stop(){window.checks.voiceInterrupted=(window.checks.voiceInterrupted||0)+1;}};}
       }
       window.AudioContext=TestAudioContext;
+      HTMLMediaElement.prototype.captureStream=function(){
+        const track={stop(){}};
+        return {getAudioTracks:()=>[track],getTracks:()=>[track]};
+      };
       window.AudioWorkletNode=class {
         port={onmessage:null};
         constructor(){window.inputProcessor=this;}
@@ -258,13 +263,19 @@ try {
     Object.defineProperty(video,'currentTime',{configurable:true,get:()=>window.fixtureVideoTime});
     Object.defineProperty(video,'paused',{configurable:true,get:()=>window.fixtureVideoPaused});
     video.muted=false;video.volume=1;
+     video.dispatchEvent(new Event('playing'));
     const chars=Array.from('Bonjour. '.repeat(40));
     window.emitBrain('malvi:brain_audio',{sessionId:'11111111-1111-4111-8111-111111111111',language:'fr',pcm24k:'AAAAAA==',sampleRate:24000,format:'pcm_s16le',channels:1,durationMs:5000,
       alignment:{characters:chars,character_start_times_seconds:chars.map((_,i)=>i/100),character_end_times_seconds:chars.map((_,i)=>(i+1)/100)}});
     return true;
   })()`);
   assert.equal(await page.evaluate('window.overlay.caption'), '', 'Queued audio must wait for avatar playback');
-  await page.evaluate(`window.emitAvatar('speak-start');window.fixtureVideoTime=2;true`);
+   await page.evaluate(`window.emitAvatar('speak-start');window.fixtureVideoTime=2;true`);
+   await new Promise(resolve=>setTimeout(resolve,100));
+   assert.equal(await page.evaluate('window.overlay.caption'), '', 'An early SDK event and advancing video clock cannot expose captions before output audio');
+   await page.evaluate(`window.outputLevel=0.1;true`);
+   await new Promise(resolve=>setTimeout(resolve,60));
+   await page.evaluate(`window.outputAudioContext.currentTime=2;true`);
   await page.wait(`Boolean(document.querySelector('[aria-label="Live subtitles"]'))`);
   for (const width of [320,390,768,1280]) {
     await page.command('Emulation.setDeviceMetricsOverride', { width, height: 844, deviceScaleFactor: 1, mobile: width < 768 });
@@ -284,6 +295,8 @@ try {
   }
   await page.command('Emulation.setDeviceMetricsOverride', { width: 390, height: 844, deviceScaleFactor: 1, mobile: true });
   await page.evaluate(`window.emitAvatar('speak-end');true`);
+   assert.notEqual(await page.evaluate('window.overlay.caption'), '', 'Provider completion must not erase buffered spoken captions');
+   await page.evaluate(`window.outputLevel=0;window.outputAudioContext.currentTime=5.2;true`);
   await page.wait('window.overlay.caption===""');
   await click('Start talking');
   await page.wait('window.overlay.microphoneOn===true');

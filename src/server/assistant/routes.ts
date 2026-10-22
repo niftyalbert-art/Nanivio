@@ -1,6 +1,6 @@
 import type { Express, Request, Response, NextFunction } from 'express';
 import { AssistantError, getAssistantStore } from './redisStore.ts';
-import { AI_DISCLOSURE, liveAvatarService, liveAvatarSetup } from './liveAvatarService.ts';
+import { AI_DISCLOSURE, liveAvatarService, liveAvatarSetup, malviVideoQuality } from './liveAvatarService.ts';
 import { getLiveBrainProviderConfig } from './brainProviderConfig.ts';
 import { malviLiveBrainController } from './liveBrain.ts';
 import { getMalviLanguage } from '../../lib/malviLanguages.ts';
@@ -78,7 +78,7 @@ export function registerAssistantRoutes(app: Express, auth: Auth, enabled: () =>
     catch { throw new AssistantError(400, 'INVALID_LANGUAGE', 'Choose a valid Nanivio language for Malvi.'); }
     try { assertMalviSpeechLanguage(language.code); }
     catch (error) { throw new AssistantError(400, 'VOICE_LANGUAGE_UNSUPPORTED', (error as Error).message); }
-    res.status(201).json({ success: true, ...await liveAvatarService.create(userId(req), language.code) });
+    res.status(201).json({ success: true, ...await liveAvatarService.create(userId(req), language.code, 'LITE', malviVideoQuality(req.get('user-agent') || '')) });
   }));
   app.post('/api/assistant/session/:id/activity', auth, run(async (req, res) => {
     if (!['input', 'interrupt'].includes(req.body?.kind)) throw new AssistantError(400, 'INPUT_REQUIRED', 'Only explicit user input may extend the idle deadline.');

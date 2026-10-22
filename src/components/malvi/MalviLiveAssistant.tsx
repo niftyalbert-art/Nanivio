@@ -10,6 +10,7 @@ import type { LiveAvatarSession } from '@heygen/liveavatar-web-sdk';
 import { MalviVoicePlayback } from '../../lib/malviVoicePlayback';
 import { malviAvatarSoundBlocked, playMalviAvatar } from '../../lib/malviAvatarPlayback';
 import { MalviCaptionPlayer, malviInputLevel, type MalviCaptionTrack } from '../../lib/malviSpeechTiming';
+import { MalviAvatarPlayout } from '../../lib/malviAvatarPlayout';
 
 type Phase = 'idle' | 'connecting' | 'connected' | 'error';
 interface LiveControls {
@@ -71,6 +72,7 @@ export const MalviLiveAssistantProvider: React.FC<{ children: React.ReactNode }>
   const playback = useRef<MalviVoicePlayback | null>(null);
   const pendingAudio = useRef<{ audio: string; track: MalviCaptionTrack } | null>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
+  const avatarPlayout = useRef<MalviAvatarPlayout | null>(null);
   const removeVideoListeners = useRef<(() => void) | null>(null);
   const mediaReady = useRef(false);
   const sdk = useRef<LiveAvatarSession | null>(null);
@@ -109,6 +111,7 @@ export const MalviLiveAssistantProvider: React.FC<{ children: React.ReactNode }>
     const live = sdk.current, id = sessionId.current;
     stopMicrophone();
     captions.current?.cancel();
+    avatarPlayout.current?.close(); avatarPlayout.current = null;
     setProcessing(false); setUserTranscript(''); userText.current = '';
     playback.current?.close(); playback.current = null; pendingAudio.current = null;
     if (id) realtimeClient.send('malvi:brain_stop', { sessionId: id });
@@ -134,11 +137,18 @@ export const MalviLiveAssistantProvider: React.FC<{ children: React.ReactNode }>
   const attachVideo = useCallback((video: HTMLVideoElement | null) => {
     removeVideoListeners.current?.();
     removeVideoListeners.current = null;
+    const previous = videoRef.current;
+    if (previous && previous !== video) { previous.pause(); previous.srcObject = null; }
     videoRef.current = video;
     if (!video) return;
     const checkSound = () => {
       if (videoRef.current === video && sdk.current && mediaReady.current) {
-        setAudioBlocked(malviAvatarSoundBlocked(video));
+        const blocked = malviAvatarSoundBlocked(video);
+        setAudioBlocked(blocked);
+        if (!blocked) {
+          try { avatarPlayout.current?.attach(video); }
+          catch (error) { setMicrophoneError(error instanceof Error ? error.message : 'Live subtitle playback monitoring is unavailable.'); }
+        }
       }
     };
     const events = ['volumechange', 'playing', 'pause'] as const;
@@ -183,10 +193,13 @@ export const MalviLiveAssistantProvider: React.FC<{ children: React.ReactNode }>
               if (isCurrent(payload)) { pendingAudio.current = { audio, track }; setAudioBlocked(true); }
             });
           } }, payload);
-        } else if (sdk.current) deliverMalviAudio(sdk.current, payload);
+        } else if (sdk.current) {
+          avatarPlayout.current?.enqueue(track, payload.pcm24k);
+          deliverMalviAudio(sdk.current, payload);
+        }
         else return;
       } catch {
-        captions.current?.cancel(); setProcessing(false);
+        captions.current?.cancel(); avatarPlayout.current?.cancel(); setProcessing(false);
         setMicrophoneError('Malvi’s voice audio could not be played.');
       }
     });
@@ -218,7 +231,7 @@ export const MalviLiveAssistantProvider: React.FC<{ children: React.ReactNode }>
     });
     const offInterrupted = realtimeClient.on('malvi:brain_interrupted', payload => {
       if (isCurrent(payload)) {
-        captions.current?.cancel(); setProcessing(false);
+        captions.current?.cancel(); avatarPlayout.current?.cancel(); setProcessing(false);
         playback.current?.interrupt(); pendingAudio.current = null; sdk.current?.interrupt();
       }
     });
@@ -240,7 +253,7 @@ export const MalviLiveAssistantProvider: React.FC<{ children: React.ReactNode }>
     try {
       const language = getMalviLanguage(preferredLanguage);
       stopMicrophone();
-      captions.current?.cancel(); setProcessing(false);
+      captions.current?.cancel(); avatarPlayout.current?.cancel(); setProcessing(false);
       sdk.current?.interrupt();
       playback.current?.interrupt(); pendingAudio.current = null;
       setBrainReady(false);
@@ -353,6 +366,17 @@ export const MalviLiveAssistantProvider: React.FC<{ children: React.ReactNode }>
     setReferenceStatus('idle'); setReferences([]); setUnavailableSources([]);
     setSecondsRemaining(60); setAudioBlocked(false); setPhase('connecting');
     try {
+      const observer = new MalviAvatarPlayout(
+        (track, clock) => captions.current?.start(clock, track),
+        track => captions.current?.finish(track),
+        message => { captions.current?.cancel(); setMicrophoneError(message); },
+      );
+      avatarPlayout.current = observer;
+      try { await observer.resume(); }
+      catch (error) {
+        setMicrophoneError(error instanceof Error ? error.message : 'Live subtitle playback monitoring is unavailable.');
+      }
+      if (run !== generation.current || !mounted.current) { observer.close(); return; }
       // No token exchange, SDK download, WebRTC, or provider audio before activation.
       const language = getMalviLanguage(languageRef.current);
       const info = await assistantRequest('/session', { activation, language: language.code });
@@ -374,18 +398,10 @@ export const MalviLiveAssistantProvider: React.FC<{ children: React.ReactNode }>
       live.voiceChat.start = async () => {};
       sdk.current = live;
       live.on(AgentEventsEnum.AVATAR_SPEAK_STARTED, () => {
-        if (run !== generation.current) return;
-        const video = videoRef.current;
-        if (!video) return;
-        const startedAt = video.currentTime;
-        captions.current?.start(() => {
-          const current = videoRef.current;
-          return !current || current !== video || malviAvatarSoundBlocked(current)
-            ? null : Math.max(0, current.currentTime - startedAt) * 1000;
-        });
+        if (run === generation.current) avatarPlayout.current?.providerStart();
       });
       live.on(AgentEventsEnum.AVATAR_SPEAK_ENDED, () => {
-        if (run === generation.current) captions.current?.finish();
+        if (run === generation.current) avatarPlayout.current?.providerEnd();
       });
       let welcomed = false;
       let streamReady = false, sessionStarted = false;
@@ -541,7 +557,7 @@ export const MalviLiveAssistantProvider: React.FC<{ children: React.ReactNode }>
     return () => window.removeEventListener('pagehide', leave);
   }, [cleanup, disarmWake]);
   const interrupt = () => {
-    captions.current?.cancel(); setProcessing(false);
+    captions.current?.cancel(); avatarPlayout.current?.cancel(); setProcessing(false);
     playback.current?.interrupt(); pendingAudio.current = null;
     try { sdk.current?.interrupt(); } catch {}
     const id = sessionId.current;
@@ -569,8 +585,15 @@ export const MalviLiveAssistantProvider: React.FC<{ children: React.ReactNode }>
           } else {
             const video = videoRef.current;
             if (!video) return;
+            void avatarPlayout.current?.resume().catch(error => {
+              setMicrophoneError(error instanceof Error ? error.message : 'Live subtitle playback monitoring is unavailable.');
+            });
             void playMalviAvatar(video, true).then(() => {
-              if (videoRef.current === video && sdk.current) setAudioBlocked(false);
+              if (videoRef.current === video && sdk.current) {
+                setAudioBlocked(false);
+                try { avatarPlayout.current?.attach(video); }
+                catch (error) { setMicrophoneError(error instanceof Error ? error.message : 'Live subtitle playback monitoring is unavailable.'); }
+              }
             }).catch(() => {
               if (videoRef.current === video && sdk.current) setAudioBlocked(true);
             });
