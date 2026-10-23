@@ -118,7 +118,11 @@ const output = await build({
         const url=String(input),body=init.body?JSON.parse(init.body):null;
         window.checks.requests.push({url,body});
         const data=url.endsWith('/status')
-           ? {success:true,configured:window.setupReady!==false,enabled:true,missing:window.setupReady===false?['AVATAR_ID']:[],brainProvider:'gemini',welcomeVoiceConfigured:true,brainConnected:false,canRunSetupTests:true,voiceTestAvailable:true,speech:window.speechSupport?{provider:'elevenlabs',model:'eleven_multilingual_v2',configured:true,supportedLanguages:window.speechSupport,liveVerified:false}:undefined}
+           ? {success:true,configured:window.setupReady!==false,enabled:true,missing:window.setupReady===false?['AVATAR_ID']:[],brainProvider:'gemini',welcomeVoiceConfigured:true,brainConnected:false,canRunSetupTests:true,voiceTestAvailable:true,speech:window.speechSupport?{provider:'elevenlabs',model:'eleven_multilingual_v2',configured:true,supportedLanguages:window.speechSupport,liveVerified:false}:undefined,
+             ...(window.voiceOptionsEnabled?{infrastructureConfigured:true,infrastructureMissing:[],voiceOptions:[
+               {provider:'elevenlabs',model:'eleven_multilingual_v2',configured:false,missing:['ELEVENLABS_API_KEY'],supportedLanguages:['en'],liveVerified:false},
+               {provider:'gemini',model:'gemini-fixture',configured:true,missing:[],supportedLanguages:['en','fr'],liveVerified:false,captionTiming:'estimated'},
+             ]}:{})}
           : url.endsWith('/diagnostics')
           ? {success:true,redis:'connected',brain:{configured:true},providerSessionStarted:false}
           : url.endsWith('/session') || url.endsWith('/voice-session')
@@ -469,11 +473,28 @@ try {
   await page.wait('window.checks.audioClosed>=1');
   assert.equal(await page.evaluate('window.checks.sdkCreations'), 1);
   await page.evaluate(`window.speechSupport=['en','fr','ar'];window.refreshFixture();true`);
-  await page.wait(`Boolean(document.body.innerText.includes('current ElevenLabs voice model'))`);
+  await page.wait(`Boolean(document.body.innerText.includes('not listed for Malvi’s selected voice'))`);
   assert.equal(await page.evaluate(`Array.from(document.querySelectorAll('button')).find(b=>b.textContent.includes('Start live avatar')).disabled`), true);
   assert.equal(await page.evaluate(`Array.from(document.querySelectorAll('button')).find(b=>b.textContent.includes('Test voice only')).disabled`), true);
   assert.ok(await page.evaluate(`document.body.innerText.includes('not substitute English or another voice')`));
-  console.log(JSON.stringify({ mobileWidths: [320,390,768], appLanguageSelector: true, noIdleProviderOrMicrophone: true, cancellableWakeSetup: true, explicitLocalPackInstall: true, stoppedAndHiddenWakeCannotActivate: true, onceOnlyHeyMalviActivation: true, selectedLanguageSentToBackend: true, noEnglishWelcome: true, activeLanguageUpdateWithoutNewAvatar: true, unverifiedLanguageWarning: true, failedUpdatesCloseRatherThanFallBack: true }));
+  await page.evaluate(`window.setAppLanguage('en');window.voiceOptionsEnabled=true;window.refreshFixture();true`);
+  await page.wait(`Boolean(document.querySelector('#malvi-voice-provider'))`);
+  await page.evaluate(`(()=>{const e=document.querySelector('#malvi-voice-provider');e.value='gemini';e.dispatchEvent(new Event('change',{bubbles:true}));return true;})()`);
+  await page.wait(`document.querySelector('#malvi-voice-provider').value==='gemini'`);
+  assert.ok(await page.evaluate(`document.body.innerText.includes('no ElevenLabs credits')`));
+  assert.ok(await page.evaluate(`document.body.innerText.includes('British–Ghanaian blend')`));
+  await click('Test voice only');
+  await page.wait(`window.checks.requests.filter(r=>r.url.endsWith('/voice-session')).length===2`);
+  assert.equal(await page.evaluate(`window.checks.requests.filter(r=>r.url.endsWith('/voice-session')).at(-1).body.speechProvider`), 'gemini');
+  await page.evaluate(`window.emitBrain('malvi:brain_ready',{sessionId:'11111111-1111-4111-8111-111111111111',provider:'gemini',speechProvider:'gemini',language:'en'});true`);
+  await page.wait(`window.overlay.brainReady===true`);
+  assert.equal(await page.evaluate(`document.querySelector('#malvi-voice-provider').disabled`), true, 'Voice cannot silently switch during a session');
+  await page.evaluate(`window.emitBrain('malvi:brain_audio',{sessionId:'11111111-1111-4111-8111-111111111111',language:'en',pcm24k:'AAAAAA==',sampleRate:24000,format:'pcm_s16le',channels:1,durationMs:1,text:'Hello',speechProvider:'gemini',captionTiming:'estimated'});true`);
+  await page.wait(`window.checks.voicePlayed===2`);
+  assert.equal(await page.evaluate(`window.overlay.approximateCaptions`), true);
+  assert.equal(await page.evaluate(`window.overlay.microphoneOn`), false, 'Voice selection does not enable microphone');
+  await page.evaluate(`window.overlay.onClose();true`);
+  console.log(JSON.stringify({ optionalGeminiVoiceSelection: true, noIdleProviderOrMicrophone: true, mobileWidths: [320,390,768], appLanguageSelector: true, cancellableWakeSetup: true, explicitLocalPackInstall: true, stoppedAndHiddenWakeCannotActivate: true, onceOnlyHeyMalviActivation: true, selectedLanguageSentToBackend: true, noEnglishWelcome: true, activeLanguageUpdateWithoutNewAvatar: true, unverifiedLanguageWarning: true, failedUpdatesCloseRatherThanFallBack: true }));
 } finally {
   await browser.close();
 }

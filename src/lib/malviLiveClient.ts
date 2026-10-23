@@ -10,7 +10,16 @@ export interface LiveAvatarReadiness {
   brainProvider?: 'gemini' | 'openai' | null;
   voiceTestAvailable?: boolean;
   canRunSetupTests?: boolean;
-  speech?: { provider: 'elevenlabs'; model: string; configured: boolean; supportedLanguages: string[]; liveVerified: false };
+  infrastructureConfigured?: boolean;
+  infrastructureMissing?: string[];
+  voiceOptions?: MalviVoiceOption[];
+  speech?: MalviVoiceOption;
+}
+
+export interface MalviVoiceOption {
+  provider: 'elevenlabs' | 'gemini'; model: string; configured: boolean;
+  missing?: string[]; supportedLanguages: string[]; liveVerified: false;
+  captionTiming?: 'provider' | 'estimated';
 }
 
 export interface MalviReferenceCitation {

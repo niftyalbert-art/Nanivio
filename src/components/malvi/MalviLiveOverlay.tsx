@@ -16,6 +16,7 @@ export interface MalviLiveOverlayProps {
   onPlayAudio: () => void;
   audioBlocked: boolean;
   caption?: string;
+  approximateCaptions?: boolean;
   brainReady: boolean;
   microphoneOn: boolean;
   microphoneError: string;
@@ -48,6 +49,7 @@ export const MalviLiveOverlay: React.FC<MalviLiveOverlayProps> = ({
   onPlayAudio,
   audioBlocked,
   caption,
+  approximateCaptions = false,
   brainReady,
   microphoneOn,
   microphoneError,
@@ -206,6 +208,7 @@ export const MalviLiveOverlay: React.FC<MalviLiveOverlayProps> = ({
               className="max-h-[4.8rem] w-full max-w-xl overflow-y-auto overscroll-contain rounded-2xl border border-white/15 bg-[#10201f]/85 px-4 py-2.5 text-center text-sm leading-6 text-white shadow-lg backdrop-blur-md focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#d6e7da]"
             >
               {speaking && <span className="mb-0.5 block text-[10px] font-medium uppercase tracking-[0.16em] text-[#c0d1c8]/75">Malvi is speaking</span>}
+              {approximateCaptions && <span className="mb-1 block text-[10px] text-slate-400">Approximate captions</span>}
               {caption}
             </div>
           )}

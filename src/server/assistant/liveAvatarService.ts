@@ -2,7 +2,7 @@ import crypto from 'node:crypto';
 import { AssistantError, getAssistantStore, IDLE_MS, MAX_SESSION_MS, type AssistantSessionRecord, type AssistantStore } from './redisStore.ts';
 import { getLiveBrainProviderConfig } from './brainProviderConfig.ts';
 import { getMalviLanguage } from '../../lib/malviLanguages.ts';
-import { malviSpeechSetup } from './malviSpeech.ts';
+import { malviVoiceSetup, type MalviVoiceProvider } from './malviVoiceConfig.ts';
 import { MALVI_INTRODUCTION } from './malviSystemPrompt.ts';
 
 const API = 'https://api.liveavatar.com';
@@ -14,16 +14,16 @@ export const ownerKey = (userId: string) => crypto.createHash('sha256').update(u
 export const malviVideoQuality = (userAgent: string): 'medium' | 'high' =>
   /\bAndroid\b/i.test(userAgent) ? 'medium' : 'high';
 
-export function liveAvatarSetup() {
+export function liveAvatarSetup(provider?: MalviVoiceProvider) {
   const brain = getLiveBrainProviderConfig();
-  const speech = malviSpeechSetup();
-  const missing = [
+  const speech = malviVoiceSetup(process.env, provider);
+  const infrastructureMissing = [
     ...(!process.env.HEYGEN_API_KEY ? ['HEYGEN_API_KEY'] : []),
     ...(!process.env.AVATAR_ID ? ['AVATAR_ID'] : []),
     ...(!process.env.REDIS_URL ? ['REDIS_URL'] : []),
     ...brain.missing,
-    ...speech.missing,
   ];
+  const missing = [...infrastructureMissing, ...speech.missing];
   return {
     configured: missing.length === 0,
     missing,
@@ -34,6 +34,8 @@ export function liveAvatarSetup() {
     // Setup is not a live-session probe. Only brain_ready confirms a connection.
     brainConnected: false,
     brainProvider: brain.selectedProvider,
+    infrastructureConfigured: infrastructureMissing.length === 0,
+    infrastructureMissing,
     speech,
   };
 }
@@ -69,12 +71,12 @@ export function createLiveAvatarService(deps: {
     await store.release(record);
   }
   return {
-    async create(userId: string, languageCode = 'en', mode: 'LITE' | 'VOICE_TEST' = 'LITE', quality: 'medium' | 'high' = 'high') {
+    async create(userId: string, languageCode = 'en', mode: 'LITE' | 'VOICE_TEST' = 'LITE', quality: 'medium' | 'high' = 'high', speechProvider: MalviVoiceProvider = malviVoiceSetup().provider) {
       const language = getMalviLanguage(languageCode);
       const store = await deps.store();
       const now = deps.now();
       const record: AssistantSessionRecord = {
-        id: deps.uuid(), owner: ownerKey(userId), language: language.code, mode, deadline: now + IDLE_MS, hardDeadline: now + MAX_SESSION_MS,
+        id: deps.uuid(), owner: ownerKey(userId), language: language.code, mode, speechProvider, deadline: now + IDLE_MS, hardDeadline: now + MAX_SESSION_MS,
       };
       await store.reserve(record.owner, record.id, now);
       try {

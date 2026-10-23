@@ -55,6 +55,7 @@ export interface AssistantSessionRecord {
   owner: string;
   language?: string;
   mode?: 'LITE' | 'VOICE_TEST';
+  speechProvider?: 'elevenlabs' | 'gemini';
   providerId?: string;
   deadline: number;
   hardDeadline: number;
