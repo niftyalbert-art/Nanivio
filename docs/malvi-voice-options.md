@@ -6,7 +6,7 @@ Ordinary users have no voice selector and cannot override the provider through
 session requests. Administrators have two choices:
 
 - **ElevenLabs:** the approved custom voice, existing credit usage and provider
-  character timestamps. This remains the default.
+  character timestamps. Available as an explicit administrator choice.
 - **Gemini:** the selected Gemini Live brain’s built-in `Sulafat` voice with
   the user-approved warm, fuller Malvi direction, a light British–Ghanaian
   English blend, and gentle ambience/echo. This is a
@@ -31,9 +31,12 @@ update, sign in as an administrator, close any active session, and select
 **Gemini · Sulafat · approved Malvi style** in the Malvi setup panel.
 The saved confirmation applies to everyone’s new sessions. Start a fresh session.
 
-`MALVI_VOICE_PROVIDER=gemini` is the initial server default only when no
-administrator policy has been saved. Omit it or use `elevenlabs` for the
-initial ElevenLabs default. A saved administrator choice takes precedence.
+Gemini is the initial server default when no administrator policy or explicit
+environment override has been saved. `MALVI_VOICE_PROVIDER=gemini` can make that
+environment choice explicit; `elevenlabs` remains available as an override.
+A saved administrator choice takes precedence. If Render already has an
+ElevenLabs override or saved policy, select Gemini in the administrator voice
+control for new sessions. Existing sessions keep their selected voice.
 Redis failures fail closed rather than silently choosing another billable voice.
 This is independent
 of `MALVI_TTS_TRANSPORT`, which controls only the ElevenLabs connection.

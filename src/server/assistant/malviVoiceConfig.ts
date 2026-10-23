@@ -3,12 +3,13 @@ import { malviSpeechSetup } from './malviSpeech.ts';
 import { MALVI_GEMINI_VOICE } from './geminiVoiceStyle.ts';
 
 export type MalviVoiceProvider = 'elevenlabs' | 'gemini';
+export const DEFAULT_MALVI_VOICE_PROVIDER: MalviVoiceProvider = 'gemini';
 type Env = Record<string, string | undefined>;
 // Published Gemini Live languages that are also selectable in Nanivio.
 // Catalogue coverage is not a pronunciation or live-readiness guarantee.
 const GEMINI_LANGUAGES = 'ak yo ha sw am zu so wo en fr ar es zh de pt hi ja it ru tr ko nl id vi th bn pl ta te uk'.split(' ');
 
-export function malviVoiceSetup(env: Env = process.env, requested = env.MALVI_VOICE_PROVIDER || 'elevenlabs') {
+export function malviVoiceSetup(env: Env = process.env, requested = env.MALVI_VOICE_PROVIDER || DEFAULT_MALVI_VOICE_PROVIDER) {
   if (requested === 'elevenlabs') return { ...malviSpeechSetup(env), captionTiming: 'provider' as const };
   const missing: string[] = [];
   if (requested !== 'gemini') missing.push('MALVI_VOICE_PROVIDER must be elevenlabs or gemini');

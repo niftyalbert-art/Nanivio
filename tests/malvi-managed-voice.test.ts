@@ -15,12 +15,15 @@ test('admin voice policy is shared and survives store recreation without a TTL',
   };
   const env = { REDIS_URL: 'fixture', MALVI_VOICE_PROVIDER: 'elevenlabs' };
   const store = () => Promise.resolve(redisSessionStore(redis));
+  assert.equal(await getManagedMalviVoice(store, {}), 'gemini');
+  assert.equal(await getManagedMalviVoice(store, { REDIS_URL: 'fixture' }), 'gemini');
   assert.equal(await getManagedMalviVoice(store, env), 'elevenlabs');
   await (await store()).setVoiceProvider('gemini');
   assert.equal(await getManagedMalviVoice(store, env), 'gemini');
   assert.equal(await getManagedMalviVoice(() => Promise.resolve(redisSessionStore(redis)), env), 'gemini');
   await (await store()).setVoiceProvider('elevenlabs');
   assert.equal(await getManagedMalviVoice(store, env), 'elevenlabs');
+  assert.equal(await getManagedMalviVoice(store, { REDIS_URL: 'fixture' }), 'elevenlabs', 'A saved administrator choice still overrides the default');
   await redis.set('nanivio:{assistant}:voice-provider', 'invalid');
   await assert.rejects(getManagedMalviVoice(store, env), /administrator must configure/);
   await assert.rejects(getManagedMalviVoice(async () => { throw Error('Store unavailable'); }, env), /Store unavailable/);

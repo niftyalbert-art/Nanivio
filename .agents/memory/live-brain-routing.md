@@ -1,0 +1,41 @@
+---
+name: Malvi live brain routing
+description: Privacy and provider-selection boundaries for Malvi's multi-provider brain.
+---
+
+Use one server-selected brain provider per live session. Do not broadcast microphone audio to several providers or silently switch to another billable provider on failure. Brain providers and trusted knowledge sources are separate layers.
+
+When discussing Malvi setup, review the full approved provider and knowledge-source list; do not frame her architecture as Gemini-only or describe Redis as a brain source.
+
+**Why:** The user corrected the narrower setup discussion: “Malvi brain source isn't only Gemini and Redis”.
+
+**How to apply:** Distinguish reasoning providers, retrieval sources, speech services, avatar rendering, and session infrastructure. State which are implemented, configured, or merely planned before requesting credentials.
+
+The user wants Wikipedia and Wikidata for general reference, and arXiv and PubMed for scientific literature. Treat these as distinct, attributable retrieval sources, not as additional live voice providers.
+
+The user selected automatic lookup of relevant sources, rather than requiring an explicit search request each time.
+
+**Why:** The user approved a multi-provider Malvi architecture, not indiscriminate sharing of private conversations. Keeping selection explicit makes privacy, cost, and failures understandable.
+
+**How to apply:** Add providers behind the server boundary and disclose the selected audio recipient. Fail clearly when that provider is unavailable. Route reference queries only to relevant approved sources and present citations; treat retrieved content as untrusted evidence. Keep company knowledge and user-owned memory as separately authorized context sources, not additional audio recipients.
+
+Gemini's built-in voice with the approved Malvi style is the default.
+ElevenLabs remains an administrator-selectable alternative, not an automatic
+fallback. Gemini is not a clone of her ElevenLabs voice identity.
+
+**Why:** After approving the Gemini style, the user explicitly asked to make it
+the default instead of ElevenLabs.
+
+**How to apply:** Keep the administrator's voice choice explicit and fixed for a session.
+Do not start another brain to obtain speech. State that Gemini sounds different,
+still has usage costs/limits, and lacks ElevenLabs character timestamps; do not
+claim exact subtitle or lip synchronization from estimated caption pacing.
+
+Voice-provider choice is regulated only by administrators, not ordinary users.
+The setting applies to new sessions across the app; it must not be a user-level
+preference or an accepted client override.
+
+**Why:** The user specified: “This optional set should only be regulated by the admin and not the user”.
+
+**How to apply:** Enforce the policy on the server as well as hiding user controls.
+Preserve the chosen provider for existing sessions instead of switching mid-call.
