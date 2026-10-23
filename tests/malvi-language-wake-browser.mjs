@@ -482,6 +482,7 @@ try {
   await page.evaluate(`(()=>{const e=document.querySelector('#malvi-voice-provider');e.value='gemini';e.dispatchEvent(new Event('change',{bubbles:true}));return true;})()`);
   await page.wait(`document.querySelector('#malvi-voice-provider').value==='gemini'`);
   assert.ok(await page.evaluate(`document.body.innerText.includes('no ElevenLabs credits')`));
+  assert.ok(await page.evaluate(`document.body.innerText.includes('British–Ghanaian blend')`));
   await click('Test voice only');
   await page.wait(`window.checks.requests.filter(r=>r.url.endsWith('/voice-session')).length===2`);
   assert.equal(await page.evaluate(`window.checks.requests.filter(r=>r.url.endsWith('/voice-session')).at(-1).body.speechProvider`), 'gemini');

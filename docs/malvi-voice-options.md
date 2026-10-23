@@ -4,7 +4,9 @@ Malvi’s setup panel offers two explicit choices before a session starts:
 
 - **ElevenLabs:** the approved custom voice, existing credit usage and provider
   character timestamps. This remains the default.
-- **Gemini:** the selected Gemini Live brain’s built-in `Kore` voice. This is a
+- **Gemini:** the selected Gemini Live brain’s built-in `Sulafat` voice with
+  the user-approved warm, fuller Malvi direction, a light British–Ghanaian
+  English blend, and gentle ambience/echo. This is a
   different voice, not a clone or export of the ElevenLabs voice. It uses no
   ElevenLabs synthesis requests, but Gemini usage limits/charges and LiveAvatar
   costs still apply.
@@ -19,7 +21,7 @@ ownership checks are unchanged.
 
 No additional credentials are required for Gemini voice when `GEMINI_API_KEY`
 and `MALVI_BRAIN_PROVIDER=gemini` are already configured. After deploying this
-update, close any active session, select **Gemini · alternative voice**, and
+update, close any active session, select **Gemini · Sulafat · approved Malvi style**, and
 start a fresh session.
 
 Optionally set `MALVI_VOICE_PROVIDER=gemini` to make Gemini the server default.
@@ -35,6 +37,24 @@ dialect or English. The catalogue does not establish pronunciation quality.
 
 Gemini native PCM16 mono at 24 kHz passes through the existing LITE
 `repeatAudio` path. It is never played separately alongside the avatar audio.
+The bounded effects processor runs on the server before delivery: rumble
+filtering and short, low-level room reflections use the same settings as the
+approved sample. Peak attenuation prevents clipping without adding leading
+look-ahead delay or requiring ffmpeg in production. Each response has fresh
+effect state, so interruption cannot leave a separate echo source playing.
+Voice-only playback receives the same processed PCM.
+
+The audio packet includes both total duration and pre-reflection speech
+duration. Estimated captions pace over the speech, not the extra echo tail;
+avatar/playback accounting includes the complete tail.
+
+English speech direction includes “Na ni vio” pronunciation guidance, a fuller
+tone and the selected accent blend. Other app languages keep their own
+pronunciation instead of forcing English phonology or changing to English.
+Direction is not a voice clone, and generated accent/timbre/pronunciation can
+vary. Approval of an English sample does not verify every language or future
+utterance. ElevenLabs voice settings and speech audio are unaffected.
+
 Native chunks are bounded and buffered until turn completion to keep one audio
 packet paired with its transcript; this can add delay for long answers.
 Interruption, language changes and session end discard buffered output. Limits

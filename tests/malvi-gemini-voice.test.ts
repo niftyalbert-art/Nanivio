@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import express from 'express';
 import { malviVoiceSetup, parseMalviVoiceProvider } from '../src/server/assistant/malviVoiceConfig.ts';
 import { GeminiNativeVoice } from '../src/server/assistant/geminiNativeVoice.ts';
+import { applyMalviGeminiEffects } from '../src/server/assistant/geminiVoiceEffects.ts';
 import { estimatedMalviCaptionTrack, malviCaptionAt, MalviCaptionPlayer } from '../src/lib/malviSpeechTiming.ts';
 import { registerAssistantRoutes } from '../src/server/assistant/routes.ts';
 import { liveAvatarService } from '../src/server/assistant/liveAvatarService.ts';
@@ -12,6 +13,7 @@ test('voice choice is explicit, defaults to ElevenLabs, and native mode never re
   const env = { GEMINI_API_KEY: 'fixture', MALVI_VOICE_PROVIDER: 'gemini' };
   const native = malviVoiceSetup(env);
   assert.equal(native.provider, 'gemini');
+  assert.equal(native.voiceId, 'Sulafat');
   assert.equal(native.configured, true);
   assert.equal(native.captionTiming, 'estimated');
   assert.equal(JSON.stringify(native).includes('fixture'), false);
@@ -26,14 +28,15 @@ test('voice choice is explicit, defaults to ElevenLabs, and native mode never re
   assert.ok(!native.supportedLanguages.includes('tw-ak'), 'Do not silently map a dialect to Akan');
 });
 
-test('native turn retains exact PCM, bounded transcript and honest estimated caption metadata', () => {
+test('native turn styles joined PCM once, retains speech duration and honest estimated caption metadata', () => {
   const output = new GeminiNativeVoice();
   const a = Buffer.alloc(24000, 1), b = Buffer.alloc(24000, 2);
   output.append(a.toString('base64'), 'audio/pcm;rate=24000');
   output.append(b.toString('base64'), 'audio/pcm;rate=24000');
   const result = output.finish('Hello from Malvi')!;
-  assert.equal(result.pcm24k, Buffer.concat([a, b]).toString('base64'));
-  assert.equal(result.durationMs, 1000);
+  assert.equal(result.pcm24k, applyMalviGeminiEffects(Buffer.concat([a, b])).pcm.toString('base64'));
+  assert.equal(result.durationMs, 1211);
+  assert.equal(result.speechDurationMs, 1000);
   assert.equal(result.captionTiming, 'estimated');
   assert.equal(output.finish(''), null, 'Duplicate completion emits no audio');
   output.append(a.toString('base64'), 'audio/pcm;rate=24000');
@@ -63,9 +66,10 @@ test('native output rejects incomplete, malformed or oversized responses and enf
 });
 
 test('estimated native captions stay hidden until actual playback and stop on cancellation', () => {
-  const track = estimatedMalviCaptionTrack('Hello world', 1000);
+  const track = estimatedMalviCaptionTrack('Hello world', 1211, 1000);
   assert.equal(malviCaptionAt(track, null), '');
-  assert.equal(malviCaptionAt(track, 1000), '');
+  assert.equal(track.alignment.character_end_times_seconds.at(-1), 1, 'Reverb tail must not slow the spoken caption pacing');
+  assert.equal(malviCaptionAt(track, 1211), '');
   const updates: string[] = [];
   const player = new MalviCaptionPlayer(text => updates.push(text));
   player.enqueue(track);
@@ -76,6 +80,8 @@ test('estimated native captions stay hidden until actual playback and stop on ca
   assert.equal(updates.at(-1), '');
   assert.throws(() => estimatedMalviCaptionTrack('', 1000));
   assert.throws(() => estimatedMalviCaptionTrack('Hello', Infinity));
+  assert.throws(() => estimatedMalviCaptionTrack('Hello', 1000, 1001));
+  assert.throws(() => estimatedMalviCaptionTrack('Hello', 1000, NaN));
 });
 
 test('authenticated session routes persist voice choice; native start bypasses ElevenLabs and legacy welcome', async () => {

@@ -198,7 +198,7 @@ export const MalviLiveAssistantProvider: React.FC<{ children: React.ReactNode }>
       try {
         if (!voiceMode.current && !sdk.current) return;
         const track = captions.current!.enqueue(payload.speechProvider === 'gemini' && payload.captionTiming === 'estimated'
-          ? estimatedMalviCaptionTrack(payload.text, payload.durationMs)
+          ? estimatedMalviCaptionTrack(payload.text, payload.durationMs, payload.speechDurationMs)
           : { alignment: payload.alignment, durationMs: payload.durationMs });
         setProcessing(true);
         if (voiceMode.current && playback.current) {
@@ -627,10 +627,10 @@ export const MalviLiveControls: React.FC = () => {
           onChange={event => live.selectVoice(event.target.value as 'elevenlabs' | 'gemini')}
           className="mt-2 w-full rounded-xl border border-[var(--nv-border)] bg-[var(--nv-surface)] px-3 py-3 text-sm text-white disabled:opacity-50">
           <option value="elevenlabs">ElevenLabs · approved Malvi voice</option>
-          <option value="gemini">Gemini · alternative voice</option>
+          <option value="gemini">Gemini · Sulafat · approved Malvi style</option>
         </select>
         <p className="mt-2 text-xs leading-relaxed text-slate-400">{live.voiceProvider === 'gemini'
-          ? 'Uses the selected Gemini brain’s own voice, not Malvi’s ElevenLabs voice. Gemini usage limits and charges apply; no ElevenLabs credits are used. Captions have approximate timing. Audio waits for each response to finish generating.'
+          ? 'Uses Sulafat with Malvi’s approved warm, fuller voice direction and gentle ambience/echo. English uses a light British–Ghanaian blend; other languages keep their own pronunciation. This is not a clone of her ElevenLabs voice, and generated delivery may vary. Gemini usage limits and charges apply; no ElevenLabs credits are used. Captions have approximate timing. Audio waits for each response to finish generating.'
           : 'Uses the approved Malvi voice and ElevenLabs credits, with provider-timed captions. No automatic switch to another voice.'}</p>
       </div>}
       <div className="mt-5 flex flex-wrap gap-3">

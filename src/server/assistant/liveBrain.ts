@@ -13,6 +13,7 @@ import { createMalviSpeechQueue, MAX_SPEECH_TEXT } from './malviSpeech.ts';
 import { malviOpeningBoundary } from './malviResponsePacing.ts';
 import { assertMalviVoiceLanguage, malviVoiceSetup, type MalviVoiceProvider } from './malviVoiceConfig.ts';
 import { GeminiNativeVoice } from './geminiNativeVoice.ts';
+import { MALVI_GEMINI_VOICE, malviGeminiVoiceDirection } from './geminiVoiceStyle.ts';
 
 type BrainEvent = (type: string, payload: Record<string, unknown>) => void;
 type BrainConnection = {
@@ -185,8 +186,9 @@ async function connectGemini(
     model: provider.model,
     config: {
       responseModalities: [Modality.AUDIO],
-      systemInstruction: buildMalviLiveInstructions(connection.language, connection.provider),
-      speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: 'Kore' } } },
+      systemInstruction: buildMalviLiveInstructions(connection.language, connection.provider)
+        + (connection.speechProvider === 'gemini' ? `\n\n${malviGeminiVoiceDirection(connection.language)}` : ''),
+      speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: connection.speechProvider === 'gemini' ? MALVI_GEMINI_VOICE : 'Kore' } } },
       inputAudioTranscription: {},
       outputAudioTranscription: {},
       tools: [{ functionDeclarations: [{
@@ -247,7 +249,7 @@ async function connectGemini(
   connection.endAudio = () => session.sendRealtimeInput({ audioStreamEnd: true });
   connection.changeLanguage = code => {
     session.sendClientContent({
-      turns: [{ role: 'user', parts: [{ text: `${malviLanguageInstruction(code, connection.provider)}${connection.isFirstTurn ? `\n${malviGreetingInstruction(code)}` : ''}` }] }],
+      turns: [{ role: 'user', parts: [{ text: `${malviLanguageInstruction(code, connection.provider)}${connection.isFirstTurn ? `\n${malviGreetingInstruction(code)}` : ''}${connection.speechProvider === 'gemini' ? `\n${malviGeminiVoiceDirection(code)}` : ''}` }] }],
       turnComplete: false,
     });
   };

@@ -1,5 +1,6 @@
 import { getMalviLanguage } from '../../lib/malviLanguages.ts';
 import { malviSpeechSetup } from './malviSpeech.ts';
+import { MALVI_GEMINI_VOICE } from './geminiVoiceStyle.ts';
 
 export type MalviVoiceProvider = 'elevenlabs' | 'gemini';
 type Env = Record<string, string | undefined>;
@@ -17,7 +18,7 @@ export function malviVoiceSetup(env: Env = process.env, requested = env.MALVI_VO
   }
   return {
     provider: 'gemini' as const, configured: missing.length === 0, missing,
-    transport: 'native', voiceId: 'Kore', model: env.MALVI_GEMINI_LIVE_MODEL || 'gemini-3.8-live',
+    transport: 'native', voiceId: MALVI_GEMINI_VOICE, model: env.MALVI_GEMINI_LIVE_MODEL || 'gemini-3.8-live',
     supportedLanguages: GEMINI_LANGUAGES, liveVerified: false, captionTiming: 'estimated' as const,
   };
 }

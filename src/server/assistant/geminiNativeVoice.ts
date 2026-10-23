@@ -1,4 +1,5 @@
 import { MAX_SPEECH_BYTES, MAX_SPEECH_TEXT } from './malviSpeech.ts';
+import { applyMalviGeminiEffects, MALVI_GEMINI_TAIL_SAMPLES } from './geminiVoiceEffects.ts';
 
 /** One bounded native turn. No synthesis request, voice clone, or provider retry. */
 export class GeminiNativeVoice {
@@ -30,11 +31,16 @@ export class GeminiNativeVoice {
     if (text.length > MAX_SPEECH_TEXT || this.characters + text.length > 6000 || this.turns >= 30) {
       throw new Error('Malvi reached this session’s native speech usage limit.');
     }
+    if (this.sessionBytes + MALVI_GEMINI_TAIL_SAMPLES * 2 > 14_400_000) {
+      throw new Error('Malvi reached the native voice audio safety limit.');
+    }
+    const styled = applyMalviGeminiEffects(Buffer.concat(this.chunks, this.bytes));
+    this.sessionBytes += MALVI_GEMINI_TAIL_SAMPLES * 2;
     this.characters += text.length;
     this.turns++;
-    const pcm = Buffer.concat(this.chunks, this.bytes);
     this.cancel();
-    return { pcm24k: pcm.toString('base64'), durationMs: pcm.length / 48, text, captionTiming: 'estimated' as const };
+    return { pcm24k: styled.pcm.toString('base64'), durationMs: styled.durationMs,
+      speechDurationMs: styled.speechDurationMs, text, captionTiming: 'estimated' as const };
   }
 
   cancel() { this.chunks = []; this.bytes = 0; }
