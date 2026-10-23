@@ -238,3 +238,11 @@ mtime_ms = 1792746693373
 storage_uri = "gcs://replit-rams-assets-sisko/rams/assets/repl:8a53f482-19ae-49f0-ab16-31b527f92091/bb66c421-3eb9-47c2-9378-0a4bc7c4878e/e21e9f28-add8-4767-95f4-466e31eb22a6"
 storage_version_token = "1792746702871698"
 content_type = "audio/wav"
+
+[[outputs]]
+id = "a7m6c07zx6xT5WNkeE5Wl"
+uri = "file://generated-artifacts/malvi-spec-audit.html"
+type = "html"
+title = "Malvi specification audit"
+description = "Full 24-part assessment: existing capabilities, privacy and billing gaps, provider costs, test evidence and recommended implementation order."
+content_type = "text/html"
