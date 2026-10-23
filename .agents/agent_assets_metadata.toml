@@ -210,3 +210,17 @@ mtime_ms = 1792746068433
 storage_uri = "gcs://replit-rams-assets-sisko/rams/assets/repl:8a53f482-19ae-49f0-ab16-31b527f92091/6a3da940-28cc-4829-b38b-6aea53ef3a74/f69ab041-74da-46f2-87e7-f20a41b3624a"
 storage_version_token = "1792746092777599"
 content_type = "audio/wav"
+
+[[outputs]]
+id = "7R9SyL1wnXExiEJ-5jqRD"
+uri = "file://generated-artifacts/malvi-british-ghanaian-soft-ambience.wav"
+type = "audio"
+title = "Malvi — British–Ghanaian blend with soft ambience"
+description = "13-second Sulafat trial prompted for a subtle British–Ghanaian English blend, with light ambience and a faint echo applied to the recording. App voice unchanged; accent quality awaits your listening approval."
+logical_id = "c0b7f6d6-a67a-46ca-8fbd-12ea95bf90b9"
+content_hash = "sha256:980a2865062f1c8a9f070abe593b7b384c84dc8312fa73846ebdd2bf830a8b83"
+size = 602814
+mtime_ms = 1792746298178
+storage_uri = "gcs://replit-rams-assets-sisko/rams/assets/repl:8a53f482-19ae-49f0-ab16-31b527f92091/c0b7f6d6-a67a-46ca-8fbd-12ea95bf90b9/610da288-8375-4260-8c9e-15c54146dcdb"
+storage_version_token = "1792746324972813"
+content_type = "audio/wav"
