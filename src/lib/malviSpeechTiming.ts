@@ -23,13 +23,15 @@ export function validMalviAlignment(value: unknown, durationMs: number): value i
 export interface MalviCaptionTrack { alignment: MalviAlignment; durationMs: number }
 
 /** Gemini Live has no word timestamps. Never describe this pacing as alignment. */
-export function estimatedMalviCaptionTrack(text: unknown, durationMs: number, speechDurationMs = durationMs): MalviCaptionTrack {
-  if (typeof text !== 'string' || !text.trim() || text.length > 1200
+export function estimatedMalviCaptionTrack(text: unknown, durationMs: number, speechDurationMs = durationMs, allowEmpty = false): MalviCaptionTrack {
+  if (typeof text !== 'string' || (!text.trim() && !allowEmpty) || text.length > 1200
     || !Number.isFinite(durationMs) || durationMs <= 0 || durationMs > 62_500
     || !Number.isFinite(speechDurationMs) || speechDurationMs <= 0 || speechDurationMs > durationMs) {
     throw new Error('Gemini subtitle text or duration is invalid.');
   }
-  const characters = Array.from(text);
+  // A streamed closing audio packet can contain only the remaining sound and
+  // reverb. A blank caption is intentional, not fabricated spoken text.
+  const characters = Array.from(text || ' ');
   const step = speechDurationMs / characters.length / 1000;
   return { durationMs, alignment: {
     characters,
@@ -56,7 +58,8 @@ export class MalviCaptionPlayer {
   private timer: ReturnType<typeof setInterval> | null = null;
   constructor(private update: (text: string, speaking: boolean) => void) {}
   enqueue(track: MalviCaptionTrack) {
-    if (!validMalviAlignment(track.alignment, track.durationMs) || this.pending.length >= 3) {
+    if (!validMalviAlignment(track.alignment, track.durationMs) || this.pending.length >= 64
+      || this.pending.reduce((sum, item) => sum + item.durationMs, 0) + track.durationMs > 65_000) {
       throw new Error('Malvi’s subtitle timing is unavailable.');
     }
     this.pending.push(track);

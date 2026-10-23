@@ -76,6 +76,10 @@ const output = await build({
         createBufferSource(){return {connect(){},disconnect(){},start(){window.checks.voicePlayed=(window.checks.voicePlayed||0)+1;},stop(){window.checks.voiceInterrupted=(window.checks.voiceInterrupted||0)+1;}};}
       }
       window.AudioContext=TestAudioContext;
+      HTMLVideoElement.prototype.requestVideoFrameCallback=function(callback){
+        return setTimeout(()=>callback(performance.now(),{mediaTime:0,presentedFrames:1}),8);
+      };
+      HTMLVideoElement.prototype.cancelVideoFrameCallback=function(id){clearTimeout(id);};
       HTMLMediaElement.prototype.captureStream=function(){
         const track={stop(){}};
         return {getAudioTracks:()=>[track],getTracks:()=>[track]};
