@@ -84,13 +84,16 @@ test('estimated native captions stay hidden until actual playback and stop on ca
   assert.throws(() => estimatedMalviCaptionTrack('Hello', 1000, NaN));
 });
 
-test('authenticated session routes persist voice choice; native start bypasses ElevenLabs and legacy welcome', async () => {
+test('only admins set the global voice; every new session uses server policy without client overrides', async () => {
   const keys = ['GEMINI_API_KEY', 'HEYGEN_API_KEY', 'AVATAR_ID', 'REDIS_URL', 'MALVI_BRAIN_PROVIDER', 'MALVI_VOICE_PROVIDER', 'ELEVENLABS_API_KEY', 'MALVI_TTS_TRANSPORT', 'REPL_ID'];
   const original = Object.fromEntries(keys.map(key => [key, process.env[key]]));
   const create = liveAvatarService.create, owned = liveAvatarService.owned;
   const calls: unknown[][] = [];
+  let role = 'ADMIN';
+  let managed: 'elevenlabs' | 'gemini' = 'elevenlabs';
+  const policy = { get: async () => managed, save: async (provider: 'elevenlabs' | 'gemini') => { managed = provider; } };
   const app = express(); app.use(express.json());
-  registerAssistantRoutes(app, (req, _res, next) => { (req as any).authUser = { id: 'owner', role: 'ADMIN' }; next(); }, () => true, false);
+  registerAssistantRoutes(app, (req, _res, next) => { (req as any).authUser = { id: 'owner', role }; next(); }, () => true, false, policy);
   const server = app.listen(0, '127.0.0.1');
   await new Promise<void>(resolve => server.once('listening', resolve));
   const port = (server.address() as { port: number }).port;
@@ -105,18 +108,37 @@ test('authenticated session routes persist voice choice; native start bypasses E
     const status = await (await request('/status')).json();
     assert.equal(status.configured, false, 'Unconfigured default voice is not silently replaced');
     assert.equal(status.infrastructureConfigured, true);
+    assert.equal(status.canManageVoice, true);
     assert.equal(status.voiceOptions.find((v: any) => v.provider === 'gemini').configured, true);
-    for (const path of ['/session', '/voice-session']) {
-      assert.equal((await request(path, { activation: 'manual', language: 'en', speechProvider: 'gemini' })).status, 201);
-      assert.equal(calls.at(-1)![4], 'gemini', 'Store chosen voice in owned Redis session');
+    assert.equal((await request('/admin/voice', { provider: 'auto' })).status, 400);
+    assert.equal((await request('/admin/voice', { provider: 'elevenlabs' })).status, 503, 'Incomplete voice setup cannot be activated');
+    assert.equal(managed, 'elevenlabs');
+    assert.equal((await request('/admin/voice', { provider: 'gemini' })).status, 200);
+    assert.equal(managed, 'gemini');
+    role = 'PERSONAL';
+    const userStatus = await (await request('/status')).json();
+    assert.equal(userStatus.speech.provider, 'gemini');
+    assert.equal(userStatus.configured, true);
+    assert.equal(userStatus.canManageVoice, false);
+    assert.equal(userStatus.voiceOptions, undefined, 'Ordinary users are not offered provider choices');
+    for (const provider of ['elevenlabs', 'gemini', 'auto']) {
+      assert.equal((await request('/admin/voice', { provider })).status, 403);
+      assert.equal((await request('/session', { activation: 'manual', speechProvider: provider })).status, 403);
     }
-    assert.equal((await request('/session', { activation: 'manual', language: 'en', speechProvider: 'auto' })).status, 400);
-    assert.equal((await request('/session', { activation: 'manual', language: 'tw-ak', speechProvider: 'gemini' })).status, 400);
-    assert.equal((await request('/session', { activation: 'manual', language: 'en', speechProvider: 'elevenlabs' })).status, 503);
+    assert.equal(managed, 'gemini', 'Denied updates do not change policy');
+    assert.equal((await request('/voice-session', { activation: 'manual' })).status, 403);
+    assert.equal((await request('/session', { activation: 'manual', language: 'en' })).status, 201);
+    role = 'ADMIN';
+    for (const path of ['/session', '/voice-session']) {
+      assert.equal((await request(path, { activation: 'manual', language: 'en' })).status, 201);
+      assert.equal(calls.at(-1)![4], 'gemini', 'Store administrator-selected voice in owned Redis session');
+    }
+    assert.equal((await request('/session', { activation: 'manual', language: 'en', speechProvider: 'gemini' })).status, 403, 'Even admins change policy only through the admin endpoint');
+    assert.equal((await request('/session', { activation: 'manual', language: 'tw-ak' })).status, 400);
     assert.equal((await request('/session/11111111-1111-4111-8111-111111111111/welcome', {})).status, 409);
     process.env.MALVI_BRAIN_PROVIDER = 'openai';
-    assert.equal((await request('/session', { activation: 'manual', language: 'en', speechProvider: 'gemini' })).status, 503);
-    assert.equal(calls.length, 2, 'Invalid combinations create no provider sessions');
+    assert.equal((await request('/session', { activation: 'manual', language: 'en' })).status, 503);
+    assert.equal(calls.length, 3, 'Denied and invalid requests create no provider sessions');
   } finally {
     liveAvatarService.create = create; liveAvatarService.owned = owned;
     for (const key of keys) { if (original[key] === undefined) delete process.env[key]; else process.env[key] = original[key]; }

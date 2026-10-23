@@ -6,16 +6,20 @@ import { malviLiveBrainController } from './liveBrain.ts';
 import { getMalviLanguage } from '../../lib/malviLanguages.ts';
 import { malviSpeechSetup, synthesizeMalviSpeech } from './malviSpeech.ts';
 import { assertMalviVoiceLanguage, malviVoiceSetup, parseMalviVoiceProvider } from './malviVoiceConfig.ts';
+import { getManagedMalviVoice, saveManagedMalviVoice } from './managedVoice.ts';
 
 type Auth = (req: Request, res: Response, next: NextFunction) => unknown;
-export function registerAssistantRoutes(app: Express, auth: Auth, enabled: () => boolean, startSweeper = true) {
+export function registerAssistantRoutes(app: Express, auth: Auth, enabled: () => boolean, startSweeper = true,
+  voicePolicy = { get: getManagedMalviVoice, save: saveManagedMalviVoice }) {
   const userId = (req: Request) => (req as any).authUser.id as string;
-  const selectedVoice = (req: Request) => {
-    try { return parseMalviVoiceProvider(req.body?.speechProvider ?? process.env.MALVI_VOICE_PROVIDER ?? 'elevenlabs'); }
-    catch { throw new AssistantError(400, 'INVALID_VOICE_PROVIDER', 'Choose ElevenLabs or Gemini for Malvi’s voice.'); }
+  const selectedVoice = async (req: Request) => {
+    if (Object.prototype.hasOwnProperty.call(req.body ?? {}, 'speechProvider')) {
+      throw new AssistantError(403, 'VOICE_ADMIN_MANAGED', 'Malvi’s voice is managed by an administrator. Start a new session without a voice override.');
+    }
+    return voicePolicy.get();
   };
   const admin = (req: Request) => {
-    if ((req as any).authUser?.role !== 'ADMIN') throw new AssistantError(403, 'ADMIN_REQUIRED', 'Only administrators can run Malvi setup tests.');
+    if ((req as any).authUser?.role !== 'ADMIN') throw new AssistantError(403, 'ADMIN_REQUIRED', 'Only administrators can manage Malvi’s voice or run setup tests.');
   };
   const validId = (req: Request) => {
     const id = String(req.params.id);
@@ -34,17 +38,30 @@ export function registerAssistantRoutes(app: Express, auth: Auth, enabled: () =>
     }
   };
   app.get('/api/assistant/status', auth, run(async (_req, res) => {
+    const provider = await voicePolicy.get();
+    const canManageVoice = (_req as any).authUser?.role === 'ADMIN';
     res.json({
       success: true,
-      ...liveAvatarSetup(),
+      ...liveAvatarSetup(provider),
       enabled: enabled(),
-      welcomeVoiceConfigured: malviVoiceSetup().configured,
-      voiceOptions: ['elevenlabs', 'gemini'].map(provider => malviVoiceSetup(process.env, provider)),
+      welcomeVoiceConfigured: malviVoiceSetup(process.env, provider).configured,
+      canManageVoice,
+      ...(canManageVoice ? { voiceOptions: ['elevenlabs', 'gemini'].map(provider => malviVoiceSetup(process.env, provider)) } : {}),
       brainProviders: getLiveBrainProviderConfig(),
       voiceTestAvailable: (_req as any).authUser?.role === 'ADMIN' && enabled()
         && getLiveBrainProviderConfig().configured && Boolean(process.env.REDIS_URL),
       canRunSetupTests: (_req as any).authUser?.role === 'ADMIN',
     });
+  }));
+  app.post('/api/assistant/admin/voice', auth, run(async (req, res) => {
+    admin(req);
+    let provider;
+    try { provider = parseMalviVoiceProvider(req.body?.provider); }
+    catch { throw new AssistantError(400, 'INVALID_VOICE_PROVIDER', 'Choose ElevenLabs or Gemini for Malvi’s voice.'); }
+    const speech = malviVoiceSetup(process.env, provider);
+    if (!speech.configured) throw new AssistantError(503, 'VOICE_SETUP_REQUIRED', `Malvi’s voice setup requires ${speech.missing.join(', ')}.`);
+    await voicePolicy.save(provider);
+    res.json({ success: true, provider, appliesTo: 'new-sessions' });
   }));
   // Explicit administrator action only: no session creation, Redis writes or
   // external inference/avatar calls. Never return connection URLs or raw errors.
@@ -55,7 +72,7 @@ export function registerAssistantRoutes(app: Express, auth: Auth, enabled: () =>
       try { redis = await (await getAssistantStore()).ping() ? 'connected' : 'unavailable'; }
       catch { redis = 'unavailable'; }
     }
-    res.json({ success: true, redis, brain: getLiveBrainProviderConfig(), speech: malviVoiceSetup(),
+    res.json({ success: true, redis, brain: getLiveBrainProviderConfig(), speech: malviVoiceSetup(process.env, await voicePolicy.get()),
       avatar: { configured: Boolean(process.env.HEYGEN_API_KEY && process.env.AVATAR_ID), readinessVerified: false },
       providerSessionStarted: false });
   }));
@@ -64,7 +81,7 @@ export function registerAssistantRoutes(app: Express, auth: Auth, enabled: () =>
     if (!enabled()) throw new AssistantError(403, 'MALVI_DISABLED', 'Malvi is currently disabled by the administrator.');
     const brain = getLiveBrainProviderConfig();
     if (!brain.configured) throw new AssistantError(503, 'BRAIN_SETUP_REQUIRED', 'Configure the selected live brain provider before testing voice.');
-    const provider = selectedVoice(req);
+    const provider = await selectedVoice(req);
     const speech = malviVoiceSetup(process.env, provider);
     if (!speech.configured) throw new AssistantError(503, 'VOICE_SETUP_REQUIRED', `Malvi’s voice setup requires ${speech.missing.join(', ')}.`);
     if (req.body?.activation !== 'manual') throw new AssistantError(400, 'ACTIVATION_REQUIRED', 'Start the voice-only test manually.');
@@ -77,7 +94,7 @@ export function registerAssistantRoutes(app: Express, auth: Auth, enabled: () =>
   }));
   app.post('/api/assistant/session', auth, run(async (req, res) => {
     if (!enabled()) throw new AssistantError(403, 'MALVI_DISABLED', 'Malvi is currently disabled by the administrator.');
-    const provider = selectedVoice(req);
+    const provider = await selectedVoice(req);
     const setup = liveAvatarSetup(provider);
     if (!setup.configured) throw new AssistantError(503, 'LIVEAVATAR_SETUP_REQUIRED', `LiveAvatar setup is required: ${setup.missing.join(', ')}. Use your provisioned Malvi custom avatar, not a sample avatar.`);
     if (!['wake-word', 'manual'].includes(req.body?.activation)) throw new AssistantError(400, 'ACTIVATION_REQUIRED', 'Activate Malvi with the local wake word or the start button.');

@@ -28,6 +28,14 @@ test('real Redis enforces shared LiveAvatar rate, ownership, deadlines and clean
       catch (error) { if (attempt >= 40) throw error; await new Promise(r => setTimeout(r, 50)); }
     }
     const store = redisSessionStore(redis);
+    await t.test('admin voice policy persists across stores without session expiration', async () => {
+      assert.equal(await store.getVoiceProvider(), null);
+      await store.setVoiceProvider('gemini');
+      assert.equal(await redisSessionStore(redis).getVoiceProvider(), 'gemini');
+      assert.equal(await redis.ttl('nanivio:{assistant}:voice-provider'), -1);
+      await store.setVoiceProvider('elevenlabs');
+      assert.equal(await redisSessionStore(redis).getVoiceProvider(), 'elevenlabs');
+    });
     let now = 1_000_000, nextId = 0, creates = 0;
     const stopped: string[] = [];
     const service = createLiveAvatarService({
@@ -168,7 +176,7 @@ test('all assistant HTTP endpoints require authentication', async () => {
   await new Promise<void>(resolve => server.once('listening', resolve));
   try {
     const base = `http://127.0.0.1:${(server.address() as net.AddressInfo).port}/api/assistant`;
-    for (const [method, path] of [['GET', '/status'], ['POST', '/diagnostics'], ['POST', '/voice-session'], ['POST', '/session'], ['POST', '/session/fixture/activity'], ['POST', '/session/fixture/welcome'], ['POST', '/session/fixture/end']]) {
+    for (const [method, path] of [['GET', '/status'], ['POST', '/admin/voice'], ['POST', '/diagnostics'], ['POST', '/voice-session'], ['POST', '/session'], ['POST', '/session/fixture/activity'], ['POST', '/session/fixture/welcome'], ['POST', '/session/fixture/end']]) {
       assert.equal((await fetch(base + path, { method })).status, 401);
     }
   } finally { await new Promise<void>(resolve => server.close(() => resolve())); }

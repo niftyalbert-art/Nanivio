@@ -177,7 +177,9 @@ test('HTTP session creation carries a validated language; invalid input never cr
   };
   const app = express();
   app.use(express.json());
-  registerAssistantRoutes(app, (req, _res, next) => { (req as any).authUser = { id: 'fixture-user' }; next(); }, () => true, false);
+  registerAssistantRoutes(app, (req, _res, next) => { (req as any).authUser = { id: 'fixture-user' }; next(); }, () => true, false, {
+    get: async () => 'elevenlabs' as const, save: async () => { throw new Error('This language fixture cannot change admin policy'); },
+  });
   const server = app.listen(0, '127.0.0.1');
   await new Promise<void>(resolve => server.once('listening', resolve));
   const port = (server.address() as any).port;

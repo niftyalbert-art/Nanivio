@@ -10,6 +10,7 @@ export interface LiveAvatarReadiness {
   brainProvider?: 'gemini' | 'openai' | null;
   voiceTestAvailable?: boolean;
   canRunSetupTests?: boolean;
+  canManageVoice?: boolean;
   infrastructureConfigured?: boolean;
   infrastructureMissing?: string[];
   voiceOptions?: MalviVoiceOption[];
