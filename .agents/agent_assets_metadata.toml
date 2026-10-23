@@ -224,3 +224,17 @@ mtime_ms = 1792746298178
 storage_uri = "gcs://replit-rams-assets-sisko/rams/assets/repl:8a53f482-19ae-49f0-ab16-31b527f92091/c0b7f6d6-a67a-46ca-8fbd-12ea95bf90b9/610da288-8375-4260-8c9e-15c54146dcdb"
 storage_version_token = "1792746324972813"
 content_type = "audio/wav"
+
+[[outputs]]
+id = "fpxrjXZSyoLkHLYUM2PdE"
+uri = "file://generated-artifacts/malvi-british-ghanaian-fuller-echo.wav"
+type = "audio"
+title = "Malvi — fuller tone, more ambience, pronunciation trial"
+description = "13-second Sulafat recording with a requested British–Ghanaian blend and slightly fuller tone. Light reverb/echo increased; pronunciation guided as “Na ni vio,” without an inserted y. Listen to confirm the pronunciation. App voice remains unchanged."
+logical_id = "bb66c421-3eb9-47c2-9378-0a4bc7c4878e"
+content_hash = "sha256:bf61de4537ed4623759de19008ea11b4ff24a05e56e48093194520be381d2158"
+size = 600128
+mtime_ms = 1792746693373
+storage_uri = "gcs://replit-rams-assets-sisko/rams/assets/repl:8a53f482-19ae-49f0-ab16-31b527f92091/bb66c421-3eb9-47c2-9378-0a4bc7c4878e/e21e9f28-add8-4767-95f4-466e31eb22a6"
+storage_version_token = "1792746702871698"
+content_type = "audio/wav"

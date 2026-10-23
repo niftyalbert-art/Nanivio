@@ -73,6 +73,15 @@ Seek sample approval before changing the app voice; do not claim a preset or a
 prompt alone is a verified accent match. If effects are integrated into live
 speech, preserve intelligibility and the shared audio/avatar playback timing.
 
+Pronounce Nanivio as “Na ni vio”, not “nani-viyo”.
+
+**Why:** The user explicitly corrected the brand-name pronunciation in Malvi's
+voice sample.
+
+**How to apply:** Preserve this pronunciation guidance in voice direction and
+ask the user to judge the recording; generated text spelling alone is not
+proof that speech pronounced it correctly.
+
 The user wants a proper, profound introduction without reminders such as “I'm not
 a human,” and wants a shorter wait before Malvi speaks.
 
