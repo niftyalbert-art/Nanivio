@@ -140,3 +140,17 @@ mtime_ms = 1792623532448
 storage_uri = "gcs://replit-rams-assets-sisko/rams/assets/repl:8a53f482-19ae-49f0-ab16-31b527f92091/1417b02c-6e94-4c81-8917-d38f9cc8040c/87339f89-0bf5-46a2-a0f4-a3dbba2562a0"
 storage_version_token = "1792623763191960"
 content_type = "video/webm"
+
+[[outputs]]
+id = "jVaNKDEehxOKhIkiNJV8j"
+uri = "file://generated-artifacts/malvi-gemini-kore-sample.wav"
+type = "audio"
+title = "Malvi — Gemini Kore voice sample"
+description = "An 11-second English recording generated with Gemini Live using the Kore voice offered in Malvi’s new voice selector. No ElevenLabs or LiveAvatar credits were used."
+logical_id = "f597fd61-3746-46fc-a919-43ba6f617492"
+content_hash = "sha256:64af462a8652e7b9682058e1dfaaf9ceecddbb397f2d71e654821e82ecbd1f74"
+size = 536204
+mtime_ms = 1792745050742
+storage_uri = "gcs://replit-rams-assets-sisko/rams/assets/repl:8a53f482-19ae-49f0-ab16-31b527f92091/f597fd61-3746-46fc-a919-43ba6f617492/f2530e9b-bd75-4c98-b6d9-c1372df0cc2a"
+storage_version_token = "1792745063257969"
+content_type = "audio/wav"
