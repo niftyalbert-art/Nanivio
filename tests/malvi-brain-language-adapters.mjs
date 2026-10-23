@@ -7,6 +7,8 @@ import { createRequire } from 'node:module';
 const fixtures = {
   gemini: `
     export const Modality = { AUDIO: 'AUDIO' };
+    export const StartSensitivity = { START_SENSITIVITY_HIGH: 'START_SENSITIVITY_HIGH' };
+    export const EndSensitivity = { END_SENSITIVITY_HIGH: 'END_SENSITIVITY_HIGH' };
     export class GoogleGenAI {
       live = { connect: async options => {
         const state = globalThis.__malviAdapter;
@@ -231,6 +233,8 @@ try {
   await new Promise(resolve => setImmediate(resolve));
   assert.equal(native.events.find(e => e.type === 'malvi:brain_ready').payload.speechProvider, 'gemini');
   assert.equal(state.geminiOptions.config.speechConfig.voiceConfig.prebuiltVoiceConfig.voiceName, 'Sulafat');
+  assert.equal(state.geminiOptions.config.realtimeInputConfig.automaticActivityDetection.silenceDurationMs, 350);
+  assert.equal(state.geminiOptions.config.realtimeInputConfig.automaticActivityDetection.endOfSpeechSensitivity, 'END_SENSITIVITY_HIGH');
   assert.match(state.geminiOptions.config.systemInstruction, /British English and light Ghanaian English/);
   assert.match(state.geminiOptions.config.systemInstruction, /"Na ni vio"/);
   const emitNative = state.geminiOptions.callbacks.onmessage;
@@ -265,9 +269,26 @@ try {
   assert.equal(native.events.filter(e => e.type === 'malvi:brain_audio').length, 2);
   emitNative({ serverContent: { modelTurn: { parts: [spokenChunk] }, outputTranscription: { text: 'Bonjour' }, turnComplete: true } });
   assert.equal(native.events.filter(e => e.type === 'malvi:brain_audio').at(-1).payload.language, 'fr');
+  const spokenSecond = Buffer.alloc(50_000);
+  spokenSecond.writeInt16LE(8000, 0);
+  const endEventsBefore = native.events.filter(e => e.type === 'malvi:brain_turn_end').length;
+  emitNative({ serverContent: {
+    modelTurn: { parts: [{ inlineData: { data: spokenSecond.toString('base64'), mimeType: 'audio/pcm;rate=24000' } }] },
+    outputTranscription: { text: 'Voici une réponse immédiate.' },
+  } });
+  const streamedOpening = native.events.filter(e => e.type === 'malvi:brain_audio').at(-1).payload;
+  assert.equal(streamedOpening.ended, false, 'The controller forwards speech before Gemini finishes generating');
+  assert.equal(streamedOpening.streaming, true);
+  assert.equal(streamedOpening.language, 'fr');
+  assert.equal(native.events.filter(e => e.type === 'malvi:brain_turn_end').length, endEventsBefore);
+  emitNative({ serverContent: { turnComplete: true } });
+  const closing = native.events.filter(e => e.type === 'malvi:brain_audio').at(-1).payload;
+  assert.equal(closing.ended, true);
+  assert.equal(closing.text, '', 'Trailing sound must not repeat the transcript');
+  assert.equal(native.events.filter(e => e.type === 'malvi:brain_turn_end').length, endEventsBefore + 1);
   controller.closeSocket(native);
   emitNative({ serverContent: { modelTurn: { parts: [spokenChunk] }, outputTranscription: { text: 'Late' }, turnComplete: true } });
-  assert.equal(native.events.filter(e => e.type === 'malvi:brain_audio').length, 3);
+  assert.equal(native.events.filter(e => e.type === 'malvi:brain_audio').length, 5);
   assert.equal(state.speechRequests.length, speechRequestsBefore, 'Gemini voice must not make ElevenLabs requests or fallback');
   console.log(JSON.stringify({ geminiAndOpenAI: true, exactLanguageAndDialect: true, localizedFirstGreeting: true, livePreferenceUpdates: true, ownerOnly: true, noProviderFanoutOrReconnect: true, idleDeadlineUnchanged: true }));
 } finally {

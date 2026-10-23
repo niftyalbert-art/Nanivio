@@ -1,4 +1,4 @@
-import { GoogleGenAI, Modality, type Session } from '@google/genai';
+import { GoogleGenAI, Modality, StartSensitivity, EndSensitivity, type Session } from '@google/genai';
 import OpenAI from 'openai';
 import { LiveWS } from 'openai/resources/live/ws';
 import type { WebSocket } from 'ws';
@@ -144,25 +144,28 @@ async function flushAudio(socket: WebSocket, connection: BrainConnection, ended:
   }
 }
 
-function flushNativeAudio(socket: WebSocket, connection: BrainConnection) {
+function flushNativeAudio(socket: WebSocket, connection: BrainConnection, ended = true) {
   if (connection.outputLanguage && connection.outputLanguage !== connection.language) {
     connection.nativeVoice.cancel();
     connection.transcript = '';
     connection.outputLanguage = null;
     return;
   }
-  const audio = connection.nativeVoice.finish(connection.transcript);
+  const audio = connection.nativeVoice.finish(connection.transcript, ended);
   connection.transcript = '';
-  connection.outputLanguage = null;
-  if (!audio) return;
+  if (ended) connection.outputLanguage = null;
+  if (!audio) {
+    if (ended) send(socket, 'malvi:brain_turn_end', { sessionId: connection.sessionId });
+    return;
+  }
   connection.playbackUntil = Math.max(Date.now(), connection.playbackUntil) + audio.durationMs;
   send(socket, 'malvi:brain_audio', {
     ...audio, sessionId: connection.sessionId, language: connection.language,
-    sampleRate: 24000, format: 'pcm_s16le', channels: 1, ended: true,
-    greeting: connection.isFirstTurn, speechProvider: 'gemini',
+    sampleRate: 24000, format: 'pcm_s16le', channels: 1, ended,
+    greeting: connection.isFirstTurn, speechProvider: 'gemini', streaming: true,
   });
   connection.isFirstTurn = false;
-  send(socket, 'malvi:brain_turn_end', { sessionId: connection.sessionId });
+  if (ended) send(socket, 'malvi:brain_turn_end', { sessionId: connection.sessionId });
 }
 
 function flushOpening(socket: WebSocket, connection: BrainConnection, failed: (message: string) => void) {
@@ -191,6 +194,15 @@ async function connectGemini(
       speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: connection.speechProvider === 'gemini' ? MALVI_GEMINI_VOICE : 'Kore' } } },
       inputAudioTranscription: {},
       outputAudioTranscription: {},
+      realtimeInputConfig: {
+        automaticActivityDetection: {
+          disabled: false,
+          startOfSpeechSensitivity: StartSensitivity.START_SENSITIVITY_HIGH,
+          endOfSpeechSensitivity: EndSensitivity.END_SENSITIVITY_HIGH,
+          prefixPaddingMs: 40,
+          silenceDurationMs: 350,
+        },
+      },
       tools: [{ functionDeclarations: [{
         name: REFERENCE_TOOL_NAME, description: REFERENCE_TOOL_DESCRIPTION, parametersJsonSchema: REFERENCE_TOOL_PARAMETERS,
       }] }],
@@ -234,6 +246,10 @@ async function connectGemini(
           try { flushNativeAudio(socket, connection); }
           catch (error) { onFailure((error as Error).message); }
           return;
+        }
+        if (connection.speechProvider === 'gemini' && connection.nativeVoice.ready(connection.transcript)) {
+          try { flushNativeAudio(socket, connection, false); }
+          catch (error) { onFailure((error as Error).message); }
         }
         if (serverContent?.turnComplete) void flushAudio(socket, connection, true).catch(error => {
           onFailure(error instanceof Error ? error.message : 'Malvi’s ElevenLabs voice could not complete the response.');

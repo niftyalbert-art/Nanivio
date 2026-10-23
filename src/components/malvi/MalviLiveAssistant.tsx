@@ -11,6 +11,7 @@ import { MalviVoicePlayback } from '../../lib/malviVoicePlayback';
 import { malviAvatarSoundBlocked, playMalviAvatar } from '../../lib/malviAvatarPlayback';
 import { MalviCaptionPlayer, estimatedMalviCaptionTrack, type MalviCaptionTrack } from '../../lib/malviSpeechTiming';
 import { MalviAvatarPlayout } from '../../lib/malviAvatarPlayout';
+import { MalviAvatarVideoGate } from '../../lib/malviAvatarVideoGate';
 import MalviWakeControls from './MalviWakeControls';
 import { NanivioMicEngine } from '../../lib/nanivioMic/NanivioMicEngine';
 import { BrowserMicCapture, browserMicStreamId } from '../../lib/nanivioMic/BrowserMicCapture';
@@ -86,6 +87,7 @@ export const MalviLiveAssistantProvider: React.FC<{ children: React.ReactNode }>
   const playback = useRef<MalviVoicePlayback | null>(null);
   const pendingAudio = useRef<{ audio: string; track: MalviCaptionTrack } | null>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
+  const videoGate = useRef<MalviAvatarVideoGate | null>(null);
   const avatarPlayout = useRef<MalviAvatarPlayout | null>(null);
   const removeVideoListeners = useRef<(() => void) | null>(null);
   const mediaReady = useRef(false);
@@ -119,6 +121,7 @@ export const MalviLiveAssistantProvider: React.FC<{ children: React.ReactNode }>
     captions.current?.cancel();
     avatarPlayout.current?.close(); avatarPlayout.current = null;
     setProcessing(false); setUserTranscript(''); userText.current = '';
+    videoGate.current?.cancel(); videoGate.current = null;
     playback.current?.close(); playback.current = null; pendingAudio.current = null;
     avatarAcceptingAudio.current = false; startupAudio.current = [];
     if (id) realtimeClient.send('malvi:brain_stop', { sessionId: id });
@@ -190,14 +193,16 @@ export const MalviLiveAssistantProvider: React.FC<{ children: React.ReactNode }>
     const handleAudio = (payload: any) => {
       if (!isCurrent(payload) || (payload.language && payload.language !== languageRef.current)) return;
       if (!voiceMode.current && !avatarAcceptingAudio.current) {
-        if (startupAudio.current.length >= 2) { fail('Malvi’s avatar did not become ready before the voice startup queue filled.'); return; }
+        if (startupAudio.current.length >= 64 || startupAudio.current.reduce((ms, packet) => ms + packet.durationMs, 0) + payload.durationMs > 65_000) {
+          fail('Malvi’s avatar did not become ready before the voice startup queue filled.'); return;
+        }
         startupAudio.current.push(payload);
         return;
       }
       try {
         if (!voiceMode.current && !sdk.current) return;
         const track = captions.current!.enqueue(payload.speechProvider === 'gemini' && payload.captionTiming === 'estimated'
-          ? estimatedMalviCaptionTrack(payload.text, payload.durationMs, payload.speechDurationMs)
+          ? estimatedMalviCaptionTrack(payload.text, payload.durationMs, payload.speechDurationMs, payload.streaming === true)
           : { alignment: payload.alignment, durationMs: payload.durationMs });
         setProcessing(true);
         if (voiceMode.current && playback.current) {
@@ -210,12 +215,16 @@ export const MalviLiveAssistantProvider: React.FC<{ children: React.ReactNode }>
             });
           } }, payload);
         } else if (sdk.current) {
-          avatarPlayout.current?.enqueue(track, payload.pcm24k);
-          deliverMalviAudio(sdk.current, payload);
+          const avatar = sdk.current;
+          videoGate.current?.enqueue(payload.durationMs, () => {
+            if (sdk.current !== avatar || !isCurrent(payload)) return;
+            avatarPlayout.current?.enqueue(track, payload.pcm24k);
+            deliverMalviAudio(avatar, payload);
+          });
         }
         else return;
       } catch {
-        captions.current?.cancel(); avatarPlayout.current?.cancel(); setProcessing(false);
+        captions.current?.cancel(); avatarPlayout.current?.cancel(); videoGate.current?.cancel(); setProcessing(false);
         setMicrophoneError('Malvi’s voice audio could not be played.');
       }
     };
@@ -250,7 +259,7 @@ export const MalviLiveAssistantProvider: React.FC<{ children: React.ReactNode }>
     const offInterrupted = realtimeClient.on('malvi:brain_interrupted', payload => {
       if (isCurrent(payload)) {
         startupAudio.current = [];
-        captions.current?.cancel(); avatarPlayout.current?.cancel(); setProcessing(false);
+        captions.current?.cancel(); avatarPlayout.current?.cancel(); videoGate.current?.cancel(); setProcessing(false);
         playback.current?.interrupt(); pendingAudio.current = null; sdk.current?.interrupt();
       }
     });
@@ -272,7 +281,7 @@ export const MalviLiveAssistantProvider: React.FC<{ children: React.ReactNode }>
     try {
       const language = getMalviLanguage(preferredLanguage);
       stopMicrophone();
-      captions.current?.cancel(); avatarPlayout.current?.cancel(); setProcessing(false);
+      captions.current?.cancel(); avatarPlayout.current?.cancel(); videoGate.current?.cancel(); setProcessing(false);
       sdk.current?.interrupt();
       playback.current?.interrupt(); pendingAudio.current = null;
       startupAudio.current = [];
@@ -337,6 +346,7 @@ export const MalviLiveAssistantProvider: React.FC<{ children: React.ReactNode }>
     setReferenceStatus('idle'); setReferences([]); setUnavailableSources([]);
     setSecondsRemaining(60); setAudioBlocked(false); setPhase('connecting');
     try {
+      videoGate.current = new MalviAvatarVideoGate(() => videoRef.current, fail);
       const observer = new MalviAvatarPlayout(
         (track, clock) => captions.current?.start(clock, track),
         track => captions.current?.finish(track),
@@ -398,7 +408,7 @@ export const MalviLiveAssistantProvider: React.FC<{ children: React.ReactNode }>
         }
       });
       // Connect the one selected brain while the renderer starts. Never open
-      // the microphone here; at most two early speech packets wait for media.
+      // the microphone here; the bounded early speech queue waits for media.
       realtimeClient.send('malvi:brain_start', { sessionId: info.id, language: languageRef.current });
       const starting = live.start().then(async () => {
         if (run !== generation.current) await live.stop();
@@ -540,7 +550,7 @@ export const MalviLiveAssistantProvider: React.FC<{ children: React.ReactNode }>
     return () => window.removeEventListener('pagehide', leave);
   }, [cleanup, disarmWake]);
   const interrupt = () => {
-    captions.current?.cancel(); avatarPlayout.current?.cancel(); setProcessing(false);
+    captions.current?.cancel(); avatarPlayout.current?.cancel(); videoGate.current?.cancel(); setProcessing(false);
     playback.current?.interrupt(); pendingAudio.current = null;
     try { sdk.current?.interrupt(); } catch {}
     const id = sessionId.current;
@@ -639,7 +649,7 @@ export const MalviLiveControls: React.FC = () => {
         </select>
         <p role="status" className="mt-2 text-xs text-[var(--nv-gold)]">{live.voiceSaving ? 'Saving voice setting…' : live.voiceFeedback}</p>
         <p className="mt-2 text-xs leading-relaxed text-slate-400">{live.voiceProvider === 'gemini'
-          ? 'Uses Sulafat with Malvi’s approved warm, fuller voice direction and gentle ambience/echo. English uses a light British–Ghanaian blend; other languages keep their own pronunciation. This is not a clone of her ElevenLabs voice, and generated delivery may vary. Gemini usage limits and charges apply; no ElevenLabs credits are used. Captions have approximate timing. Audio waits for each response to finish generating.'
+          ? 'Uses Sulafat with Malvi’s approved warm, fuller voice direction and gentle ambience/echo. English uses a light British–Ghanaian blend; other languages keep their own pronunciation. This is not a clone of her ElevenLabs voice, and generated delivery may vary. Gemini usage limits and charges apply; no ElevenLabs credits are used. Speech arrives in short packets without waiting for the complete response. Captions have approximate timing.'
           : 'Uses the approved Malvi voice and ElevenLabs credits, with provider-timed captions. No automatic switch to another voice.'}</p>
       </div>}
       <div className="mt-5 flex flex-wrap gap-3">

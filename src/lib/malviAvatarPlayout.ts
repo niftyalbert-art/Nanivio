@@ -82,7 +82,9 @@ export class MalviAvatarPlayout {
   }
 
   enqueue(track: MalviCaptionTrack, pcm: string) {
-    if (this.pending.length >= 3) throw new Error('Malvi’s subtitle playback queue is full.');
+    if (this.pending.length >= 64 || this.pending.reduce((sum, item) => sum + item.track.durationMs, 0) + track.durationMs > 65_000) {
+      throw new Error('Malvi’s subtitle playback queue is full.');
+    }
     this.pending.push({ track, leadingMs: malviLeadingSilenceMs(pcm), eligible: false, providerEnded: false, startedAt: null, eligibleAt: 0 });
   }
 

@@ -65,10 +65,25 @@ Direction is not a voice clone, and generated accent/timbre/pronunciation can
 vary. Approval of an English sample does not verify every language or future
 utterance. ElevenLabs voice settings and speech audio are unaffected.
 
-Native chunks are bounded and buffered until turn completion to keep one audio
-packet paired with its transcript; this can add delay for long answers.
+Native audio is released incrementally once roughly one second of PCM and
+transcription are available, rather than waiting for turn completion. The
+effects filter retains its history between packets and adds its reflection
+tail only to the closing packet. Session and turn budgets remain bounded.
 Interruption, language changes and session end discard buffered output. Limits
 apply to each turn and session, including discarded generated audio.
+
+Gemini's automatic speech-end detector uses 350 ms of silence; this is a
+provider VAD setting, not an additional browser microphone or a promise of a
+fixed end-to-end response time. Network, tool lookups, provider generation and
+avatar rendering still contribute latency.
+
+Before each avatar audio delivery, the client waits for a rendered video frame
+(or playable media on older browsers), with a bounded timeout and cancellation.
+The SDK's single paired A/V element remains the only audible source. A stalled
+video fails explicitly instead of continuing to submit speech over a frozen
+image. This is a readiness/stall safeguard, not a measurement or correction
+of provider phoneme timing; physical-device lip synchronization needs live
+verification. No fixed Android-specific sound delay is applied.
 
 Gemini Live does not provide the character-level timestamps used by ElevenLabs.
 Native captions are explicitly marked **Approximate captions**. Their estimated
