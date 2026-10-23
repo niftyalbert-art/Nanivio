@@ -9,7 +9,7 @@ import { MalviLiveOverlay } from './MalviLiveOverlay';
 import type { LiveAvatarSession } from '@heygen/liveavatar-web-sdk';
 import { MalviVoicePlayback } from '../../lib/malviVoicePlayback';
 import { malviAvatarSoundBlocked, playMalviAvatar } from '../../lib/malviAvatarPlayback';
-import { MalviCaptionPlayer, type MalviCaptionTrack } from '../../lib/malviSpeechTiming';
+import { MalviCaptionPlayer, estimatedMalviCaptionTrack, type MalviCaptionTrack } from '../../lib/malviSpeechTiming';
 import { MalviAvatarPlayout } from '../../lib/malviAvatarPlayout';
 import MalviWakeControls from './MalviWakeControls';
 import { NanivioMicEngine } from '../../lib/nanivioMic/NanivioMicEngine';
@@ -18,6 +18,8 @@ import { NANIVIO_MIC_EVENTS } from '../../shared/nanivioMicProtocol';
 
 type Phase = 'idle' | 'connecting' | 'connected' | 'error';
 interface LiveControls {
+  voiceProvider: 'elevenlabs' | 'gemini';
+  selectVoice: (provider: 'elevenlabs' | 'gemini') => void;
   readiness: LiveAvatarReadiness | null;
   notice: string;
   phase: Phase;
@@ -40,7 +42,17 @@ export const MalviLiveAssistantProvider: React.FC<{ children: React.ReactNode }>
   const preferredLanguage = appLanguage || currentUser?.appLanguage || currentUser?.myLanguage || 'en';
   const languageRef = useRef(preferredLanguage);
   languageRef.current = preferredLanguage;
-  const [readiness, setReadiness] = useState<LiveAvatarReadiness | null>(null);
+  const [rawReadiness, setReadiness] = useState<LiveAvatarReadiness | null>(null);
+  const [voiceChoice, setVoiceChoice] = useState<'elevenlabs' | 'gemini' | null>(null);
+  const voiceProvider = voiceChoice || rawReadiness?.speech?.provider || 'elevenlabs';
+  const voiceRef = useRef(voiceProvider);
+  voiceRef.current = voiceProvider;
+  const selectedSpeech = rawReadiness?.voiceOptions?.find(option => option.provider === voiceProvider);
+  const readiness = rawReadiness && selectedSpeech ? {
+    ...rawReadiness, speech: selectedSpeech,
+    configured: Boolean(rawReadiness.infrastructureConfigured && selectedSpeech.configured),
+    missing: [...rawReadiness.infrastructureMissing || [], ...selectedSpeech.missing || []],
+  } : rawReadiness;
   const [phase, setPhase] = useState<Phase>('idle');
   const [notice, setNotice] = useState('');
   const [error, setError] = useState<string | null>(null);
@@ -185,7 +197,9 @@ export const MalviLiveAssistantProvider: React.FC<{ children: React.ReactNode }>
       }
       try {
         if (!voiceMode.current && !sdk.current) return;
-        const track = captions.current!.enqueue({ alignment: payload.alignment, durationMs: payload.durationMs });
+        const track = captions.current!.enqueue(payload.speechProvider === 'gemini' && payload.captionTiming === 'estimated'
+          ? estimatedMalviCaptionTrack(payload.text, payload.durationMs)
+          : { alignment: payload.alignment, durationMs: payload.durationMs });
         setProcessing(true);
         if (voiceMode.current && playback.current) {
           deliverMalviAudio({ repeatAudio: audio => {
@@ -337,7 +351,7 @@ export const MalviLiveAssistantProvider: React.FC<{ children: React.ReactNode }>
       if (run !== generation.current || !mounted.current) { observer.close(); return; }
       // No token exchange, SDK download, WebRTC, or provider audio before activation.
       const language = getMalviLanguage(languageRef.current);
-      const info = await assistantRequest('/session', { activation, language: language.code });
+      const info = await assistantRequest('/session', { activation, language: language.code, speechProvider: voiceRef.current });
       if (run !== generation.current || !mounted.current) {
         await assistantRequest(`/session/${info.id}/end`, {}, true).catch(() => {});
         return;
@@ -423,7 +437,7 @@ export const MalviLiveAssistantProvider: React.FC<{ children: React.ReactNode }>
       await playback.current.resume();
       if (run !== generation.current) return;
       const language = getMalviLanguage(languageRef.current);
-      const info = await assistantRequest('/voice-session', { activation: 'manual', language: language.code });
+      const info = await assistantRequest('/voice-session', { activation: 'manual', language: language.code, speechProvider: voiceRef.current });
       if (run !== generation.current || !mounted.current) {
         await assistantRequest(`/session/${info.id}/end`, {}, true).catch(() => {});
         return;
@@ -537,11 +551,15 @@ export const MalviLiveAssistantProvider: React.FC<{ children: React.ReactNode }>
     }).catch(err => fail(err instanceof Error ? err.message : 'The session has ended.'));
   };
   return (
-    <LiveContext.Provider value={{ readiness, notice, phase, wakeArmed, wakeChecking, wakeFeedback, wakePackRequired, wakePackInstalling, installWakePack, start, startVoiceTest, armWake, disarmWake, refresh }}>
+    <LiveContext.Provider value={{ readiness, voiceProvider, selectVoice: provider => {
+      if (phase !== 'idle') return;
+      disarmWake(); setVoiceChoice(provider);
+    }, notice, phase, wakeArmed, wakeChecking, wakeFeedback, wakePackRequired, wakePackInstalling, installWakePack, start, startVoiceTest, armWake, disarmWake, refresh }}>
       {children}
       {phase !== 'idle' && <MalviLiveOverlay
         videoRef={videoRef} onVideoElement={attachVideo} phase={phase} error={error} secondsRemaining={secondsRemaining}
         onClose={close} onInterrupt={interrupt} audioBlocked={audioBlocked} caption={caption}
+        approximateCaptions={voiceProvider === 'gemini'}
         voiceOnly={voiceOnly}
         onPlayAudio={() => {
           if (voiceMode.current && playback.current) {
@@ -603,8 +621,20 @@ export const MalviLiveControls: React.FC = () => {
         </div>
         <span className="rounded-full border border-[var(--nv-border)] px-3 py-1.5 text-xs text-[var(--nv-gold)]">Video only after activation</span>
       </div>
+      {readiness?.voiceOptions && <div className="mt-4 max-w-lg">
+        <label htmlFor="malvi-voice-provider" className="block text-sm font-semibold text-slate-200">Malvi’s voice</label>
+        <select id="malvi-voice-provider" value={live.voiceProvider} disabled={phase !== 'idle'}
+          onChange={event => live.selectVoice(event.target.value as 'elevenlabs' | 'gemini')}
+          className="mt-2 w-full rounded-xl border border-[var(--nv-border)] bg-[var(--nv-surface)] px-3 py-3 text-sm text-white disabled:opacity-50">
+          <option value="elevenlabs">ElevenLabs · approved Malvi voice</option>
+          <option value="gemini">Gemini · alternative voice</option>
+        </select>
+        <p className="mt-2 text-xs leading-relaxed text-slate-400">{live.voiceProvider === 'gemini'
+          ? 'Uses the selected Gemini brain’s own voice, not Malvi’s ElevenLabs voice. Gemini usage limits and charges apply; no ElevenLabs credits are used. Captions have approximate timing. Audio waits for each response to finish generating.'
+          : 'Uses the approved Malvi voice and ElevenLabs credits, with provider-timed captions. No automatic switch to another voice.'}</p>
+      </div>}
       <div className="mt-5 flex flex-wrap gap-3">
-        {readiness?.canRunSetupTests && <button type="button" disabled={!readiness.voiceTestAvailable || !languageSupported || phase !== 'idle'} onClick={() => void live.startVoiceTest()} className="rounded-xl border border-[var(--nv-gold)] px-4 py-3 text-sm font-semibold text-[var(--nv-gold)] disabled:opacity-45">
+        {readiness?.canRunSetupTests && <button type="button" disabled={!readiness.voiceTestAvailable || readiness.speech?.configured === false || !languageSupported || phase !== 'idle'} onClick={() => void live.startVoiceTest()} className="rounded-xl border border-[var(--nv-gold)] px-4 py-3 text-sm font-semibold text-[var(--nv-gold)] disabled:opacity-45">
           Test voice only · admin
         </button>}
         <button type="button" onClick={() => void live.start('manual')} disabled={!ready || phase !== 'idle'} style={{ backgroundColor: 'var(--nv-gold)', color: 'var(--nv-bg)' }} className="inline-flex items-center gap-2 rounded-xl px-4 py-3 text-sm font-semibold transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-45">
@@ -619,7 +649,7 @@ export const MalviLiveControls: React.FC = () => {
         onInstall={() => void live.installWakePack()}
       />
       {readiness?.canRunSetupTests && <div className="mt-4 text-xs leading-relaxed text-slate-300">
-        <p>Voice-only testing uses the selected brain plus ElevenLabs speech and may incur charges from both. No avatar is started. Microphone access requires a separate tap. The same session limits apply.</p>
+        <p>Voice-only testing uses your selected brain and voice and may incur provider charges. No avatar is started. Microphone access requires a separate tap. The same session limits apply.</p>
         <button type="button" disabled={checking} className="mt-2 min-h-11 underline underline-offset-4 disabled:opacity-45" onClick={() => {
           setChecking(true); setDiagnostic('');
           void assistantRequest('/diagnostics', {}).then(data => {
@@ -644,7 +674,7 @@ export const MalviLiveControls: React.FC = () => {
         <AlertCircle className="mr-2 inline h-4 w-4" />
         {!readiness.enabled ? 'Malvi must be enabled in administrator settings. ' : ''}
         {!readiness.configured ? `Live setup required: ${readiness.missing.join(', ')}. The supplied face must be provisioned as your custom LiveAvatar asset.` : ''}
-        {!languageSupported ? 'Your selected language is not supported by Malvi’s current ElevenLabs voice model. Choose a supported language for voice; Malvi will not substitute English or another voice.' : ''}
+        {!languageSupported ? 'Your selected language is not listed for Malvi’s selected voice. Choose a supported language; Malvi will not substitute English or another voice.' : ''}
         <button type="button" onClick={() => void live.refresh()} className="ml-2 underline underline-offset-4">Recheck setup</button>
       </div>}
       {notice && <p role="status" className="mt-3 text-sm text-amber-200">{notice}</p>}

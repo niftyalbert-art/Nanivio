@@ -22,6 +22,21 @@ export function validMalviAlignment(value: unknown, durationMs: number): value i
 
 export interface MalviCaptionTrack { alignment: MalviAlignment; durationMs: number }
 
+/** Gemini Live has no word timestamps. Never describe this pacing as alignment. */
+export function estimatedMalviCaptionTrack(text: unknown, durationMs: number): MalviCaptionTrack {
+  if (typeof text !== 'string' || !text.trim() || text.length > 1200
+    || !Number.isFinite(durationMs) || durationMs <= 0 || durationMs > 62_500) {
+    throw new Error('Gemini subtitle text or duration is invalid.');
+  }
+  const characters = Array.from(text);
+  const step = durationMs / characters.length / 1000;
+  return { durationMs, alignment: {
+    characters,
+    character_start_times_seconds: characters.map((_, i) => i * step),
+    character_end_times_seconds: characters.map((_, i) => (i + 1) * step),
+  } };
+}
+
 export function malviCaptionAt(track: MalviCaptionTrack, elapsedMs: number | null) {
   if (elapsedMs === null || elapsedMs < 0 || elapsedMs >= track.durationMs) return '';
   let visible = '';

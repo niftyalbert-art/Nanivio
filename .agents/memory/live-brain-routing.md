@@ -18,3 +18,15 @@ The user selected automatic lookup of relevant sources, rather than requiring an
 **Why:** The user approved a multi-provider Malvi architecture, not indiscriminate sharing of private conversations. Keeping selection explicit makes privacy, cost, and failures understandable.
 
 **How to apply:** Add providers behind the server boundary and disclose the selected audio recipient. Fail clearly when that provider is unavailable. Route reference queries only to relevant approved sources and present citations; treat retrieved content as untrusted evidence. Keep company knowledge and user-owned memory as separately authorized context sources, not additional audio recipients.
+
+Gemini's built-in voice is an explicitly approved alternative to the approved
+ElevenLabs Malvi voice, not a replacement for her voice identity or an automatic
+fallback.
+
+**Why:** The user approved adding the Gemini voice option while keeping
+ElevenLabs available after its credits ran out.
+
+**How to apply:** Keep the user's voice choice explicit and fixed for a session.
+Do not start another brain to obtain speech. State that Gemini sounds different,
+still has usage costs/limits, and lacks ElevenLabs character timestamps; do not
+claim exact subtitle or lip synchronization from estimated caption pacing.

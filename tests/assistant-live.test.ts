@@ -227,7 +227,7 @@ test('welcome speech is resampled to raw PCM16 mono 24 kHz without WAV headers',
     assert.equal(pcm.length, 48000); assert.equal(pcm.readInt16LE(0), 1000);
   }
   assert.throws(() => wavToPcm24k(Buffer.from('MP3 fixture')), /PCM WAV/);
-  assert.ok(AI_DISCLOSURE.includes('interactive AI assistant'));
+  assert.ok(AI_DISCLOSURE.includes('AI companion at Nanivio'));
 });
 
 test('LITE audio bridge refuses provider text/TTS and unsupported audio formats', () => {
@@ -251,7 +251,8 @@ test('wake word is on-device only; unsupported browsers never fall back to cloud
   }
   Object.defineProperty(Recognition.prototype, 'processLocally', { value: false, writable: true });
   try {
-    Object.defineProperty(globalThis, 'window', { configurable: true, value: { webkitSpeechRecognition: Recognition } });
+    // A legacy prefixed cloud recognizer lacks the required on-device API.
+    Object.defineProperty(globalThis, 'window', { configurable: true, value: { webkitSpeechRecognition: class {} } });
     await assert.rejects(startLocalMalviWakeWord(() => wakes++, () => {}), /No|no cloud/);
     assert.equal(starts, 0);
     Object.defineProperty(globalThis, 'window', { configurable: true, value: { SpeechRecognition: Recognition } });

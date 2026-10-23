@@ -4,11 +4,16 @@ import { AI_DISCLOSURE, liveAvatarService, liveAvatarSetup, malviVideoQuality } 
 import { getLiveBrainProviderConfig } from './brainProviderConfig.ts';
 import { malviLiveBrainController } from './liveBrain.ts';
 import { getMalviLanguage } from '../../lib/malviLanguages.ts';
-import { assertMalviSpeechLanguage, malviSpeechSetup, synthesizeMalviSpeech } from './malviSpeech.ts';
+import { malviSpeechSetup, synthesizeMalviSpeech } from './malviSpeech.ts';
+import { assertMalviVoiceLanguage, malviVoiceSetup, parseMalviVoiceProvider } from './malviVoiceConfig.ts';
 
 type Auth = (req: Request, res: Response, next: NextFunction) => unknown;
 export function registerAssistantRoutes(app: Express, auth: Auth, enabled: () => boolean, startSweeper = true) {
   const userId = (req: Request) => (req as any).authUser.id as string;
+  const selectedVoice = (req: Request) => {
+    try { return parseMalviVoiceProvider(req.body?.speechProvider ?? process.env.MALVI_VOICE_PROVIDER ?? 'elevenlabs'); }
+    catch { throw new AssistantError(400, 'INVALID_VOICE_PROVIDER', 'Choose ElevenLabs or Gemini for Malvi’s voice.'); }
+  };
   const admin = (req: Request) => {
     if ((req as any).authUser?.role !== 'ADMIN') throw new AssistantError(403, 'ADMIN_REQUIRED', 'Only administrators can run Malvi setup tests.');
   };
@@ -33,10 +38,11 @@ export function registerAssistantRoutes(app: Express, auth: Auth, enabled: () =>
       success: true,
       ...liveAvatarSetup(),
       enabled: enabled(),
-      welcomeVoiceConfigured: malviSpeechSetup().configured,
+      welcomeVoiceConfigured: malviVoiceSetup().configured,
+      voiceOptions: ['elevenlabs', 'gemini'].map(provider => malviVoiceSetup(process.env, provider)),
       brainProviders: getLiveBrainProviderConfig(),
       voiceTestAvailable: (_req as any).authUser?.role === 'ADMIN' && enabled()
-        && getLiveBrainProviderConfig().configured && malviSpeechSetup().configured && Boolean(process.env.REDIS_URL),
+        && getLiveBrainProviderConfig().configured && Boolean(process.env.REDIS_URL),
       canRunSetupTests: (_req as any).authUser?.role === 'ADMIN',
     });
   }));
@@ -49,7 +55,7 @@ export function registerAssistantRoutes(app: Express, auth: Auth, enabled: () =>
       try { redis = await (await getAssistantStore()).ping() ? 'connected' : 'unavailable'; }
       catch { redis = 'unavailable'; }
     }
-    res.json({ success: true, redis, brain: getLiveBrainProviderConfig(), speech: malviSpeechSetup(),
+    res.json({ success: true, redis, brain: getLiveBrainProviderConfig(), speech: malviVoiceSetup(),
       avatar: { configured: Boolean(process.env.HEYGEN_API_KEY && process.env.AVATAR_ID), readinessVerified: false },
       providerSessionStarted: false });
   }));
@@ -58,27 +64,29 @@ export function registerAssistantRoutes(app: Express, auth: Auth, enabled: () =>
     if (!enabled()) throw new AssistantError(403, 'MALVI_DISABLED', 'Malvi is currently disabled by the administrator.');
     const brain = getLiveBrainProviderConfig();
     if (!brain.configured) throw new AssistantError(503, 'BRAIN_SETUP_REQUIRED', 'Configure the selected live brain provider before testing voice.');
-    const speech = malviSpeechSetup();
+    const provider = selectedVoice(req);
+    const speech = malviVoiceSetup(process.env, provider);
     if (!speech.configured) throw new AssistantError(503, 'VOICE_SETUP_REQUIRED', `Malvi’s voice setup requires ${speech.missing.join(', ')}.`);
     if (req.body?.activation !== 'manual') throw new AssistantError(400, 'ACTIVATION_REQUIRED', 'Start the voice-only test manually.');
     let language;
     try { language = getMalviLanguage(req.body?.language ?? 'en'); }
     catch { throw new AssistantError(400, 'INVALID_LANGUAGE', 'Choose a valid Nanivio language for Malvi.'); }
-    try { assertMalviSpeechLanguage(language.code); }
+    try { assertMalviVoiceLanguage(language.code, provider); }
     catch (error) { throw new AssistantError(400, 'VOICE_LANGUAGE_UNSUPPORTED', (error as Error).message); }
-    res.status(201).json({ success: true, ...await liveAvatarService.create(userId(req), language.code, 'VOICE_TEST') });
+    res.status(201).json({ success: true, ...await liveAvatarService.create(userId(req), language.code, 'VOICE_TEST', 'high', provider) });
   }));
   app.post('/api/assistant/session', auth, run(async (req, res) => {
     if (!enabled()) throw new AssistantError(403, 'MALVI_DISABLED', 'Malvi is currently disabled by the administrator.');
-    const setup = liveAvatarSetup();
+    const provider = selectedVoice(req);
+    const setup = liveAvatarSetup(provider);
     if (!setup.configured) throw new AssistantError(503, 'LIVEAVATAR_SETUP_REQUIRED', `LiveAvatar setup is required: ${setup.missing.join(', ')}. Use your provisioned Malvi custom avatar, not a sample avatar.`);
     if (!['wake-word', 'manual'].includes(req.body?.activation)) throw new AssistantError(400, 'ACTIVATION_REQUIRED', 'Activate Malvi with the local wake word or the start button.');
     let language;
     try { language = getMalviLanguage(req.body?.language ?? 'en'); }
     catch { throw new AssistantError(400, 'INVALID_LANGUAGE', 'Choose a valid Nanivio language for Malvi.'); }
-    try { assertMalviSpeechLanguage(language.code); }
+    try { assertMalviVoiceLanguage(language.code, provider); }
     catch (error) { throw new AssistantError(400, 'VOICE_LANGUAGE_UNSUPPORTED', (error as Error).message); }
-    res.status(201).json({ success: true, ...await liveAvatarService.create(userId(req), language.code, 'LITE', malviVideoQuality(req.get('user-agent') || '')) });
+    res.status(201).json({ success: true, ...await liveAvatarService.create(userId(req), language.code, 'LITE', malviVideoQuality(req.get('user-agent') || ''), provider) });
   }));
   app.post('/api/assistant/session/:id/activity', auth, run(async (req, res) => {
     if (!['input', 'interrupt'].includes(req.body?.kind)) throw new AssistantError(400, 'INPUT_REQUIRED', 'Only explicit user input may extend the idle deadline.');
@@ -86,6 +94,9 @@ export function registerAssistantRoutes(app: Express, auth: Auth, enabled: () =>
   }));
   app.post('/api/assistant/session/:id/welcome', auth, run(async (req, res) => {
     const session = await liveAvatarService.owned(userId(req), validId(req));
+    if (session.speechProvider === 'gemini' || (!session.speechProvider && malviVoiceSetup().provider === 'gemini')) {
+      throw new AssistantError(409, 'LIVE_BRAIN_GREETING_REQUIRED', 'Gemini supplies Malvi’s greeting through the selected live conversation. No ElevenLabs request was made.');
+    }
     if (session.language && session.language !== 'en') throw new AssistantError(409, 'LIVE_BRAIN_GREETING_REQUIRED', 'The live brain supplies Malvi’s greeting in your selected language. An English welcome was not played.');
     if (!malviSpeechSetup().configured) throw new AssistantError(503, 'WELCOME_VOICE_REQUIRED', 'Malvi’s ElevenLabs voice is not configured.');
     await liveAvatarService.claimWelcome(validId(req));
