@@ -16,7 +16,7 @@ checks. A source-code string is not evidence of visible user feedback.
 
 **Why:** CDP's by-value serialization of native DOM elements can produce an undefined result even when the element exists. This caused repeated false negatives despite successful SDK attachment in an isolated fixture.
 
-**How to apply:** Use `!!document.querySelector(...)` or another boolean condition, not the raw element. Inspect browser state and recorded actions before attributing a repeated wait failure to product behavior.
+**How to apply:** Use `!!document.querySelector(...)` or another boolean condition, not the raw element. Inspect browser state and recorded actions before attributing a repeated wait failure to product behavior. Successful synthetic input-event dispatch is not proof that the browser performed a default action; require evidence of the intended application request or state change.
 
 Mutation scripts evaluated with `awaitPromise: true` should end with a primitive
 such as `true`, not a fixture Proxy returned by `Object.assign`.
