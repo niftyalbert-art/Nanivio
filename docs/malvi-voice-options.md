@@ -1,6 +1,9 @@
 # Malvi voice selection
 
-Malvi’s setup panel offers two explicit choices before a session starts:
+Only administrators can set Malvi’s voice in the Malvi setup panel. This global
+policy applies to all new sessions, not just the administrator’s session.
+Ordinary users have no voice selector and cannot override the provider through
+session requests. Administrators have two choices:
 
 - **ElevenLabs:** the approved custom voice, existing credit usage and provider
   character timestamps. This remains the default.
@@ -11,8 +14,11 @@ Malvi’s setup panel offers two explicit choices before a session starts:
   ElevenLabs synthesis requests, but Gemini usage limits/charges and LiveAvatar
   costs still apply.
 
-The choice is stored in the owned Redis session, not accepted from WebSocket
-audio payloads. It is fixed until that session ends. Gemini voice requires the
+The administrator’s policy is saved in shared Redis without a session TTL.
+It survives application restarts and is read across server instances. Each new
+owned Redis session saves that selected provider; existing sessions are not
+changed mid-conversation. No choice is accepted from session or WebSocket audio
+payloads. Gemini voice requires the
 Gemini brain; choosing it with OpenAI fails explicitly, without starting a second
 brain or falling back. Nanivio Mic, user activation, session deadlines and
 ownership checks are unchanged.
@@ -21,11 +27,15 @@ ownership checks are unchanged.
 
 No additional credentials are required for Gemini voice when `GEMINI_API_KEY`
 and `MALVI_BRAIN_PROVIDER=gemini` are already configured. After deploying this
-update, close any active session, select **Gemini · Sulafat · approved Malvi style**, and
-start a fresh session.
+update, sign in as an administrator, close any active session, and select
+**Gemini · Sulafat · approved Malvi style** in the Malvi setup panel.
+The saved confirmation applies to everyone’s new sessions. Start a fresh session.
 
-Optionally set `MALVI_VOICE_PROVIDER=gemini` to make Gemini the server default.
-Omit it or use `elevenlabs` to retain the existing default. This is independent
+`MALVI_VOICE_PROVIDER=gemini` is the initial server default only when no
+administrator policy has been saved. Omit it or use `elevenlabs` for the
+initial ElevenLabs default. A saved administrator choice takes precedence.
+Redis failures fail closed rather than silently choosing another billable voice.
+This is independent
 of `MALVI_TTS_TRANSPORT`, which controls only the ElevenLabs connection.
 Never replace `GEMINI_API_KEY` with the word `gemini`.
 

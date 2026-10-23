@@ -91,6 +91,12 @@ export function redisSessionStore(redis: any) {
       const raw = await redis.get(sessionKey(id));
       return raw ? JSON.parse(raw) : null;
     },
+    async getVoiceProvider(): Promise<string | null> {
+      return redis.get(`${PREFIX}voice-provider`);
+    },
+    async setVoiceProvider(provider: 'elevenlabs' | 'gemini') {
+      await redis.set(`${PREFIX}voice-provider`, provider);
+    },
     async touch(id: string, owner: string, now: number): Promise<AssistantSessionRecord | null> {
       const raw = await evalScript(TOUCH_SESSION, [sessionKey(id), deadlinesKey], [owner, String(now)]);
       return raw ? JSON.parse(raw) : null;

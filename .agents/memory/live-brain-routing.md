@@ -26,7 +26,16 @@ fallback.
 **Why:** The user approved adding the Gemini voice option while keeping
 ElevenLabs available after its credits ran out.
 
-**How to apply:** Keep the user's voice choice explicit and fixed for a session.
+**How to apply:** Keep the administrator's voice choice explicit and fixed for a session.
 Do not start another brain to obtain speech. State that Gemini sounds different,
 still has usage costs/limits, and lacks ElevenLabs character timestamps; do not
 claim exact subtitle or lip synchronization from estimated caption pacing.
+
+Voice-provider choice is regulated only by administrators, not ordinary users.
+The setting applies to new sessions across the app; it must not be a user-level
+preference or an accepted client override.
+
+**Why:** The user specified: “This optional set should only be regulated by the admin and not the user”.
+
+**How to apply:** Enforce the policy on the server as well as hiding user controls.
+Preserve the chosen provider for existing sessions instead of switching mid-call.
