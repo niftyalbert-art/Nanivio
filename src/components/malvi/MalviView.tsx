@@ -43,13 +43,13 @@ import { MalviChatMessage, MalviAvatarState, MalviActionCommand, SUPPORTED_LANGU
 import { LangpretationIcon } from '../common/LangpretationIcon';
 import { billingClient } from '../../lib/billingClient';
 import { authClient } from '../../lib/authClient';
-
-const MALVI_STORAGE_KEY = 'nanivio_malvi_chat_history_v1';
+import { clearMalviHistory, loadMalviHistory, malviHistoryKey, saveMalviHistory } from '../../lib/malviHistory';
+import { MALVI_INTRODUCTION } from '../../shared/malviIdentity';
 
 const INITIAL_GREETING: MalviChatMessage = {
   id: 'msg_malvi_welcome',
   sender: 'malvi',
-  text: "Hello! I'm Malvi, the intelligent universal companion and navigation assistant of Nanivio, developed by Nanivio Tech. Gh. under the vision of Mr. Albert Kwabena Atta Panyi (Mr. Nifty). I'm connected to your live communication, Langpretation language engines, verified experts, businesses, and wallets. How can I assist you today?",
+  text: MALVI_INTRODUCTION,
   timestamp: Date.now(),
   emotion: 'warm',
   suggestedActions: [
@@ -126,6 +126,22 @@ const SUGGESTION_TOPICS = [
 ];
 
 export const MalviView: React.FC = () => {
+  const { currentUser, isAuthenticated } = useNanivio();
+  const [, refreshSession] = useState(0);
+  useEffect(() => {
+    const changed = () => refreshSession(value => value + 1);
+    window.addEventListener('storage', changed);
+    return () => window.removeEventListener('storage', changed);
+  }, []);
+  const ownerId = isAuthenticated && typeof currentUser?.id === 'string' && authClient.getToken()
+    && authClient.getStoredUser()?.id === currentUser?.id ? currentUser.id : null;
+  if (!ownerId) return <p role="status">Sign in to open your private Malvi conversation.</p>;
+  // A keyed boundary prevents stale messages, drafts and dialogs from rendering
+  // in a different account, including during the render before effects run.
+  return <MalviAccountWorkspace key={ownerId} ownerId={ownerId} />;
+};
+
+const MalviAccountWorkspace: React.FC<{ ownerId: string | null }> = ({ ownerId }) => {
   const {
     currentUser,
     myLanguage,
@@ -170,16 +186,11 @@ export const MalviView: React.FC = () => {
     }
   }, [malviSubscription]);
 
-  const [messages, setMessages] = useState<MalviChatMessage[]>(() => {
+  const [messages, setHistoryMessages] = useState<MalviChatMessage[]>(() => {
     try {
       if (typeof window !== 'undefined' && window.localStorage) {
-        const stored = localStorage.getItem(MALVI_STORAGE_KEY);
-        if (stored) {
-          const parsed = JSON.parse(stored);
-          if (Array.isArray(parsed) && parsed.length > 0) {
-            return parsed;
-          }
-        }
+        const stored = loadMalviHistory(localStorage, ownerId);
+        if (stored.length) return stored;
       }
     } catch (err) {
       console.warn('Error loading persisted Malvi chat history:', err);
@@ -208,6 +219,13 @@ export const MalviView: React.FC = () => {
   const processorRef = useRef<ScriptProcessorNode | null>(null);
   const recordedChunksRef = useRef<Float32Array[]>([]);
   const currentAudioRef = useRef<HTMLAudioElement | null>(null);
+  const activeAccountRef = useRef(true);
+  const accountAbortRef = useRef<AbortController | null>(null);
+  const isCurrentOwner = () => activeAccountRef.current && !!ownerId
+    && !!authClient.getToken() && authClient.getStoredUser()?.id === ownerId;
+  const setMessages: React.Dispatch<React.SetStateAction<MalviChatMessage[]>> = (update) => {
+    if (isCurrentOwner()) setHistoryMessages(update);
+  };
   const currentLangObj = SUPPORTED_LANGUAGES.find((l) => l.code === myLanguage) || SUPPORTED_LANGUAGES[0];
 
   const currentMemorySnapshot: MalviContextMemory = getMalviMemorySnapshot
@@ -248,13 +266,28 @@ export const MalviView: React.FC = () => {
   // Auto-persist messages to local storage whenever messages update
   useEffect(() => {
     try {
-      if (typeof window !== 'undefined' && window.localStorage) {
-        localStorage.setItem(MALVI_STORAGE_KEY, JSON.stringify(messages));
+      if (isCurrentOwner() && typeof window !== 'undefined' && window.localStorage) {
+        saveMalviHistory(localStorage, ownerId, messages);
       }
     } catch (err) {
       console.warn('Error saving Malvi chat history to localStorage:', err);
     }
-  }, [messages]);
+  }, [messages, ownerId]);
+
+  useEffect(() => {
+    const changed = (event: StorageEvent) => {
+      if (!isCurrentOwner() || (event.key !== null && event.key !== malviHistoryKey(ownerId))) return;
+      try {
+        const stored = loadMalviHistory(localStorage, ownerId);
+        const next = stored.length ? stored : [INITIAL_GREETING];
+        setHistoryMessages(previous => JSON.stringify(previous) === JSON.stringify(next) ? previous : next);
+      } catch (error) {
+        console.warn('Error refreshing Malvi chat history:', error);
+      }
+    };
+    window.addEventListener('storage', changed);
+    return () => window.removeEventListener('storage', changed);
+  }, [ownerId]);
 
   // Auto scroll to bottom
   const scrollToBottom = () => {
@@ -267,7 +300,12 @@ export const MalviView: React.FC = () => {
 
   // Clean up on unmount
   useEffect(() => {
+    activeAccountRef.current = true;
+    const controller = new AbortController();
+    accountAbortRef.current = controller;
     return () => {
+      activeAccountRef.current = false;
+      controller.abort();
       try { currentAudioRef.current?.pause(); } catch {}
       try { recognitionRef.current?.stop?.(); } catch {}
       try { mediaStreamRef.current?.getTracks().forEach((t) => t.stop()); } catch {}
@@ -276,7 +314,7 @@ export const MalviView: React.FC = () => {
 
   // Production Malvi voice output: server-side provider audio only.
   const speakText = async (text: string) => {
-    if (!voiceSpeechEnabled || !text.trim()) return;
+    if (!isCurrentOwner() || !voiceSpeechEnabled || !text.trim()) return;
     try {
       currentAudioRef.current?.pause();
       currentAudioRef.current = null;
@@ -285,10 +323,12 @@ export const MalviView: React.FC = () => {
       const token = authClient.getToken();
       const res = await fetch('/api/langpretation/synthesize', {
         method: 'POST',
+        signal: accountAbortRef.current?.signal,
         headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
         body: JSON.stringify({ text, language: myLanguage, purpose: 'MALVI' }),
       });
       const data = await res.json().catch(() => ({}));
+      if (!isCurrentOwner()) return;
       if (!res.ok || !data?.audioBase64) throw new Error(data?.error || `Malvi voice synthesis failed (${res.status})`);
       const binary = atob(data.audioBase64);
       const bytes = new Uint8Array(binary.length);
@@ -299,6 +339,7 @@ export const MalviView: React.FC = () => {
       audio.playbackRate = speechRate;
       audio.onended = () => {
         URL.revokeObjectURL(url);
+        if (!isCurrentOwner()) return;
         currentAudioRef.current = null;
         setAvatarState('idle');
         setCurrentlySpeakingText(null);
@@ -312,6 +353,7 @@ export const MalviView: React.FC = () => {
       };
       await audio.play();
     } catch (e) {
+      if (!isCurrentOwner()) return;
       console.warn('Malvi production TTS error:', e);
       setAvatarState('idle');
       setCurrentlySpeakingText(null);
@@ -343,7 +385,7 @@ export const MalviView: React.FC = () => {
   };
 
   const startSpeechRecognition = async () => {
-    if (isListening) return;
+    if (!isCurrentOwner() || isListening) return;
     if (!navigator.mediaDevices?.getUserMedia) {
       alert('Microphone access is not available in this browser.');
       return;
@@ -351,6 +393,7 @@ export const MalviView: React.FC = () => {
     try {
       stopSpeaking();
       const stream = await navigator.mediaDevices.getUserMedia({ audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true, autoGainControl: true } });
+      if (!isCurrentOwner()) { stream.getTracks().forEach(track => track.stop()); return; }
       const ctx = new AudioContext();
       const source = ctx.createMediaStreamSource(stream);
       const processor = ctx.createScriptProcessor(4096, 1, 1);
@@ -367,13 +410,16 @@ export const MalviView: React.FC = () => {
         await ctx.close().catch(() => {});
         audioContextRef.current = null; mediaStreamRef.current = null; processorRef.current = null;
         setIsListening(false); setInterimTranscript(''); setAvatarState('thinking');
+        if (!isCurrentOwner()) return;
         if (!chunks.length) { setAvatarState('idle'); return; }
         const audioBlob = encodeWav16k(chunks, rate);
         const token = authClient.getToken();
         const res = await fetch(`/api/malvi/voice/transcribe?language=${encodeURIComponent(myLanguage)}`, {
+          signal: accountAbortRef.current?.signal,
           method: 'POST', headers: { 'Content-Type': 'audio/wav', ...(token ? { Authorization: `Bearer ${token}` } : {}) }, body: audioBlob,
         });
         const data = await res.json().catch(() => ({}));
+        if (!isCurrentOwner()) return;
         if (!res.ok || !data?.text) throw new Error(data?.error || 'Voice transcription failed');
         await handleSendMessage(String(data.text).trim(), 'voice');
       } };
@@ -410,7 +456,7 @@ export const MalviView: React.FC = () => {
   // Send message to Malvi backend API & trigger vocal reply
   const handleSendMessage = async (textToSend?: string, mode: 'voice' | 'text' = 'text') => {
     const text = (textToSend || inputText).trim();
-    if (!text || isProcessing) return;
+    if (!isCurrentOwner() || !text || isProcessing) return;
 
     stopSpeaking();
     setInputText('');
@@ -438,6 +484,7 @@ export const MalviView: React.FC = () => {
 
       const res = await fetch('/api/malvi/chat', {
         method: 'POST',
+        signal: accountAbortRef.current?.signal,
         headers: { 'Content-Type': 'application/json', ...(authClient.getToken() ? { Authorization: `Bearer ${authClient.getToken()}` } : {}) },
         body: JSON.stringify({
           message: text,
@@ -454,6 +501,7 @@ export const MalviView: React.FC = () => {
       });
 
       const data = await res.json();
+      if (!isCurrentOwner()) return;
 
       if (data.success && data.reply) {
         const malviReply: MalviChatMessage = {
@@ -609,7 +657,7 @@ export const MalviView: React.FC = () => {
     setMessages([INITIAL_GREETING]);
     try {
       if (typeof window !== 'undefined' && window.localStorage) {
-        localStorage.removeItem(MALVI_STORAGE_KEY);
+        clearMalviHistory(localStorage, ownerId);
       }
     } catch (err) {
       console.warn('Failed to clear storage:', err);
