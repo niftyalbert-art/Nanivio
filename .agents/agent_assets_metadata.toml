@@ -154,3 +154,45 @@ mtime_ms = 1792745050742
 storage_uri = "gcs://replit-rams-assets-sisko/rams/assets/repl:8a53f482-19ae-49f0-ab16-31b527f92091/f597fd61-3746-46fc-a919-43ba6f617492/f2530e9b-bd75-4c98-b6d9-c1372df0cc2a"
 storage_version_token = "1792745063257969"
 content_type = "audio/wav"
+
+[[outputs]]
+id = "htjmKlvnZ_6Fn9PcVAP9e"
+uri = "file://generated-artifacts/malvi-gemini-sulafat-sample.wav"
+type = "audio"
+title = "Malvi voice option 1 — Sulafat"
+description = "Warm preset voice · 11 seconds · Generated with Gemini Live. Same introduction as the other samples."
+logical_id = "fd58dd24-9cda-4143-8b61-06086efe7e66"
+content_hash = "sha256:be1ac7a10d1ba554a373be7225be8f22e67d6caa2cc1e9c207b4d6d4c6bbe90f"
+size = 519886
+mtime_ms = 1792745515558
+storage_uri = "gcs://replit-rams-assets-sisko/rams/assets/repl:8a53f482-19ae-49f0-ab16-31b527f92091/fd58dd24-9cda-4143-8b61-06086efe7e66/838863f6-b1c3-4625-9978-3065804fbaa8"
+storage_version_token = "1792745557041987"
+content_type = "audio/wav"
+
+[[outputs]]
+id = "oTMm1FkgqB-7Wrbp7Acds"
+uri = "file://generated-artifacts/malvi-gemini-aoede-sample.wav"
+type = "audio"
+title = "Malvi voice option 2 — Aoede"
+description = "Breezy preset voice · 12 seconds · Generated with Gemini Live. Same introduction as the other samples."
+logical_id = "9113a06e-54f1-47b6-b3dd-6b3fafd271df"
+content_hash = "sha256:34a86bdb95ffad92ae02da99d1c75ea8df66ac5fc9976a529f9420703f2f5dd2"
+size = 579886
+mtime_ms = 1792745529478
+storage_uri = "gcs://replit-rams-assets-sisko/rams/assets/repl:8a53f482-19ae-49f0-ab16-31b527f92091/9113a06e-54f1-47b6-b3dd-6b3fafd271df/95ef6286-8b98-4155-8a31-aea9d52f1b42"
+storage_version_token = "1792745558396891"
+content_type = "audio/wav"
+
+[[outputs]]
+id = "Y_hcfNR-Vr_0RM1rvoNuc"
+uri = "file://generated-artifacts/malvi-gemini-leda-sample.wav"
+type = "audio"
+title = "Malvi voice option 3 — Leda"
+description = "Youthful preset voice · 12 seconds · Generated with Gemini Live. Same introduction as the other samples."
+logical_id = "0fb021ec-0c66-4f86-87d4-a2028559a4c5"
+content_hash = "sha256:82c14aa1da6b4a185070115202d4e9aec80ed6aeeced2885e91ac71fdc266786"
+size = 570766
+mtime_ms = 1792745489698
+storage_uri = "gcs://replit-rams-assets-sisko/rams/assets/repl:8a53f482-19ae-49f0-ab16-31b527f92091/0fb021ec-0c66-4f86-87d4-a2028559a4c5/ba99d633-d371-48b1-89c6-fcd6766136f0"
+storage_version_token = "1792745559639523"
+content_type = "audio/wav"
