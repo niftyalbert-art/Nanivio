@@ -61,13 +61,14 @@ Malvi’s speaking voice should match the user-supplied ElevenLabs recording acr
 
 **How to apply:** Resolve the original usable voice and verify its multilingual coverage before changing live speech. Do not promise unsupported languages, silently substitute a different voice, or treat an uploaded MP3 as an already-configured synthesis voice.
 
-Malvi should sound a little African-accented, but not strongly.
+Malvi should have a light Ghanaian accent, not a strong accent.
 
-**Why:** The user explicitly requested a subtle African accent for Malvi.
+**Why:** The user requested a subtle African accent for Malvi and selected
+“Light Ghanaian accent” when asked which regional influence.
 
-**How to apply:** Keep the accent light and natural. Clarify the regional
-influence before generating or selecting a final voice; do not assume a single
-African accent or claim a preset voice is a verified match.
+**How to apply:** Keep the Ghanaian influence light and natural. Seek approval
+of an accent-directed sample before changing the app voice; do not claim a
+preset voice or a prompt alone is a verified accent match.
 
 The user wants a proper, profound introduction without reminders such as “I'm not
 a human,” and wants a shorter wait before Malvi speaks.

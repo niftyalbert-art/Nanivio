@@ -196,3 +196,17 @@ mtime_ms = 1792745489698
 storage_uri = "gcs://replit-rams-assets-sisko/rams/assets/repl:8a53f482-19ae-49f0-ab16-31b527f92091/0fb021ec-0c66-4f86-87d4-a2028559a4c5/ba99d633-d371-48b1-89c6-fcd6766136f0"
 storage_version_token = "1792745559639523"
 content_type = "audio/wav"
+
+[[outputs]]
+id = "b7jTcHYaiE-9lV1mUHmyZ"
+uri = "file://generated-artifacts/malvi-gemini-sulafat-light-ghanaian-sample.wav"
+type = "audio"
+title = "Malvi — light Ghanaian accent trial"
+description = "13-second Gemini Sulafat recording, prompted for a subtle, natural Ghanaian English accent. Listen to judge the accent and warmth; Malvi’s app voice has not been changed."
+logical_id = "6a3da940-28cc-4829-b38b-6aea53ef3a74"
+content_hash = "sha256:516f473b81ce1bed58f4aea1cc6b787e2a56430ba05d71a90527483e14c29f33"
+size = 633644
+mtime_ms = 1792746068433
+storage_uri = "gcs://replit-rams-assets-sisko/rams/assets/repl:8a53f482-19ae-49f0-ab16-31b527f92091/6a3da940-28cc-4829-b38b-6aea53ef3a74/f69ab041-74da-46f2-87e7-f20a41b3624a"
+storage_version_token = "1792746092777599"
+content_type = "audio/wav"
