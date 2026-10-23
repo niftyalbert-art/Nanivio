@@ -8,9 +8,11 @@ import { estimatedMalviCaptionTrack, malviCaptionAt, MalviCaptionPlayer } from '
 import { registerAssistantRoutes } from '../src/server/assistant/routes.ts';
 import { liveAvatarService } from '../src/server/assistant/liveAvatarService.ts';
 
-test('voice choice is explicit, defaults to ElevenLabs, and native mode never requires its credentials', () => {
-  assert.equal(malviVoiceSetup({}).provider, 'elevenlabs');
-  const env = { GEMINI_API_KEY: 'fixture', MALVI_VOICE_PROVIDER: 'gemini' };
+test('voice defaults to the approved Gemini style, retains explicit ElevenLabs selection, and never requires its credentials in native mode', () => {
+  assert.equal(malviVoiceSetup({}).provider, 'gemini');
+  assert.equal(malviVoiceSetup({}).configured, false, 'Missing Gemini credentials must not silently switch voices');
+  assert.equal(malviVoiceSetup({ MALVI_VOICE_PROVIDER: 'elevenlabs' }).provider, 'elevenlabs');
+  const env = { GEMINI_API_KEY: 'fixture' };
   const native = malviVoiceSetup(env);
   assert.equal(native.provider, 'gemini');
   assert.equal(native.voiceId, 'Sulafat');
