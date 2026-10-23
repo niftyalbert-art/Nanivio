@@ -61,6 +61,14 @@ Malvi’s speaking voice should match the user-supplied ElevenLabs recording acr
 
 **How to apply:** Resolve the original usable voice and verify its multilingual coverage before changing live speech. Do not promise unsupported languages, silently substitute a different voice, or treat an uploaded MP3 as an already-configured synthesis voice.
 
+Malvi should sound a little African-accented, but not strongly.
+
+**Why:** The user explicitly requested a subtle African accent for Malvi.
+
+**How to apply:** Keep the accent light and natural. Clarify the regional
+influence before generating or selecting a final voice; do not assume a single
+African accent or claim a preset voice is a verified match.
+
 The user wants a proper, profound introduction without reminders such as “I'm not
 a human,” and wants a shorter wait before Malvi speaks.
 
