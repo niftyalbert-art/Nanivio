@@ -55,7 +55,10 @@ Treat SDK microphone settings as a privacy boundary, not just an audio setting.
 
 **How to apply:** Recheck capture behavior when updating the SDK; the renderer must not publish the user's microphone to the provider-managed voice component.
 
-Malvi’s speaking voice should match the user-supplied ElevenLabs recording across users’ selected languages. The standard Gemini test voice is not her approved final voice. The user confirmed that the original voice is saved in their ElevenLabs account and approved the generated short voice sample for Malvi.
+Malvi’s original custom speaking voice is the user-approved ElevenLabs voice,
+intended to preserve her identity across selected languages. The initial
+standard Gemini Kore test voice was not approved as her final voice; a later
+Sulafat-based alternative was approved as described below.
 
 **Why:** The user identified the supplied recording as Malvi’s voice and requested that identity in every selected user language.
 
@@ -69,18 +72,20 @@ sample direction to a British–Ghanaian English blend and requested light
 ambience/reverb and a little echo.
 
 **How to apply:** Keep both regional influences natural and the effects subtle.
-Seek sample approval before changing the app voice; do not claim a preset or a
-prompt alone is a verified accent match. If effects are integrated into live
+The user approved the refined Sulafat sample with a slightly fuller tone,
+more ambience/echo, and the corrected brand pronunciation: “The voice and
+pronunciation are right.” Treat that sample as the Gemini style reference,
+not as a clone of the original ElevenLabs voice. If effects are integrated into live
 speech, preserve intelligibility and the shared audio/avatar playback timing.
 
 Pronounce Nanivio as “Na ni vio”, not “nani-viyo”.
 
-**Why:** The user explicitly corrected the brand-name pronunciation in Malvi's
-voice sample.
+**Why:** The user explicitly corrected the brand-name pronunciation and
+confirmed that the refined sample's pronunciation was right.
 
-**How to apply:** Preserve this pronunciation guidance in voice direction and
-ask the user to judge the recording; generated text spelling alone is not
-proof that speech pronounced it correctly.
+**How to apply:** Preserve this guidance in voice direction. The approved
+recording is a reference, not proof that every future generated response will
+pronounce the name correctly; text spelling alone does not verify speech.
 
 The user wants a proper, profound introduction without reminders such as “I'm not
 a human,” and wants a shorter wait before Malvi speaks.
