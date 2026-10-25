@@ -30,8 +30,8 @@ export class GeminiNativeVoice {
     this.chunks.push(pcm);
   }
 
-  /** About one second of audio, with available transcription. Never wait for the full answer. */
-  ready(text: string) { return this.bytes >= 48_960 && Boolean(text.trim()); }
+  /** 400 ms plus the retained 20 ms tail. Still use paired avatar A/V playback. */
+  ready(text: string) { return this.bytes >= 20_160 && Boolean(text.trim()); }
 
   finish(text: string, final = true) {
     if (final && !this.bytes && !text.trim() && this.emitted) {

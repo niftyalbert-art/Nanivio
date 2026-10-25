@@ -38,6 +38,7 @@ import { MalviChatHistoryModal } from './MalviChatHistoryModal';
 import { MalviMemoryInspectorModal } from './MalviMemoryInspectorModal';
 import { MalviSubscriptionHub } from './MalviSubscriptionHub';
 import { MalviBusinessCollaborationRoom } from './MalviBusinessCollaborationRoom';
+import { MalviContinuityControls } from './MalviContinuityControls';
 import { useNanivio } from '../../context/NanivioContext';
 import { MalviChatMessage, MalviAvatarState, MalviActionCommand, SUPPORTED_LANGUAGES, MalviContextMemory } from '../../types';
 import { LangpretationIcon } from '../common/LangpretationIcon';
@@ -45,6 +46,81 @@ import { billingClient } from '../../lib/billingClient';
 import { authClient } from '../../lib/authClient';
 import { clearMalviHistory, loadMalviHistory, malviHistoryKey, saveMalviHistory } from '../../lib/malviHistory';
 import { MALVI_INTRODUCTION } from '../../shared/malviIdentity';
+
+type MalviResearchMetadata = {
+  citations?: { text?: string; urls?: string[] }[];
+  results?: { source?: string; title?: string; url?: string; caveat?: string; snippet?: string }[];
+  searchSuggestions?: string;
+  limitation?: string;
+  checkedAt?: string;
+  verified?: boolean;
+};
+
+const trustedSuggestionsSrcDoc = (html: string) => `<!doctype html>
+<html><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; img-src https: data:;"><base target="_blank"></head>
+<body style="margin:0;padding:8px;font:13px system-ui,sans-serif;color:#e4e0d4;background:#101827">${html}</body></html>`;
+
+const safeServerCitationUrl = (value: string) => {
+  try {
+    const url = new URL(value);
+    return url.protocol === 'https:' && !url.username && !url.password ? url.href : null;
+  } catch { return null; }
+};
+
+const MalviResearchMetadataView: React.FC<{ metadata: MalviResearchMetadata }> = ({ metadata }) => {
+  const results = Array.isArray(metadata.results) ? metadata.results : [];
+  const citations = Array.isArray(metadata.citations) ? metadata.citations : [];
+  if (!results.length && !citations.length && !metadata.searchSuggestions) return null;
+  return (
+    <section aria-label="Public research sources" className="space-y-2 rounded-xl border border-[#b89a5a]/25 bg-slate-950/55 p-3">
+      <p className="text-[10px] font-semibold uppercase tracking-[.14em] text-amber-200">Public research context</p>
+      <p className="text-[10px] leading-relaxed text-slate-400">Source excerpts and citation mappings are context, not independent proof of every statement.</p>
+      {results.length > 0 && (
+        <ul className="space-y-2">
+          {results.map((result, index) => {
+            const href = result.url ? safeServerCitationUrl(result.url) : null;
+            return (
+              <li key={`${result.url || result.title || 'source'}-${index}`} className="rounded-lg border border-white/[.07] px-2.5 py-2">
+                {href
+                  ? <a href={href} target="_blank" rel="noopener noreferrer" className="text-[11px] font-semibold text-amber-100 underline underline-offset-2">{result.title || href}</a>
+                  : <p className="text-[11px] font-semibold text-amber-100">{result.title || 'Public source'}</p>}
+                <p className="mt-1 text-[10px] text-slate-400">{result.source || 'Web'}{result.caveat ? ` · ${result.caveat}` : ''}</p>
+                {result.snippet && <p className="mt-1 whitespace-pre-wrap break-words text-[11px] leading-relaxed text-slate-300">{result.snippet}</p>}
+              </li>
+            );
+          })}
+        </ul>
+      )}
+      {citations.length > 0 && (
+        <ol className="space-y-2">
+          {citations.map((citation, index) => (
+            <li key={`${citation.text || 'mapping'}-${index}`} className="rounded-lg border border-white/[.07] px-2.5 py-2">
+              {citation.text && <p className="text-[11px] leading-relaxed text-slate-200">{citation.text}</p>}
+              <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1">
+                {(Array.isArray(citation.urls) ? citation.urls : []).map(url => {
+                  const href = safeServerCitationUrl(url);
+                  if (!href) return null;
+                  const source = results.find(item => item.url && safeServerCitationUrl(item.url) === href);
+                  return <a key={href} href={href} target="_blank" rel="noopener noreferrer" className="text-[10px] text-amber-200 underline underline-offset-2">{source?.title || new URL(href).hostname}</a>;
+                })}
+              </div>
+            </li>
+          ))}
+        </ol>
+      )}
+      {metadata.limitation && <p className="text-[10px] leading-relaxed text-slate-400">{metadata.limitation}</p>}
+      {metadata.searchSuggestions && (
+        <iframe
+          title="Trusted provider search suggestions"
+          srcDoc={trustedSuggestionsSrcDoc(metadata.searchSuggestions)}
+          sandbox="allow-popups allow-popups-to-escape-sandbox"
+          referrerPolicy="no-referrer"
+          className="h-24 w-full rounded-lg border border-white/10 bg-slate-900"
+        />
+      )}
+    </section>
+  );
+};
 
 const INITIAL_GREETING: MalviChatMessage = {
   id: 'msg_malvi_welcome',
@@ -211,6 +287,8 @@ const MalviAccountWorkspace: React.FC<{ ownerId: string | null }> = ({ ownerId }
   const [isHistoryModalOpen, setIsHistoryModalOpen] = useState(false);
   const [isMemoryModalOpen, setIsMemoryModalOpen] = useState(false);
   const [copiedMsgId, setCopiedMsgId] = useState<string | null>(null);
+  const [memoryWarnings, setMemoryWarnings] = useState<Record<string, string>>({});
+  const [messageResearch, setMessageResearch] = useState<Record<string, MalviResearchMetadata>>({});
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const recognitionRef = useRef<any>(null);
@@ -273,6 +351,35 @@ const MalviAccountWorkspace: React.FC<{ ownerId: string | null }> = ({ ownerId }
       console.warn('Error saving Malvi chat history to localStorage:', err);
     }
   }, [messages, ownerId]);
+
+  useEffect(() => {
+    if (!ownerId || !authClient.getToken() || authClient.getStoredUser()?.id !== ownerId) return;
+    const controller = new AbortController();
+    const token = authClient.getToken();
+    void fetch('/api/assistant/memory', {
+      method: 'GET',
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+      cache: 'no-store',
+      signal: controller.signal,
+    }).then(async response => {
+      const result = await response.json().catch(() => null);
+      if (!response.ok || !result?.success) throw new Error(result?.error || 'Memory continuity is unavailable.');
+      return result;
+    }).then(result => {
+      if (!result.enabled || !result.hasPrevious || !isCurrentOwner()) return;
+      setHistoryMessages(previous => {
+        if (previous.length !== 1 || previous[0]?.id !== INITIAL_GREETING.id || !isCurrentOwner()) return previous;
+        return [{
+          ...INITIAL_GREETING,
+          text: 'Would you like to continue our previous conversation, or talk about something new?',
+          suggestedActions: [],
+        }];
+      });
+    }).catch(error => {
+      if (!controller.signal.aborted) console.info('Malvi account memory check is unavailable:', error);
+    });
+    return () => controller.abort();
+  }, [ownerId]);
 
   useEffect(() => {
     const changed = (event: StorageEvent) => {
@@ -476,11 +583,14 @@ const MalviAccountWorkspace: React.FC<{ ownerId: string | null }> = ({ ownerId }
 
     try {
       const memoryPayload = getMalviMemorySnapshot ? getMalviMemorySnapshot() : undefined;
-
-      const historyPayload = messages.slice(-8).map((m) => ({
-        role: m.sender === 'user' ? 'user' : 'model',
-        text: m.text,
-      }));
+      // This is only the current signed-in account's owner-scoped v2 chat state.
+      // Treat it as untrusted conversational context, never as system instructions.
+      const currentSessionHistory = messages.slice(-8)
+        .filter((message) => message.sender === 'user' || message.sender === 'malvi')
+        .map((message) => ({
+          role: message.sender === 'user' ? 'user' : 'model',
+          text: message.text,
+        }));
 
       const res = await fetch('/api/malvi/chat', {
         method: 'POST',
@@ -488,7 +598,8 @@ const MalviAccountWorkspace: React.FC<{ ownerId: string | null }> = ({ ownerId }
         headers: { 'Content-Type': 'application/json', ...(authClient.getToken() ? { Authorization: `Bearer ${authClient.getToken()}` } : {}) },
         body: JSON.stringify({
           message: text,
-          history: historyPayload,
+          // Persistent account memory is retrieved separately by the server.
+          history: currentSessionHistory,
           myLanguage,
           appLanguage,
           speakingLanguage,
@@ -516,6 +627,20 @@ const MalviAccountWorkspace: React.FC<{ ownerId: string | null }> = ({ ownerId }
           proposal: data.proposal || null,
           isAdminResponse: data.isAdminResponse,
         };
+
+        if (typeof data.memoryWarning === 'string' && data.memoryWarning.trim()) {
+          setMemoryWarnings(previous => ({ ...previous, [malviReply.id]: data.memoryWarning.trim() }));
+        }
+        const researchPayload = data.research && typeof data.research === 'object'
+          ? data.research as MalviResearchMetadata
+          : data as MalviResearchMetadata;
+        if (
+          (Array.isArray(researchPayload.citations) && researchPayload.citations.length > 0)
+          || (Array.isArray(researchPayload.results) && researchPayload.results.length > 0)
+          || (typeof researchPayload.searchSuggestions === 'string' && researchPayload.searchSuggestions.length > 0)
+        ) {
+          setMessageResearch(previous => ({ ...previous, [malviReply.id]: researchPayload }));
+        }
 
         setMessages((prev) => [...prev, malviReply]);
         setAvatarState('idle');
@@ -840,7 +965,7 @@ const MalviAccountWorkspace: React.FC<{ ownerId: string | null }> = ({ ownerId }
         <div className="flex items-center gap-2.5 flex-wrap">
           <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-emerald-500/10 text-emerald-300 font-bold border border-emerald-500/30">
             <Brain className="w-3.5 h-3.5 text-emerald-400 animate-pulse" />
-            <span>Contextual Memory Layer Active</span>
+            <span>Nanivio app context available</span>
           </div>
 
           <div className="hidden sm:flex items-center gap-2 text-slate-400">
@@ -875,6 +1000,8 @@ const MalviAccountWorkspace: React.FC<{ ownerId: string | null }> = ({ ownerId }
           <ChevronRight className="w-3.5 h-3.5" />
         </button>
       </div>
+
+      <MalviContinuityControls />
 
       <MalviLiveControls />
 
@@ -975,6 +1102,12 @@ const MalviAccountWorkspace: React.FC<{ ownerId: string | null }> = ({ ownerId }
 
                   {/* Message Body Text */}
                   <p className="text-xs sm:text-sm leading-relaxed whitespace-pre-wrap">{msg.text}</p>
+                  {memoryWarnings[msg.id] && (
+                    <p role="status" className="rounded-lg border border-amber-500/20 bg-amber-500/[.06] px-2.5 py-2 text-[10px] leading-relaxed text-amber-200">
+                      {memoryWarnings[msg.id]}
+                    </p>
+                  )}
+                  {messageResearch[msg.id] && <MalviResearchMetadataView metadata={messageResearch[msg.id]} />}
 
                   {/* Contextual Action Card Attachment */}
                   {msg.actionCommand && (

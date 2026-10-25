@@ -1,8 +1,9 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { AlertCircle, AudioLines, LoaderCircle, Mic, MicOff, X } from 'lucide-react';
+import { AlertCircle, AudioLines, Camera, ImagePlus, LoaderCircle, Mic, MicOff, Square, Upload, X } from 'lucide-react';
 import { MALVI_PROFILE } from '../../lib/malviIdentity';
 import type { MalviReferenceCitation } from '../../lib/malviLiveClient';
+import { authClient } from '../../lib/authClient';
 
 export interface MalviLiveOverlayProps {
   voiceOnly?: boolean;
@@ -29,7 +30,15 @@ export interface MalviLiveOverlayProps {
   inputState?: 'off' | 'connecting' | 'listening' | 'hearing' | 'processing';
   userTranscript?: string;
   speaking?: boolean;
+  activeSessionId?: string | null;
+  searchSuggestions?: string;
+  memoryNotice?: string;
+  speechProvider?: 'gemini' | 'elevenlabs';
 }
+
+const suggestionsSrcDoc = (html: string) => `<!doctype html>
+<html><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; img-src https: data:;"><base target="_blank"></head>
+<body style="margin:0;padding:8px;font:13px system-ui,sans-serif;color:#e4e0d4;background:#10201f">${html}</body></html>`;
 
 const formatTime = (seconds: number) => {
   const safeSeconds = Math.max(0, Math.floor(seconds));
@@ -62,9 +71,158 @@ export const MalviLiveOverlay: React.FC<MalviLiveOverlayProps> = ({
   inputState,
   userTranscript,
   speaking = false,
+  activeSessionId = null,
+  searchSuggestions,
+  memoryNotice,
+  speechProvider = 'gemini',
 }) => {
   const dialogRef = useRef<HTMLDivElement>(null);
   const closeButtonRef = useRef<HTMLButtonElement>(null);
+  const cameraVideoRef = useRef<HTMLVideoElement>(null);
+  const cameraStreamRef = useRef<MediaStream | null>(null);
+  const cameraRequestRef = useRef(0);
+  const activeSessionIdRef = useRef(activeSessionId);
+  if (activeSessionIdRef.current !== activeSessionId) {
+    activeSessionIdRef.current = activeSessionId;
+    cameraRequestRef.current += 1;
+  }
+  const [cameraStream, setCameraStream] = useState<MediaStream | null>(null);
+  const [cameraError, setCameraError] = useState('');
+  const [visionBusy, setVisionBusy] = useState(false);
+  const [imageName, setImageName] = useState('');
+  const [imageFile, setImageFile] = useState<File | null>(null);
+
+  const stopCamera = useCallback(() => {
+    cameraRequestRef.current += 1;
+    cameraStreamRef.current?.getTracks().forEach(track => track.stop());
+    cameraStreamRef.current = null;
+    setCameraStream(null);
+  }, []);
+
+  useEffect(() => {
+    if (cameraVideoRef.current) cameraVideoRef.current.srcObject = cameraStream;
+  }, [cameraStream]);
+
+  useEffect(() => {
+    stopCamera();
+    setCameraError('');
+    setImageFile(null);
+    setImageName('');
+    return () => stopCamera();
+  }, [activeSessionId, stopCamera]);
+
+  const startCamera = async () => {
+    if (!activeSessionId || phase !== 'connected' || !navigator.mediaDevices?.getUserMedia) {
+      setCameraError(!activeSessionId ? 'Camera sharing is unavailable until the active session ID is connected.' : 'Camera access is not available in this browser.');
+      return;
+    }
+    stopCamera();
+    const request = ++cameraRequestRef.current;
+    const requestedSessionId = activeSessionId;
+    setCameraError('');
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: { ideal: 'environment' }, width: { ideal: 640, max: 640 }, height: { ideal: 480, max: 480 } },
+        audio: false,
+      });
+      if (request !== cameraRequestRef.current || !requestedSessionId || activeSessionIdRef.current !== requestedSessionId) {
+        stream.getTracks().forEach(track => track.stop());
+        return;
+      }
+      cameraStreamRef.current = stream;
+      setCameraStream(stream);
+    } catch (reason) {
+      if (request !== cameraRequestRef.current || activeSessionIdRef.current !== requestedSessionId) return;
+      setCameraError(reason instanceof DOMException && reason.name === 'NotAllowedError'
+        ? 'Camera permission was not granted. You can choose an image instead.'
+        : reason instanceof Error ? reason.message : 'The camera could not be opened.');
+    }
+  };
+
+  const makeJpeg = async (source: HTMLVideoElement | HTMLImageElement | ImageBitmap): Promise<string> => {
+    const sourceWidth = source instanceof HTMLVideoElement ? source.videoWidth
+      : source instanceof HTMLImageElement ? source.naturalWidth : source.width;
+    const sourceHeight = source instanceof HTMLVideoElement ? source.videoHeight
+      : source instanceof HTMLImageElement ? source.naturalHeight : source.height;
+    if (!sourceWidth || !sourceHeight) throw new Error('The image is not ready yet. Try again in a moment.');
+    const scale = Math.min(1, 640 / sourceWidth, 480 / sourceHeight);
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.max(1, Math.round(sourceWidth * scale));
+    canvas.height = Math.max(1, Math.round(sourceHeight * scale));
+    const context = canvas.getContext('2d');
+    if (!context) throw new Error('This browser could not prepare the image.');
+    context.drawImage(source, 0, 0, canvas.width, canvas.height);
+    const blob = await new Promise<Blob>((resolve, reject) => canvas.toBlob(value => value ? resolve(value) : reject(new Error('The image could not be prepared.')), 'image/jpeg', 0.82));
+    const bytes = new Uint8Array(await blob.arrayBuffer());
+    let binary = '';
+    for (let index = 0; index < bytes.length; index += 0x8000) {
+      binary += String.fromCharCode(...bytes.subarray(index, Math.min(bytes.length, index + 0x8000)));
+    }
+    return btoa(binary);
+  };
+
+  const shareJpeg = async (image: string) => {
+    if (!activeSessionId || activeSessionIdRef.current !== activeSessionId) throw new Error('The active live session is not available. Close and reconnect before sharing.');
+    const token = authClient.getToken();
+    const response = await fetch(`/api/assistant/session/${encodeURIComponent(activeSessionId)}/vision`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+      body: JSON.stringify({ image, consent: true }),
+      cache: 'no-store',
+      signal: AbortSignal.timeout(15000),
+    });
+    const result = await response.json().catch(() => null);
+    if (!response.ok || !result?.success) throw new Error(result?.error || 'Image sharing is unavailable for this session.');
+  };
+
+  const shareCameraFrame = async () => {
+    const video = cameraVideoRef.current;
+    if (!video || !cameraStream || visionBusy) return;
+    setVisionBusy(true);
+    setCameraError('');
+    try {
+      const image = await makeJpeg(video);
+      await shareJpeg(image);
+      setCameraError('One still image was shared with the selected AI. No continuous video was sent.');
+    } catch (reason) {
+      setCameraError(reason instanceof Error ? reason.message : 'This view could not be shared.');
+    } finally {
+      setVisionBusy(false);
+    }
+  };
+
+  const chooseImage = async (file?: File) => {
+    setCameraError('');
+    if (!file) { setImageFile(null); setImageName(''); return; }
+    if (!['image/jpeg', 'image/png'].includes(file.type) || file.size > 512 * 1024) {
+      setImageFile(null);
+      setImageName('');
+      setCameraError('Choose a JPEG or PNG image up to 512 KB.');
+      return;
+    }
+    setImageFile(file);
+    setImageName(file.name);
+  };
+
+  const shareSelectedImage = async () => {
+    if (!imageFile || visionBusy) return;
+    setVisionBusy(true);
+    setCameraError('');
+    try {
+      const bitmap = await createImageBitmap(imageFile);
+      try {
+        const image = await makeJpeg(bitmap);
+        await shareJpeg(image);
+        setCameraError('One still image was shared with the selected AI. It is not saved to Nanivio conversation history; provider handling is separate.');
+      } finally {
+        bitmap.close();
+      }
+    } catch (reason) {
+      setCameraError(reason instanceof Error ? reason.message : 'This image could not be shared.');
+    } finally {
+      setVisionBusy(false);
+    }
+  };
 
   useEffect(() => {
     const previousFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
@@ -275,6 +433,68 @@ export const MalviLiveOverlay: React.FC<MalviLiveOverlayProps> = ({
               </button>
             )}
           </div>
+          {phase === 'connected' && (
+            <details className="w-full max-w-lg overflow-hidden rounded-xl border border-[#b89a5a]/25 bg-[#10201f]/80 text-left text-[11px] text-[#e0e8e2]/85 backdrop-blur-md">
+              <summary className="flex min-h-10 cursor-pointer items-center gap-2 px-3 py-2 font-medium text-[#e3d09a] underline-offset-4 focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#d6e7da]">
+                <Camera size={14} /> Share a still view · optional
+              </summary>
+              <div className="max-h-[34dvh] space-y-3 overflow-y-auto border-t border-white/10 px-3 py-3">
+                <p className="leading-relaxed text-[#d9dfd9]/80">
+                  A still image is shared with the selected AI to discuss visible objects, colours, or surroundings. It is not for diagnosis, emotion, or identity inference. Images are not saved to Nanivio conversation history; provider handling is separate. Camera access is preview-only until you tap “Share this view”; video is never streamed to the AI.
+                </p>
+                <div className="flex flex-wrap items-center gap-2">
+                  {!cameraStream ? (
+                    <button type="button" onClick={() => void startCamera()} disabled={!activeSessionId || visionBusy} className="inline-flex min-h-9 items-center gap-1.5 rounded-lg border border-[#b89a5a]/45 bg-[#b89a5a]/10 px-3 text-xs font-semibold text-[#ead9a7] hover:bg-[#b89a5a]/20 disabled:cursor-not-allowed disabled:opacity-45">
+                      <Camera size={14} /> Allow camera preview
+                    </button>
+                  ) : (
+                    <>
+                      <button type="button" onClick={() => void shareCameraFrame()} disabled={visionBusy} className="inline-flex min-h-9 items-center gap-1.5 rounded-lg bg-[#d4bd7d] px-3 text-xs font-semibold text-[#17201c] hover:bg-[#e2d09f] disabled:opacity-50">
+                        {visionBusy ? <LoaderCircle size={14} className="animate-spin motion-reduce:animate-none" /> : <ImagePlus size={14} />}
+                        Share this view
+                      </button>
+                      <button type="button" onClick={stopCamera} className="inline-flex min-h-9 items-center gap-1.5 rounded-lg border border-white/20 px-3 text-xs font-medium text-white hover:bg-white/10">
+                        <Square size={12} /> Stop camera
+                      </button>
+                    </>
+                  )}
+                  <label className="inline-flex min-h-9 cursor-pointer items-center gap-1.5 rounded-lg border border-white/20 px-3 text-xs font-medium text-white hover:bg-white/10">
+                    <Upload size={14} /> Choose JPEG / PNG
+                    <input
+                      className="sr-only"
+                      type="file"
+                      accept="image/jpeg,image/png"
+                      disabled={!activeSessionId || visionBusy}
+                      onChange={event => { void chooseImage(event.currentTarget.files?.[0]); event.currentTarget.value = ''; }}
+                    />
+                  </label>
+                </div>
+                {cameraStream && (
+                  <video
+                    ref={cameraVideoRef}
+                    autoPlay
+                    muted
+                    playsInline
+                    aria-label="Private camera preview, not shared until you select Share this view"
+                    className="max-h-28 w-auto max-w-full rounded-lg border border-white/20 bg-black object-contain"
+                  />
+                )}
+                {imageFile && (
+                  <div className="flex flex-wrap items-center gap-2 rounded-lg border border-white/10 bg-black/20 px-2.5 py-2">
+                    <span className="min-w-0 flex-1 truncate text-[#e2e0d7]">{imageName} · {(imageFile.size / 1024).toFixed(0)} KB</span>
+                    <button type="button" onClick={() => void shareSelectedImage()} disabled={visionBusy} className="inline-flex min-h-8 items-center gap-1 rounded-md bg-[#d4bd7d] px-2.5 text-[11px] font-semibold text-[#17201c] disabled:opacity-50">
+                      {visionBusy ? <LoaderCircle size={13} className="animate-spin motion-reduce:animate-none" /> : <ImagePlus size={13} />}
+                      Share image
+                    </button>
+                    <button type="button" onClick={() => { setImageFile(null); setImageName(''); }} disabled={visionBusy} className="min-h-8 px-2 text-[11px] text-white/75 underline underline-offset-4 disabled:opacity-50">Remove</button>
+                  </div>
+                )}
+                {!activeSessionId && <p role="status" className="text-[#e3d09a]">Image sharing is unavailable until the active session ID is passed to this overlay.</p>}
+                {cameraError && <p role={cameraError.includes('shared') ? 'status' : 'alert'} className="break-words text-[#f0d5bd]">{cameraError}</p>}
+                <p className="text-[10px] leading-relaxed text-white/55">Selected image limit: JPEG or PNG up to 512 KB. Shared stills are converted to JPEG at no more than 640 × 480 before upload.</p>
+              </div>
+            </details>
+          )}
           {(phase === 'connecting' || phase === 'error' || microphoneError) && (
             <div
               role="region"
@@ -309,10 +529,15 @@ export const MalviLiveOverlay: React.FC<MalviLiveOverlayProps> = ({
               )}
             </div>
           )}
+          {memoryNotice && phase === 'connected' && (
+            <p role="status" className="max-h-16 w-full max-w-lg overflow-y-auto rounded-lg border border-[#b89a5a]/25 bg-[#10201f]/75 px-3 py-2 text-center text-[10px] leading-relaxed text-[#e4d3a8] backdrop-blur-md">
+              {memoryNotice}
+            </p>
+          )}
           <details className="max-w-lg rounded-xl bg-[#10201f]/60 px-3 py-2 text-center text-[11px] leading-relaxed text-[#e0e8e2]/80 backdrop-blur-md">
             <summary className="cursor-pointer underline underline-offset-4">Audio &amp; sources</summary>
             <p className="mt-2">
-              Voice responses are sent to ElevenLabs. Relevant topic queries may be sent automatically to Wikipedia/Wikidata or arXiv/PubMed for reference lookup.
+              {speechProvider === 'gemini' ? 'Voice is generated by the selected Gemini brain.' : 'Response text is sent to ElevenLabs for voice.'} Relevant topic queries may be sent to Wikipedia/Wikidata, arXiv/PubMed or Google Search for public research. Do not include private account information in public searches.
             </p>
             <p className="mt-2">
               {microphoneOn
@@ -344,6 +569,18 @@ export const MalviLiveOverlay: React.FC<MalviLiveOverlayProps> = ({
                     </ul>
                   </details>
                 )}
+              </div>
+            )}
+            {searchSuggestions && (
+              <div className="mt-3 rounded-lg border border-white/10 bg-[#10201f]/70 p-2 text-left">
+                <p className="mb-2 text-[10px] font-medium text-[#e6f0e7]">Trusted-provider search suggestions</p>
+                <iframe
+                  title="Trusted provider search suggestions"
+                  srcDoc={suggestionsSrcDoc(searchSuggestions)}
+                  sandbox="allow-popups allow-popups-to-escape-sandbox"
+                  referrerPolicy="no-referrer"
+                  className="h-24 w-full rounded-md border border-white/10 bg-[#10201f]"
+                />
               </div>
             )}
           </details>

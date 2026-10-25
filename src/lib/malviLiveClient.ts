@@ -38,7 +38,10 @@ export function parseMalviReferenceCitations(value: unknown): MalviReferenceCita
     try {
       if (!item || typeof item.title !== 'string' || typeof item.url !== 'string' || typeof item.source !== 'string') return [];
       const url = new URL(item.url);
-      if (url.protocol !== 'https:' || url.hostname !== hosts[item.source] || url.username || url.password) return [];
+      const publicWeb = item.source === 'Web' && url.hostname.includes('.') && !url.port
+        && !/^(localhost|127\.|10\.|192\.168\.|169\.254\.|172\.(1[6-9]|2\d|3[01])\.)/i.test(url.hostname)
+        && !/\.(local|internal|localhost)$/i.test(url.hostname);
+      if (url.protocol !== 'https:' || (!publicWeb && url.hostname !== hosts[item.source]) || url.username || url.password) return [];
       return [{
         source: item.source, title: item.title.slice(0, 200), url: url.href,
         caveat: typeof item.caveat === 'string' ? item.caveat.slice(0, 300) : '',

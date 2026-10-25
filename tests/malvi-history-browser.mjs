@@ -29,7 +29,12 @@ const output = await build({
         saveMalviHistory(localStorage,'b',[message('ACCOUNT B PRIVATE HISTORY')]);
       }
       window.requests=[];window.speechRequests=0;
+      window.fixtureErrors=[];
+      window.addEventListener('error',event=>window.fixtureErrors.push(event.message));
       window.fetch=async(url,options={})=>{
+        if(String(url).startsWith('/api/assistant/memory')){
+          return new Response(JSON.stringify({success:true,enabled:false,messages:[],hasPrevious:false}));
+        }
         if(String(url)==='/api/malvi/chat'){
           // Deliberately ignore abort here: a late transport result must still
           // fail the component's account ownership guard.
@@ -98,10 +103,13 @@ try {
   browser = await launchBrowser();
   const page = await browser.page(`http://127.0.0.1:${server.address().port}/`);
   const text = () => page.evaluate('document.body.innerText');
-  await page.wait(`document.body.innerText.includes('ACCOUNT A PRIVATE HISTORY')`);
+  await page.wait(`document.body.innerText.includes('ACCOUNT A PRIVATE HISTORY')`).catch(async error=>{
+    console.error(await page.evaluate('JSON.stringify({text:document.body.innerText,errors:window.fixtureErrors})'));
+    throw error;
+  });
   assert.doesNotMatch(await text(), /ACCOUNT B PRIVATE HISTORY|UNOWNED LEGACY SECRET/);
 
-  await page.evaluate(`document.querySelector('textarea,input[type="text"]').focus();true`);
+  await page.evaluate(`document.querySelector('input[placeholder^="Speak or ask Malvi"]').focus();true`);
   await page.command('Input.insertText', { text: 'A pending question' });
   await page.wait(`!document.querySelector('button[title="Send to Malvi"]').disabled`);
   await page.evaluate(`document.querySelector('button[title="Send to Malvi"]').click();true`);

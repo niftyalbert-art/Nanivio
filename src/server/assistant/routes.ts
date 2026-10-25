@@ -7,6 +7,9 @@ import { getMalviLanguage } from '../../lib/malviLanguages.ts';
 import { malviSpeechSetup, synthesizeMalviSpeech } from './malviSpeech.ts';
 import { assertMalviVoiceLanguage, malviVoiceSetup, parseMalviVoiceProvider } from './malviVoiceConfig.ts';
 import { getManagedMalviVoice, saveManagedMalviVoice } from './managedVoice.ts';
+import { memoryQuery, readConversationMemory, setConversationMemory } from './conversationMemory.ts';
+import { validateVisionInput } from './visionInput.ts';
+import { claimResearch, researchPublicWeb } from './webResearch.ts';
 
 type Auth = (req: Request, res: Response, next: NextFunction) => unknown;
 export function registerAssistantRoutes(app: Express, auth: Auth, enabled: () => boolean, startSweeper = true,
@@ -37,6 +40,35 @@ export function registerAssistantRoutes(app: Express, auth: Auth, enabled: () =>
       });
     }
   };
+  app.get('/api/assistant/memory', auth, run(async (req, res) => {
+    const state = await readConversationMemory(userId(req), memoryQuery(req.query.q ?? ''));
+    res.json({ success: true, enabled: state.enabled, messages: state.messages, hasPrevious: state.hasPrevious });
+  }));
+  app.put('/api/assistant/memory', auth, run(async (req, res) => {
+    if (typeof req.body?.enabled !== 'boolean') throw new AssistantError(400, 'INVALID_CONSENT', 'Choose whether Malvi may save your conversation transcripts.');
+    const state = await setConversationMemory(userId(req), req.body.enabled);
+    const cleanup = state.enabled || await malviLiveBrainController.revokeMemory(userId(req));
+    res.json({ success: true, enabled: state.enabled,
+      ...(!cleanup ? { warning: 'Memory is off and the local brain is closed, but avatar cleanup was not confirmed. Close the active session.' } : {}) });
+  }));
+  app.delete('/api/assistant/memory', auth, run(async (req, res) => {
+    await setConversationMemory(userId(req), false, true);
+    const cleanup = await malviLiveBrainController.revokeMemory(userId(req));
+    res.json({ success: true, enabled: false,
+      ...(!cleanup ? { warning: 'Saved memory was deleted, but avatar cleanup was not confirmed. Close the active session.' } : {}) });
+  }));
+  app.post('/api/assistant/session/:id/vision', auth, run(async (req, res) => {
+    if (!enabled()) throw new AssistantError(403, 'MALVI_DISABLED', 'Malvi is currently disabled.');
+    await liveAvatarService.owned(userId(req), validId(req));
+    const image = validateVisionInput(req.body);
+    await malviLiveBrainController.shareVision(userId(req), validId(req), image);
+    res.json({ success: true });
+  }));
+  app.post('/api/assistant/research', auth, run(async (req, res) => {
+    if (!enabled()) throw new AssistantError(403, 'MALVI_DISABLED', 'Malvi is currently disabled.');
+    claimResearch(userId(req));
+    res.json({ success: true, ...await researchPublicWeb(req.body) });
+  }));
   app.get('/api/assistant/status', auth, run(async (_req, res) => {
     const provider = await voicePolicy.get();
     const canManageVoice = (_req as any).authUser?.role === 'ADMIN';
