@@ -126,6 +126,65 @@ The next implementation should:
 No customer-facing price, plan purchase, FX conversion or admin editor was
 changed by this audit.
 
+## Public infrastructure, payments and FX baselines
+
+Researched directly from official public sources after the user asked to
+search for the costs rather than require account screenshots.
+
+| Item | Public baseline | Qualification |
+| --- | --- | --- |
+| Render Standard web instance | $25/month, 2 GB RAM | An estimating baseline, not proof of this application's current instance or sufficient capacity for every workload |
+| Render paid Key Value | From $10/month, 256 MB | Provider connection/storage limits and application usage must fit |
+| Supabase Pro | From $25/month | First project includes compute credit sufficient for Micro; do not add the same included compute a second time |
+| Supabase Pro included capacity | 100,000 MAU, 8 GB database disk/project, 100 GB file storage, 250 GB egress and 250 GB cached egress | Published overages include $0.00325/additional MAU, $0.125/GB disk, $0.0213/GB file storage, $0.09/GB egress and $0.03/GB cached egress |
+| Paystack Ghana | 1.95% published local and international transaction fee | Official country table lists Ghana acceptance as GHS; tax/account terms may add costs |
+| ExchangeRate-API Open Access | No API key, free personal/commercial conversion use with required attribution | Daily updates, cache responses, no guaranteed unlimited requests or bank settlement-rate matching |
+
+An illustrative infrastructure baseline is $25 + $10 + $25 = **$60/month**,
+excluding workspace/team fees, add-ons, tax, excess resources and AI usage.
+With a public LiveAvatar Essential subscription, fixed commitments would be
+**$159/month**, including its 1,100 avatar credits. These are scenarios, not
+retrieved private invoices. At 100 paying customers, the $60 infrastructure
+component allocates $0.60/customer; 1,100 prepaid avatar minutes shared between
+them provide only 11 minutes/customer at equal use.
+
+Avoid double counting avatar cost. Either model the subscription plus paid
+overage at fleet level, or allocate an effective prepaid minute cost at the
+assumed utilization level. Do not add the full avatar subscription again after
+already allocating its entire cost per minute.
+
+For example, 100 customers using 300 LITE minutes each require 30,000 credits.
+At the public Essential subscription and overage rate, the avatar component
+alone would be $99 + (30,000 - 1,100) × $0.095 = **$2,844.50/month**. This
+scenario requires overage enabled and does not establish available concurrency.
+
+An actual read-only request to the official open FX endpoint returned:
+
+- Endpoint: `https://open.er-api.com/v6/latest/USD`
+- Base: USD
+- USD/GHS: **11.67155**
+- Provider timestamp: **2026-10-25 00:02:31 UTC**
+- Next advertised update: **2026-10-26 00:06:21 UTC**
+
+This historical audit snapshot is not a permanently valid checkout rate.
+The published rates are indicative reference rates, not guaranteed Paystack,
+cardholder-bank or payout settlement rates. Cache according to the provider's
+update schedule, display attribution and source timestamp, validate freshness,
+and quote a server-calculated final payable amount before collection.
+
+USD catalogue/display pricing is compatible with a Ghana merchant collecting
+an explicitly disclosed GHS amount. It does not make that merchant eligible
+for direct USD collection. Paystack's official international-payment article
+currently lists direct USD acceptance/settlement for Nigeria and Kenya, not
+Ghana. Do not silently submit USD to a GHS-only merchant or promise all
+international customers that their bank will use the reference FX rate.
+
+Public Gemini quota documentation says actual active RPM/TPM and other
+model-specific limits are project-/tier-dependent and points to AI Studio.
+No universally applicable production quota or remaining credit balance can
+be established by a public web search. Keep these fields explicitly unknown
+or administrator-confirmed, without preventing a public-rate estimate.
+
 ## Sources
 
 Official public pages consulted; actual account contracts can differ:
@@ -139,3 +198,8 @@ Official public pages consulted; actual account contracts can differ:
 - https://ipwhois.io/documentation
 - https://render.com/pricing
 - https://paystack.com/docs/api/transaction/
+- https://supabase.com/pricing
+- https://support.paystack.com/en/articles/2130306
+- https://support.paystack.com/en/articles/2130690
+- https://www.exchangerate-api.com/docs/free
+- https://open.er-api.com/v6/latest/USD
