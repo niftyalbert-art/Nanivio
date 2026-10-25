@@ -23,6 +23,16 @@ how much to charge.”
 **How to apply:** Separate active/optional providers and public rates from
 actual account quotas; never infer remaining balances from configured keys.
 
+Use researched public provider rates as editable starting assumptions for the
+admin billing calculator; do not hold that estimate up for private account screenshots.
+
+**Why:** The user said “search them” and then approved building the calculator
+using those public rates.
+
+**How to apply:** Label defaults as estimates, keep unknown account balances and
+project-specific quotas distinct, and require deliberate administrator review
+before using suggested prices for published plans.
+
 Billing prices should default to USD. Users can switch to GHS when needed,
 and the system should automatically convert USD billing to GHS. Billing must
 be accessible and editable by administrators, including plans added by agents.

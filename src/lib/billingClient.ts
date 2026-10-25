@@ -42,7 +42,7 @@ function billingHeaders(): Record<string, string> {
   return headers;
 }
 
-async function protectedBillingRequest(url: string, init: RequestInit = {}) {
+export async function protectedBillingRequest(url: string, init: RequestInit = {}) {
   const response = await fetch(url, { ...init, headers: billingHeaders() });
   const data = await response.json();
   if (!response.ok || data.success === false) {

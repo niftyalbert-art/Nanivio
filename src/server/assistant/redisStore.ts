@@ -68,6 +68,15 @@ export class AssistantError extends Error {
   }
 }
 
+/** One key, no TTL: shared calculator settings survive application restarts. */
+export const SAVE_MALVI_COST_DOCUMENT = `
+local raw = redis.call('GET', KEYS[1])
+local current = 0
+if raw then current = cjson.decode(raw).snapshot.version end
+if current ~= tonumber(ARGV[1]) then return 0 end
+redis.call('SET', KEYS[1], ARGV[2])
+return 1`;
+
 export function redisSessionStore(redis: any) {
   const evalScript = (script: string, keys: string[], args: string[]) =>
     redis.eval(script, { keys, arguments: args });
@@ -96,6 +105,13 @@ export function redisSessionStore(redis: any) {
     },
     async setVoiceProvider(provider: 'elevenlabs' | 'gemini') {
       await redis.set(`${PREFIX}voice-provider`, provider);
+    },
+    async getBillingCostDocument(): Promise<string | null> {
+      return redis.get(`${PREFIX}billing-cost-model`);
+    },
+    async compareAndSetBillingCostDocument(expectedVersion: number, document: string): Promise<boolean> {
+      return Number(await evalScript(SAVE_MALVI_COST_DOCUMENT,
+        [`${PREFIX}billing-cost-model`], [String(expectedVersion), document])) === 1;
     },
     async touch(id: string, owner: string, now: number): Promise<AssistantSessionRecord | null> {
       const raw = await evalScript(TOUCH_SESSION, [sessionKey(id), deadlinesKey], [owner, String(now)]);

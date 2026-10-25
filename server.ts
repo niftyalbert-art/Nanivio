@@ -45,6 +45,7 @@ import { normalizedBillingEnabled, transferFintechToCommunication as persistentF
 import { hydrateBillingDatabase, flushBillingDatabase, closeBillingPersistence, savePaystackOrder, getPaystackOrder, markPaystackOrderFulfilled, isPersistentBillingConfigured, markBillingDatabaseDirty } from "./src/server/billingPersistence.ts";
 import { billingEngine } from "./src/server/billingEngine.ts";
 import { requireBillingAdmin, billingAdminActor, canRefund, ownsBillingRecord, ownsProviderEarnings, ownsBusinessBilling } from "./src/server/billingAccess.ts";
+import { createMalviCostRouter } from "./src/server/malviCostCalculator.ts";
 import { getPersistentInvoice } from "./src/server/normalizedBillingRepository.ts";
 import { authDb } from "./src/server/authDb.ts";
 import * as persistentAuth from "./src/server/persistentAuth.ts";
@@ -2678,6 +2679,7 @@ app.get("/api/billing/business", requireAuthenticatedUser, (req, res) => {
 
 // Protect reads, writes, HEAD requests and future routes in this namespace.
 app.use("/api/admin/billing", requireAuthenticatedUser, requireBillingAdmin);
+app.use("/api/admin/billing/malvi-costs", createMalviCostRouter());
 
 // Admin Financial Overview
 app.get("/api/admin/billing/overview", (_req, res) => {
