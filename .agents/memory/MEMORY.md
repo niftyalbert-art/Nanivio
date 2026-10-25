@@ -29,3 +29,4 @@
 - [Didit phone API restrictions](didit-phone-restrictions.md) — phone-specific 403 meanings differ from generic API-key docs; read the full endpoint Markdown.
 - [Malvi microphone verification](malvi-microphone-verification.md) — exercise the real audio worklet; simulated recorder controls do not prove frame capture or recognition.
 - [Nanivio Mic direction](nanivio-mic-direction.md) — owned engine across browsers, cloud, and apps; user chose current AI providers, not self-hosted recognition.
+- [Malvi continuity and sharing](malvi-continuity-and-sharing.md) — account-linked returning conversations, explicit camera consent and attributable public research.

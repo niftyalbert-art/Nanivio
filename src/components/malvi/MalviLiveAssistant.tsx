@@ -73,6 +73,8 @@ export const MalviLiveAssistantProvider: React.FC<{ children: React.ReactNode }>
   });
   const [referenceStatus, setReferenceStatus] = useState('idle');
   const [references, setReferences] = useState<MalviReferenceCitation[]>([]);
+  const [searchSuggestions, setSearchSuggestions] = useState('');
+  const [memoryFeedback, setMemoryFeedback] = useState('');
   const [unavailableSources, setUnavailableSources] = useState<string[]>([]);
   const [wakeArmed, setWakeArmed] = useState(false);
   const [wakeChecking, setWakeChecking] = useState(false);
@@ -145,6 +147,13 @@ export const MalviLiveAssistantProvider: React.FC<{ children: React.ReactNode }>
     generation.current++; busy.current = false; void cleanup();
     if (mounted.current) { setError(message); setPhase('error'); }
   }, [cleanup]);
+  useEffect(() => {
+    const changed = (event: Event) => {
+      if ((event as CustomEvent).detail?.enabled === false) close();
+    };
+    window.addEventListener('nanivio:malvi-memory-change', changed);
+    return () => window.removeEventListener('nanivio:malvi-memory-change', changed);
+  }, [close]);
   const attachVideo = useCallback((video: HTMLVideoElement | null) => {
     removeVideoListeners.current?.();
     removeVideoListeners.current = null;
@@ -247,9 +256,13 @@ export const MalviLiveAssistantProvider: React.FC<{ children: React.ReactNode }>
       if (!isCurrent(payload)) return;
       if (['searching', 'complete', 'empty', 'unavailable'].includes(payload.status)) setReferenceStatus(payload.status);
       setReferences(parseMalviReferenceCitations(payload.results));
+      setSearchSuggestions(typeof payload.searchSuggestions === 'string' ? payload.searchSuggestions.slice(0,50000) : '');
       setUnavailableSources(Array.isArray(payload.unavailable)
         ? payload.unavailable.filter((source: unknown) => ['Wikipedia', 'Wikidata', 'arXiv', 'PubMed'].includes(String(source)))
         : []);
+    });
+    const offMemory = realtimeClient.on('malvi:brain_memory', payload => {
+      if (isCurrent(payload) && typeof payload.message === 'string') setMemoryFeedback(payload.message);
     });
     const offError = realtimeClient.on('malvi:brain_error', (payload) => {
       if (isCurrent(payload) && typeof payload.message === 'string') {
@@ -272,7 +285,7 @@ export const MalviLiveAssistantProvider: React.FC<{ children: React.ReactNode }>
     const offLanguageError = realtimeClient.on('malvi:brain_language_error', payload => {
       if (isCurrent(payload)) fail(typeof payload.message === 'string' ? payload.message : 'The selected language could not be applied. Start a new conversation.');
     });
-    return () => { offReady(); offAudio(); offCaption(); offActivity(); offSources(); offError(); offLanguage(); offLanguageError(); offInterrupted(); };
+    return () => { offReady(); offAudio(); offCaption(); offActivity(); offSources(); offMemory(); offError(); offLanguage(); offLanguageError(); offInterrupted(); };
   }, [stopMicrophone, fail]);
 
   useEffect(() => {
@@ -343,7 +356,7 @@ export const MalviLiveAssistantProvider: React.FC<{ children: React.ReactNode }>
     const run = ++generation.current;
     disarmWake(); setError(null); setCaption('Connecting your live avatar and selected brain provider.');
     setBrainReady(false); setMicrophoneError(''); setMicrophoneOn(false);
-    setReferenceStatus('idle'); setReferences([]); setUnavailableSources([]);
+    setReferenceStatus('idle'); setReferences([]); setUnavailableSources([]); setSearchSuggestions(''); setMemoryFeedback('');
     setSecondsRemaining(60); setAudioBlocked(false); setPhase('connecting');
     try {
       videoGate.current = new MalviAvatarVideoGate(() => videoRef.current, fail);
@@ -437,7 +450,7 @@ export const MalviLiveAssistantProvider: React.FC<{ children: React.ReactNode }>
     voiceMode.current = true; setVoiceOnly(true);
     disarmWake(); setError(null); setBrainReady(false); setActiveLanguage(null);
     setMicrophoneError(''); setMicrophoneOn(false); setAudioBlocked(false);
-    setReferences([]); setReferenceStatus('idle'); setUnavailableSources([]);
+    setReferences([]); setReferenceStatus('idle'); setUnavailableSources([]); setSearchSuggestions(''); setMemoryFeedback('');
     setSecondsRemaining(60); setPhase('connecting');
     setCaption('Connecting the selected brain. No avatar session will be started.');
     try {
@@ -574,9 +587,13 @@ export const MalviLiveAssistantProvider: React.FC<{ children: React.ReactNode }>
     }, notice, phase, wakeArmed, wakeChecking, wakeFeedback, wakePackRequired, wakePackInstalling, installWakePack, start, startVoiceTest, armWake, disarmWake, refresh }}>
       {children}
       {phase !== 'idle' && <MalviLiveOverlay
+        activeSessionId={sessionId.current}
+        searchSuggestions={searchSuggestions}
+        memoryNotice={memoryFeedback}
         videoRef={videoRef} onVideoElement={attachVideo} phase={phase} error={error} secondsRemaining={secondsRemaining}
         onClose={close} onInterrupt={interrupt} audioBlocked={audioBlocked} caption={caption}
         approximateCaptions={voiceProvider === 'gemini'}
+        speechProvider={voiceProvider}
         voiceOnly={voiceOnly}
         onPlayAudio={() => {
           if (voiceMode.current && playback.current) {

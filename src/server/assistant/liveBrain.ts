@@ -7,13 +7,18 @@ import { getLiveBrainProviderConfig, type LiveBrainProviderId } from './brainPro
 import { buildMalviLiveInstructions, malviLanguageInstruction, malviGreetingInstruction } from './malviSystemPrompt.ts';
 import { getMalviLanguage, malviLanguageCoverage } from '../../lib/malviLanguages.ts';
 import { IDLE_MS } from './redisStore.ts';
-import { createReferenceToolRunner, REFERENCE_TOOL_NAME, REFERENCE_TOOL_DESCRIPTION, REFERENCE_TOOL_PARAMETERS } from './referenceTools.ts';
+import { REFERENCE_TOOL_NAME, REFERENCE_TOOL_DESCRIPTION, REFERENCE_TOOL_PARAMETERS } from './referenceTools.ts';
 import { createGeminiReferenceBridge, createOpenAIReferenceBridge } from './referenceToolBridges.ts';
 import { createMalviSpeechQueue, MAX_SPEECH_TEXT } from './malviSpeech.ts';
 import { malviOpeningBoundary } from './malviResponsePacing.ts';
 import { assertMalviVoiceLanguage, malviVoiceSetup, type MalviVoiceProvider } from './malviVoiceConfig.ts';
 import { GeminiNativeVoice } from './geminiNativeVoice.ts';
 import { MALVI_GEMINI_VOICE, malviGeminiVoiceDirection } from './geminiVoiceStyle.ts';
+import { appendConversationMemory, conversationMemoryContext, readConversationMemory, MEMORY_TOOL, type MemoryState } from './conversationMemory.ts';
+import { createConversationTools } from './conversationTools.ts';
+import { WEB_TOOL } from './webResearch.ts';
+import { VISION_INSTRUCTION } from './visionInput.ts';
+import { AssistantError } from './redisStore.ts';
 
 type BrainEvent = (type: string, payload: Record<string, unknown>) => void;
 type BrainConnection = {
@@ -45,12 +50,36 @@ type BrainConnection = {
   outputGeneration: number;
   startedAt: number;
   isFirstTurn: boolean;
-  research: ReturnType<typeof createReferenceToolRunner>;
+  research: ReturnType<typeof createConversationTools>;
+  memory: MemoryState;
+  memoryUser: string;
+  memoryAssistant: string;
+  memoryTurn: number;
+  memoryWrites: Promise<unknown>;
+  sendVision: (image: { data: string; mimeType: string }) => void;
+  visionAt: number;
 };
 
 const MAX_INPUT_BYTES = 12_000;
 const activeBySocket = new WeakMap<WebSocket, Map<string, BrainConnection>>();
 const activeBySession = new Map<string, BrainConnection>();
+
+function saveMemoryTurn(connection: BrainConnection) {
+  const user = connection.memoryUser.trim(), assistant = connection.memoryAssistant.trim();
+  connection.memoryUser = ''; connection.memoryAssistant = '';
+  if (!connection.memory.enabled || !user) return; // Do not archive an unsolicited greeting.
+  const turn = ++connection.memoryTurn;
+  const events = [
+    { key: `${connection.sessionId}:${turn}:user`, role: 'user' as const, text: user },
+    { key: `${connection.sessionId}:${turn}:assistant`, role: 'assistant' as const, text: assistant },
+  ];
+  // Never put a database round-trip on the speech/playback path.
+  connection.memoryWrites = connection.memoryWrites.then(() =>
+    appendConversationMemory(connection.owner, connection.memory.generation, events)).catch(() => {
+      send(connection.socket, 'malvi:brain_memory', { sessionId: connection.sessionId, status: 'unavailable',
+        message: 'This turn could not be saved to account memory.' });
+    });
+}
 
 function send(socket: WebSocket, type: string, payload: Record<string, unknown>) {
   if (socket.readyState === 1) socket.send(JSON.stringify({ type, payload }));
@@ -190,6 +219,7 @@ async function connectGemini(
     config: {
       responseModalities: [Modality.AUDIO],
       systemInstruction: buildMalviLiveInstructions(connection.language, connection.provider)
+        + conversationMemoryContext(connection.memory)
         + (connection.speechProvider === 'gemini' ? `\n\n${malviGeminiVoiceDirection(connection.language)}` : ''),
       speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: connection.speechProvider === 'gemini' ? MALVI_GEMINI_VOICE : 'Kore' } } },
       inputAudioTranscription: {},
@@ -200,12 +230,12 @@ async function connectGemini(
           startOfSpeechSensitivity: StartSensitivity.START_SENSITIVITY_HIGH,
           endOfSpeechSensitivity: EndSensitivity.END_SENSITIVITY_HIGH,
           prefixPaddingMs: 40,
-          silenceDurationMs: 350,
+          silenceDurationMs: 250,
         },
       },
       tools: [{ functionDeclarations: [{
         name: REFERENCE_TOOL_NAME, description: REFERENCE_TOOL_DESCRIPTION, parametersJsonSchema: REFERENCE_TOOL_PARAMETERS,
-      }] }],
+      }, MEMORY_TOOL, WEB_TOOL] }],
     },
     callbacks: {
       onmessage(message) {
@@ -213,6 +243,7 @@ async function connectGemini(
         void handleReferences(message).catch(() => onFailure('The reference tool response could not reach the selected brain.'));
         const serverContent = message.serverContent;
         if (serverContent?.interrupted) {
+          saveMemoryTurn(connection);
           connection.outputGeneration++;
           connection.speech.cancel(); connection.playbackUntil = 0;
           connection.nativeVoice.cancel();
@@ -230,10 +261,14 @@ async function connectGemini(
           }
         }
         const inputText = serverContent?.inputTranscription?.text;
-        if (inputText) send(socket, 'malvi:brain_caption', { sessionId: connection.sessionId, text: inputText, role: 'user' });
+        if (inputText) {
+          connection.memoryUser = (connection.memoryUser + inputText).slice(0,12000);
+          send(socket, 'malvi:brain_caption', { sessionId: connection.sessionId, text: inputText, role: 'user' });
+        }
         const outputText = serverContent?.outputTranscription?.text;
         if (outputText && acceptsOutput(connection)) {
           connection.transcript += outputText;
+          connection.memoryAssistant = (connection.memoryAssistant + outputText).slice(0,12000);
           connection.outputCharacters += outputText.length;
           if (connection.outputCharacters > MAX_SPEECH_TEXT) {
             onFailure('Malvi’s spoken response exceeded the text safety limit.');
@@ -242,6 +277,7 @@ async function connectGemini(
           send(socket, 'malvi:brain_caption', { sessionId: connection.sessionId, language: connection.outputLanguage, text: outputText, role: 'assistant' });
           if (!serverContent?.turnComplete && connection.speechProvider === 'elevenlabs') flushOpening(socket, connection, onFailure);
         }
+        if (serverContent?.turnComplete) saveMemoryTurn(connection);
         if (serverContent?.turnComplete && connection.speechProvider === 'gemini') {
           try { flushNativeAudio(socket, connection); }
           catch (error) { onFailure((error as Error).message); }
@@ -263,9 +299,13 @@ async function connectGemini(
     session.sendRealtimeInput({ audio: { data: base64, mimeType: 'audio/pcm;rate=16000' } });
   };
   connection.endAudio = () => session.sendRealtimeInput({ audioStreamEnd: true });
+  connection.sendVision = image => {
+    session.sendRealtimeInput({ video: image });
+    session.sendClientContent({ turns: [{ role: 'user', parts: [{ text: VISION_INSTRUCTION }] }], turnComplete: true });
+  };
   connection.changeLanguage = code => {
     session.sendClientContent({
-      turns: [{ role: 'user', parts: [{ text: `${malviLanguageInstruction(code, connection.provider)}${connection.isFirstTurn ? `\n${malviGreetingInstruction(code)}` : ''}${connection.speechProvider === 'gemini' ? `\n${malviGeminiVoiceDirection(code)}` : ''}` }] }],
+      turns: [{ role: 'user', parts: [{ text: `${malviLanguageInstruction(code, connection.provider)}${connection.isFirstTurn ? `\n${malviGreetingInstruction(code, connection.memory.hasPrevious)}` : ''}${connection.speechProvider === 'gemini' ? `\n${malviGeminiVoiceDirection(code)}` : ''}` }] }],
       turnComplete: false,
     });
   };
@@ -275,7 +315,7 @@ async function connectGemini(
   // The selected brain supplies the introduction in the selected language.
   // Do not play a separate English greeting through another provider.
   session.sendClientContent({
-    turns: [{ role: 'user', parts: [{ text: malviGreetingInstruction(connection.language) }] }],
+    turns: [{ role: 'user', parts: [{ text: malviGreetingInstruction(connection.language, connection.memory.hasPrevious) }] }],
     turnComplete: true,
   });
 }
@@ -297,6 +337,7 @@ async function connectOpenAI(
     // activity to delimit a quiet segment, including discarded interrupted text.
     outputTimer = setTimeout(() => {
       outputTimer = null;
+      saveMemoryTurn(connection);
       void flushAudio(socket, connection, true).catch(error => {
         onFailure(error instanceof Error ? error.message : 'Malvi’s ElevenLabs voice could not complete the response.');
       });
@@ -317,6 +358,7 @@ async function connectOpenAI(
       scheduleSpeech();
     } else if (event.type === 'session.output_transcript.delta' && typeof event.delta === 'string' && acceptsOutput(connection)) {
       connection.transcript += event.delta;
+      connection.memoryAssistant = (connection.memoryAssistant + event.delta).slice(0,12000);
       connection.outputCharacters += event.delta.length;
       if (connection.outputCharacters > MAX_SPEECH_TEXT) {
         onFailure('Malvi’s spoken response exceeded the text safety limit.');
@@ -326,6 +368,7 @@ async function connectOpenAI(
       flushOpening(socket, connection, onFailure);
       scheduleSpeech();
     } else if (event.type === 'session.input_transcript.delta' && typeof event.delta === 'string') {
+      connection.memoryUser = (connection.memoryUser + event.delta).slice(0,12000);
       send(socket, 'malvi:brain_caption', { sessionId: connection.sessionId, text: event.delta, role: 'user' });
     } else if (event.type === 'session.closed') {
       onFailure('The live brain session ended.');
@@ -339,14 +382,15 @@ async function connectOpenAI(
       type: 'session.start',
       session: {
         model: provider.model,
-        instructions: `${buildMalviLiveInstructions(connection.language, connection.provider)}\n${malviGreetingInstruction(connection.language)}`,
+        instructions: `${buildMalviLiveInstructions(connection.language, connection.provider)}${conversationMemoryContext(connection.memory)}\n${malviGreetingInstruction(connection.language, connection.memory.hasPrevious)}`,
         audio: { format: { type: 'audio/pcm', rate: 24000 }, output: { voice: process.env.MALVI_OPENAI_VOICE || 'marin' } },
         delegation: {
           type: 'responses',
           responses: {
             ...(process.env.MALVI_OPENAI_REASONING_MODEL ? { model: process.env.MALVI_OPENAI_REASONING_MODEL } : {}),
-            instructions: buildMalviLiveInstructions(connection.language, connection.provider),
-            tools: [{ type: 'function', name: REFERENCE_TOOL_NAME, description: REFERENCE_TOOL_DESCRIPTION, parameters: REFERENCE_TOOL_PARAMETERS, strict: true }],
+            instructions: buildMalviLiveInstructions(connection.language, connection.provider) + conversationMemoryContext(connection.memory),
+            tools: [{ type: 'function', name: REFERENCE_TOOL_NAME, description: REFERENCE_TOOL_DESCRIPTION, parameters: REFERENCE_TOOL_PARAMETERS, strict: true },
+              ...[MEMORY_TOOL, WEB_TOOL].map(tool => ({ type: 'function', name: tool.name, description: tool.description, parameters: tool.parametersJsonSchema, strict: true }))],
             tool_choice: 'auto', parallel_tool_calls: false,
           },
         },
@@ -378,7 +422,8 @@ async function connectOpenAI(
   };
 }
 
-function createConnection(socket: WebSocket, userId: string, sessionId: string, language: string, voiceOnly = false, speechProvider: MalviVoiceProvider = malviVoiceSetup().provider): BrainConnection {
+function createConnection(socket: WebSocket, userId: string, sessionId: string, language: string, voiceOnly = false, speechProvider: MalviVoiceProvider = malviVoiceSetup().provider,
+  memory: MemoryState = { enabled: false, generation: 0, messages: [], hasPrevious: false }): BrainConnection {
   const connection: BrainConnection = {
     socket,
     owner: userId,
@@ -393,6 +438,7 @@ function createConnection(socket: WebSocket, userId: string, sessionId: string, 
     closeProvider: () => {},
     close: () => {
       if (connection.closed) return;
+      saveMemoryTurn(connection);
       connection.closed = true;
       connection.outputGeneration++;
       connection.speech.close();
@@ -418,7 +464,10 @@ function createConnection(socket: WebSocket, userId: string, sessionId: string, 
     outputGeneration: 0,
     startedAt: Date.now(),
     isFirstTurn: true,
-    research: createReferenceToolRunner(
+    memory, memoryUser: '', memoryAssistant: '', memoryTurn: 0, memoryWrites: Promise.resolve(),
+    sendVision: () => { throw new AssistantError(409, 'VISION_NOT_READY', 'Start a connected Gemini conversation before sharing a view.'); },
+    visionAt: 0,
+    research: createConversationTools(userId,
       payload => send(socket, 'malvi:brain_sources', { sessionId, ...payload }),
       () => connection.closed,
     ),
@@ -463,6 +512,16 @@ function armIdleDeadline(connection: BrainConnection, deadline: number, expired:
 }
 
 export const malviLiveBrainController = {
+  async revokeMemory(userId: string) {
+    const sessions = [...activeBySession.values()].filter(c => c.owner === userId && c.memory.enabled);
+    const stopped = await Promise.allSettled(sessions.map(async connection => {
+      send(connection.socket, 'malvi:brain_error', { sessionId: connection.sessionId,
+        message: 'Saved memory was disabled or deleted. Start a new conversation without the previous context.' });
+      await this.stopSession(userId, connection.sessionId);
+      await liveAvatarService.stop(userId, connection.sessionId);
+    }));
+    return stopped.every(result => result.status === 'fulfilled');
+  },
   async start(socket: WebSocket, userId: string, sessionId: string, requestedLanguage?: unknown) {
     try {
       const session = await liveAvatarService.owned(userId, sessionId);
@@ -471,7 +530,16 @@ export const malviLiveBrainController = {
       if (existing) return;
       const current = activeBySession.get(sessionId);
       if (current) throw new Error('This live session already has an active brain connection.');
-      const connection = createConnection(socket, userId, sessionId, language.code, session.mode === 'VOICE_TEST', session.speechProvider);
+      let memory: MemoryState | undefined;
+      try { memory = await readConversationMemory(userId); }
+      catch {
+        send(socket, 'malvi:brain_memory', { sessionId, status: 'unavailable', message: 'Saved account memory is unavailable. This session can continue without it.' });
+      }
+      // Memory lookup is asynchronous: recheck after it to prevent duplicate starts.
+      if (activeBySession.has(sessionId)) return;
+      const fresh = await liveAvatarService.owned(userId, sessionId);
+      if (socket.readyState !== socket.OPEN || activeBySession.has(sessionId)) return;
+      const connection = createConnection(socket, userId, sessionId, language.code, fresh.mode === 'VOICE_TEST', fresh.speechProvider, memory);
       if (!activeBySocket.has(socket)) activeBySocket.set(socket, new Map());
       activeBySocket.get(socket)!.set(sessionId, connection);
       activeBySession.set(sessionId, connection);
@@ -492,6 +560,18 @@ export const malviLiveBrainController = {
         message: error instanceof Error ? error.message : 'The live brain could not start.',
       });
     }
+  },
+  async shareVision(userId: string, sessionId: string, image: { data: string; mimeType: string }) {
+    const connection = activeBySession.get(sessionId);
+    if (!connection || connection.owner !== userId || connection.closed || !connection.ready) {
+      throw new AssistantError(409, 'VISION_NOT_READY', 'Start a connected conversation before sharing a view.');
+    }
+    if (connection.provider !== 'gemini') throw new AssistantError(409, 'VISION_PROVIDER_UNSUPPORTED', 'Camera sharing currently requires the administrator-selected Gemini live brain.');
+    if (Date.now() - connection.visionAt < 2000) throw new AssistantError(429, 'VISION_RATE_LIMIT', 'Wait two seconds before sharing another image.');
+    connection.visionAt = Date.now();
+    connection.memoryUser = (connection.memoryUser + '\nI explicitly shared one image for discussion. The image itself is not saved to conversation history.').slice(0,12000);
+    connection.sendVision(image);
+    await liveAvatarService.activity(userId, sessionId);
   },
   async language(socket: WebSocket, userId: string, sessionId: string, requestedLanguage: unknown) {
     try {
