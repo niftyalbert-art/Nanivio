@@ -37,7 +37,7 @@ import { AdminPaymentGatewaysManager } from './AdminPaymentGatewaysManager';
 import { AdminRideHailingMapsManager } from './AdminRideHailingMapsManager';
 import { AdminFeatureLauncher } from './AdminFeatureLauncher';
 import { AdminLangpretationManager } from './AdminLangpretationManager';
-import { AdminMalviCostCalculator } from './AdminMalviCostCalculator';
+import { AdminMalviBillingWorkspace } from './AdminMalviBillingWorkspace';
 
 export const AdminControlCenter: React.FC = () => {
   const {
@@ -415,7 +415,7 @@ export const AdminControlCenter: React.FC = () => {
       {adminSubTab === 'drivers' && <AdminDriverQueue />}
       {adminSubTab === 'gateways' && <AdminPaymentGatewaysManager />}
       {adminSubTab === 'audit' && <AdminAuditTrail />}
-      {adminSubTab === 'malvi-billing' && <AdminMalviCostCalculator />}
+      {adminSubTab === 'malvi-billing' && <AdminMalviBillingWorkspace />}
 
       {/* Existing Switches & Telemetry Tab */}
       {adminSubTab === 'switches' && (

@@ -46,6 +46,7 @@ import { hydrateBillingDatabase, flushBillingDatabase, closeBillingPersistence, 
 import { billingEngine } from "./src/server/billingEngine.ts";
 import { requireBillingAdmin, billingAdminActor, canRefund, ownsBillingRecord, ownsProviderEarnings, ownsBusinessBilling } from "./src/server/billingAccess.ts";
 import { createMalviCostRouter } from "./src/server/malviCostCalculator.ts";
+import { createMalviPlanRouter, malviCatalogService } from "./src/server/malviPlanCatalog.ts";
 import { getPersistentInvoice } from "./src/server/normalizedBillingRepository.ts";
 import { authDb } from "./src/server/authDb.ts";
 import * as persistentAuth from "./src/server/persistentAuth.ts";
@@ -1882,7 +1883,12 @@ app.post("/api/paystack/initialize", requireAuthenticatedUser, async (req, res) 
   try {
     const userId = authenticatedUserId(req);
     let quote: ReturnType<typeof quotePaystackOrder>;
-    try { quote = quotePaystackOrder(req.body, billingDb); }
+    try {
+      const catalog = req.body.purpose === 'MALVI_SUBSCRIPTION'
+        ? { ...billingDb, malviPlans: (await malviCatalogService.published()).plans }
+        : billingDb;
+      quote = quotePaystackOrder(req.body, catalog);
+    }
     catch (error: any) { return res.status(400).json({ success: false, error: error.message }); }
     const { amount, currency, purpose, packageId, planTier, billingCycle, minutes } = quote;
     if (!normalizedBillingEnabled()) return res.status(503).json({ success:false, error:"Persistent billing database is required for Paystack purchases." });
@@ -2036,16 +2042,17 @@ async function fulfillPaystackOrder({
   if (purpose === "MALVI_SUBSCRIPTION") {
     const tier = (authoritativeOrder.planTier as any) || "malvi_premium";
     const billingCycle = authoritativeOrder.billingCycle || "MONTHLY";
-    const plan = billingDb.malviPlans.find((p) => p.tier === tier);
-    if (!plan) throw new Error(`Malvi plan ${tier} is not configured.`);
-    const expectedAmount = authoritativeOrder.product ? authoritativeOrder.amount : billingCycle === "ANNUAL"
-      ? (verifiedCurrency === "USD" ? plan.priceAnnualUSD : plan.priceAnnualGHS)
-      : (verifiedCurrency === "USD" ? plan.priceMonthlyUSD : plan.priceMonthlyGHS);
+    const plan = authoritativeOrder.product;
+    if (!plan?.id || !plan?.name || plan.tier !== tier) throw new Error('The saved Malvi purchase snapshot is missing. No allowance was changed.');
+    const expectedAmount = authoritativeOrder.amount;
     if (Number(verifiedAmount) !== Number(expectedAmount)) throw new Error("Verified Paystack amount does not match the selected Malvi plan price.");
-    const voiceMinutesAllowed = Number(authoritativeOrder.product?.videoMinutesAllowed ?? plan.videoInteractionMinutesLimit ?? 0);
-    const result = normalizedBillingEnabled()
-      ? await activateMalviSubscriptionPersistent({ userId, tier, planId: plan.id, planName: plan.name, billingCycle, price: verifiedAmount, currency: verifiedCurrency, paymentMethod: "Paystack Payment Gateway", referenceId: reference, transactionId: `tx_malvi_${reference}`, videoMinutesAllowed: voiceMinutesAllowed, voiceMinutesAllowed, metadata:{source:"paystack",planTier:tier} })
-      : billingDb.activateMalviSubscription({ userId, tier, billingCycle, paymentMethod: "Paystack Payment Gateway", pricePaid: verifiedAmount, currency: verifiedCurrency, referenceId: reference });
+    const videoMinutesAllowed = Number(plan.videoMinutesAllowed ?? 0);
+    const voiceMinutesAllowed = Number(plan.voiceMinutesAllowed ?? plan.videoMinutesAllowed ?? 0);
+    if (![videoMinutesAllowed, voiceMinutesAllowed].every(n => Number.isSafeInteger(n) && n >= 0 && n <= 1000000)) {
+      throw new Error('The saved Malvi allowance snapshot is invalid.');
+    }
+    if (!normalizedBillingEnabled()) throw new Error('Persistent billing is required to fulfil a Malvi purchase.');
+    const result = await activateMalviSubscriptionPersistent({ userId, tier, planId: plan.id, planName: plan.name, billingCycle, price: verifiedAmount, currency: verifiedCurrency, paymentMethod: "Paystack Payment Gateway", referenceId: reference, transactionId: `tx_malvi_${reference}`, videoMinutesAllowed, voiceMinutesAllowed, metadata:{source:"paystack",planTier:tier,catalogVersion:plan.catalogVersion,planSnapshot:plan.planSnapshot} });
 
     pendingPaystackOrders.delete(reference);
     await markPaystackOrderFulfilled(reference);
@@ -2171,11 +2178,13 @@ app.post("/api/billing/communication-minutes/purchase", requireAuthenticatedUser
   } catch(error:any){ return res.status(400).json({success:false,error:error.message||"Communication-minute purchase failed"}); }
 });
 
-app.get("/api/billing/malvi-plans", (_req, res) => {
-  res.json({
-    success: true,
-    plans: billingDb.malviPlans,
-  });
+app.get("/api/billing/malvi-plans", async (_req, res) => {
+  try {
+    res.setHeader('Cache-Control', 'no-store');
+    res.json({ success: true, ...await malviCatalogService.published() });
+  } catch {
+    res.status(503).json({ success: false, error: "The Malvi plan catalogue is unavailable. Ask an administrator to complete plan database setup." });
+  }
 });
 
 app.get("/api/billing/malvi-credit", requireAuthenticatedUser, async (req,res)=>{try{if(!normalizedBillingEnabled())return res.status(503).json({success:false,error:'Persistent billing database is required.'});const account=await getMalviCreditAccount(authenticatedUserId(req));res.json({success:true,creditBalance:Number(account.credit_balance||0),accountId:account.id});}catch(error:any){res.status(502).json({success:false,error:error.message});}});
@@ -2186,15 +2195,17 @@ app.post("/api/billing/malvi-subscription/change", requireAuthenticatedUser, asy
   try {
     const userId=authenticatedUserId(req);
     const { tier, billingCycle="MONTHLY", paymentMethod="NANIVIO_CREDIT", currency="GHS" }=req.body;
-    const plan=billingDb.malviPlans.find((p)=>p.tier===tier);
+    const plan=(await malviCatalogService.published()).plans.find((p)=>p.tier===tier);
     if(!plan) return res.status(404).json({error:"Malvi subscription plan not found"});
     if(!["GHS","USD"].includes(currency) || !["MONTHLY","ANNUAL"].includes(billingCycle)) return res.status(400).json({success:false,error:"Unsupported currency or billing cycle."});
+    if(tier!=="free" && req.body.catalogVersion!==plan.catalogVersion) return res.status(409).json({success:false,error:"Plan prices changed or need refreshing. Reload plans before paying; no credit was debited."});
     if(!normalizedBillingEnabled()) return res.status(503).json({success:false,error:"Persistent billing database is required for Malvi subscriptions."});
     const price=tier==="free"?0:(billingCycle==="ANNUAL"?(currency==="USD"?plan.priceAnnualUSD:plan.priceAnnualGHS):(currency==="USD"?plan.priceMonthlyUSD:plan.priceMonthlyGHS));
-    if(!Number.isFinite(price) || price<0) return res.status(400).json({success:false,error:"Invalid configured Malvi plan price."});
+    if(!Number.isFinite(price) || price<0 || (tier!=="free" && price<=0)) return res.status(400).json({success:false,error:"The selected currency price is unavailable. Reload plans before paying."});
+    if(tier!=="free" && req.body.expectedAmount!==price) return res.status(409).json({success:false,error:"The payable price or conversion changed. Reload plans before paying; no credit was debited."});
     if(paymentMethod!=="NANIVIO_CREDIT") return res.status(503).json({success:false,error:"Use Paystack checkout for external Malvi subscription payment."});
     const now=Date.now();
-    const result=await activateMalviSubscriptionFromWalletPersistent({userId,tier,billingCycle,price,currency,paymentMethod:"Nanivio credit",planId:plan.id,planName:plan.name,videoMinutesAllowed:plan.videoInteractionMinutesLimit,voiceMinutesAllowed:plan.videoInteractionMinutesLimit,referenceId:`REF-NV-MALVI-${now}-${crypto.randomBytes(4).toString("hex")}`,transactionId:`tx_malvi_${crypto.randomBytes(8).toString("hex")}`,metadata:{source:"malvi_subscription"}});
+    const result=await activateMalviSubscriptionFromWalletPersistent({userId,tier,billingCycle,price,currency,paymentMethod:"Nanivio credit",planId:plan.id,planName:plan.name,videoMinutesAllowed:plan.videoInteractionMinutesLimit,voiceMinutesAllowed:plan.voiceInteractionMinutesLimit,referenceId:`REF-NV-MALVI-${now}-${crypto.randomBytes(4).toString("hex")}`,transactionId:`tx_malvi_${crypto.randomBytes(8).toString("hex")}`,metadata:{source:"malvi_subscription",catalogVersion:plan.catalogVersion,planSnapshot:plan}});
     return res.json({success:true,result});
   }catch(error:any){return res.status(400).json({success:false,error:error.message||"Malvi subscription change failed"});}
 });
@@ -2680,6 +2691,7 @@ app.get("/api/billing/business", requireAuthenticatedUser, (req, res) => {
 // Protect reads, writes, HEAD requests and future routes in this namespace.
 app.use("/api/admin/billing", requireAuthenticatedUser, requireBillingAdmin);
 app.use("/api/admin/billing/malvi-costs", createMalviCostRouter());
+app.use("/api/admin/billing/malvi-plans", createMalviPlanRouter());
 
 // Admin Financial Overview
 app.get("/api/admin/billing/overview", (_req, res) => {

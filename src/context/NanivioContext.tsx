@@ -1489,15 +1489,23 @@ export const NanivioProvider: React.FC<{ children: React.ReactNode }> = ({ child
     tier: MalviSubscriptionTier,
     cycle: 'MONTHLY' | 'ANNUAL' = 'MONTHLY',
     paymentMethod: 'SERVICE_VALUE' | 'PAYSTACK' = 'SERVICE_VALUE',
-    currency: string = 'GHS'
+    currency: string = 'USD'
   ): Promise<any> => {
-    const res = await billingClient.changeMalviSubscription({ tier, billingCycle: cycle, paymentMethod, currency });
+    const plan = malviPlans.find(item => item.tier === tier);
+    if (!plan) throw new Error('Reload the published Malvi plans before purchasing.');
+    const expectedAmount = cycle === 'ANNUAL'
+      ? (currency === 'USD' ? plan.priceAnnualUSD : plan.priceAnnualGHS)
+      : (currency === 'USD' ? plan.priceMonthlyUSD : plan.priceMonthlyGHS);
+    if (typeof expectedAmount !== 'number' || !Number.isFinite(expectedAmount)) throw new Error('The selected currency quote is unavailable. Reload plans before paying.');
+    const res = await billingClient.changeMalviSubscription({
+      tier, billingCycle: cycle, paymentMethod, currency, catalogVersion: plan.catalogVersion, expectedAmount,
+    });
     await refreshBilling();
     try {
       confetti({ particleCount: 90, spread: 80, origin: { y: 0.5 } });
     } catch (_) {}
     return res;
-  }, [refreshBilling]);
+  }, [refreshBilling, malviPlans]);
 
   // Live Langpretation Production Usage Deduction
   const recordLangpretationUsage = useCallback(async (

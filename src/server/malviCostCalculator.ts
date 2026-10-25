@@ -134,7 +134,7 @@ export function createPublicFxLoader(fetcher: typeof fetch = fetch, clock = Date
   };
 }
 
-const publicFx = createPublicFxLoader();
+export const publicFx = createPublicFxLoader();
 
 export function createMalviCostRouter(
   provider: StoreProvider = getAssistantStore, loadFx: () => Promise<MalviFxQuote> = publicFx,

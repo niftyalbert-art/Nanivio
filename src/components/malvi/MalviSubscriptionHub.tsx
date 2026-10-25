@@ -3,22 +3,13 @@ import {
   X,
   Sparkles,
   Check,
-  Zap,
   CreditCard,
   ShieldCheck,
   Bot,
   Video,
-  Mic,
-  Globe,
-  Building2,
-  Users,
   AlertCircle,
-  Clock,
-  ArrowRight,
   ExternalLink,
-  Wallet,
-  Star,
-  Award,
+  RefreshCw,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { useNanivio } from '../../context/NanivioContext';
@@ -49,7 +40,7 @@ export const MalviSubscriptionHub: React.FC<MalviSubscriptionHubProps> = ({
   } = useNanivio();
 
   const [billingCycle, setBillingCycle] = useState<'MONTHLY' | 'ANNUAL'>('MONTHLY');
-  const [currency, setCurrency] = useState<'GHS' | 'USD'>('GHS');
+  const [currency, setCurrency] = useState<'GHS' | 'USD'>('USD');
   const [selectedTier, setSelectedTier] = useState<MalviSubscriptionTier>(highlightTier || 'malvi_premium');
   const [isProcessing, setIsProcessing] = useState<boolean>(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -58,146 +49,57 @@ export const MalviSubscriptionHub: React.FC<MalviSubscriptionHubProps> = ({
   // Paystack Modal State
   const [isPaystackOpen, setIsPaystackOpen] = useState<boolean>(false);
   const [paystackTier, setPaystackTier] = useState<MalviSubscriptionTier>('malvi_premium');
-  const [paystackAmount, setPaystackAmount] = useState<number>(220);
+  const [paystackAmount, setPaystackAmount] = useState<number>(0);
+  const [isRefreshingPlans, setIsRefreshingPlans] = useState(false);
 
   if (!isOpen) return null;
 
-  const plans: MalviSubscriptionPlan[] =
-    malviPlans.length > 0
-      ? malviPlans
-      : [
-          {
-            id: 'malvi_free',
-            tier: 'free',
-            name: 'Malvi Free Experience',
-            tagline: 'Trial AI voice and video companion',
-            description: 'Experience Malvi conversation with 3 limited trial minutes for interactive video companion',
-            priceMonthlyUSD: 0,
-            priceMonthlyGHS: 0,
-            priceAnnualUSD: 0,
-            priceAnnualGHS: 0,
-            videoInteractionMinutesLimit: 3,
-            voiceCapabilities: 'Basic Voice Inquiries',
-            langpretationCapabilities: 'Standard phrase translations',
-            aiInteractionCapabilities: 'Fundamental Q&A and Nanivio navigation',
-            avatarInteractive: true,
-            businessCollaboration: false,
-            features: [
-              '3-Minute Free Trial for Interactive Video Companion',
-              'Fundamental text inquiries & navigation assistance',
-              'Basic language translation assistance',
-              'Platform guidance for Nanivio services',
-            ],
-            unavailableFeatures: [
-              'Extended video avatar interaction (Locked after 3 mins)',
-              'Continuous natural voice conversation',
-              'Real-time Langpretation assistance during live calls',
-              'Personalized context-aware memory retention',
-              'Malvi Business collaborative online team sessions',
-            ],
-          },
-          {
-            id: 'malvi_basic',
-            tier: 'malvi_basic',
-            name: 'Malvi Basic',
-            tagline: 'Essential AI communication companion',
-            description: 'Fundamental AI communication functionality: Voice-based communication, basic AI conversation, Langpretation assistance, and text interaction',
-            priceMonthlyUSD: 4.99,
-            priceMonthlyGHS: 75.0,
-            priceAnnualUSD: 49.0,
-            priceAnnualGHS: 750.0,
-            videoInteractionMinutesLimit: 30,
-            voiceCapabilities: 'Voice-based communication with Malvi',
-            langpretationCapabilities: 'Basic Langpretation assistance',
-            aiInteractionCapabilities: 'Conversational task and information assistance',
-            avatarInteractive: true,
-            businessCollaboration: false,
-            features: [
-              'Voice-based communication with Malvi',
-              'Basic AI conversation and reasoning',
-              'Basic Langpretation assistance & translation prompts',
-              'Basic text interaction and task assistance',
-              'Natural communication through supported voice interfaces',
-              '30 monthly interactive video companion minutes',
-            ],
-            unavailableFeatures: [
-              'Real-time voice interaction during live phone & video calls',
-              'Full human-like continuous live avatar streaming',
-              'Malvi Business multi-user corporate collaboration rooms',
-              'Executive summary & strategy decision support',
-            ],
-          },
-          {
-            id: 'malvi_premium',
-            tier: 'malvi_premium',
-            name: 'Malvi Premium',
-            tagline: 'Advanced AI companion with interactive human-like avatar',
-            description: 'Substantially expanded interaction capabilities: natural voice conversation, real-time Langpretation assistance, interactive onscreen AI companion/avatar, and personalized intelligence',
-            priceMonthlyUSD: 14.99,
-            priceMonthlyGHS: 220.0,
-            priceAnnualUSD: 149.0,
-            priceAnnualGHS: 2200.0,
-            videoInteractionMinutesLimit: 300,
-            voiceCapabilities: 'Continuous natural voice with emotional intonation',
-            langpretationCapabilities: 'Real-time simultaneous Langpretation assistance',
-            aiInteractionCapabilities: 'Context-aware intelligence & in-call active assistance',
-            avatarInteractive: true,
-            businessCollaboration: false,
-            isPopular: true,
-            features: [
-              'Interactive human-like AI companion / avatar on screen with natural interaction',
-              'Natural, continuous voice conversation with zero awkward pauses',
-              'Real-time Langpretation assistance during supported voice and video calls',
-              'Advanced conversational intelligence with rich, context-aware memory',
-              'Personalized conversations adapting to your dialect & communication preferences',
-              '300 monthly interactive video companion minutes',
-              'Priority neural response routing with sub-second latency',
-              'Advanced productivity & daily concierge assistance',
-            ],
-            unavailableFeatures: [
-              'Multi-user corporate team brainstorming sessions',
-              'Organization-wide pooled seats and corporate trade corridor desks',
-            ],
-          },
-          {
-            id: 'malvi_business',
-            tier: 'malvi_business',
-            name: 'Malvi Business',
-            tagline: 'Collaborative AI environment for companies, teams & professionals',
-            description: 'Dedicated business collaboration environment where real team members participate together and Malvi joins online group sessions as an active AI participant for brainstorming, strategy, and decision support',
-            priceMonthlyUSD: 49.99,
-            priceMonthlyGHS: 750.0,
-            priceAnnualUSD: 490.0,
-            priceAnnualGHS: 7500.0,
-            videoInteractionMinutesLimit: 1500,
-            voiceCapabilities: 'Multi-party voice conference & presentation assistance',
-            langpretationCapabilities: 'Enterprise multilateral multi-dialect corporate Langpretation',
-            aiInteractionCapabilities: 'Team brainstorming, SWOT, meeting summaries & action items',
-            avatarInteractive: true,
-            businessCollaboration: true,
-            features: [
-              'Genuine AI-assisted business collaboration environment with online team sessions',
-              'Malvi joins real team group sessions as an active participant and co-pilot',
-              'Business idea development, planning discussions, and structured brainstorming',
-              'Meeting participation, live idea analysis, clarification, and critical questioning',
-              'Business strategy discussions, proposal drafting, and decision-support records',
-              'Automatic meeting summaries, key takeaways, and assignable action items',
-              'Team Q&A sessions and persistent enterprise knowledge assistance',
-              '1,500 monthly interactive video & conference assistant minutes',
-              'Multi-party simultaneous Langpretation across African and global trade corridors',
-            ],
-          },
-        ];
+  const plans: MalviSubscriptionPlan[] = malviPlans;
 
   const currentTier = malviSubscription?.tier || 'free';
   const commWallet = wallets.find((w) => w.currency === currency);
-  const availableServiceValue = commWallet?.balance || 0;
+  const availableServiceValue = typeof commWallet?.balance === 'number' && Number.isFinite(commWallet.balance) ? commWallet.balance : 0;
+
+  const getPlanPrice = (plan: MalviSubscriptionPlan) => {
+    const amount = billingCycle === 'ANNUAL'
+      ? (currency === 'USD' ? plan.priceAnnualUSD : plan.priceAnnualGHS)
+      : (currency === 'USD' ? plan.priceMonthlyUSD : plan.priceMonthlyGHS);
+    if (typeof amount !== 'number' || !Number.isFinite(amount)) return null;
+    if (plan.tier === 'free' && amount === 0) return 0;
+    if (currency === 'GHS') {
+      const conversion = plan.currencyConversion;
+      if (!conversion || !Number.isFinite(conversion.rate) || conversion.rate <= 0 ||
+          !Number.isFinite(Date.parse(conversion.expiresAt)) || Date.parse(conversion.expiresAt) <= Date.now()) return null;
+    }
+    return amount;
+  };
+
+  const refreshPlans = async () => {
+    setIsRefreshingPlans(true);
+    setErrorMessage(null);
+    try {
+      await refreshBilling();
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : 'Plan catalogue refresh failed. Try again.');
+    } finally {
+      setIsRefreshingPlans(false);
+    }
+  };
 
   const handleSelectPlan = async (plan: MalviSubscriptionPlan) => {
     setSelectedTier(plan.tier);
     setErrorMessage(null);
+    const price = getPlanPrice(plan);
+    if (price === null) {
+      setErrorMessage(`The ${currency} price or current exchange-rate quote is unavailable. Reload the plan catalogue before selecting this plan.`);
+      return;
+    }
 
     if (plan.tier === 'free') {
+      if (price !== 0) {
+        setErrorMessage('The Free plan price is unavailable or invalid. Reload the plan catalogue before selecting it.');
+        return;
+      }
       try {
         setIsProcessing(true);
         await subscribeMalviPlan('free', 'MONTHLY', 'SERVICE_VALUE', currency);
@@ -211,14 +113,10 @@ export const MalviSubscriptionHub: React.FC<MalviSubscriptionHubProps> = ({
       return;
     }
 
-    const price =
-      billingCycle === 'ANNUAL'
-        ? currency === 'USD'
-          ? plan.priceAnnualUSD
-          : plan.priceAnnualGHS
-        : currency === 'USD'
-        ? plan.priceMonthlyUSD
-        : plan.priceMonthlyGHS;
+    if (price <= 0) {
+      setErrorMessage('This paid plan has no valid positive price in the selected currency. Reload the plan catalogue before continuing.');
+      return;
+    }
 
     // Check if user has sufficient Malvi AI Ecosystem credit
     if (availableServiceValue >= price) {
@@ -273,7 +171,7 @@ export const MalviSubscriptionHub: React.FC<MalviSubscriptionHubProps> = ({
                 <Sparkles className="w-6 h-6 text-amber-400" />
               </h2>
               <p className="text-xs sm:text-sm text-slate-400 max-w-3xl">
-                Malvi operates independently from Langpretation and Communication subscriptions. Choose your plan to unlock on-screen interactive companion video, real-time in-call assistance, and Malvi Business team collaboration.
+                Malvi operates independently from Langpretation and Communication subscriptions. Browse the currently published plans and their catalogue descriptions.
               </p>
             </div>
             <button
@@ -305,11 +203,16 @@ export const MalviSubscriptionHub: React.FC<MalviSubscriptionHubProps> = ({
               <div>
                 <span className="text-slate-400">Video Interaction: </span>
                 <span className="font-bold text-emerald-400">
-                  {malviSubscription?.videoMinutesRemaining ?? 3} mins remaining
+                  {malviSubscription?.videoMinutesRemaining ?? 0} mins remaining
                 </span>
                 <span className="text-slate-500">
-                  {' '}(of {malviSubscription?.videoMinutesAllowed ?? 3}m)
+                  {' '}(of {malviSubscription?.videoMinutesAllowed ?? 0}m)
                 </span>
+              </div>
+              <div>
+                <span className="text-slate-400">Voice Interaction: </span>
+                <span className="font-bold text-cyan-300">{malviSubscription?.voiceMinutesRemaining ?? 0} mins remaining</span>
+                <span className="text-slate-500"> {' '}(of {malviSubscription?.voiceMinutesAllowed ?? 0}m)</span>
               </div>
               <div className="hidden sm:block text-slate-600">|</div>
               <div>
@@ -343,10 +246,7 @@ export const MalviSubscriptionHub: React.FC<MalviSubscriptionHubProps> = ({
                     : 'text-slate-400 hover:text-white'
                 }`}
               >
-                <span>Annual Billing</span>
-                <span className="text-[10px] px-1.5 py-0.5 rounded bg-emerald-500/30 text-emerald-200 font-mono font-bold">
-                  20% OFF
-                </span>
+                  <span>Annual Billing</span>
               </button>
             </div>
 
@@ -378,9 +278,12 @@ export const MalviSubscriptionHub: React.FC<MalviSubscriptionHubProps> = ({
 
           {/* Messages */}
           {errorMessage && (
-            <div className="p-3 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-300 text-xs flex items-center gap-2">
-              <AlertCircle className="w-4 h-4 shrink-0" />
-              <span>{errorMessage}</span>
+            <div className="p-3 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-300 text-xs flex flex-wrap items-center gap-2" role="alert">
+              <AlertCircle className="w-4 h-4 shrink-0" aria-hidden="true" />
+              <span className="min-w-0 flex-1">{errorMessage}</span>
+              <button type="button" disabled={isRefreshingPlans} onClick={() => void refreshPlans()} className="min-h-9 rounded-lg border border-amber-400/40 px-3 font-bold text-amber-100 hover:bg-amber-400/10 disabled:opacity-50">
+                {isRefreshingPlans ? 'Refreshing…' : 'Reload catalogue'}
+              </button>
             </div>
           )}
 
@@ -391,25 +294,42 @@ export const MalviSubscriptionHub: React.FC<MalviSubscriptionHubProps> = ({
             </div>
           )}
 
-          {/* 4-Tier Plan Grid */}
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+          {currency === 'GHS' && (
+            <div className="rounded-xl border border-slate-800 bg-slate-950/60 p-3 text-xs leading-5 text-slate-300" role="status">
+              <p className="font-semibold text-slate-100">GHS prices are derived from USD using the current server exchange-rate quote.</p>
+              <p className="mt-1">Each plan card shows its quote source and as-of date. If a quote has expired, reload the catalogue before selecting or paying.</p>
+            </div>
+          )}
+
+          {plans.length === 0 ? (
+            <div className="rounded-2xl border border-amber-500/30 bg-amber-950/20 p-5" role="status">
+              <p className="font-bold text-amber-100">Malvi plans are unavailable</p>
+              <p className="mt-1 text-sm leading-5 text-amber-100/75">No published plan catalogue is available right now. Refresh to try loading the live catalogue; no sample prices or plans are shown.</p>
+              <button type="button" disabled={isRefreshingPlans} onClick={() => void refreshPlans()} className="mt-4 inline-flex min-h-10 items-center gap-2 rounded-xl border border-amber-500/40 bg-slate-950/60 px-4 text-sm font-bold text-amber-100 hover:bg-slate-900 disabled:opacity-50">
+                <RefreshCw className={`h-4 w-4 ${isRefreshingPlans ? 'animate-spin' : ''}`} aria-hidden="true" /> {isRefreshingPlans ? 'Refreshing catalogue…' : 'Refresh plans'}
+              </button>
+            </div>
+          ) : <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
             {plans.map((plan) => {
               const isCurrent = currentTier === plan.tier;
-              const priceDisplay =
-                plan.tier === 'free'
-                  ? 'Free Trial'
-                  : billingCycle === 'ANNUAL'
-                  ? currency === 'USD'
-                    ? `$${plan.priceAnnualUSD}/yr`
-                    : `GH₵ ${plan.priceAnnualGHS}/yr`
-                  : currency === 'USD'
-                  ? `$${plan.priceMonthlyUSD}/mo`
-                  : `GH₵ ${plan.priceMonthlyGHS}/mo`;
+              const price = getPlanPrice(plan);
+              const isFree = plan.tier === 'free';
+              const canSelect = price !== null && (isFree ? price === 0 : price > 0);
+              const priceDisplay = price === null || (!isFree && price <= 0)
+                ? 'Price unavailable'
+                : isFree
+                ? 'Free'
+                : currency === 'USD'
+                ? `$${price.toFixed(2)} / ${billingCycle === 'ANNUAL' ? 'year' : 'month'}`
+                : `GH₵ ${price.toFixed(2)} / ${billingCycle === 'ANNUAL' ? 'year' : 'month'}`;
+              const conversion = plan.currencyConversion;
+              const conversionFresh = Boolean(conversion && Number.isFinite(conversion.rate) && conversion.rate > 0 &&
+                Number.isFinite(Date.parse(conversion.expiresAt)) && Date.parse(conversion.expiresAt) > Date.now());
 
               return (
                 <div
                   key={plan.tier}
-                  className={`p-5 rounded-2xl border flex flex-col justify-between space-y-4 transition-all relative ${
+                  className={`min-w-0 p-5 rounded-2xl border flex flex-col justify-between space-y-4 transition-all relative ${
                     plan.isPopular
                       ? 'bg-gradient-to-b from-cyan-950/40 to-slate-950 border-cyan-500/80 shadow-xl shadow-cyan-500/20 ring-1 ring-cyan-500/50'
                       : isCurrent
@@ -425,8 +345,8 @@ export const MalviSubscriptionHub: React.FC<MalviSubscriptionHubProps> = ({
 
                   <div className="space-y-3">
                     <div className="space-y-1">
-                      <div className="flex items-center justify-between">
-                        <span className="text-xs font-bold uppercase font-mono text-cyan-400">
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="min-w-0 break-words [overflow-wrap:anywhere] text-xs font-bold uppercase font-mono text-cyan-400">
                           {plan.name}
                         </span>
                         {isCurrent && (
@@ -435,10 +355,20 @@ export const MalviSubscriptionHub: React.FC<MalviSubscriptionHubProps> = ({
                           </span>
                         )}
                       </div>
-                      <div className="text-2xl font-black text-white font-mono">
+                      <div className="break-words text-2xl font-black text-white font-mono">
                         {priceDisplay}
                       </div>
-                      <p className="text-xs text-slate-400 leading-relaxed min-h-[36px]">
+                      {currency === 'GHS' && conversion && (
+                        <div className="space-y-0.5 text-[10px] leading-4 text-slate-500">
+                          <p>FX source: {conversion.source}</p>
+                          <p>As of: {conversion.asOf}{!conversionFresh ? ' · expired; reload before checkout' : ''}</p>
+                          {conversion.attributionUrl && <a href={conversion.attributionUrl} target="_blank" rel="noreferrer" className="inline-flex min-h-8 items-center gap-1 text-cyan-300 underline underline-offset-2 focus:outline-none focus:ring-2 focus:ring-cyan-400">
+                            Exchange-rate attribution <ExternalLink className="h-3 w-3" aria-hidden="true" />
+                          </a>}
+                        </div>
+                      )}
+                      {currency === 'GHS' && !conversion && <p className="text-[10px] leading-4 text-amber-200">Exchange-rate source details are unavailable. Reload before using GHS.</p>}
+                      <p className="break-words text-xs text-slate-400 leading-relaxed min-h-[36px]">
                         {plan.description}
                       </p>
                     </div>
@@ -447,11 +377,16 @@ export const MalviSubscriptionHub: React.FC<MalviSubscriptionHubProps> = ({
                     <div className="p-2.5 rounded-xl bg-slate-900 border border-slate-800 space-y-1">
                       <div className="flex items-center gap-1.5 text-xs text-white font-bold">
                         <Video className="w-3.5 h-3.5 text-emerald-400" />
-                        <span>{plan.videoInteractionMinutesLimit} Video Avatar Mins</span>
+                        <span>{plan.videoInteractionMinutesLimit} video interaction mins</span>
+                      </div>
+                      <div className="text-[10px] text-slate-400 font-mono">
+                        {plan.voiceInteractionMinutesLimit ?? 0} Voice Interaction Mins
                       </div>
                       <div className="text-[10px] text-slate-400 font-mono">
                         {plan.voiceCapabilities}
                       </div>
+                      <div className="text-[10px] text-slate-400">{plan.langpretationCapabilities}</div>
+                      <div className="text-[10px] text-slate-400">{plan.aiInteractionCapabilities}</div>
                     </div>
 
                     {/* Included Features */}
@@ -459,7 +394,7 @@ export const MalviSubscriptionHub: React.FC<MalviSubscriptionHubProps> = ({
                       <div className="text-[11px] font-bold uppercase text-slate-400 font-mono">
                         Included Capabilities
                       </div>
-                      {plan.features.map((feat, idx) => (
+                      {(plan.features ?? []).map((feat, idx) => (
                         <div key={idx} className="flex items-start gap-2 text-slate-300">
                           <Check className="w-3.5 h-3.5 text-emerald-400 shrink-0 mt-0.5 stroke-[3]" />
                           <span className="leading-tight text-[11px]">{feat}</span>
@@ -491,27 +426,23 @@ export const MalviSubscriptionHub: React.FC<MalviSubscriptionHubProps> = ({
                       </div>
                     ) : plan.tier === 'free' ? (
                       <button
-                        disabled={isProcessing}
+                        disabled={isProcessing || !canSelect}
                         onClick={() => handleSelectPlan(plan)}
                         className="w-full py-2.5 rounded-xl font-bold text-xs bg-slate-800 hover:bg-slate-700 text-white border border-slate-700 transition cursor-pointer"
                       >
-                        Select Free Trial
+                        Select Free plan
                       </button>
                     ) : (
                       <>
                         <button
-                          disabled={isProcessing}
+                        disabled={isProcessing || !canSelect}
                           onClick={() => {
+                          if (price === null || price <= 0) {
+                            setErrorMessage(`The ${currency} price or current exchange-rate quote is unavailable. Reload the plan catalogue before checkout.`);
+                            return;
+                          }
                             setPaystackTier(plan.tier);
-                            setPaystackAmount(
-                              billingCycle === 'ANNUAL'
-                                ? currency === 'USD'
-                                  ? plan.priceAnnualUSD
-                                  : plan.priceAnnualGHS
-                                : currency === 'USD'
-                                ? plan.priceMonthlyUSD
-                                : plan.priceMonthlyGHS
-                            );
+                          setPaystackAmount(price);
                             setIsPaystackOpen(true);
                           }}
                           className={`w-full py-2.5 rounded-xl font-bold text-xs transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
@@ -525,7 +456,7 @@ export const MalviSubscriptionHub: React.FC<MalviSubscriptionHubProps> = ({
                         </button>
                         <div className="flex items-center gap-1.5">
                           <button
-                            disabled={isProcessing}
+                            disabled={isProcessing || !canSelect}
                             onClick={() => handleSelectPlan(plan)}
                             className="flex-1 py-1.5 rounded-xl font-medium text-[11px] bg-slate-800 hover:bg-slate-700 text-slate-300 transition cursor-pointer"
                             title="Pay using Nanivio credit balance for Malvi AI Ecosystem credit"
@@ -551,7 +482,7 @@ export const MalviSubscriptionHub: React.FC<MalviSubscriptionHubProps> = ({
                 </div>
               );
             })}
-          </div>
+          </div>}
 
           {/* Footer Guarantee */}
           <div className="flex flex-wrap items-center justify-between gap-3 text-xs text-slate-400 pt-3 border-t border-slate-800/80">
@@ -574,6 +505,7 @@ export const MalviSubscriptionHub: React.FC<MalviSubscriptionHubProps> = ({
           initialAmount={paystackAmount}
           purpose="MALVI_SUBSCRIPTION"
           planTier={paystackTier}
+          catalogVersion={plans.find(plan => plan.tier === paystackTier)?.catalogVersion}
           billingCycle={billingCycle}
         />
       )}

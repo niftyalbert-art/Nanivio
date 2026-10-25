@@ -19,6 +19,7 @@ type BillingRequest = Request & {
 const financeRoles: AdminBillingRole[] = ['SUPER_ADMIN', 'FINANCE_ADMIN'];
 const mutationRoles: Record<string, AdminBillingRole[]> = {
   '/malvi-costs/save': financeRoles,
+  '/malvi-plans/save': financeRoles,
   '/pricing/update-rule': financeRoles,
   '/emergency/update': financeRoles,
   '/refunds/process': financeRoles,

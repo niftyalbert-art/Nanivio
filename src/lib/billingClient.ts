@@ -614,6 +614,8 @@ export const billingClient = {
     billingCycle?: 'MONTHLY' | 'ANNUAL';
     paymentMethod?: 'SERVICE_VALUE' | 'PAYSTACK';
     currency?: string;
+    catalogVersion?: number;
+    expectedAmount?: number;
   }): Promise<{
     success: boolean;
     subscription: UserMalviSubscriptionState;
@@ -623,7 +625,10 @@ export const billingClient = {
     const res = await fetch('/api/billing/malvi-subscription/change', {
       method: 'POST',
       headers: billingHeaders(),
-      body: JSON.stringify(params),
+      body: JSON.stringify({
+        ...params,
+        paymentMethod: params.paymentMethod === 'SERVICE_VALUE' ? 'NANIVIO_CREDIT' : params.paymentMethod,
+      }),
     });
     const data = await res.json();
     if (!res.ok || !data.success) {

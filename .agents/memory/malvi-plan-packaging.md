@@ -42,3 +42,12 @@ USD defaults, automatic GHS conversion and administrator editing.
 
 **How to apply:** Use USD as the authoritative price rather than independently
 maintained GHS catalogue prices. Preserve existing purchased benefits.
+
+An admin cost calculator alone does not meet the requirement to edit billing
+plans: administrators need control of the actual catalogue sold to customers.
+
+**Why:** The user repeated that the billing plans themselves were missing after
+the calculator was delivered.
+
+**How to apply:** Keep estimates separate from selling prices and connect approved
+published plan changes to customer listings and authoritative purchase quotes.
