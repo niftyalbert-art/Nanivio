@@ -1,5 +1,5 @@
-import React, { useCallback, useEffect, useState } from 'react';
-import { AlertCircle, Check, ChevronDown, ChevronUp, Clock3, ExternalLink, Globe2, LoaderCircle, Search, Send, ShieldCheck, Trash2 } from 'lucide-react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { AlertCircle, Check, ChevronDown, ChevronUp, Clock3, Copy, ExternalLink, Globe2, LoaderCircle, Search, Send, ShieldCheck, Trash2 } from 'lucide-react';
 import { authClient } from '../../lib/authClient';
 
 type MemoryMessage = {
@@ -100,6 +100,8 @@ export const MalviContinuityControls: React.FC = () => {
   const [research, setResearch] = useState<ResearchResponse | null>(null);
   const [researchLoading, setResearchLoading] = useState(false);
   const [researchError, setResearchError] = useState('');
+  const [researchCopyStatus, setResearchCopyStatus] = useState('');
+  const researchAnswerRef = useRef<HTMLTextAreaElement>(null);
 
   const load = useCallback(async (q = '') => {
     setLoading(true);
@@ -180,6 +182,7 @@ export const MalviContinuityControls: React.FC = () => {
     }
     setResearchLoading(true);
     setResearchError('');
+    setResearchCopyStatus('');
     setResearch(null);
     try {
       const result = await researchRequest(normalized, researchScope);
@@ -193,6 +196,18 @@ export const MalviContinuityControls: React.FC = () => {
 
   const researchResults = Array.isArray(research?.results) ? research.results : [];
   const researchCitations = Array.isArray(research?.citations) ? research.citations : [];
+  const copyResearchAnswer = async () => {
+    if (!research?.answer) return;
+    try {
+      if (!navigator.clipboard?.writeText) throw new Error('Clipboard unavailable');
+      await navigator.clipboard.writeText(research.answer);
+      setResearchCopyStatus('Research answer copied.');
+    } catch {
+      researchAnswerRef.current?.focus();
+      researchAnswerRef.current?.select();
+      setResearchCopyStatus(researchAnswerRef.current ? 'Research answer selected. Use your device’s Copy command.' : 'Copy is unavailable.');
+    }
+  };
 
   return (
     <section aria-label="Malvi continuity and public research" className="rounded-2xl border border-[#826a3d]/45 bg-[#171918] text-[#f0eee7] shadow-lg">
@@ -373,10 +388,19 @@ export const MalviContinuityControls: React.FC = () => {
             <div>
               <p className="text-[10px] font-semibold uppercase tracking-[.14em] text-[#d4bd7d]">Search-informed response</p>
               <p className="mt-1 text-[10px] leading-relaxed text-[#aaa9a2]">Source snippets and citation mappings are context for this answer; they do not independently prove every claim.</p>
-              <p className="mt-1 text-[10px] text-[#aaa9a2]">Search provider verification status: {research.verified ? 'reported verified' : 'not verified'}.</p>
+              <p className="mt-1 text-[10px] text-[#aaa9a2]">Citations returned: {researchCitations.length}.</p>
               {research.checkedAt && <p className="mt-1 text-[10px] text-[#85857f]">Checked {new Date(research.checkedAt).toLocaleString()}</p>}
             </div>
-            <p className="whitespace-pre-wrap break-words text-xs leading-relaxed text-[#e4e1d8]">{research.answer}</p>
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <p className="text-[10px] font-semibold uppercase tracking-[.12em] text-[#d4bd7d]">Search-informed response</p>
+              <button type="button" onClick={() => void copyResearchAnswer()} className="inline-flex min-h-8 items-center gap-1.5 rounded-lg border border-[#b89a5a]/35 px-2.5 text-[10px] font-semibold text-[#e4d3a8] hover:bg-[#b89a5a]/10">
+                {researchCopyStatus.startsWith('Research answer copied') ? <Check size={12} /> : <Copy size={12} />}
+                {researchCopyStatus.startsWith('Research answer copied') ? 'Copied' : 'Copy answer'}
+              </button>
+            </div>
+            <textarea ref={researchAnswerRef} readOnly aria-label="Selectable public research answer" value={research.answer} rows={5}
+              className="w-full resize-y rounded-lg border border-[#514e43] bg-[#0c100e] p-2.5 text-xs leading-relaxed text-[#e4e1d8] focus:border-[#b89a5a] focus:outline-none" />
+            {researchCopyStatus && <p role="status" className="text-[10px] text-[#d5bf80]">{researchCopyStatus}</p>}
             <p className="rounded-lg border border-[#b89a5a]/20 bg-[#b89a5a]/[.06] px-2.5 py-2 text-[10px] leading-relaxed text-[#d1c8ae]">
               {research.limitation || 'Public sources only. This search cannot access private social profiles, private messages, or closed groups.'}
             </p>

@@ -5,10 +5,11 @@ export function validateVisionInput(body: unknown) {
   if (input?.consent !== true) throw new AssistantError(400, 'VISION_CONSENT_REQUIRED', 'Tap Share this view to allow Malvi to see this image.');
   if (typeof input.image !== 'string' || input.image.length > 700000) throw new AssistantError(413, 'VISION_IMAGE_LIMIT', 'Share a JPEG or PNG image smaller than 512 KB.');
   const raw = input.image.replace(/^data:image\/(?:jpeg|png);base64,/, '');
-  if (!/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(raw)) {
+  if (!raw.length || raw.length % 4 !== 0 || /[^A-Za-z0-9+/=]/.test(raw)) {
     throw new AssistantError(400, 'INVALID_IMAGE', 'Share a valid JPEG or PNG image.');
   }
   const bytes = Buffer.from(raw, 'base64');
+  if (bytes.toString('base64') !== raw) throw new AssistantError(400, 'INVALID_IMAGE', 'Share a valid JPEG or PNG image.');
   const jpeg = bytes.length > 4 && bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff;
   const png = bytes.subarray(0,8).equals(Buffer.from([137,80,78,71,13,10,26,10]));
   if ((!jpeg && !png) || bytes.length > 524288) throw new AssistantError(400, 'INVALID_IMAGE', 'Share a JPEG or PNG image smaller than 512 KB.');

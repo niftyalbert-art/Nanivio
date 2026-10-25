@@ -10,6 +10,8 @@ import { getManagedMalviVoice, saveManagedMalviVoice } from './managedVoice.ts';
 import { memoryQuery, readConversationMemory, setConversationMemory } from './conversationMemory.ts';
 import { validateVisionInput } from './visionInput.ts';
 import { claimResearch, researchPublicWeb } from './webResearch.ts';
+import { analyzeAccountInput } from './multimodalInput.ts';
+import { researchPublicMedia } from './mediaResearch.ts';
 
 type Auth = (req: Request, res: Response, next: NextFunction) => unknown;
 export function registerAssistantRoutes(app: Express, auth: Auth, enabled: () => boolean, startSweeper = true,
@@ -68,6 +70,16 @@ export function registerAssistantRoutes(app: Express, auth: Auth, enabled: () =>
     if (!enabled()) throw new AssistantError(403, 'MALVI_DISABLED', 'Malvi is currently disabled.');
     claimResearch(userId(req));
     res.json({ success: true, ...await researchPublicWeb(req.body) });
+  }));
+  app.post('/api/assistant/input', auth, run(async (req, res) => {
+    if (!enabled()) throw new AssistantError(403, 'MALVI_DISABLED', 'Malvi is currently disabled.');
+    claimResearch(userId(req));
+    res.json(await analyzeAccountInput(userId(req), req.body));
+  }));
+  app.post('/api/assistant/media/research', auth, run(async (req, res) => {
+    if (!enabled()) throw new AssistantError(403, 'MALVI_DISABLED', 'Malvi is currently disabled.');
+    claimResearch(userId(req));
+    res.json(await researchPublicMedia(req.body));
   }));
   app.get('/api/assistant/status', auth, run(async (_req, res) => {
     const provider = await voicePolicy.get();

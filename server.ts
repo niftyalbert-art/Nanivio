@@ -9,6 +9,8 @@ import { MALVI_IDENTITY, MALVI_IDENTITY_PROMPT, MALVI_SHARED_BEHAVIOR_POLICY } f
 import { appendConversationMemory, conversationMemoryContext, readConversationMemory, MEMORY_TOOL } from "./src/server/assistant/conversationMemory.ts";
 import { createConversationTools } from "./src/server/assistant/conversationTools.ts";
 import { WEB_TOOL } from "./src/server/assistant/webResearch.ts";
+import { MEDIA_TOOL } from "./src/server/assistant/mediaResearch.ts";
+import { MAPS_TOOL } from "./src/server/assistant/mapTools.ts";
 import {
   setupRealtimeServer,
   getActiveConnectedUsersList,
@@ -3480,7 +3482,7 @@ RESPONSE SCHEMA (Return strictly JSON):
             properties: { featureKey: { type: Type.STRING }, featureValue: { type: Type.BOOLEAN }, pricingKey: { type: Type.STRING }, pricingValue: { type: Type.NUMBER } },
           },
         },
-        ...[MEMORY_TOOL, WEB_TOOL].map(tool => ({
+        ...[MEMORY_TOOL, WEB_TOOL, MEDIA_TOOL, MAPS_TOOL].map(tool => ({
           name: tool.name, description: tool.description, parametersJsonSchema: tool.parametersJsonSchema,
         })),
       ];
@@ -3499,12 +3501,14 @@ RESPONSE SCHEMA (Return strictly JSON):
         new Promise<never>((_, reject) => setTimeout(() => reject(new Error("Malvi AI timeout after 8000ms")), 8000)),
       ]);
       let research: Record<string, any> | undefined;
+      let assets: Record<string, unknown> | null = null;
       const conversationTools = createConversationTools(authenticatedUserId(req), payload => {
-        if (payload.results) research = payload;
+        if (payload.results && !payload.assets) research = payload;
+        if (payload.assets) assets = { ...(assets || {}), ...(payload.assets as Record<string, unknown>) };
       }, () => res.destroyed);
-      // Execute only the two read-only conversation tools here. Existing
+      // Execute only read-only conversation/research/navigation-link tools. Existing
       // navigation/payment/admin functions remain proposals, not operations.
-      const readCalls = (response?.functionCalls || []).filter((call: any) => [MEMORY_TOOL.name, WEB_TOOL.name].includes(call.name)).slice(0,2);
+      const readCalls = (response?.functionCalls || []).filter((call: any) => [MEMORY_TOOL.name, WEB_TOOL.name, MEDIA_TOOL.name, MAPS_TOOL.name].includes(call.name)).slice(0,2);
       if (readCalls.length) {
         const toolResponses = [];
         for (const call of readCalls) toolResponses.push({ functionResponse: {
@@ -3574,6 +3578,7 @@ RESPONSE SCHEMA (Return strictly JSON):
         success: true,
         memoryWarning,
         research: research || null,
+        assets,
         reply: parsed.reply,
         emotion: parsed.emotion || "warm",
         detectedIntent: parsed.detectedIntent || "general_chat",
