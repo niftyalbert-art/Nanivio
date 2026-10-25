@@ -2,6 +2,8 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { AlertCircle, AudioLines, Camera, ImagePlus, LoaderCircle, Mic, MicOff, Square, Upload, X } from 'lucide-react';
 import { MALVI_PROFILE } from '../../lib/malviIdentity';
+import type { MalviAssetResult } from '../../shared/malviInputTypes';
+import { MalviAssetResults } from './MalviAssetResults';
 import type { MalviReferenceCitation } from '../../lib/malviLiveClient';
 import { authClient } from '../../lib/authClient';
 
@@ -33,6 +35,7 @@ export interface MalviLiveOverlayProps {
   activeSessionId?: string | null;
   searchSuggestions?: string;
   memoryNotice?: string;
+  assets?: MalviAssetResult | null;
   speechProvider?: 'gemini' | 'elevenlabs';
 }
 
@@ -74,6 +77,7 @@ export const MalviLiveOverlay: React.FC<MalviLiveOverlayProps> = ({
   activeSessionId = null,
   searchSuggestions,
   memoryNotice,
+  assets,
   speechProvider = 'gemini',
 }) => {
   const dialogRef = useRef<HTMLDivElement>(null);
@@ -528,6 +532,12 @@ export const MalviLiveOverlay: React.FC<MalviLiveOverlayProps> = ({
                 </p>
               )}
             </div>
+          )}
+          {assets && phase === 'connected' && (
+            <details className="rounded-xl border border-white/15 bg-[#101916]/95 px-3 py-2 text-white">
+              <summary className="cursor-pointer text-xs font-semibold">Media &amp; Google Maps results</summary>
+              <div className="max-h-64 overflow-y-auto"><MalviAssetResults {...assets} /></div>
+            </details>
           )}
           {memoryNotice && phase === 'connected' && (
             <p role="status" className="max-h-16 w-full max-w-lg overflow-y-auto rounded-lg border border-[#b89a5a]/25 bg-[#10201f]/75 px-3 py-2 text-center text-[10px] leading-relaxed text-[#e4d3a8] backdrop-blur-md">

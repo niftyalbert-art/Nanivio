@@ -89,7 +89,7 @@ try {
   await page.evaluate(`document.querySelector('textarea').focus();true`);
   await page.command('Input.insertText',{text:'NASA public missions'});
   await page.evaluate(`document.querySelector('textarea').closest('form').requestSubmit();true`);
-  await page.wait(`document.body.innerText.includes('A public research answer.')`);
+  await page.wait(`[...document.querySelectorAll('textarea')].some(t=>t.value==='A public research answer.')`);
   assert.equal(await page.evaluate(`!!window.injected`),false);
   assert.equal(await page.evaluate(`document.querySelector('iframe').sandbox.contains('allow-scripts')`),false);
   assert.equal(await page.evaluate(`document.querySelector('iframe').sandbox.contains('allow-same-origin')`),false);

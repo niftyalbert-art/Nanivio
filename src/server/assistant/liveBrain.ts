@@ -17,6 +17,8 @@ import { MALVI_GEMINI_VOICE, malviGeminiVoiceDirection } from './geminiVoiceStyl
 import { appendConversationMemory, conversationMemoryContext, readConversationMemory, MEMORY_TOOL, type MemoryState } from './conversationMemory.ts';
 import { createConversationTools } from './conversationTools.ts';
 import { WEB_TOOL } from './webResearch.ts';
+import { MEDIA_TOOL } from './mediaResearch.ts';
+import { MAPS_TOOL } from './mapTools.ts';
 import { VISION_INSTRUCTION } from './visionInput.ts';
 import { AssistantError } from './redisStore.ts';
 
@@ -235,7 +237,7 @@ async function connectGemini(
       },
       tools: [{ functionDeclarations: [{
         name: REFERENCE_TOOL_NAME, description: REFERENCE_TOOL_DESCRIPTION, parametersJsonSchema: REFERENCE_TOOL_PARAMETERS,
-      }, MEMORY_TOOL, WEB_TOOL] }],
+      }, MEMORY_TOOL, WEB_TOOL, MEDIA_TOOL, MAPS_TOOL] }],
     },
     callbacks: {
       onmessage(message) {
@@ -390,7 +392,7 @@ async function connectOpenAI(
             ...(process.env.MALVI_OPENAI_REASONING_MODEL ? { model: process.env.MALVI_OPENAI_REASONING_MODEL } : {}),
             instructions: buildMalviLiveInstructions(connection.language, connection.provider) + conversationMemoryContext(connection.memory),
             tools: [{ type: 'function', name: REFERENCE_TOOL_NAME, description: REFERENCE_TOOL_DESCRIPTION, parameters: REFERENCE_TOOL_PARAMETERS, strict: true },
-              ...[MEMORY_TOOL, WEB_TOOL].map(tool => ({ type: 'function', name: tool.name, description: tool.description, parameters: tool.parametersJsonSchema, strict: true }))],
+              ...[MEMORY_TOOL, WEB_TOOL, MEDIA_TOOL, MAPS_TOOL].map(tool => ({ type: 'function', name: tool.name, description: tool.description, parameters: tool.parametersJsonSchema, strict: true }))],
             tool_choice: 'auto', parallel_tool_calls: false,
           },
         },

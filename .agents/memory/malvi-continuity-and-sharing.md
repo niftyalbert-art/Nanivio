@@ -34,3 +34,14 @@ not an assurance of infallibility or private social-account access.
 social claims from corroboration, and keep private conversation/account data
 out of public search queries. Provider configuration alone is not a successful
 live research test.
+
+Driving navigation is handed off to Google Maps after explicit user action;
+Malvi should not provide invented live routes or turn-by-turn guidance.
+
+**Why:** The user selected “Open Google Maps for navigation (recommended)”
+when choosing how Malvi should provide route assistance.
+
+**How to apply:** Use an explicit destination and user-supplied origin or
+permissioned GPS. Label IP geolocation as approximate, never use it for a
+driving origin, and do not obtain location automatically. The user also wants
+separate copyable text answers and visual media with source links.

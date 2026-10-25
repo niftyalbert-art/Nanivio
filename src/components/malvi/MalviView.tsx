@@ -39,6 +39,8 @@ import { MalviMemoryInspectorModal } from './MalviMemoryInspectorModal';
 import { MalviSubscriptionHub } from './MalviSubscriptionHub';
 import { MalviBusinessCollaborationRoom } from './MalviBusinessCollaborationRoom';
 import { MalviContinuityControls } from './MalviContinuityControls';
+import { MalviInputWorkspace } from './MalviInputWorkspace';
+import { MalviAssetResults, type MalviAssetPayload } from './MalviAssetResults';
 import { useNanivio } from '../../context/NanivioContext';
 import { MalviChatMessage, MalviAvatarState, MalviActionCommand, SUPPORTED_LANGUAGES, MalviContextMemory } from '../../types';
 import { LangpretationIcon } from '../common/LangpretationIcon';
@@ -46,6 +48,7 @@ import { billingClient } from '../../lib/billingClient';
 import { authClient } from '../../lib/authClient';
 import { clearMalviHistory, loadMalviHistory, malviHistoryKey, saveMalviHistory } from '../../lib/malviHistory';
 import { MALVI_INTRODUCTION } from '../../shared/malviIdentity';
+import type { MalviMediaItem } from '../../shared/malviInputTypes';
 
 type MalviResearchMetadata = {
   citations?: { text?: string; urls?: string[] }[];
@@ -289,6 +292,7 @@ const MalviAccountWorkspace: React.FC<{ ownerId: string | null }> = ({ ownerId }
   const [copiedMsgId, setCopiedMsgId] = useState<string | null>(null);
   const [memoryWarnings, setMemoryWarnings] = useState<Record<string, string>>({});
   const [messageResearch, setMessageResearch] = useState<Record<string, MalviResearchMetadata>>({});
+  const [messageAssets, setMessageAssets] = useState<Record<string, MalviAssetPayload>>({});
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const recognitionRef = useRef<any>(null);
@@ -641,6 +645,17 @@ const MalviAccountWorkspace: React.FC<{ ownerId: string | null }> = ({ ownerId }
         ) {
           setMessageResearch(previous => ({ ...previous, [malviReply.id]: researchPayload }));
         }
+        if (data.assets && typeof data.assets === 'object') {
+          const rawAssets = data.assets as MalviAssetPayload;
+          const assets: MalviAssetPayload = {
+            ...(Array.isArray(rawAssets.media) ? { media: rawAssets.media as MalviMediaItem[] } : {}),
+            ...(rawAssets.map && typeof rawAssets.map === 'object' ? { map: rawAssets.map } : {}),
+            ...(typeof rawAssets.limitation === 'string' ? { limitation: rawAssets.limitation } : {}),
+          };
+          if (assets.media?.length || assets.map || assets.limitation) {
+            setMessageAssets(previous => ({ ...previous, [malviReply.id]: assets }));
+          }
+        }
 
         setMessages((prev) => [...prev, malviReply]);
         setAvatarState('idle');
@@ -790,10 +805,24 @@ const MalviAccountWorkspace: React.FC<{ ownerId: string | null }> = ({ ownerId }
     setAvatarState('idle');
   };
 
-  const handleCopyMessageText = (id: string, text: string) => {
-    navigator.clipboard.writeText(text);
+  const handleCopyMessageText = async (id: string, text: string) => {
+    try {
+      if (!navigator.clipboard?.writeText) throw new Error('Clipboard unavailable');
+      await navigator.clipboard.writeText(text);
+    } catch {
+      const fallback = document.createElement('textarea');
+      fallback.value = text;
+      fallback.setAttribute('readonly', '');
+      fallback.style.position = 'fixed';
+      fallback.style.opacity = '0';
+      document.body.appendChild(fallback);
+      fallback.select();
+      const copied = document.execCommand('copy');
+      fallback.remove();
+      if (!copied) return;
+    }
     setCopiedMsgId(id);
-    setTimeout(() => setCopiedMsgId(null), 2000);
+    window.setTimeout(() => setCopiedMsgId(current => current === id ? null : current), 2000);
   };
 
   return (
@@ -1055,6 +1084,7 @@ const MalviAccountWorkspace: React.FC<{ ownerId: string | null }> = ({ ownerId }
 
         {/* Right: Conversation Stream, Interactive Proposal Actions & Input Composer */}
         <div className={`space-y-4 ${immersiveMode ? 'w-full' : 'lg:col-span-7 xl:col-span-7'}`}>
+          <MalviInputWorkspace language={myLanguage} />
           {/* Main Conversation Stream */}
           <div className="bg-[#090f1d] border border-slate-800/90 rounded-3xl p-4 sm:p-6 min-h-[440px] max-h-[580px] overflow-y-auto space-y-4 shadow-inner">
             {messages.map((msg) => (
@@ -1108,6 +1138,7 @@ const MalviAccountWorkspace: React.FC<{ ownerId: string | null }> = ({ ownerId }
                     </p>
                   )}
                   {messageResearch[msg.id] && <MalviResearchMetadataView metadata={messageResearch[msg.id]} />}
+                  {messageAssets[msg.id] && <MalviAssetResults {...messageAssets[msg.id]} />}
 
                   {/* Contextual Action Card Attachment */}
                   {msg.actionCommand && (
@@ -1272,7 +1303,8 @@ const MalviAccountWorkspace: React.FC<{ ownerId: string | null }> = ({ ownerId }
                       <button
                         onClick={() => handleCopyMessageText(msg.id, msg.text)}
                         className="p-1 rounded hover:bg-slate-800 text-slate-400 hover:text-white transition-colors"
-                        title="Copy message"
+                        title={copiedMsgId === msg.id ? 'Message copied' : 'Copy message'}
+                        aria-label={copiedMsgId === msg.id ? 'Message copied' : 'Copy message'}
                       >
                         {copiedMsgId === msg.id ? (
                           <Check className="w-3 h-3 text-emerald-400" />
@@ -1280,6 +1312,7 @@ const MalviAccountWorkspace: React.FC<{ ownerId: string | null }> = ({ ownerId }
                           <Copy className="w-3 h-3" />
                         )}
                       </button>
+                      {copiedMsgId === msg.id && <span role="status" className="sr-only">Message copied to clipboard.</span>}
                       <span className="text-[9px] text-slate-500 font-mono">
                         {new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                       </span>
