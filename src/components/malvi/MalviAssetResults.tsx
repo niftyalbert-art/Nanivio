@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { malviPublicCopy } from '../../lib/malviPublicCopy';
 import { ExternalLink, Image as ImageIcon, MapPinned, Video } from 'lucide-react';
 import type { MalviMediaItem } from '../../shared/malviInputTypes';
 
@@ -73,18 +74,18 @@ export const MalviAssetResults: React.FC<Props> = ({ media = [], map, limitation
         {validMedia.some(item => item.kind === 'video') ? <Video size={13} /> : <ImageIcon size={13} />}
         Related media and travel
       </div>
-      {limitation && <p className="text-[10px] leading-relaxed text-[#bdb9ac]">{limitation}</p>}
+      {limitation && <p className="text-[10px] leading-relaxed text-[#bdb9ac]">{malviPublicCopy(limitation)}</p>}
       {validMedia.length > 0 && <ul className="grid gap-3 sm:grid-cols-2">{validMedia.map((item, index) => <MediaPreview key={`${item.url}-${index}`} item={item} />)}</ul>}
       {mapUrl && map && (
         <div className="flex flex-col gap-2 rounded-xl border border-[#b89a5a]/20 bg-[#b89a5a]/[.04] p-3 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex items-start gap-2">
             <MapPinned size={15} className="mt-0.5 shrink-0 text-[#d5bf80]" />
             <p className="text-[11px] leading-relaxed text-[#e0ded6]">
-              Driving directions to <strong>{map.destination}</strong>{map.origin ? ` from ${map.origin}` : ''}. Google Maps opens only when you choose the link; route, time, and traffic come from Maps.
+              Driving directions to <strong>{map.destination}</strong>{map.origin ? ` from ${map.origin}` : ''}. Nanivio map opens an external navigation service only when you choose the link; check your route there.
             </p>
           </div>
           <a href={mapUrl} target="_blank" rel="noopener noreferrer" className="inline-flex min-h-9 shrink-0 items-center justify-center gap-1.5 rounded-lg bg-[#d4bd7d] px-3 text-[10px] font-semibold text-[#171918] hover:bg-[#e2d09f]">
-            Open Google Maps <ExternalLink size={11} />
+            Open Nanivio map <ExternalLink size={11} />
           </a>
         </div>
       )}

@@ -4,6 +4,7 @@ import { useNanivio } from '../../context/NanivioContext';
 import { assistantRequest, deliverMalviAudio, parseMalviReferenceCitations, type MalviReferenceCitation, type LiveAvatarReadiness } from '../../lib/malviLiveClient';
 import { startLocalMalviWakeWord, installLocalMalviWakeWordPack, LocalWakeWordError } from '../../lib/localMalviWakeWord';
 import { getMalviLanguage, MALVI_LANGUAGES, malviLanguageCoverage } from '../../lib/malviLanguages';
+import { malviPublicCopy } from '../../lib/malviPublicCopy';
 import { realtimeClient } from '../../lib/realtimeClient';
 import { MalviLiveOverlay } from './MalviLiveOverlay';
 import type { LiveAvatarSession } from '@heygen/liveavatar-web-sdk';
@@ -657,12 +658,12 @@ export const MalviLiveControls: React.FC = () => {
   const languageSupported = !readiness?.speech || readiness.speech.supportedLanguages.includes(appLanguage || 'en');
   const ready = Boolean(readiness?.configured && readiness?.enabled && languageSupported);
   return (
-    <section aria-label="Malvi LiveAvatar" className="mb-6 rounded-3xl border border-[var(--nv-border)] bg-[var(--nv-surface)] p-5 sm:p-6">
+    <section aria-label="Malvi live conversation" className="mb-6 rounded-3xl border border-[var(--nv-border)] bg-[var(--nv-surface)] p-5 sm:p-6">
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div className="max-w-xl">
-          <p className="text-xs font-semibold uppercase tracking-[.2em] text-[var(--nv-gold)]">Nanivio · LiveAvatar LITE</p>
+          <p className="text-xs font-semibold uppercase tracking-[.2em] text-[var(--nv-gold)]">Nanivio · Malvi Live</p>
           <h2 className="mt-2 text-xl font-semibold text-white">Meet Malvi, face to face</h2>
-          <p className="mt-2 text-sm leading-relaxed text-slate-300">A live video connection with your Nanivio AI assistant. The server-selected brain provider handles conversation; turn on the microphone only when you are ready to speak.</p>
+          <p className="mt-2 text-sm leading-relaxed text-slate-300">Talk naturally with Malvi in your preferred language. Turn on your microphone when you’re ready.</p>
         </div>
         <span className="rounded-full border border-[var(--nv-border)] px-3 py-1.5 text-xs text-[var(--nv-gold)]">Video only after activation</span>
       </div>
@@ -690,7 +691,7 @@ export const MalviLiveControls: React.FC = () => {
       </div>
       <MalviWakeControls
         armed={wakeArmed} checking={wakeChecking} installing={live.wakePackInstalling}
-        packRequired={live.wakePackRequired} feedback={live.wakeFeedback}
+        packRequired={live.wakePackRequired} feedback={malviPublicCopy(live.wakeFeedback)}
         disabled={phase === 'connecting' || phase === 'connected' || live.wakePackInstalling}
         onToggle={() => wakeArmed || wakeChecking ? live.disarmWake() : void live.armWake()}
         onInstall={() => void live.installWakePack()}
@@ -716,15 +717,15 @@ export const MalviLiveControls: React.FC = () => {
           ? malviLanguageCoverage(appLanguage, readiness?.brainProvider).notice
           : 'Choose a valid app language before starting Malvi.'}
       </p>
-      <p id="malvi-wake-help" className="mt-3 text-xs leading-relaxed text-slate-400">Local wake setup checks your browser independently of avatar setup. Most mobile browsers do not support on-device wake recognition; use manual activation there. Say “Malvi”, “Hey Malvi”, or “Nanivio” after enabling local listening. Recognition stays on-device and uses an English speech pack, independently of your conversation language. A detected wake word only starts a session when Malvi’s live setup is ready. No cloud fallback or screen-locked listening. Sessions end after 60 seconds without input; maximum 10 starts per hour.</p>
+      <p id="malvi-wake-help" className="mt-3 text-xs leading-relaxed text-slate-400">Enable listening, then say “Hey Malvi” while this page is open. If your browser doesn’t support it, tap Start live avatar.</p>
       {readiness && !ready && <div role="status" className="mt-4 rounded-xl border border-amber-300/20 bg-amber-950/20 p-3 text-sm leading-relaxed text-amber-100">
         <AlertCircle className="mr-2 inline h-4 w-4" />
         {!readiness.enabled ? 'Malvi must be enabled in administrator settings. ' : ''}
-        {!readiness.configured ? `Live setup required: ${readiness.missing.join(', ')}. The supplied face must be provisioned as your custom LiveAvatar asset.` : ''}
+        {!readiness.configured ? 'Malvi’s live connection needs administrator setup. ' : ''}
         {!languageSupported ? 'Your selected language is not listed for Malvi’s selected voice. Choose a supported language; Malvi will not substitute English or another voice.' : ''}
         <button type="button" onClick={() => void live.refresh()} className="ml-2 underline underline-offset-4">Recheck setup</button>
       </div>}
-      {notice && <p role="status" className="mt-3 text-sm text-amber-200">{notice}</p>}
+      {notice && <p role="status" className="mt-3 text-sm text-amber-200">{malviPublicCopy(notice)}</p>}
     </section>
   );
 };

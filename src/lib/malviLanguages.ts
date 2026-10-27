@@ -30,7 +30,7 @@ export function malviLanguageCoverage(code: string, provider?: string | null) {
     providerListed: provider === 'gemini' ? GEMINI_LISTED.has(language.code) : null,
     liveVerified: false,
     notice: provider === 'gemini' && !GEMINI_LISTED.has(language.code)
-      ? `${language.name} is not explicitly listed in Gemini Live’s language catalogue. Speech support and pronunciation need testing; Malvi must not silently substitute English or a related dialect.`
-      : `${language.name} speech quality has not yet been verified in a live Malvi conversation.`,
+      ? `${language.name} speech and pronunciation need testing. Choose another language if speech is unavailable.`
+      : `Speak with Malvi in ${language.name}. Speech quality may vary.`,
   };
 }

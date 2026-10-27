@@ -90,12 +90,16 @@ test('browser storage failures remain observable instead of claiming persistence
 });
 
 test('every live language receives the same approved identity and shared trust policy', () => {
+  assert.equal(MALVI_IDENTITY.fullName, 'Multimodal Advanced and Language Intellegent');
+  assert.ok(MALVI_IDENTITY_PROMPT.includes(`MALVI stands for "${MALVI_IDENTITY.fullName}"`));
+  assert.match(MALVI_IDENTITY_PROMPT, /do not repeat the expansion in every greeting/);
   assert.equal(MALVI_IDENTITY.company, 'Nanivio Tech. Gh.');
   assert.equal(MALVI_IDENTITY.founder, 'Mr. Albert Atta Nifty');
   assert.equal(LIVE_INTRODUCTION, MALVI_INTRODUCTION);
   for (const language of ['en', 'fr', 'ak', 'lg']) {
     const prompt = buildMalviLiveInstructions(language, 'gemini');
     assert.ok(prompt.includes(MALVI_IDENTITY_PROMPT));
+    assert.ok(prompt.includes(MALVI_IDENTITY.fullName));
     assert.ok(prompt.includes(MALVI_SHARED_BEHAVIOR_POLICY));
     assert.doesNotMatch(prompt, /Kwabena Atta Panyi/);
     assert.match(prompt, /not verified account records/);
@@ -111,7 +115,8 @@ test('actual text endpoint and greeting consume the shared identity without conf
   assert.doesNotMatch(chat, /Kwabena Atta Panyi|ALWAYS reference these exact values|SYNCHRONIZED APP STATE|read only from the synced memory layer/);
   assert.match(chat, /UNVERIFIED CLIENT WORKSPACE CONTEXT/);
   const view = fs.readFileSync(new URL('../src/components/malvi/MalviView.tsx', import.meta.url), 'utf8');
-  assert.match(view, /text: MALVI_INTRODUCTION/);
+  assert.match(view, /text: selectMalviWelcome\(\)/);
+  assert.match(view, /\{MALVI_IDENTITY\.fullName\}/);
   assert.match(view, /key=\{ownerId\}/);
   assert.doesNotMatch(view, /nanivio_malvi_chat_history_v1|Kwabena Atta Panyi/);
 });

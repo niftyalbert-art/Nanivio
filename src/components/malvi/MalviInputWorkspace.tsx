@@ -6,6 +6,7 @@ import { googleMapsDirections, googleMapsSearch, INPUT_ACCEPT, MAX_INPUT_BYTES, 
 import type { MalviInputResult, MalviMediaItem, MalviSharedLocation } from '../../shared/malviInputTypes';
 import { MalviAssetResults, type MalviAssetPayload } from './MalviAssetResults';
 import { MalviResultPanel } from './MalviResultPanel';
+import { malviPublicCopy } from '../../lib/malviPublicCopy';
 
 const TEXT_EXTENSIONS = new Set(['txt', 'md', 'csv', 'json']);
 const MIME_BY_EXTENSION: Record<string, string> = {
@@ -494,7 +495,7 @@ export const MalviInputWorkspace: React.FC<Props> = ({ language }) => {
                     {' · '}{location.latitude.toFixed(4)}, {location.longitude.toFixed(4)}
                   </p>
                   {sharedLocationUrl && <a href={sharedLocationUrl} target="_blank" rel="noopener noreferrer" className="inline-flex min-h-8 items-center gap-1.5 text-[10px] font-medium text-[#e4d3a8] underline underline-offset-2">
-                    {location.kind === 'ip' ? 'View approximate area on Google Maps' : 'View shared location on Google Maps'}
+                    {location.kind === 'ip' ? 'View approximate area on Nanivio map' : 'View shared location on Nanivio map'}
                   </a>}
                 </div>
               )}
@@ -505,7 +506,7 @@ export const MalviInputWorkspace: React.FC<Props> = ({ language }) => {
         </div>
 
         <div className="rounded-xl border border-white/[.08] bg-[#10130f] p-3.5">
-          <h3 className="text-xs font-semibold text-[#e4d3a8]">Travel planning · open in Google Maps</h3>
+          <h3 className="text-xs font-semibold text-[#e4d3a8]">Travel planning · Nanivio map</h3>
           <p className="mt-1 text-[10px] leading-relaxed text-[#aaa9a2]">Enter a destination and optional origin. Malvi does not invent a route, travel time, or traffic conditions.</p>
           <div className="mt-2 grid gap-2 sm:grid-cols-2">
             <label className="text-[10px] text-[#bdb9ac]">Destination<input value={destination} onChange={event => setDestination(event.target.value)} maxLength={180} placeholder="City, address, or place" className="mt-1 min-h-10 w-full rounded-lg border border-[#514e43] bg-[#0c100e] px-3 text-xs text-[#f0eee7] placeholder:text-[#85857f] focus:border-[#b89a5a] focus:outline-none" /></label>
@@ -519,13 +520,13 @@ export const MalviInputWorkspace: React.FC<Props> = ({ language }) => {
 
         <div className="rounded-xl border border-[#66816f]/25 bg-[#66816f]/[.06] p-3">
           <p className="text-[11px] font-semibold text-[#cfdfd0]">Before sending</p>
-          <p className="mt-1 text-[10px] leading-relaxed text-[#b8c3b7]">When you consent, your prompt, selected attachment and any chosen location are sent to Gemini for AI analysis; this may incur Gemini usage. Gemini retention is separate from Nanivio. Nanivio does not archive raw files, and this workspace never saves raw files or GPS to local storage. If conversation memory is enabled, eligible text prompt/reply content may be archived; location exchanges are excluded.</p>
+          <p className="mt-1 text-[10px] leading-relaxed text-[#b8c3b7]">With your consent, Nanivio sends your selected content to connected AI services for analysis; their retention policies apply. Raw files and GPS are not saved in browser history. If memory is enabled, eligible text may be saved; location exchanges are excluded.</p>
           <label className="mt-3 flex cursor-pointer items-start gap-2.5 text-[11px] leading-relaxed text-[#e0ded6]">
             <input type="checkbox" checked={consent} onChange={event => setConsent(event.target.checked)} className="mt-0.5 h-4 w-4 shrink-0 accent-[#b89a5a]" />
             <span>I understand and explicitly consent to send this request and selected context to the AI provider.</span>
           </label>
         </div>
-        {error && <p role="alert" className="flex items-start gap-2 rounded-lg border border-[#a65e48]/35 bg-[#542d25]/20 px-3 py-2.5 text-xs leading-relaxed text-[#e8b5a4]"><AlertCircle size={15} className="mt-0.5 shrink-0" />{error}</p>}
+        {error && <p role="alert" className="flex items-start gap-2 rounded-lg border border-[#a65e48]/35 bg-[#542d25]/20 px-3 py-2.5 text-xs leading-relaxed text-[#e8b5a4]"><AlertCircle size={15} className="mt-0.5 shrink-0" />{malviPublicCopy(error)}</p>}
         <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
           <button type="button" onClick={reset} disabled={busy || recording} className="min-h-11 rounded-xl border border-white/[.12] px-4 text-xs font-semibold text-[#c6c4bc] hover:bg-white/[.06] disabled:opacity-45">Clear draft</button>
           {busy && <button type="button" onClick={() => {
@@ -555,7 +556,7 @@ export const MalviInputWorkspace: React.FC<Props> = ({ language }) => {
             </div>
           </form>
           {mediaLoading && <p role="status" className="mt-2 text-xs text-[#d5bf80]">Searching licensed public media…</p>}
-          {mediaError && <p role="alert" className="mt-2 rounded-lg border border-[#a65e48]/35 px-3 py-2 text-xs text-[#e8b5a4]">{mediaError}</p>}
+          {mediaError && <p role="alert" className="mt-2 rounded-lg border border-[#a65e48]/35 px-3 py-2 text-xs text-[#e8b5a4]">{malviPublicCopy(mediaError)}</p>}
         </section>
         {mediaItems.length > 0 && <MalviAssetResults media={mediaItems} limitation={mediaNotice} />}
         {!mediaLoading && !mediaError && mediaNotice && mediaItems.length === 0 && <p role="status" className="text-[10px] leading-relaxed text-[#aaa9a2]">{mediaNotice}</p>}

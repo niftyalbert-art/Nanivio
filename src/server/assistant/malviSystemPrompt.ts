@@ -41,9 +41,10 @@ RESPONSE PACING: After the user finishes speaking, give the useful answer first 
 
 export function malviGreetingInstruction(code: string, returning = false) {
   const language = getMalviLanguage(code);
-  if (returning) return `This signed-in user has consented saved conversation history. In ${language.name}, briefly ask whether they want to continue their previous conversation or discuss something new. Do not repeat your name, introduction or feature list, and do not expose private details in the greeting. Wait for their choice. Use relevant saved context only after that choice.`;
+  if (returning) return `This signed-in user has consented saved conversation history. In ${language.name}, briefly ask whether they want to continue their previous conversation or discuss something new. Vary the wording naturally rather than using a fixed welcome. Do not repeat your name, introduction or feature list, and do not expose private details in the greeting. Wait for their choice. Use relevant saved context only after that choice.`;
   return `Before anything else, greet the user briefly in ${language.name} (${language.code}). ${language.code === 'en'
-    ? `Use this introduction: "${MALVI_INTRODUCTION}"`
-    : `Introduce yourself in the selected language with the meaning of: "${MALVI_INTRODUCTION}"`}
+    ? `Introduce yourself as Nanivio’s AI companion. This is an identity reference, not a script to recite: "${MALVI_INTRODUCTION}"`
+    : `Introduce yourself in the selected language using this identity reference, not a fixed script: "${MALVI_INTRODUCTION}"`}
+Choose a fresh, natural opening each session. Vary phrasing and the invitation to talk; do not invent familiarity, a time of day, or prior conversations.
 Keep the first sentence short. Do not add a "not a human" reminder, a separate disclaimer, or a long list of features. Do not give an English greeting unless English is selected.`;
 }

@@ -47,7 +47,7 @@ import { LangpretationIcon } from '../common/LangpretationIcon';
 import { billingClient } from '../../lib/billingClient';
 import { authClient } from '../../lib/authClient';
 import { clearMalviHistory, loadMalviHistory, malviHistoryKey, saveMalviHistory } from '../../lib/malviHistory';
-import { MALVI_INTRODUCTION } from '../../shared/malviIdentity';
+import { MALVI_IDENTITY, selectMalviWelcome, selectMalviReturningWelcome } from '../../shared/malviIdentity';
 import type { MalviMediaItem } from '../../shared/malviInputTypes';
 
 type MalviResearchMetadata = {
@@ -125,10 +125,10 @@ const MalviResearchMetadataView: React.FC<{ metadata: MalviResearchMetadata }> =
   );
 };
 
-const INITIAL_GREETING: MalviChatMessage = {
+const createInitialGreeting = (): MalviChatMessage => ({
   id: 'msg_malvi_welcome',
   sender: 'malvi',
-  text: MALVI_INTRODUCTION,
+  text: selectMalviWelcome(),
   timestamp: Date.now(),
   emotion: 'warm',
   suggestedActions: [
@@ -137,7 +137,7 @@ const INITIAL_GREETING: MalviChatMessage = {
     'How much is in my wallets?',
     'Find verified doctors online',
   ],
-};
+});
 
 const SUGGESTION_TOPICS = [
   {
@@ -274,7 +274,7 @@ const MalviAccountWorkspace: React.FC<{ ownerId: string | null }> = ({ ownerId }
     } catch (err) {
       console.warn('Error loading persisted Malvi chat history:', err);
     }
-    return [INITIAL_GREETING];
+    return [createInitialGreeting()];
   });
   const [inputText, setInputText] = useState('');
   const [interimTranscript, setInterimTranscript] = useState('');
@@ -372,10 +372,10 @@ const MalviAccountWorkspace: React.FC<{ ownerId: string | null }> = ({ ownerId }
     }).then(result => {
       if (!result.enabled || !result.hasPrevious || !isCurrentOwner()) return;
       setHistoryMessages(previous => {
-        if (previous.length !== 1 || previous[0]?.id !== INITIAL_GREETING.id || !isCurrentOwner()) return previous;
+        if (previous.length !== 1 || previous[0]?.id !== 'msg_malvi_welcome' || !isCurrentOwner()) return previous;
         return [{
-          ...INITIAL_GREETING,
-          text: 'Would you like to continue our previous conversation, or talk about something new?',
+          ...previous[0],
+          text: selectMalviReturningWelcome(),
           suggestedActions: [],
         }];
       });
@@ -390,7 +390,7 @@ const MalviAccountWorkspace: React.FC<{ ownerId: string | null }> = ({ ownerId }
       if (!isCurrentOwner() || (event.key !== null && event.key !== malviHistoryKey(ownerId))) return;
       try {
         const stored = loadMalviHistory(localStorage, ownerId);
-        const next = stored.length ? stored : [INITIAL_GREETING];
+        const next = stored.length ? stored : [createInitialGreeting()];
         setHistoryMessages(previous => JSON.stringify(previous) === JSON.stringify(next) ? previous : next);
       } catch (error) {
         console.warn('Error refreshing Malvi chat history:', error);
@@ -794,7 +794,7 @@ const MalviAccountWorkspace: React.FC<{ ownerId: string | null }> = ({ ownerId }
 
   const handleResetConversation = () => {
     stopSpeaking();
-    setMessages([INITIAL_GREETING]);
+    setMessages([createInitialGreeting()]);
     try {
       if (typeof window !== 'undefined' && window.localStorage) {
         clearMalviHistory(localStorage, ownerId);
@@ -830,19 +830,19 @@ const MalviAccountWorkspace: React.FC<{ ownerId: string | null }> = ({ ownerId }
       {/* Top Identity Banner */}
       <div className="bg-[#0b1322] border border-cyan-500/30 rounded-3xl p-4 sm:p-5 shadow-xl relative overflow-hidden flex flex-col sm:flex-row items-center justify-between gap-4">
         <div className="absolute top-0 right-0 w-80 h-80 bg-cyan-500/10 rounded-full blur-3xl pointer-events-none" />
-        <div className="flex items-center gap-3.5 z-10">
-          <div className="w-11 h-11 rounded-2xl bg-gradient-to-tr from-cyan-500/20 to-emerald-500/20 border border-cyan-500/40 flex items-center justify-center text-cyan-300 shadow-md">
+        <div className="flex w-full min-w-0 items-center gap-3.5 z-10 sm:w-auto">
+          <div className="w-11 h-11 shrink-0 rounded-2xl bg-gradient-to-tr from-cyan-500/20 to-emerald-500/20 border border-cyan-500/40 flex items-center justify-center text-cyan-300 shadow-md">
             <Sparkles className="w-5 h-5" />
           </div>
-          <div>
-            <h1 className="text-xl sm:text-2xl font-black tracking-tight text-white flex items-center gap-2">
+          <div className="min-w-0">
+            <h1 className="text-xl sm:text-2xl font-black tracking-tight text-white flex flex-wrap items-center gap-2">
               <span>Malvi</span>
               <span className="text-xs px-2.5 py-0.5 rounded-full bg-cyan-500/20 text-cyan-300 font-bold border border-cyan-500/40">
                 3D VOICE AI COMPANION
               </span>
             </h1>
-            <p className="text-xs text-slate-300">
-              Nanivio Human-Like AI • Real-Time Voice Conversation, Langpretation &amp; Service Navigation
+            <p className="mt-1 max-w-xl break-words text-xs leading-relaxed text-slate-300">
+              {MALVI_IDENTITY.fullName}
             </p>
           </div>
         </div>

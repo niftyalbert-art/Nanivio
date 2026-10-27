@@ -1,4 +1,5 @@
 import React, { useRef, useState } from 'react';
+import { malviPublicCopy } from '../../lib/malviPublicCopy';
 import { Check, Copy } from 'lucide-react';
 import type { MalviInputResult } from '../../shared/malviInputTypes';
 
@@ -43,7 +44,7 @@ export const MalviResultPanel: React.FC<Props> = ({ result }) => {
         {result.processed && <p className="mt-3 text-[11px] text-[#bdb9ac]">Reviewed {result.processed.name} · {result.processed.kind}</p>}
         {result.limitations?.length > 0 && (
           <ul aria-label="Answer limitations" className="mt-3 space-y-1 rounded-lg border border-[#b89a5a]/20 bg-[#b89a5a]/[.05] px-3 py-2 text-[11px] leading-relaxed text-[#d2c8ad]">
-            {result.limitations.map((limitation, index) => <li key={`${index}-${limitation}`}>{limitation}</li>)}
+            {result.limitations.map((limitation, index) => <li key={`${index}-${limitation}`}>{malviPublicCopy(limitation)}</li>)}
           </ul>
         )}
       </div>
