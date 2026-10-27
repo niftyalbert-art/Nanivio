@@ -29,7 +29,8 @@ function system() {
   let failNextDelivery = false;
   const plan = { id:'premium', tier:'premium', name:'Premium', isActive:true,
     priceMonthlyGHS:145, priceMonthlyUSD:9.99, priceAnnualGHS:1450, priceAnnualUSD:99,
-    includedLangpretationMinutes:200, includedVoiceMinutes:500, videoInteractionMinutesLimit:30 };
+    includedLangpretationMinutes:200, includedVoiceMinutes:500, videoInteractionMinutesLimit:30,
+    voiceInteractionMinutesLimit:30, catalogVersion:undefined as number | undefined };
   const deliver = async (payload: any) => {
     if (failNextDelivery) { failNextDelivery = false; throw new Error('Temporary ledger outage'); }
     if (!payments.has(payload.referenceId)) {
@@ -46,6 +47,7 @@ function system() {
     normalizedBillingEnabled:()=>true,
     billingDb:{ subscriptionPlans:[plan], malviPlans:[plan],
       communicationMinutePackages:[{ id:'pack', minutes:60, priceGHS:55, priceUSD:3.99, validityDays:30 }] },
+    malviCatalogService:{ published:async()=>({plans:[plan]}) },
     pendingPaystackOrders:new Map(),
     savePaystackOrder:async(ref: string,_user: string,order: any)=>orders.set(ref,order),
     getPaystackOrder:async(ref: string)=>orders.get(ref),
@@ -54,6 +56,7 @@ function system() {
     activatePaystackSubscriptionPersistent:async(p: any)=>p.preflight?{ success:true, ready:true }:deliver(p),
     purchaseCommunicationMinutesPersistent:deliver,
     activateMalviSubscriptionPersistent:deliver,
+    activateMalviSubscriptionFromWalletPersistent:deliver,
     paystackTopUpPersistent:deliver,
     fetch:async(url: string,init: any)=>{
       if (url.endsWith('/initialize')) {
@@ -77,15 +80,59 @@ function system() {
   const initialize = compile(handlerText('/api/paystack/initialize'));
   const verify = compile(handlerText('/api/paystack/verify/:reference'));
   const webhook = compile(handlerText('/api/paystack/webhook'));
+  const malviWallet = compile(handlerText('/api/billing/malvi-subscription/change'));
   async function call(handler: any,req: any) {
     const res: any = { code:200, body:null, status(code: number){ this.code=code; return this; },
       json(body: any){ this.body=body; return this; }, send(body: any){ this.body=body; return this; } };
     await handler(req,res);
     return res;
   }
-  return { context, orders, deliveries, provider, initialize, verify, webhook, call,
+  return { context, plan, orders, deliveries, provider, initialize, verify, webhook, malviWallet, call,
     failOnce:()=>{ failNextDelivery=true; } };
 }
+
+test('Malvi fulfilment honours purchased voice/video/name/price snapshots after catalogue edits or outages', async () => {
+  const s = system();
+  s.plan.catalogVersion = 1;
+  s.plan.voiceInteractionMinutesLimit = 80;
+  s.plan.videoInteractionMinutesLimit = 10;
+  const init = await s.call(s.initialize, {authId:'owner',body:{
+    purpose:'MALVI_SUBSCRIPTION',planTier:'premium',currency:'GHS',amount:145,metadata:{catalogVersion:1},
+  }});
+  assert.equal(init.code,200,JSON.stringify(init.body));
+  s.plan.name = 'Different future name';
+  s.plan.voiceInteractionMinutesLimit = 1;
+  s.plan.videoInteractionMinutesLimit = 0;
+  s.plan.priceMonthlyGHS = 700;
+  s.context.malviCatalogService.published = async () => { throw Error('fixture catalogue unavailable'); };
+  const verified = await s.call(s.verify,{authId:'owner',params:{reference:init.body.reference}});
+  assert.equal(verified.code,200,JSON.stringify(verified.body));
+  assert.equal(s.deliveries[0].planName,'Premium');
+  assert.equal(s.deliveries[0].price,145);
+  assert.equal(s.deliveries[0].voiceMinutesAllowed,80);
+  assert.equal(s.deliveries[0].videoMinutesAllowed,10);
+  assert.equal(s.deliveries[0].metadata.catalogVersion,1);
+});
+
+test('actual Malvi wallet route rejects stale versions or prices before debiting and uses separate allowances', async () => {
+  const s = system();
+  s.plan.catalogVersion=2;
+  s.plan.voiceInteractionMinutesLimit=80;
+  s.plan.videoInteractionMinutesLimit=10;
+  const request = {tier:'premium',billingCycle:'MONTHLY',currency:'GHS',paymentMethod:'NANIVIO_CREDIT',catalogVersion:1,expectedAmount:145};
+  assert.equal((await s.call(s.malviWallet,{authId:'owner',body:request})).code,409);
+  assert.equal(s.deliveries.length,0);
+  request.catalogVersion=2;
+  request.expectedAmount=144;
+  assert.equal((await s.call(s.malviWallet,{authId:'owner',body:request})).code,409);
+  assert.equal(s.deliveries.length,0);
+  request.expectedAmount=145;
+  const paid=await s.call(s.malviWallet,{authId:'owner',body:request});
+  assert.equal(paid.code,200,JSON.stringify(paid.body));
+  assert.equal(s.deliveries[0].videoMinutesAllowed,10);
+  assert.equal(s.deliveries[0].voiceMinutesAllowed,80);
+  assert.equal(s.deliveries[0].userId,'owner');
+});
 
 for (const [purpose, amount, extra] of [
   ['COMMUNICATION_TOPUP',20,{}],

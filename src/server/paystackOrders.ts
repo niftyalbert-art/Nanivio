@@ -4,6 +4,8 @@ type PricedPlan = {
   priceAnnualGHS: number; priceAnnualUSD: number;
   includedLangpretationMinutes?: number; includedVoiceMinutes?: number; includedMalviRequests?: number;
   videoInteractionMinutesLimit?: number;
+  voiceInteractionMinutesLimit?: number;
+  catalogVersion?: number;
 };
 type MinutePack = { id: string; minutes: number; priceGHS: number; priceUSD: number; validityDays?: number };
 type Catalog = { subscriptionPlans: PricedPlan[]; malviPlans: PricedPlan[]; communicationMinutePackages: MinutePack[] };
@@ -33,6 +35,10 @@ export function quotePaystackOrder(input: Record<string, any>, catalog: Catalog)
       const plans = purpose === 'SUBSCRIPTION' ? catalog.subscriptionPlans : catalog.malviPlans;
       const plan = plans.find(p => p.tier === input.planTier && p.isActive !== false);
       if (!plan) throw new Error('Subscription plan is not available.');
+      if (purpose === 'MALVI_SUBSCRIPTION' && typeof plan.catalogVersion === 'number' &&
+          (input.catalogVersion ?? input.metadata?.catalogVersion) !== plan.catalogVersion) {
+        throw new Error('Malvi plan details changed or need refreshing. Reload the published plan before paying.');
+      }
       amount = billingCycle === 'ANNUAL'
         ? currency === 'USD' ? plan.priceAnnualUSD : plan.priceAnnualGHS
         : currency === 'USD' ? plan.priceMonthlyUSD : plan.priceMonthlyGHS;
@@ -44,6 +50,11 @@ export function quotePaystackOrder(input: Record<string, any>, catalog: Catalog)
         voiceQuota: plan.includedVoiceMinutes ?? 0,
         malviQuota: plan.includedMalviRequests ?? 0,
         videoMinutesAllowed: plan.videoInteractionMinutesLimit ?? 0,
+        ...(purpose === 'MALVI_SUBSCRIPTION' ? {
+          voiceMinutesAllowed: plan.voiceInteractionMinutesLimit ?? plan.videoInteractionMinutesLimit ?? 0,
+          catalogVersion: plan.catalogVersion,
+          planSnapshot: { ...plan },
+        } : {}),
       };
     } else throw new Error('Unsupported Paystack payment purpose.');
     if (input.amount != null && Number(input.amount) !== amount) throw new Error('Price changed or checkout amount does not match the configured product.');

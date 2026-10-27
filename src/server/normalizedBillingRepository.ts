@@ -204,7 +204,12 @@ export async function ensureMalviEntitlement(userId:string){
   let sub=await getPersistentMalviSubscription(userId);
   if(!sub){
     const now=new Date(); const end=new Date(now.getTime()+30*86400000);
-    const {error}=await db().from('nanivio_malvi_subscriptions').insert({subscription_id:`malvi_trial_${userId}`,user_id:userId,plan_id:'malvi_free',tier:'free',plan_name:'Malvi Free Experience',billing_cycle:'MONTHLY',status:'TRIAL',started_at:now.toISOString(),current_period_start:now.toISOString(),current_period_end:end.toISOString(),next_billing_at:end.toISOString(),price_paid:0,currency:'GHS',video_minutes_allowed:3,voice_minutes_allowed:3});
+    // Read only on a new trial, never recalculate an existing user's benefits.
+    // No FX/provider calls are needed to grant a zero-priced trial.
+    const catalogue = await (await import('./malviPlanCatalog')).malviCatalogService.read();
+    const free = catalogue.snapshot.plans.find(plan => plan.tier === 'free' && plan.status === 'PUBLISHED');
+    if (!free) throw new Error('The Free trial plan is unavailable.');
+    const {error}=await db().from('nanivio_malvi_subscriptions').insert({subscription_id:`malvi_trial_${userId}`,user_id:userId,plan_id:free.id,tier:'free',plan_name:free.name,billing_cycle:'MONTHLY',status:'TRIAL',started_at:now.toISOString(),current_period_start:now.toISOString(),current_period_end:end.toISOString(),next_billing_at:end.toISOString(),price_paid:0,currency:'USD',video_minutes_allowed:free.videoInteractionMinutesLimit,voice_minutes_allowed:free.voiceInteractionMinutesLimit,auto_renew:false});
     if(error && !String(error.message||'').toLowerCase().includes('duplicate')) throw new Error(error.message);
     sub=await getPersistentMalviSubscription(userId);
   }

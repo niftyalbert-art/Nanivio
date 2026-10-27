@@ -58,7 +58,9 @@ test('checkout UI uses the signed-in customer and only verification activates pa
   const server = readFileSync(new URL('../server.ts',import.meta.url),'utf8');
   assert.doesNotMatch(modal,/user_me|kwame\.mensah|setEmail/);
   assert.match(modal,/authUser\?\.email/);
-  assert.match(modal,/setAmount\(initialAmount \?\? 50\)/);
+  assert.match(modal,/setAmount\(isMalvi \? 0 : initialAmount \?\? 50\)/);
+  assert.match(modal,/billingClient\.getMalviPlans\(\)/);
+  assert.match(modal,/metadata: purpose === 'MALVI_SUBSCRIPTION' \? \{ catalogVersion:/);
   assert.match(hub,/Pay with Paystack/);
   assert.match(server,/Paid communication plans require verified Paystack checkout/);
   assert.doesNotMatch(server,/durableOrder \|\| order/);

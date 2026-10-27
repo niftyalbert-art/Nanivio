@@ -739,7 +739,7 @@ export interface CommunicationMinutePackage {
   features: string[];
 }
 
-export type MalviSubscriptionTier = 'free' | 'malvi_basic' | 'malvi_premium' | 'malvi_business';
+export type MalviSubscriptionTier = 'free' | 'malvi_voice' | 'malvi_basic' | 'malvi_premium' | 'malvi_business';
 
 export interface MalviSubscriptionPlan {
   id: string;
@@ -748,10 +748,16 @@ export interface MalviSubscriptionPlan {
   tagline: string;
   description: string;
   priceMonthlyUSD: number;
-  priceMonthlyGHS: number;
+  priceMonthlyGHS: number | null;
   priceAnnualUSD: number;
-  priceAnnualGHS: number;
+  priceAnnualGHS: number | null;
+  currencyConversion?: {
+    rate: number; asOf: string; expiresAt: string; source: string; attributionUrl: string;
+  } | null;
   videoInteractionMinutesLimit: number; // free: 3, basic: 15, premium: 300, business: 1500
+  voiceInteractionMinutesLimit?: number;
+  catalogVersion?: number;
+  isActive?: boolean;
   voiceCapabilities: string;
   langpretationCapabilities: string;
   aiInteractionCapabilities: string;

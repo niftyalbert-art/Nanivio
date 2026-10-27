@@ -42,6 +42,7 @@ import {
   BillingPreviewResponse,
   BusinessBillingAccount,
 } from '../../types/billing';
+import type { MalviSubscriptionPlan } from '../../types/billing';
 import { billingClient } from '../../lib/billingClient';
 import { billingNumber, formatBillingAmount } from '../../lib/billingPresentation';
 import { PaystackTopUpModal } from './PaystackTopUpModal';
@@ -49,6 +50,20 @@ import { TransferValueModal } from './TransferValueModal';
 import { UniversalFlowTracer } from './UniversalFlowTracer';
 import { LiveLangpretationMeter } from './LiveLangpretationMeter';
 import { CommunicationMinutesModal } from './CommunicationMinutesModal';
+
+function malviPlanAmount(plan: MalviSubscriptionPlan, cycle: 'MONTHLY' | 'ANNUAL', currency: 'USD' | 'GHS'): number | null {
+  const value = cycle === 'ANNUAL'
+    ? (currency === 'USD' ? plan.priceAnnualUSD : plan.priceAnnualGHS)
+    : (currency === 'USD' ? plan.priceMonthlyUSD : plan.priceMonthlyGHS);
+  if (typeof value !== 'number' || !Number.isFinite(value)) return null;
+  if (plan.tier === 'free' && value === 0) return 0;
+  if (currency === 'GHS') {
+    const conversion = plan.currencyConversion;
+    if (!conversion || !Number.isFinite(conversion.rate) || conversion.rate <= 0 ||
+        !Number.isFinite(Date.parse(conversion.expiresAt)) || Date.parse(conversion.expiresAt) <= Date.now()) return null;
+  }
+  return value;
+}
 
 export const UniversalBillingHub: React.FC = () => {
   const {
@@ -89,14 +104,35 @@ export const UniversalBillingHub: React.FC = () => {
   const [promoStatus, setPromoStatus] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
   const [isRedeeming, setIsRedeeming] = useState(false);
   const [billingCycle, setBillingCycle] = useState<'MONTHLY' | 'ANNUAL'>('MONTHLY');
+  const [malviCurrency, setMalviCurrency] = useState<'USD' | 'GHS'>('USD');
   const [upgradingTier, setUpgradingTier] = useState<string | null>(null);
   const [communicationPlanStatus, setCommunicationPlanStatus] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
+  const [refreshingMalvi, setRefreshingMalvi] = useState(false);
+
+  const refreshMalviCatalogue = async () => {
+    setRefreshingMalvi(true);
+    try {
+      await refreshBilling();
+      setCommunicationPlanStatus(null);
+    } catch (error) {
+      setCommunicationPlanStatus({
+        type: 'error',
+        message: error instanceof Error ? error.message : 'Unable to refresh the Malvi catalogue. Try again.',
+      });
+    } finally {
+      setRefreshingMalvi(false);
+    }
+  };
 
   // Automatically handle incoming plan selection routed from elsewhere
   useEffect(() => {
     if (pendingBillingAction) {
       if (pendingBillingAction.purpose !== 'MALVI_SUBSCRIPTION' && billingPlans.length === 0) return;
-      if (pendingBillingAction.purpose === 'MALVI_SUBSCRIPTION' && malviPlans.length === 0) return;
+      if (pendingBillingAction.purpose === 'MALVI_SUBSCRIPTION' && malviPlans.length === 0) {
+        setActiveSubTab('malvi');
+        setCommunicationPlanStatus({ type: 'error', message: 'The published Malvi catalogue is unavailable. Refresh the catalogue before continuing; no plan was selected.' });
+        return;
+      }
       if (pendingBillingAction.subTab) {
         setActiveSubTab(pendingBillingAction.subTab as any);
       }
@@ -144,13 +180,20 @@ export const UniversalBillingHub: React.FC = () => {
             setPendingBillingAction(null);
             return;
           }
-          const price = cycle === 'ANNUAL' ? targetPlan.priceAnnualGHS : targetPlan.priceMonthlyGHS;
+          const price = malviPlanAmount(targetPlan, cycle, 'USD');
+          if (price === null || price <= 0) {
+            setActiveSubTab('malvi');
+            setCommunicationPlanStatus({ type: 'error', message: 'This published Malvi plan has no valid positive USD price. Refresh the catalogue before checkout.' });
+            setPendingBillingAction(null);
+            return;
+          }
+          setMalviCurrency('USD');
           setPaystackConfig({
             purpose: 'MALVI_SUBSCRIPTION',
             planTier: tier,
             billingCycle: cycle,
             amount: price,
-            currency: 'GHS',
+            currency: 'USD',
           });
           setIsPaystackModalOpen(true);
         }
@@ -254,49 +297,70 @@ export const UniversalBillingHub: React.FC = () => {
     }
   };
 
-  const handleSubscribeMalvi = async (tier: any, forcePaystack = false) => {
+  const handleSubscribeMalvi = async (tier: string, forcePaystack = false) => {
     setUpgradingTier(tier);
     const targetPlan = malviPlans.find((p) => p.tier === tier);
-    const priceGHS = billingCycle === 'ANNUAL' ? targetPlan?.priceAnnualGHS || 0 : targetPlan?.priceMonthlyGHS || 0;
-    const commBalance = billingNumber(billingSummary?.accounts?.communicationAccount?.wallets?.find(w => w.currency === 'GHS')?.available) ?? 0;
+    if (!targetPlan) {
+      setCommunicationPlanStatus({ type: 'error', message: 'This Malvi plan is unavailable. Refresh the published catalogue and try again.' });
+      setUpgradingTier(null);
+      return;
+    }
+    const price = malviPlanAmount(targetPlan, billingCycle, malviCurrency);
+    if (price === null) {
+      setCommunicationPlanStatus({ type: 'error', message: `The ${malviCurrency} price or current exchange-rate quote is unavailable. Refresh the Malvi catalogue before selecting or paying.` });
+      setUpgradingTier(null);
+      return;
+    }
+    const wallet = billingSummary?.accounts?.communicationAccount?.wallets?.find((item) => item.currency === malviCurrency);
+    const commBalance = billingNumber(wallet?.available) ?? 0;
 
     if (tier === 'free') {
+      if (price !== 0) {
+        setCommunicationPlanStatus({ type: 'error', message: 'The Free plan amount is invalid in the selected currency. Refresh the catalogue before selecting it.' });
+        setUpgradingTier(null);
+        return;
+      }
       try {
-        await subscribeMalviPlan('free', 'MONTHLY', 'SERVICE_VALUE', 'GHS');
+        await subscribeMalviPlan('free', 'MONTHLY', 'SERVICE_VALUE', malviCurrency);
+        setCommunicationPlanStatus({ type: 'success', message: 'Free Malvi plan selected. No payment was collected.' });
         setActiveSubTab('overview');
       } catch (err: any) {
-        alert(err.message || 'Failed to switch to free plan');
+        setCommunicationPlanStatus({ type: 'error', message: err.message || 'Failed to select the Free Malvi plan.' });
       } finally {
         setUpgradingTier(null);
       }
       return;
     }
 
-    if (forcePaystack || commBalance < priceGHS || commBalance <= 0) {
+    if (price <= 0) {
+      setCommunicationPlanStatus({ type: 'error', message: 'This paid Malvi plan does not have a valid positive price in the selected currency. Refresh the catalogue before continuing.' });
+      setUpgradingTier(null);
+      return;
+    }
+
+    setCommunicationPlanStatus(null);
+    if (forcePaystack || commBalance < price || commBalance <= 0) {
       setUpgradingTier(null);
       setPaystackConfig({
         purpose: 'MALVI_SUBSCRIPTION',
         planTier: tier,
         billingCycle,
-        amount: priceGHS,
-        currency: 'GHS',
+        amount: price,
+        currency: malviCurrency,
       });
       setIsPaystackModalOpen(true);
       return;
     }
 
     try {
-      await subscribeMalviPlan(tier, billingCycle, 'SERVICE_VALUE', 'GHS');
+      await subscribeMalviPlan(targetPlan.tier, billingCycle, 'SERVICE_VALUE', malviCurrency);
+      setCommunicationPlanStatus({ type: 'success', message: `Malvi plan selected using ${malviCurrency} Nanivio credit.` });
       setActiveSubTab('overview');
     } catch (err: any) {
-      setPaystackConfig({
-        purpose: 'MALVI_SUBSCRIPTION',
-        planTier: tier,
-        billingCycle,
-        amount: priceGHS,
-        currency: 'GHS',
+      setCommunicationPlanStatus({
+        type: 'error',
+        message: err instanceof Error ? err.message : 'Unable to apply Nanivio credit. No payment was initiated.',
       });
-      setIsPaystackModalOpen(true);
     } finally {
       setUpgradingTier(null);
     }
@@ -1033,12 +1097,13 @@ export const UniversalBillingHub: React.FC = () => {
                     <Sparkles className="w-5 h-5 text-amber-400" />
                   </h2>
                   <p className="text-xs sm:text-sm text-slate-300 max-w-3xl">
-                    Malvi operates independently from Langpretation and Communication subscriptions. Choose your plan to unlock on-screen interactive companion avatar, real-time voice intelligence, in-call active assistance, and Malvi Business team collaboration.
+                    Malvi operates independently from Langpretation and Communication subscriptions. Review the current published plan catalogue, prices and plan descriptions.
                   </p>
                 </div>
 
                 {/* Billing Cycle Switcher */}
-                <div className="flex items-center bg-slate-950 p-1.5 rounded-xl border border-slate-800 shrink-0">
+                <div className="flex flex-col gap-2 shrink-0">
+                <div className="flex items-center bg-slate-950 p-1.5 rounded-xl border border-slate-800">
                   <button
                     onClick={() => setBillingCycle('MONTHLY')}
                     className={`px-4 py-1.5 rounded-lg text-xs font-bold transition ${
@@ -1053,38 +1118,78 @@ export const UniversalBillingHub: React.FC = () => {
                       billingCycle === 'ANNUAL' ? 'bg-cyan-500 text-slate-950' : 'text-slate-400 hover:text-slate-200'
                     }`}
                   >
-                    <span>Annual (Save 18%)</span>
-                    <span className="px-1.5 py-0.2 rounded bg-amber-400 text-slate-950 text-[10px] font-black">SAVE</span>
+                    <span>Annual</span>
                   </button>
+                </div>
+                <div className="flex items-center justify-between gap-2 rounded-xl border border-slate-800 bg-slate-950 p-1.5 text-xs">
+                  <span className="px-2 font-mono text-slate-400">Price currency</span>
+                  <button type="button" aria-pressed={malviCurrency === 'USD'} onClick={() => setMalviCurrency('USD')} className={`min-h-8 rounded-lg px-3 font-bold ${malviCurrency === 'USD' ? 'bg-cyan-500 text-slate-950' : 'text-slate-400 hover:text-white'}`}>USD</button>
+                  <button type="button" aria-pressed={malviCurrency === 'GHS'} onClick={() => setMalviCurrency('GHS')} className={`min-h-8 rounded-lg px-3 font-bold ${malviCurrency === 'GHS' ? 'bg-cyan-500 text-slate-950' : 'text-slate-400 hover:text-white'}`}>GHS</button>
+                </div>
                 </div>
               </div>
 
               {/* Current Active Malvi Plan Status */}
-              <div className="p-3 rounded-xl bg-slate-950/80 border border-slate-800 flex items-center justify-between text-xs">
-                <div className="flex items-center gap-2">
+              <div className="p-3 rounded-xl bg-slate-950/80 border border-slate-800 flex flex-col items-start justify-between gap-3 text-xs sm:flex-row sm:items-center">
+                <div className="flex min-w-0 flex-wrap items-center gap-2">
                   <span className="text-slate-400 font-mono">Current Malvi Status:</span>
-                  <span className="font-bold text-white">{malviSubscription?.planName || 'Malvi Free Experience'}</span>
+                  <span className="break-words font-bold text-white">{malviSubscription?.planName || 'Malvi Free Experience'}</span>
                   <span className="px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300 font-mono text-[10px] uppercase font-bold">
                     {malviSubscription?.status || 'TRIAL'}
                   </span>
                 </div>
-                <div className="text-slate-400 font-mono">
-                  Allowance: <strong className="text-cyan-400">{formatBillingAmount(malviSubscription?.videoMinutesRemaining)} mins</strong> video companion
+                <div className="flex flex-wrap gap-x-4 gap-y-1 text-slate-400 font-mono">
+                  <span>Video: <strong className="text-cyan-400">{malviSubscription?.videoMinutesRemaining ?? 0}/{malviSubscription?.videoMinutesAllowed ?? 0} mins</strong></span>
+                  <span>Voice: <strong className="text-cyan-300">{malviSubscription?.voiceMinutesRemaining ?? 0}/{malviSubscription?.voiceMinutesAllowed ?? 0} mins</strong></span>
                 </div>
               </div>
             </div>
 
-            {/* Malvi Plans Grid (Basic, Premium, Business) */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            {communicationPlanStatus && (
+              <div role={communicationPlanStatus.type === 'error' ? 'alert' : 'status'} className={`flex flex-wrap items-center justify-between gap-3 rounded-xl border p-3 text-sm ${communicationPlanStatus.type === 'error' ? 'border-amber-500/40 bg-amber-950/30 text-amber-100' : 'border-emerald-500/40 bg-emerald-950/30 text-emerald-200'}`}>
+                {communicationPlanStatus.message}
+                {communicationPlanStatus.type === 'error' && <button type="button" disabled={refreshingMalvi} onClick={() => void refreshMalviCatalogue()} className="min-h-9 shrink-0 rounded-lg border border-amber-400/40 px-3 text-xs font-bold text-amber-100 hover:bg-amber-400/10 disabled:opacity-50">
+                  {refreshingMalvi ? 'Refreshing…' : 'Reload catalogue'}
+                </button>}
+              </div>
+            )}
+            <p className="rounded-xl border border-slate-800 bg-slate-950/60 p-3 text-xs leading-5 text-slate-400">
+              Plan descriptions and minute allowances are catalogue information; they do not by themselves establish runtime enforcement.
+            </p>
+            {malviCurrency === 'GHS' && <p className="rounded-xl border border-slate-800 bg-slate-950/60 p-3 text-xs leading-5 text-slate-300" role="status">
+              GHS is derived from authoritative USD prices using fresh server FX. Each plan shows the quote source, as-of date and attribution. Expired or missing quotes block selection and checkout.
+            </p>}
+
+            {malviPlans.length === 0 ? (
+              <div className="rounded-2xl border border-amber-500/30 bg-amber-950/20 p-5" role="status">
+                <h3 className="font-bold text-amber-100">Malvi plans unavailable</h3>
+                <p className="mt-1 text-sm leading-5 text-amber-100/75">No published plan catalogue is currently available. Refresh to retry the live source; no fallback prices or plan availability are shown.</p>
+                <button type="button" disabled={refreshingMalvi} onClick={() => void refreshMalviCatalogue()} className="mt-4 inline-flex min-h-10 items-center gap-2 rounded-xl border border-amber-500/40 bg-slate-950/60 px-4 text-sm font-bold text-amber-100 hover:bg-slate-900 disabled:opacity-50">
+                  <RefreshCw className={`h-4 w-4 ${refreshingMalvi ? 'animate-spin' : ''}`} aria-hidden="true" /> {refreshingMalvi ? 'Refreshing catalogue…' : 'Refresh plans'}
+                </button>
+              </div>
+            ) : <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
               {malviPlans.map((plan) => {
                 const isCurrent = (malviSubscription?.tier || 'free') === plan.tier;
-                const priceGHS = billingCycle === 'ANNUAL' ? plan.priceAnnualGHS : plan.priceMonthlyGHS;
-                const priceUSD = billingCycle === 'ANNUAL' ? plan.priceAnnualUSD : plan.priceMonthlyUSD;
+                const price = malviPlanAmount(plan, billingCycle, malviCurrency);
+                const isFree = plan.tier === 'free';
+                const canSelect = price !== null && (isFree ? price === 0 : price > 0);
+                const periodLabel = billingCycle === 'ANNUAL' ? 'year' : 'month';
+                const priceDisplay = price === null || (!isFree && price <= 0)
+                  ? 'Price unavailable'
+                  : isFree
+                  ? 'Free'
+                  : malviCurrency === 'USD'
+                  ? `$${formatBillingAmount(price)} / ${periodLabel}`
+                  : `GH₵ ${formatBillingAmount(price)} / ${periodLabel}`;
+                const conversion = plan.currencyConversion;
+                const conversionFresh = Boolean(conversion && Number.isFinite(conversion.rate) && conversion.rate > 0 &&
+                  Number.isFinite(Date.parse(conversion.expiresAt)) && Date.parse(conversion.expiresAt) > Date.now());
 
                 return (
                   <div
                     key={plan.id}
-                    className={`p-6 rounded-3xl flex flex-col justify-between transition-all relative ${
+                    className={`min-w-0 p-6 rounded-3xl flex flex-col justify-between transition-all relative ${
                       isCurrent
                         ? 'bg-slate-900 border-2 border-cyan-400 shadow-xl shadow-cyan-500/10'
                         : plan.tier === 'malvi_premium'
@@ -1099,7 +1204,7 @@ export const UniversalBillingHub: React.FC = () => {
                         Active Malvi Plan
                       </div>
                     )}
-                    {plan.tier === 'malvi_premium' && !isCurrent && (
+                    {plan.isPopular && !isCurrent && (
                       <div className="absolute -top-3 left-1/2 -translate-x-1/2 px-3 py-0.5 rounded-full bg-gradient-to-r from-cyan-500 to-emerald-400 text-slate-950 text-[11px] font-black uppercase tracking-wider shadow">
                         Most Popular
                       </div>
@@ -1108,55 +1213,64 @@ export const UniversalBillingHub: React.FC = () => {
                     <div className="space-y-4">
                       <div>
                         <span className="text-xs font-bold uppercase font-mono text-cyan-400">{plan.tagline}</span>
-                        <h3 className="text-xl font-black text-white mt-0.5">{plan.name}</h3>
-                        <p className="text-xs text-slate-400 mt-1 min-h-[36px]">{plan.description}</p>
+                        <h3 className="break-words [overflow-wrap:anywhere] text-xl font-black text-white mt-0.5">{plan.name}</h3>
+                        <p className="break-words text-xs text-slate-400 mt-1 min-h-[36px]">{plan.description}</p>
                       </div>
 
                       <div className="pt-2 border-t border-slate-800">
                         <div className="text-2xl font-black font-mono text-white">
-                          GH₵ {formatBillingAmount(priceGHS)}
+                          {priceDisplay}
                         </div>
-                        <div className="text-xs text-slate-400 font-mono">
-                          ≈ ${formatBillingAmount(priceUSD)} / {billingCycle === 'ANNUAL' ? 'year' : 'month'}
-                        </div>
+                        {malviCurrency === 'GHS' && conversion && <div className="mt-2 space-y-0.5 text-[10px] leading-4 text-slate-500">
+                          <p>FX source: {conversion.source}</p>
+                          <p>As of: {conversion.asOf}{!conversionFresh ? ' · expired; reload before checkout' : ''}</p>
+                          {conversion.attributionUrl && <a href={conversion.attributionUrl} target="_blank" rel="noreferrer" className="inline-flex min-h-8 items-center gap-1 text-cyan-300 underline underline-offset-2 focus:outline-none focus:ring-2 focus:ring-cyan-400">
+                            Exchange-rate attribution <ArrowUpRight className="h-3 w-3" aria-hidden="true" />
+                          </a>}
+                        </div>}
+                        {malviCurrency === 'GHS' && !conversion && <p className="mt-2 text-[10px] leading-4 text-amber-200">Exchange-rate details unavailable. Reload before using GHS.</p>}
                       </div>
 
                       {/* Capabilities Matrix Strip */}
                       <div className="space-y-2 bg-slate-950/70 p-3.5 rounded-2xl border border-slate-800 text-xs">
                         <div className="flex items-center justify-between">
-                          <span className="text-slate-400 font-medium">Video Companion Quota</span>
-                          <span className="font-bold text-cyan-300 font-mono">{plan.videoInteractionMinutesLimit} mins/mo</span>
+                          <span className="text-slate-400 font-medium">Video minutes</span>
+                          <span className="font-bold text-cyan-300 font-mono">{plan.videoInteractionMinutesLimit}</span>
+                        </div>
+                        <div className="flex items-center justify-between">
+                          <span className="text-slate-400 font-medium">Voice minutes</span>
+                          <span className="font-bold text-cyan-300 font-mono">{plan.voiceInteractionMinutesLimit ?? 0}</span>
                         </div>
                         <div className="flex items-center justify-between">
                           <span className="text-slate-400 font-medium">Visual Avatar</span>
-                          <span className="font-bold text-emerald-400">
-                            {plan.avatarInteractive ? 'Interactive 3D Stage' : 'Text-Only'}
-                          </span>
+                          <span className="font-bold text-emerald-400">{plan.avatarInteractive ? 'Included' : 'Not included'}</span>
                         </div>
-                        <div className="flex items-center justify-between">
+                        <div className="flex items-start justify-between gap-3">
                           <span className="text-slate-400 font-medium">Voice Capabilities</span>
-                          <span className="font-semibold text-slate-200 text-right truncate max-w-[160px]" title={plan.voiceCapabilities}>
+                          <span className="max-w-[65%] break-words text-right font-semibold text-slate-200">
                             {plan.voiceCapabilities}
                           </span>
                         </div>
-                        <div className="flex items-center justify-between">
+                        <div className="flex items-start justify-between gap-3">
                           <span className="text-slate-400 font-medium">Langpretation</span>
-                          <span className="font-semibold text-slate-200 text-right truncate max-w-[160px]" title={plan.langpretationCapabilities}>
+                          <span className="max-w-[65%] break-words text-right font-semibold text-slate-200">
                             {plan.langpretationCapabilities}
                           </span>
                         </div>
+                        <div className="flex items-start justify-between gap-3">
+                          <span className="text-slate-400 font-medium">AI capabilities</span>
+                          <span className="max-w-[65%] break-words text-right font-semibold text-slate-200">{plan.aiInteractionCapabilities}</span>
+                        </div>
                         <div className="flex items-center justify-between">
                           <span className="text-slate-400 font-medium">Team Collaboration</span>
-                          <span className="font-bold text-purple-300">
-                            {plan.businessCollaboration ? 'Active AI Participant' : 'Single User'}
-                          </span>
+                          <span className="font-bold text-purple-300">{plan.businessCollaboration ? 'Included' : 'Not included'}</span>
                         </div>
                       </div>
 
                       {/* Included Features */}
                       <div className="space-y-1.5 pt-1">
                         <div className="text-[11px] font-bold text-slate-300 uppercase tracking-wider font-mono">Included Features:</div>
-                        {plan.features.map((feat, i) => (
+                        {(plan.features ?? []).map((feat, i) => (
                           <div key={i} className="flex items-start gap-2 text-xs text-slate-200">
                             <Check className="w-3.5 h-3.5 text-emerald-400 mt-0.5 shrink-0" />
                             <span>{feat}</span>
@@ -1187,7 +1301,7 @@ export const UniversalBillingHub: React.FC = () => {
                         <>
                           <button
                             id={`btn_malvi_paystack_${plan.tier}`}
-                            disabled={upgradingTier === plan.tier}
+                            disabled={upgradingTier === plan.tier || !canSelect || isFree}
                             onClick={() => handleSubscribeMalvi(plan.tier, true)}
                             className="w-full py-2.5 rounded-xl font-bold text-xs bg-gradient-to-r from-cyan-500 to-emerald-400 hover:from-cyan-400 hover:to-emerald-300 text-slate-950 shadow-md shadow-cyan-500/20 transition flex items-center justify-center gap-1.5 cursor-pointer"
                           >
@@ -1196,7 +1310,7 @@ export const UniversalBillingHub: React.FC = () => {
                           </button>
                           <button
                             id={`btn_malvi_balance_${plan.tier}`}
-                            disabled={upgradingTier === plan.tier}
+                            disabled={upgradingTier === plan.tier || !canSelect}
                             onClick={() => handleSubscribeMalvi(plan.tier, false)}
                             className="w-full py-1.5 rounded-xl font-medium text-[11px] bg-slate-800 hover:bg-slate-700 text-slate-300 transition flex items-center justify-center gap-1 cursor-pointer"
                           >
@@ -1208,7 +1322,7 @@ export const UniversalBillingHub: React.FC = () => {
                   </div>
                 );
               })}
-            </div>
+            </div>}
           </div>
         )}
 
@@ -1847,6 +1961,7 @@ export const UniversalBillingHub: React.FC = () => {
         }}
         purpose={paystackConfig.purpose || 'COMMUNICATION_TOPUP'}
         planTier={paystackConfig.planTier}
+        catalogVersion={paystackConfig.purpose === 'MALVI_SUBSCRIPTION' ? malviPlans.find(plan => plan.tier === paystackConfig.planTier)?.catalogVersion : undefined}
         billingCycle={paystackConfig.billingCycle}
         initialAmount={paystackConfig.amount}
         defaultCurrency={paystackConfig.currency || 'GHS'}

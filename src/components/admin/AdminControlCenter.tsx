@@ -37,6 +37,7 @@ import { AdminPaymentGatewaysManager } from './AdminPaymentGatewaysManager';
 import { AdminRideHailingMapsManager } from './AdminRideHailingMapsManager';
 import { AdminFeatureLauncher } from './AdminFeatureLauncher';
 import { AdminLangpretationManager } from './AdminLangpretationManager';
+import { AdminMalviBillingWorkspace } from './AdminMalviBillingWorkspace';
 
 export const AdminControlCenter: React.FC = () => {
   const {
@@ -56,7 +57,7 @@ export const AdminControlCenter: React.FC = () => {
     adminUsersList,
   } = useNanivio();
 
-  const [adminSubTab, setAdminSubTab] = useState<'launcher' | 'langpretation' | 'rides-maps' | 'users' | 'experts' | 'businesses' | 'drivers' | 'gateways' | 'audit' | 'switches'>('launcher');
+  const [adminSubTab, setAdminSubTab] = useState<'launcher' | 'langpretation' | 'rides-maps' | 'users' | 'experts' | 'businesses' | 'drivers' | 'gateways' | 'audit' | 'switches' | 'malvi-billing'>('launcher');
   const [adminKeyInput, setAdminKeyInput] = useState('');
   const [keyError, setKeyError] = useState('');
   const [savedSuccess, setSavedSuccess] = useState(false);
@@ -387,6 +388,21 @@ export const AdminControlCenter: React.FC = () => {
           <Sliders className="w-4 h-4" />
           <span>Feature Switches &amp; Pricing</span>
         </button>
+
+        <button
+          id="tab-admin-malvi-billing"
+          onClick={() => setAdminSubTab('malvi-billing')}
+          aria-selected={adminSubTab === 'malvi-billing'}
+          role="tab"
+          className={`px-4 py-2.5 rounded-2xl text-xs font-bold flex items-center gap-2 transition-all shrink-0 cursor-pointer ${
+            adminSubTab === 'malvi-billing'
+              ? 'bg-gradient-to-r from-amber-400 to-lime-300 text-slate-950 shadow-md shadow-amber-500/20'
+              : 'bg-slate-900/80 text-slate-400 hover:text-white border border-slate-800 hover:border-slate-700'
+          }`}
+        >
+          <DollarSign className="w-4 h-4" />
+          <span>Malvi Billing</span>
+        </button>
       </div>
 
       {/* Sub-tab Views */}
@@ -399,6 +415,7 @@ export const AdminControlCenter: React.FC = () => {
       {adminSubTab === 'drivers' && <AdminDriverQueue />}
       {adminSubTab === 'gateways' && <AdminPaymentGatewaysManager />}
       {adminSubTab === 'audit' && <AdminAuditTrail />}
+      {adminSubTab === 'malvi-billing' && <AdminMalviBillingWorkspace />}
 
       {/* Existing Switches & Telemetry Tab */}
       {adminSubTab === 'switches' && (

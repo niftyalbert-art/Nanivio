@@ -26,6 +26,7 @@ interface PaystackTopUpModalProps {
   planTier?: string;
   billingCycle?: 'MONTHLY' | 'ANNUAL';
   minutes?: number;
+  catalogVersion?: number;
 }
 
 export const PaystackTopUpModal: React.FC<PaystackTopUpModalProps> = ({
@@ -39,6 +40,7 @@ export const PaystackTopUpModal: React.FC<PaystackTopUpModalProps> = ({
   planTier,
   billingCycle = 'MONTHLY',
   minutes,
+  catalogVersion,
 }) => {
   const { authUser } = useNanivio();
   const isFixedProduct = purpose !== 'COMMUNICATION_TOPUP';
@@ -56,17 +58,43 @@ export const PaystackTopUpModal: React.FC<PaystackTopUpModalProps> = ({
   } | null>(null);
   const [verificationResult, setVerificationResult] = useState<any>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [malviQuote, setMalviQuote] = useState<import('../../types/billing').MalviSubscriptionPlan | null>(null);
+  const [malviQuoteLoading, setMalviQuoteLoading] = useState(false);
   React.useEffect(() => {
     if (!isOpen) return;
-    setAmount(initialAmount ?? 50);
+    let cancelled = false;
+    const isMalvi = purpose === 'MALVI_SUBSCRIPTION';
+    setAmount(isMalvi ? 0 : initialAmount ?? 50);
     setCustomAmount('');
-    setCurrency(defaultCurrency);
+    // This merchant collects Malvi card payments in GHS. The USD base price
+    // and conversion are explicitly reviewed before checkout, never hidden.
+    setCurrency(isMalvi ? 'GHS' : defaultCurrency);
     setPaymentStep('INPUT');
     setHasOpenedCheckout(false);
     setPaystackData(null);
     setVerificationResult(null);
     setErrorMessage(null);
-  }, [isOpen, initialAmount, defaultCurrency, purpose, packageId, planTier, billingCycle]);
+    setMalviQuote(null);
+    setMalviQuoteLoading(isMalvi);
+    if (isMalvi) {
+      billingClient.getMalviPlans().then(plans => {
+        if (cancelled) return;
+        const plan = plans.find(item => item.tier === planTier && item.isActive !== false);
+        const value = billingCycle === 'ANNUAL' ? plan?.priceAnnualGHS : plan?.priceMonthlyGHS;
+        if (!plan || !Number.isSafeInteger(plan.catalogVersion) ||
+            typeof value !== 'number' || !Number.isFinite(value) || value <= 0 ||
+            !plan.currencyConversion || !Number.isFinite(Date.parse(plan.currencyConversion.expiresAt)) ||
+            Date.parse(plan.currencyConversion.expiresAt) <= Date.now()) {
+          throw new Error('A current GHS checkout quote is unavailable. Reload the plans and try again; no payment was started.');
+        }
+        setMalviQuote(plan);
+        setAmount(value);
+      }).catch(error => {
+        if (!cancelled) setErrorMessage(error.message || 'The published Malvi plan could not be loaded.');
+      }).finally(() => { if (!cancelled) setMalviQuoteLoading(false); });
+    }
+    return () => { cancelled = true; };
+  }, [isOpen, initialAmount, defaultCurrency, purpose, packageId, planTier, billingCycle, catalogVersion]);
 
   // Background auto-polling for payment completion once user opens Paystack checkout
   React.useEffect(() => {
@@ -107,6 +135,11 @@ export const PaystackTopUpModal: React.FC<PaystackTopUpModalProps> = ({
   };
 
   const handleInitialize = async () => {
+    if (purpose === 'MALVI_SUBSCRIPTION' && (!malviQuote || malviQuoteLoading ||
+        Date.parse(malviQuote.currencyConversion?.expiresAt ?? '') <= Date.now())) {
+      setErrorMessage('Reload the published Malvi plan to confirm a current checkout quote.');
+      return;
+    }
     if (!Number.isFinite(amount) || amount <= 0) {
       setErrorMessage('Please enter a valid amount.');
       return;
@@ -124,6 +157,7 @@ export const PaystackTopUpModal: React.FC<PaystackTopUpModalProps> = ({
         planTier,
         billingCycle: billingCycle as 'MONTHLY' | 'ANNUAL',
         minutes,
+        metadata: purpose === 'MALVI_SUBSCRIPTION' ? { catalogVersion: malviQuote?.catalogVersion } : undefined,
       });
 
       setPaystackData({
@@ -230,6 +264,24 @@ export const PaystackTopUpModal: React.FC<PaystackTopUpModalProps> = ({
           {/* STEP 1: INPUT AMOUNT & CURRENCY */}
           {paymentStep === 'INPUT' && (
             <div className="space-y-4">
+              {purpose === 'MALVI_SUBSCRIPTION' && (
+                <section aria-label="Confirmed Malvi checkout terms" className="rounded-xl border border-amber-400/30 bg-slate-950 p-4 text-xs leading-5 text-slate-300">
+                  {malviQuoteLoading ? <p role="status">Loading the current published plan and conversion…</p> : malviQuote ? <>
+                    <h3 className="font-bold text-white">{malviQuote.name} · {billingCycle === 'ANNUAL' ? 'Annual' : 'Monthly'}</h3>
+                    <p>USD base price: <strong>${(billingCycle === 'ANNUAL' ? malviQuote.priceAnnualUSD : malviQuote.priceMonthlyUSD).toFixed(2)}</strong></p>
+                    <p>Paystack will collect <strong>GHS {amount.toFixed(2)}</strong>. Your bank may apply its own currency conversion or fees.</p>
+                    <p>{malviQuote.voiceInteractionMinutesLimit ?? malviQuote.videoInteractionMinutesLimit} voice minutes · {malviQuote.videoInteractionMinutesLimit} video minutes per purchased term.</p>
+                    {catalogVersion !== undefined && catalogVersion !== malviQuote.catalogVersion && <p className="text-amber-200">The catalogue changed. Review these current terms before paying.</p>}
+                    <p className="mt-2 text-[11px] text-slate-400">
+                      1 USD = {malviQuote.currencyConversion!.rate.toFixed(5)} GHS · as of {new Date(malviQuote.currencyConversion!.asOf).toLocaleString()}.
+                      {' '}<a className="underline" href={malviQuote.currencyConversion!.attributionUrl} target="_blank" rel="noreferrer">{malviQuote.currencyConversion!.source}</a>
+                    </p>
+                    <details className="mt-2"><summary className="cursor-pointer text-amber-200">Review included features</summary>
+                      <ul className="mt-2 list-inside list-disc">{malviQuote.features.map((feature, i) => <li key={i}>{feature}</li>)}</ul>
+                    </details>
+                  </> : <p>No confirmed quote. Close checkout and reload the Malvi plans to retry.</p>}
+                </section>
+              )}
               {/* Currency Selector */}
               <div className="flex items-center justify-between bg-slate-950 p-2 rounded-xl border border-slate-800 text-xs">
                 <span className="text-slate-400 px-2 font-medium">Billing Currency</span>
@@ -308,7 +360,7 @@ export const PaystackTopUpModal: React.FC<PaystackTopUpModalProps> = ({
               <div className="p-3 rounded-xl bg-slate-950/60 border border-slate-800/80 text-[11px] text-slate-400 flex items-start gap-2.5">
                 <ShieldCheck className="w-4 h-4 text-emerald-400 flex-shrink-0 mt-0.5" />
                 <span>
-                  Payments are encrypted end-to-end via Paystack with HMAC SHA-512 signatures. Funds directly credit your Nanivio Account Value without intermediary escrow.
+                  Paystack handles your payment details. Nanivio verifies payment before crediting your account or activating the purchased plan.
                 </span>
               </div>
 
@@ -316,6 +368,7 @@ export const PaystackTopUpModal: React.FC<PaystackTopUpModalProps> = ({
               <button
                 type="button"
                 onClick={handleInitialize}
+                disabled={purpose === 'MALVI_SUBSCRIPTION' && (malviQuoteLoading || !malviQuote)}
                 className="w-full py-3 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-sm transition flex items-center justify-center gap-2 shadow-lg shadow-emerald-500/20"
               >
                 <span>Proceed to Paystack Checkout ({currency} {amount.toFixed(2)})</span>
