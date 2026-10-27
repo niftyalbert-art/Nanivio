@@ -41,9 +41,10 @@ const fixtures = {
         return { id, owner:user, language:'ar', speechProvider:globalThis.__malviAdapter.speechProvider, mode:globalThis.__malviAdapter.voiceMode?'VOICE_TEST':'LITE' };
       },
       stop: async () => { globalThis.__malviAdapter.voiceStops=(globalThis.__malviAdapter.voiceStops||0)+1; },
-      activity: async () => {
+      activity: async (user, id, activeUntil) => {
         globalThis.__malviAdapter.activity++;
-        return { idleDeadline: Date.now()+60000 };
+        (globalThis.__malviAdapter.activityCalls ||= []).push({user,id,activeUntil});
+        return { idleDeadline: Math.max(Date.now(),activeUntil || 0)+60000 };
       }
     };`,
 };
@@ -164,10 +165,12 @@ try {
   state.geminiOptions.callbacks.onmessage({serverContent:{turnComplete:true}});
   await new Promise(resolve=>setImmediate(resolve));
   assert.equal(gemini.events.filter(e=>e.type==='malvi:brain_audio').length,beforeInterrupted,'Cancelled opening speech cannot arrive late');
-  assert.equal(state.activity, 0, 'A language preference must not reset the cost-protection deadline');
+  assert.ok(state.activity > 0, 'Actual synthesized replies refresh conversation activity');
+  const activityBeforeLanguage = state.activity;
   const contentCount = state.geminiContent.length;
   await controller.language(gemini, 'intruder', id1, 'en');
   await controller.language(gemini, 'owner', id1, 'xx');
+  assert.equal(state.activity, activityBeforeLanguage, 'Language preferences must not reset the cost-protection deadline');
   assert.equal(state.geminiContent.length, contentCount);
   assert.equal(gemini.events.at(-1).type, 'malvi:brain_language_error');
   assert.equal(state.geminiConnects, 1, 'Language changes must reuse the same selected provider connection');
@@ -177,6 +180,7 @@ try {
   process.env.MALVI_BRAIN_PROVIDER = 'openai';
   await controller.start(openai, 'owner', id2);
   await new Promise(resolve => setImmediate(resolve));
+  const activityBeforeOpenaiLanguage = state.activity;
   const start = state.openaiEvents.find(event => event.type === 'session.start');
   assert.match(start.session.instructions, /Arabic \(ar;/);
   assert.match(start.session.delegation.responses.instructions, /Arabic \(ar;/);
@@ -192,7 +196,7 @@ try {
   assert.equal(openai.events.at(-1).payload.language, 'fr');
   assert.equal(state.openaiConnects, 1);
   assert.equal(state.geminiConnects, 1, 'No hidden cross-provider fallback');
-  assert.equal(state.activity, 0);
+  assert.equal(state.activity, activityBeforeOpenaiLanguage);
   controller.closeSocket(openai);
   process.env.MALVI_BRAIN_PROVIDER = 'gemini';
   state.voiceMode = true;
@@ -233,7 +237,7 @@ try {
   await new Promise(resolve => setImmediate(resolve));
   assert.equal(native.events.find(e => e.type === 'malvi:brain_ready').payload.speechProvider, 'gemini');
   assert.equal(state.geminiOptions.config.speechConfig.voiceConfig.prebuiltVoiceConfig.voiceName, 'Sulafat');
-  assert.equal(state.geminiOptions.config.realtimeInputConfig.automaticActivityDetection.silenceDurationMs, 350);
+  assert.equal(state.geminiOptions.config.realtimeInputConfig.automaticActivityDetection.silenceDurationMs, 250);
   assert.equal(state.geminiOptions.config.realtimeInputConfig.automaticActivityDetection.endOfSpeechSensitivity, 'END_SENSITIVITY_HIGH');
   assert.match(state.geminiOptions.config.systemInstruction, /British English and light Ghanaian English/);
   assert.match(state.geminiOptions.config.systemInstruction, /"Na ni vio"/);
@@ -242,6 +246,25 @@ try {
   nativePcm.writeInt16LE(16000, 0);
   const nativeChunk = { inlineData: { data: nativePcm.toString('base64'), mimeType: 'audio/pcm;rate=24000' } };
   emitNative({ serverContent: { modelTurn: { parts: [nativeChunk] }, outputTranscription: { text: 'Hello from Gemini' }, turnComplete: true } });
+  await new Promise(resolve => setImmediate(resolve));
+  assert.ok(state.activityCalls.at(-1).activeUntil >= Date.now(),
+    'Native Gemini audio renews through its server-measured playback duration');
+  assert.ok(native.events.some(e=>e.type==='malvi:brain_activity'),
+    'The browser receives the authoritative renewed deadline');
+  const activityBeforeQuietSpeech = state.activity;
+  const realNow = Date.now;
+  try {
+    Date.now = () => realNow() + 2000;
+    emitNative({serverContent:{inputTranscription:{text:'A quiet spoken request'}}});
+    await new Promise(resolve => setImmediate(resolve));
+    assert.equal(state.activity, activityBeforeQuietSpeech + 1,
+      'Provider-recognized speech refreshes activity without passing the local loudness threshold');
+    emitNative({serverContent:{inputTranscription:{text:'   '}}});
+    await new Promise(resolve => setImmediate(resolve));
+    assert.equal(state.activity, activityBeforeQuietSpeech + 1, 'Empty transcription does not keep a session alive');
+  } finally {
+    Date.now = realNow;
+  }
   let nativeAudio = native.events.filter(e => e.type === 'malvi:brain_audio');
   assert.equal(nativeAudio.length, 1);
   const styledAudio = Buffer.from(nativeAudio[0].payload.pcm24k, 'base64');
@@ -290,7 +313,7 @@ try {
   emitNative({ serverContent: { modelTurn: { parts: [spokenChunk] }, outputTranscription: { text: 'Late' }, turnComplete: true } });
   assert.equal(native.events.filter(e => e.type === 'malvi:brain_audio').length, 5);
   assert.equal(state.speechRequests.length, speechRequestsBefore, 'Gemini voice must not make ElevenLabs requests or fallback');
-  console.log(JSON.stringify({ geminiAndOpenAI: true, exactLanguageAndDialect: true, localizedFirstGreeting: true, livePreferenceUpdates: true, ownerOnly: true, noProviderFanoutOrReconnect: true, idleDeadlineUnchanged: true }));
+  console.log(JSON.stringify({ geminiAndOpenAI: true, exactLanguageAndDialect: true, localizedFirstGreeting: true, livePreferenceUpdates: true, ownerOnly: true, noProviderFanoutOrReconnect: true, languageDoesNotRenewIdle: true, speechAndPlaybackRenewIdle: true }));
 } finally {
   controller.closeSocket(gemini); controller.closeSocket(openai);
   for (const key of keys) {

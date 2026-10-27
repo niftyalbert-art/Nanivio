@@ -253,7 +253,8 @@ export const MalviLiveAssistantProvider: React.FC<{ children: React.ReactNode }>
       }
     });
     const offActivity = realtimeClient.on('malvi:brain_activity', (payload) => {
-      if (isCurrent(payload) && Number.isFinite(payload.idleDeadline)) deadline.current = payload.idleDeadline;
+      // Concurrent input/output renewals may arrive out of order.
+      if (isCurrent(payload) && Number.isFinite(payload.idleDeadline)) deadline.current = Math.max(deadline.current, payload.idleDeadline);
     });
     const offSources = realtimeClient.on('malvi:brain_sources', (payload) => {
       if (!isCurrent(payload)) return;
@@ -564,7 +565,7 @@ export const MalviLiveAssistantProvider: React.FC<{ children: React.ReactNode }>
       if (!deadline.current) return;
       const seconds = Math.max(0, Math.ceil((deadline.current - Date.now()) / 1000));
       setSecondsRemaining(seconds);
-      if (!seconds) { setNotice('Live avatar disconnected after 60 seconds without input.'); close(); }
+      if (!seconds) { setNotice('Live conversation ended after inactivity or reaching its session limit.'); close(); }
     }, 250);
     return () => clearInterval(timer);
   }, [phase, close]);
@@ -580,7 +581,7 @@ export const MalviLiveAssistantProvider: React.FC<{ children: React.ReactNode }>
     const id = sessionId.current;
     if (id) realtimeClient.send('malvi:brain_interrupt', { sessionId: id });
     if (id) void assistantRequest(`/session/${id}/activity`, { kind: 'interrupt' }).then(data => {
-      if (id === sessionId.current) deadline.current = data.idleDeadline;
+      if (id === sessionId.current) deadline.current = Math.max(deadline.current, data.idleDeadline);
     }).catch(err => fail(err instanceof Error ? err.message : 'The session has ended.'));
   };
   return (

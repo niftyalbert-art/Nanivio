@@ -113,8 +113,12 @@ export function createLiveAvatarService(deps: {
       if (record.closing || record.deadline <= deps.now()) throw new AssistantError(410, 'SESSION_EXPIRED', 'The live session ended after inactivity.');
       return record;
     },
-    async activity(userId: string, id: string) {
-      const record = await (await deps.store()).touch(id, ownerKey(userId), deps.now());
+    async activity(userId: string, id: string, activeUntil?: number) {
+      const now = deps.now();
+      // Only server-produced audio may supply a playback horizon. HTTP clients
+      // cannot submit one, and Redis still enforces ownership/expiry/hard limit.
+      const until = Number.isFinite(activeUntil) ? Math.max(now, Math.min(activeUntil!, now + MAX_SESSION_MS)) : now;
+      const record = await (await deps.store()).touch(id, ownerKey(userId), now, until);
       if (!record) throw new AssistantError(410, 'SESSION_EXPIRED', 'Live session is closed or expired.');
       return { idleDeadline: record.deadline };
     },
