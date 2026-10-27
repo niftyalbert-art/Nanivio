@@ -114,6 +114,46 @@ test('real Redis enforces shared LiveAvatar rate, ownership, deadlines and clean
       await assert.rejects(service.activity('active-user', session.id), (e: AssistantError) => e.status === 410);
       await service.sweep(); assert.equal(await store.get(session.id), null);
     });
+    await t.test('server-produced reply playback keeps a conversation alive beyond its first minute', async () => {
+      const session = await service.create('listening-user');
+      const start = now;
+      now += 59_000;
+      const playbackEnd = now + 90_000;
+      const renewed = await service.activity('listening-user', session.id, playbackEnd);
+      assert.equal(renewed.idleDeadline, playbackEnd + 60_000);
+      // An overlapping user-input renewal must not shorten the reply lease.
+      await service.activity('listening-user', session.id);
+      assert.equal((await store.get(session.id))?.deadline, renewed.idleDeadline);
+      now = start + 61_000;
+      await service.sweep();
+      assert.ok(await service.owned('listening-user', session.id), 'Do not sweep an active reply at one minute');
+      now = playbackEnd + 59_999;
+      assert.ok(await service.owned('listening-user', session.id), 'Give the user a full response window after playback');
+      now = playbackEnd + 60_001;
+      await service.sweep();
+      assert.equal(await store.get(session.id), null, 'A genuinely unattended conversation still expires');
+      await assert.rejects(service.activity('listening-user', session.id, now + 90_000),
+        (e: AssistantError) => e.status === 410, 'Late output cannot revive an expired session');
+    });
+    await t.test('concurrent input and reply activity remains owned, monotonic and hard-capped', async () => {
+      const session = await service.create('reply-owner');
+      now += 30_000;
+      await assert.rejects(service.activity('intruder', session.id, now + MAX_SESSION_MS),
+        (e: AssistantError) => e.status === 410);
+      await Promise.all([
+        service.activity('reply-owner', session.id, now + 100_000),
+        service.activity('reply-owner', session.id),
+        service.activity('reply-owner', session.id, now + 20_000),
+      ]);
+      assert.equal((await store.get(session.id))?.deadline, now + 160_000);
+      await service.activity('reply-owner', session.id, Number.MAX_SAFE_INTEGER);
+      assert.equal((await store.get(session.id))?.deadline, session.hardDeadline);
+      now = session.hardDeadline;
+      await assert.rejects(service.activity('reply-owner', session.id, now + 100_000),
+        (e: AssistantError) => e.status === 410);
+      await service.sweep();
+      assert.equal(await store.get(session.id), null);
+    });
     await t.test('welcome generation has a shared one-request-per-session limit', async () => {
       const session = await service.create('welcome-user');
       const outcomes = await Promise.allSettled([service.claimWelcome(session.id), service.claimWelcome(session.id)]);

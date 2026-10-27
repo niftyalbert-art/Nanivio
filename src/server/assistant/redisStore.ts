@@ -28,7 +28,7 @@ if not raw then return '' end
 local s = cjson.decode(raw)
 local now = tonumber(ARGV[2])
 if s.owner ~= ARGV[1] or s.closing or s.deadline <= now then return '' end
-s.deadline = math.min(now + 60000, s.hardDeadline)
+s.deadline = math.min(math.max(s.deadline, math.max(now, tonumber(ARGV[3]) or now) + 60000), s.hardDeadline)
 redis.call('SET', KEYS[1], cjson.encode(s), 'PX', 780000)
 redis.call('ZADD', KEYS[2], s.deadline, s.id)
 return cjson.encode(s)`;
@@ -113,8 +113,8 @@ export function redisSessionStore(redis: any) {
       return Number(await evalScript(SAVE_MALVI_COST_DOCUMENT,
         [`${PREFIX}billing-cost-model`], [String(expectedVersion), document])) === 1;
     },
-    async touch(id: string, owner: string, now: number): Promise<AssistantSessionRecord | null> {
-      const raw = await evalScript(TOUCH_SESSION, [sessionKey(id), deadlinesKey], [owner, String(now)]);
+    async touch(id: string, owner: string, now: number, activeUntil = now): Promise<AssistantSessionRecord | null> {
+      const raw = await evalScript(TOUCH_SESSION, [sessionKey(id), deadlinesKey], [owner, String(now), String(activeUntil)]);
       return raw ? JSON.parse(raw) : null;
     },
     async claimWelcome(id: string) {

@@ -128,6 +128,34 @@ function acceptsOutput(connection: BrainConnection) {
   return connection.outputLanguage === connection.language;
 }
 
+async function refreshConversationActivity(connection: BrainConnection, activeUntil?: number) {
+  if (connection.closed) return;
+  const now = Date.now();
+  if (activeUntil === undefined && now - connection.lastActivityAt < 1000) return;
+  connection.lastActivityAt = now;
+  const activity = await liveAvatarService.activity(connection.owner, connection.sessionId, activeUntil);
+  if (connection.closed) return;
+  send(connection.socket, 'malvi:brain_activity', {
+    sessionId: connection.sessionId, idleDeadline: activity.idleDeadline,
+  });
+  armIdleDeadline(connection, activity.idleDeadline, () => {
+    send(connection.socket, 'malvi:brain_error', {
+      sessionId: connection.sessionId, message: 'Malvi stopped after 60 seconds without conversation activity.',
+    });
+    void malviLiveBrainController.stopSession(connection.owner, connection.sessionId);
+  });
+}
+
+function observeConversationActivity(connection: BrainConnection, activeUntil?: number) {
+  void refreshConversationActivity(connection, activeUntil).catch(() => {
+    if (connection.closed) return;
+    send(connection.socket, 'malvi:brain_error', {
+      sessionId: connection.sessionId, message: 'The live session could not confirm its activity. End it and start a new conversation.',
+    });
+    void malviLiveBrainController.stopSession(connection.owner, connection.sessionId);
+  });
+}
+
 async function flushAudio(socket: WebSocket, connection: BrainConnection, ended: boolean, boundary?: number) {
   if (connection.outputLanguage && connection.outputLanguage !== connection.language) {
     connection.transcript = '';
@@ -155,6 +183,8 @@ async function flushAudio(socket: WebSocket, connection: BrainConnection, ended:
   });
   const pcm24k = audio.toString('base64');
   connection.playbackUntil = Math.max(Date.now(), connection.playbackUntil) + audio.length / 48;
+  await refreshConversationActivity(connection, connection.playbackUntil);
+  if (connection.closed || connection.language !== language || generation !== connection.outputGeneration) return;
   send(socket, 'malvi:brain_audio', {
     sessionId: connection.sessionId,
     language,
@@ -190,6 +220,7 @@ function flushNativeAudio(socket: WebSocket, connection: BrainConnection, ended 
     return;
   }
   connection.playbackUntil = Math.max(Date.now(), connection.playbackUntil) + audio.durationMs;
+  observeConversationActivity(connection, connection.playbackUntil);
   send(socket, 'malvi:brain_audio', {
     ...audio, sessionId: connection.sessionId, language: connection.language,
     sampleRate: 24000, format: 'pcm_s16le', channels: 1, ended,
@@ -263,7 +294,8 @@ async function connectGemini(
           }
         }
         const inputText = serverContent?.inputTranscription?.text;
-        if (inputText) {
+        if (inputText?.trim()) {
+          observeConversationActivity(connection);
           connection.memoryUser = (connection.memoryUser + inputText).slice(0,12000);
           send(socket, 'malvi:brain_caption', { sessionId: connection.sessionId, text: inputText, role: 'user' });
         }
@@ -370,6 +402,7 @@ async function connectOpenAI(
       flushOpening(socket, connection, onFailure);
       scheduleSpeech();
     } else if (event.type === 'session.input_transcript.delta' && typeof event.delta === 'string') {
+      if (event.delta.trim()) observeConversationActivity(connection);
       connection.memoryUser = (connection.memoryUser + event.delta).slice(0,12000);
       send(socket, 'malvi:brain_caption', { sessionId: connection.sessionId, text: event.delta, role: 'user' });
     } else if (event.type === 'session.closed') {
@@ -546,8 +579,8 @@ export const malviLiveBrainController = {
       activeBySocket.get(socket)!.set(sessionId, connection);
       activeBySession.set(sessionId, connection);
       connection.lastActivityAt = Date.now();
-      armIdleDeadline(connection, session.deadline || Date.now() + IDLE_MS, () => {
-        send(socket, 'malvi:brain_error', { sessionId, message: 'Malvi stopped after 60 seconds without input.' });
+      armIdleDeadline(connection, fresh.deadline || Date.now() + IDLE_MS, () => {
+        send(socket, 'malvi:brain_error', { sessionId, message: 'Malvi stopped after 60 seconds without conversation activity.' });
         void this.stopSession(userId, sessionId);
       });
       if (Number.isFinite(session.hardDeadline)) {
@@ -644,13 +677,7 @@ export const malviLiveBrainController = {
     }
     if (hasSpeech(pcm) && Date.now() - connection.lastActivityAt > 1000) {
       try {
-        const activity = await liveAvatarService.activity(userId, sessionId);
-        send(socket, 'malvi:brain_activity', { sessionId, idleDeadline: activity.idleDeadline });
-        connection.lastActivityAt = Date.now();
-        armIdleDeadline(connection, activity.idleDeadline, () => {
-          send(socket, 'malvi:brain_error', { sessionId, message: 'Malvi stopped after 60 seconds without input.' });
-          void this.stopSession(userId, sessionId);
-        });
+        await refreshConversationActivity(connection);
       } catch {
         send(socket, 'malvi:brain_error', { sessionId, message: 'The live session timed out. End it and start a new conversation.' });
         await this.stopSession(userId, sessionId);
