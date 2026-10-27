@@ -6,6 +6,7 @@ import type { MalviAssetResult } from '../../shared/malviInputTypes';
 import { MalviAssetResults } from './MalviAssetResults';
 import type { MalviReferenceCitation } from '../../lib/malviLiveClient';
 import { authClient } from '../../lib/authClient';
+import { MalviUserTranscript } from './MalviUserTranscript';
 
 export interface MalviLiveOverlayProps {
   voiceOnly?: boolean;
@@ -389,17 +390,7 @@ export const MalviLiveOverlay: React.FC<MalviLiveOverlayProps> = ({
             </div>
           )}
           {userTranscript?.trim() && phase === 'connected' && (
-            <div
-              role="region"
-              aria-label="Your recognized speech"
-              aria-live="polite"
-              aria-relevant="text"
-              tabIndex={0}
-              className="max-h-12 w-full max-w-xl overflow-y-auto overscroll-contain rounded-lg border border-white/10 bg-[#10201f]/70 px-3 py-1.5 text-center text-xs leading-5 text-[#e3ebe5]/90 backdrop-blur-md focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#d6e7da]"
-            >
-              <span className="font-medium text-[#c9e2cf]">You:</span>{' '}
-              <span className="break-words">{userTranscript}</span>
-            </div>
+            <MalviUserTranscript text={userTranscript} />
           )}
           <button
             type="button"
