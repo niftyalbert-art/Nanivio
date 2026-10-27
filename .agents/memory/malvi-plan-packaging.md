@@ -51,3 +51,16 @@ the calculator was delivered.
 
 **How to apply:** Keep estimates separate from selling prices and connect approved
 published plan changes to customer listings and authoritative purchase quotes.
+
+Runtime usage ceilings need explicit administrator approval; do not turn the
+calculator's example scenario or public rates into an assumed provider balance.
+Unconfigured paid work must remain unavailable rather than silently unlimited.
+
+**Why:** The user requires costs and quotas to determine billing and wants
+administrators to control the offering. Public estimates do not establish the
+actual account's allowance or an approved spending budget.
+
+**How to apply:** Keep pricing estimates, purchased entitlements and shared usage
+safety caps distinct. Preserve prices and term dates when configuring caps.
+An unpaid Free selection is not a new purchase and must not replenish a trial
+or replace a paid term.

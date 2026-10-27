@@ -32,5 +32,5 @@
 - [Malvi microphone verification](malvi-microphone-verification.md) — exercise the real audio worklet; simulated recorder controls do not prove frame capture or recognition.
 - [Nanivio Mic direction](nanivio-mic-direction.md) — owned engine across browsers, cloud, and apps; user chose current AI providers, not self-hosted recognition.
 - [Malvi continuity and sharing](malvi-continuity-and-sharing.md) — account-linked returning conversations, explicit camera consent and attributable public research.
-- [Malvi plan packaging](malvi-plan-packaging.md) — group billing capabilities from voice-only to advanced; exact new tiers and pricing need approval.
+- [Malvi plan packaging](malvi-plan-packaging.md) — voice-to-advanced plans; admin-approved prices and usage caps; preserve purchased benefits and prevent unpaid trial refills.
 - [Malvi session activity](malvi-session-activity.md) — count verified speech and reply playback, without extending unattended sessions or bypassing the hard cap.

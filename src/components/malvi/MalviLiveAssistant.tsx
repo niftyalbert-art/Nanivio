@@ -18,6 +18,7 @@ import { NanivioMicEngine } from '../../lib/nanivioMic/NanivioMicEngine';
 import { BrowserMicCapture, browserMicStreamId } from '../../lib/nanivioMic/BrowserMicCapture';
 import { NANIVIO_MIC_EVENTS } from '../../shared/nanivioMicProtocol';
 import { parseMalviAssets, type MalviAssetResult } from '../../shared/malviInputTypes';
+import { MalviSessionClock } from '../../lib/malviSessionClock';
 
 type Phase = 'idle' | 'connecting' | 'connected' | 'error';
 interface LiveControls {
@@ -36,6 +37,7 @@ interface LiveControls {
   installWakePack: () => Promise<void>;
   start: (activation: 'manual' | 'wake-word') => Promise<void>;
   startVoiceTest: () => Promise<void>;
+  startVoice: () => Promise<void>;
   armWake: () => Promise<void>;
   disarmWake: () => void;
   refresh: () => Promise<void>;
@@ -106,7 +108,9 @@ export const MalviLiveAssistantProvider: React.FC<{ children: React.ReactNode }>
   const wakeController = useRef<AbortController | null>(null);
   const generation = useRef(0);
   const deadline = useRef(0);
+  const sessionClock = useRef(new MalviSessionClock());
   const busy = useRef(false);
+  const cleanupBarrier = useRef<Promise<unknown>>(Promise.resolve());
   const mounted = useRef(true);
   const stopMicrophone = useCallback(() => {
     const engine = micEngine.current; micEngine.current = null;
@@ -130,15 +134,18 @@ export const MalviLiveAssistantProvider: React.FC<{ children: React.ReactNode }>
     playback.current?.close(); playback.current = null; pendingAudio.current = null;
     avatarAcceptingAudio.current = false; startupAudio.current = [];
     if (id) realtimeClient.send('malvi:brain_stop', { sessionId: id });
-    sdk.current = null; sessionId.current = null; deadline.current = 0; mediaReady.current = false;
+    sdk.current = null; sessionId.current = null; deadline.current = 0; sessionClock.current.reset(); mediaReady.current = false;
     setActiveLanguage(null);
     setSessionVoice(null);
     const video = videoRef.current;
     if (video) { video.pause(); video.srcObject = null; }
-    await Promise.allSettled([
+    const pendingCleanup = Promise.allSettled([
+      cleanupBarrier.current,
       live ? live.stop() : Promise.resolve(),
       id ? assistantRequest(`/session/${id}/end`, {}, true) : Promise.resolve(),
     ]);
+    cleanupBarrier.current = pendingCleanup;
+    await pendingCleanup;
   }, [stopMicrophone]);
 
   const close = useCallback(() => {
@@ -150,6 +157,19 @@ export const MalviLiveAssistantProvider: React.FC<{ children: React.ReactNode }>
     generation.current++; busy.current = false; void cleanup();
     if (mounted.current) { setError(message); setPhase('error'); }
   }, [cleanup]);
+  useEffect(() => {
+    const check = () => {
+      const id = sessionId.current;
+      if (document.visibilityState !== 'visible' || !id) return;
+      void assistantRequest(`/session/${id}/clock`).then(data => {
+        if (sessionId.current === id) sessionClock.current.update(data);
+      }).catch(() => {
+        if (sessionId.current === id) fail('Your conversation could not be confirmed after returning to the app. Start a new conversation when connected.');
+      });
+    };
+    document.addEventListener('visibilitychange',check);
+    return () => document.removeEventListener('visibilitychange',check);
+  },[fail]);
   useEffect(() => {
     const changed = (event: Event) => {
       if ((event as CustomEvent).detail?.enabled === false) close();
@@ -254,7 +274,10 @@ export const MalviLiveAssistantProvider: React.FC<{ children: React.ReactNode }>
     });
     const offActivity = realtimeClient.on('malvi:brain_activity', (payload) => {
       // Concurrent input/output renewals may arrive out of order.
-      if (isCurrent(payload) && Number.isFinite(payload.idleDeadline)) deadline.current = Math.max(deadline.current, payload.idleDeadline);
+      if (isCurrent(payload) && Number.isFinite(payload.idleDeadline)) {
+        deadline.current = Math.max(deadline.current, payload.idleDeadline);
+        sessionClock.current.update(payload);
+      }
     });
     const offSources = realtimeClient.on('malvi:brain_sources', (payload) => {
       if (!isCurrent(payload)) return;
@@ -297,7 +320,10 @@ export const MalviLiveAssistantProvider: React.FC<{ children: React.ReactNode }>
     const offLanguageError = realtimeClient.on('malvi:brain_language_error', payload => {
       if (isCurrent(payload)) fail(typeof payload.message === 'string' ? payload.message : 'The selected language could not be applied. Start a new conversation.');
     });
-    return () => { offReady(); offAudio(); offCaption(); offActivity(); offSources(); offMemory(); offError(); offLanguage(); offLanguageError(); offInterrupted(); };
+    const offConnectionLost = realtimeClient.on('connection:lost', () => {
+      if (sessionId.current) fail('The conversation connection was interrupted. Your microphone has stopped. Tap below to start a new conversation; a new session uses your allowance.');
+    });
+    return () => { offConnectionLost(); offReady(); offAudio(); offCaption(); offActivity(); offSources(); offMemory(); offError(); offLanguage(); offLanguageError(); offInterrupted(); };
   }, [stopMicrophone, fail]);
 
   useEffect(() => {
@@ -390,7 +416,7 @@ export const MalviLiveAssistantProvider: React.FC<{ children: React.ReactNode }>
         await assistantRequest(`/session/${info.id}/end`, {}, true).catch(() => {});
         return;
       }
-      sessionId.current = info.id; deadline.current = info.idleDeadline;
+      sessionId.current = info.id; deadline.current = info.idleDeadline; sessionClock.current.update(info);
       const { LiveAvatarSession, SessionEvent, SessionMode, AgentEventsEnum } = await import('@heygen/liveavatar-web-sdk');
       if (run !== generation.current) return;
       const live = new LiveAvatarSession(info.sessionToken, {
@@ -428,8 +454,7 @@ export const MalviLiveAssistantProvider: React.FC<{ children: React.ReactNode }>
       });
       live.on(SessionEvent.SESSION_DISCONNECTED, () => {
         if (run === generation.current) {
-          setNotice('The live avatar session ended. No automatic reconnection was started.');
-          close();
+          fail('The live avatar connection ended. Your microphone has stopped. Tap below to start a new conversation; a new session uses your allowance.');
         }
       });
       // Connect the one selected brain while the renderer starts. Never open
@@ -455,7 +480,7 @@ export const MalviLiveAssistantProvider: React.FC<{ children: React.ReactNode }>
     }
   }, [attachVideo, close, disarmWake, fail]);
 
-  const startVoiceTest = useCallback(async () => {
+  const startVoiceTest = useCallback(async (customer = false) => {
     if (busy.current || sessionId.current || sdk.current) return;
     busy.current = true;
     const run = ++generation.current;
@@ -464,29 +489,30 @@ export const MalviLiveAssistantProvider: React.FC<{ children: React.ReactNode }>
     setMicrophoneError(''); setMicrophoneOn(false); setAudioBlocked(false);
     setReferences([]); setReferenceStatus('idle'); setUnavailableSources([]); setSearchSuggestions(''); setMemoryFeedback(''); setLiveAssets(null);
     setSecondsRemaining(60); setPhase('connecting');
-    setCaption('Connecting the selected brain. No avatar session will be started.');
+    setCaption('Connecting your voice conversation. No avatar session will be started.');
     try {
       // Unlock browser playback within the explicit user gesture, before HTTP.
       playback.current = new MalviVoicePlayback();
       await playback.current.resume();
       if (run !== generation.current) return;
       const language = getMalviLanguage(languageRef.current);
-      const info = await assistantRequest('/voice-session', { activation: 'manual', language: language.code });
+      realtimeClient.connect();
+      const info = await assistantRequest(customer ? '/voice' : '/voice-session', { activation: 'manual', language: language.code });
       if (run !== generation.current || !mounted.current) {
         await assistantRequest(`/session/${info.id}/end`, {}, true).catch(() => {});
         return;
       }
-      sessionId.current = info.id; deadline.current = info.idleDeadline;
-      realtimeClient.send('malvi:brain_start', { sessionId: info.id, language: language.code });
+      sessionId.current = info.id; deadline.current = info.idleDeadline; sessionClock.current.update(info);
+      if (!realtimeClient.send('malvi:brain_start', { sessionId: info.id, language: language.code })) throw new Error('Your conversation connection is not ready. Please try again when connected.');
       busy.current = false;
     } catch (error) {
-      if (run === generation.current) fail(error instanceof Error ? error.message : 'The voice-only test could not start.');
+      if (run === generation.current) fail(error instanceof Error ? error.message : 'The voice conversation could not start.');
     }
   }, [disarmWake, fail]);
 
   useEffect(() => {
     if (phase !== 'connecting' || !voiceOnly) return;
-    const timeout = setTimeout(() => fail('The live brain did not become ready within 20 seconds. The voice-only test was stopped.'), 20_000);
+    const timeout = setTimeout(() => fail('Your voice conversation could not connect within 20 seconds. It has been stopped.'), 20_000);
     return () => clearTimeout(timeout);
   }, [phase, voiceOnly, fail]);
 
@@ -563,7 +589,8 @@ export const MalviLiveAssistantProvider: React.FC<{ children: React.ReactNode }>
     if (phase !== 'connecting' && phase !== 'connected') return;
     const timer = setInterval(() => {
       if (!deadline.current) return;
-      const seconds = Math.max(0, Math.ceil((deadline.current - Date.now()) / 1000));
+      const seconds = sessionClock.current.secondsRemaining();
+      if (seconds === null) return;
       setSecondsRemaining(seconds);
       if (!seconds) { setNotice('Live conversation ended after inactivity or reaching its session limit.'); close(); }
     }, 250);
@@ -581,7 +608,10 @@ export const MalviLiveAssistantProvider: React.FC<{ children: React.ReactNode }>
     const id = sessionId.current;
     if (id) realtimeClient.send('malvi:brain_interrupt', { sessionId: id });
     if (id) void assistantRequest(`/session/${id}/activity`, { kind: 'interrupt' }).then(data => {
-      if (id === sessionId.current) deadline.current = Math.max(deadline.current, data.idleDeadline);
+      if (id === sessionId.current) {
+        deadline.current = Math.max(deadline.current, data.idleDeadline);
+        sessionClock.current.update(data);
+      }
     }).catch(err => fail(err instanceof Error ? err.message : 'The session has ended.'));
   };
   return (
@@ -596,7 +626,7 @@ export const MalviLiveAssistantProvider: React.FC<{ children: React.ReactNode }>
       } catch (error) {
         setVoiceFeedback(error instanceof Error ? error.message : 'Could not save Malvi’s voice setting.');
       } finally { setVoiceSaving(false); }
-    }, notice, phase, wakeArmed, wakeChecking, wakeFeedback, wakePackRequired, wakePackInstalling, installWakePack, start, startVoiceTest, armWake, disarmWake, refresh }}>
+    }, notice, phase, wakeArmed, wakeChecking, wakeFeedback, wakePackRequired, wakePackInstalling, installWakePack, start, startVoiceTest, startVoice: () => startVoiceTest(true), armWake, disarmWake, refresh }}>
       {children}
       {phase !== 'idle' && <MalviLiveOverlay
         activeSessionId={sessionId.current}
@@ -605,6 +635,15 @@ export const MalviLiveAssistantProvider: React.FC<{ children: React.ReactNode }>
       assets={liveAssets}
         videoRef={videoRef} onVideoElement={attachVideo} phase={phase} error={error} secondsRemaining={secondsRemaining}
         onClose={close} onInterrupt={interrupt} audioBlocked={audioBlocked} caption={caption}
+        onRetry={phase === 'error' ? () => {
+          const wasVoiceOnly = voiceMode.current;
+          close();
+          const run = generation.current;
+          void cleanupBarrier.current.then(() => {
+            if (!mounted.current || run !== generation.current) return;
+            return wasVoiceOnly ? startVoiceTest(true) : start('manual');
+          });
+        } : undefined}
         approximateCaptions={voiceProvider === 'gemini'}
         speechProvider={voiceProvider}
         voiceOnly={voiceOnly}
@@ -683,6 +722,9 @@ export const MalviLiveControls: React.FC = () => {
           : 'Uses the approved Malvi voice and ElevenLabs credits, with provider-timed captions. No automatic switch to another voice.'}</p>
       </div>}
       <div className="mt-5 flex flex-wrap gap-3">
+        <button type="button" disabled={!readiness?.voiceAvailable || !languageSupported || phase !== 'idle' || live.voiceSaving} onClick={() => void live.startVoice()} className="rounded-xl border border-[var(--nv-gold)] px-4 py-3 text-sm font-semibold text-[var(--nv-gold)] disabled:opacity-45">
+          Start voice · no avatar
+        </button>
         {readiness?.canRunSetupTests && <button type="button" disabled={!readiness.voiceTestAvailable || readiness.speech?.configured === false || !languageSupported || phase !== 'idle'} onClick={() => void live.startVoiceTest()} className="rounded-xl border border-[var(--nv-gold)] px-4 py-3 text-sm font-semibold text-[var(--nv-gold)] disabled:opacity-45">
           Test voice only · admin
         </button>}

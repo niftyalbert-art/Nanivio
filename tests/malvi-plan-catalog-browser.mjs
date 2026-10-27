@@ -70,6 +70,8 @@ app.use('/api/admin/billing',(q,r,next)=>{
   q.authUser={id:'fixture-admin',role:'ADMIN',accountStatus:'ACTIVE',adminSubRole:role};next();
 },requireBillingAdmin);
 app.use('/api/admin/billing/malvi-plans',createMalviPlanRouter(service));
+app.get('/api/admin/billing/malvi-runtime',(_q,r)=>r.json({success:true,canEdit:['SUPER_ADMIN','FINANCE_ADMIN'].includes(role),
+  policy:{version:0,live_minutes_monthly:100,research_monthly:4,analyses_monthly:4,upload_mib_monthly:20}}));
 app.use('/api/admin/billing/malvi-costs',createMalviCostRouter(async()=>({
   getBillingCostDocument:async()=>costDocument,
   compareAndSetBillingCostDocument:async(_v,d)=>{costDocument=d;return true;},
@@ -100,7 +102,7 @@ try {
   await goto();
   await page.wait("Boolean(document.querySelector('#malvi-plan-reason'))");
   assert.match(await text(),/Malvi Voice/);
-  assert.equal(await page.evaluate("document.querySelector('#malvi_voice-status option[value=PUBLISHED]').disabled"),true);
+  assert.equal(await page.evaluate("document.querySelector('#malvi_voice-status option[value=PUBLISHED]').disabled"),false);
   await set('#malvi-plan-reason','Save reviewed initial catalogue templates');
   await submit();
   await page.wait("document.body.innerText.includes('version 1')");

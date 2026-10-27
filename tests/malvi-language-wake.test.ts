@@ -173,7 +173,7 @@ test('HTTP session creation carries a validated language; invalid input never cr
   process.env.MALVI_TTS_TRANSPORT = 'direct';
   liveAvatarService.create = async (_user, language = 'en') => {
     calls.push(language);
-    return { id: 'fixture', sessionToken: 'fixture', mode: 'LITE', language, idleDeadline: 1, hardDeadline: 2, disclosure: 'AI' };
+    return { id: 'fixture', sessionToken: 'fixture', mode: 'LITE', language, idleDeadline: 1, hardDeadline: 2, serverNow: 0, disclosure: 'AI' };
   };
   const app = express();
   app.use(express.json());

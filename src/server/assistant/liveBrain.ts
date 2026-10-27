@@ -136,7 +136,7 @@ async function refreshConversationActivity(connection: BrainConnection, activeUn
   const activity = await liveAvatarService.activity(connection.owner, connection.sessionId, activeUntil);
   if (connection.closed) return;
   send(connection.socket, 'malvi:brain_activity', {
-    sessionId: connection.sessionId, idleDeadline: activity.idleDeadline,
+    sessionId: connection.sessionId, ...activity,
   });
   armIdleDeadline(connection, activity.idleDeadline, () => {
     send(connection.socket, 'malvi:brain_error', {
@@ -574,7 +574,7 @@ export const malviLiveBrainController = {
       if (activeBySession.has(sessionId)) return;
       const fresh = await liveAvatarService.owned(userId, sessionId);
       if (socket.readyState !== socket.OPEN || activeBySession.has(sessionId)) return;
-      const connection = createConnection(socket, userId, sessionId, language.code, fresh.mode === 'VOICE_TEST', fresh.speechProvider, memory);
+      const connection = createConnection(socket, userId, sessionId, language.code, fresh.mode === 'VOICE_TEST' || fresh.mode === 'VOICE_ONLY', fresh.speechProvider, memory);
       if (!activeBySocket.has(socket)) activeBySocket.set(socket, new Map());
       activeBySocket.get(socket)!.set(sessionId, connection);
       activeBySession.set(sessionId, connection);

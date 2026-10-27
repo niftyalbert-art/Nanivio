@@ -95,6 +95,16 @@ export function createMalviCatalogService(
     const plans = validateMalviPlans(rawPlans);
     const previous = await read();
     if (previous.snapshot.version !== expectedVersion) throw conflict();
+    if (plans.some(p => p.tier === 'malvi_voice' && p.status === 'PUBLISHED')
+      && !previous.snapshot.plans.some(p => p.tier === 'malvi_voice' && p.status === 'PUBLISHED')) {
+      try {
+        const { readMalviRuntimeLimits } = await import('./malviRuntimeLimits.ts');
+        const limits = await readMalviRuntimeLimits();
+        if (!(limits.live_minutes_monthly > 0)) throw Error();
+      } catch {
+        throw new MalviCatalogError(503,'VOICE_RUNTIME_SETUP_REQUIRED','Apply the live-allowance migration and save a positive shared live-minute limit before publishing Voice.');
+      }
+    }
     const snapshot: MalviCatalogSnapshot = {
       version: expectedVersion + 1, plans, savedAt: new Date().toISOString(), savedBy: actorId, reason: reason.trim(),
     };
