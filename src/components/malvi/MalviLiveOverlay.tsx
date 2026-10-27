@@ -295,7 +295,7 @@ export const MalviLiveOverlay: React.FC<MalviLiveOverlayProps> = ({
   const meterBars = [0.16, 0.34, 0.53, 0.72, 0.91];
 
   return createPortal(
-    <div className="fixed inset-0 z-[100] isolate flex min-h-[100dvh] items-center justify-center overflow-x-hidden overflow-y-auto bg-[#071311] text-[#f1f3eb]">
+    <div className="fixed inset-0 z-[100] isolate flex h-[100dvh] min-h-0 items-center justify-center overflow-hidden bg-[#071311] text-[#f1f3eb]">
       {!voiceOnly && <video
         ref={onVideoElement}
         autoPlay
@@ -324,7 +324,7 @@ export const MalviLiveOverlay: React.FC<MalviLiveOverlayProps> = ({
         aria-labelledby="malvi-live-title"
         aria-describedby="malvi-live-disclosure"
         tabIndex={-1}
-        className="relative z-10 flex min-h-[100dvh] w-full flex-col justify-between outline-none"
+        className="relative z-10 flex h-full min-h-0 w-full flex-col outline-none"
       >
         <header className="flex shrink-0 items-start justify-between gap-3 px-4 pt-[max(1rem,env(safe-area-inset-top))] sm:gap-4 sm:px-7 sm:pt-[max(1.75rem,env(safe-area-inset-top))]">
           <div className="flex items-center gap-3 rounded-2xl border border-white/15 bg-[#10201f]/65 px-3.5 py-2.5 backdrop-blur-md sm:px-4">
@@ -361,21 +361,14 @@ export const MalviLiveOverlay: React.FC<MalviLiveOverlayProps> = ({
 
         <div aria-hidden="true" className="min-h-0 flex-1" />
 
-        <footer className="flex shrink-0 flex-col items-center gap-3 px-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-3 sm:gap-3 sm:px-7 sm:pb-[max(1.75rem,env(safe-area-inset-bottom))]">
-          {caption && phase === 'connected' && (
-            <div
-              role="region"
-              aria-label="Live subtitles"
-              aria-live="polite"
-              aria-relevant="text"
-              tabIndex={0}
-              className="max-h-[4.8rem] w-full max-w-xl overflow-y-auto overscroll-contain rounded-2xl border border-white/15 bg-[#10201f]/85 px-4 py-2.5 text-center text-sm leading-6 text-white shadow-lg backdrop-blur-md focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#d6e7da]"
-            >
-              {speaking && <span className="mb-0.5 block text-[10px] font-medium uppercase tracking-[0.16em] text-[#c0d1c8]/75">Malvi is speaking</span>}
-              {approximateCaptions && <span className="mb-1 block text-[10px] text-slate-400">Approximate captions</span>}
-              {caption}
-            </div>
-          )}
+        {phase === 'connected' && (caption?.trim() || userTranscript?.trim()) && (
+          <div aria-label="Conversation subtitles" className="flex max-h-[48dvh] w-full shrink-0 flex-col items-center gap-2 overflow-y-auto overscroll-contain px-4 pt-2 sm:px-7">
+            {caption?.trim() && <MalviUserTranscript text={caption} speaker="malvi" compact label={`${speaking ? 'Malvi is speaking' : 'Malvi'}${approximateCaptions ? ' · Approximate captions' : ''}`} />}
+            {userTranscript?.trim() && <MalviUserTranscript text={userTranscript} compact />}
+          </div>
+        )}
+
+        <footer aria-label="Live session controls" className="flex max-h-[30dvh] min-h-0 shrink-0 flex-col items-center gap-2 overflow-y-auto overscroll-contain px-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-2 sm:gap-3 sm:px-7 sm:pb-[max(1.75rem,env(safe-area-inset-bottom))] [&>*]:shrink-0">
           {phase === 'connected' && (
             <div className="flex min-h-7 items-center justify-center gap-2.5 text-[11px] text-[#e0e8e2]/90" aria-label={`Microphone status: ${listeningCopy}`}>
               <span aria-hidden="true" className="flex h-4 items-center gap-[3px]">
@@ -389,9 +382,6 @@ export const MalviLiveOverlay: React.FC<MalviLiveOverlayProps> = ({
               </span>
               <span role="status" aria-live="polite">{listeningCopy}</span>
             </div>
-          )}
-          {userTranscript?.trim() && phase === 'connected' && (
-            <MalviUserTranscript text={userTranscript} />
           )}
           <button
             type="button"
