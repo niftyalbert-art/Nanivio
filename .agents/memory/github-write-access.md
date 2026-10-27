@@ -31,3 +31,12 @@ selected release is self-contained.
 installed dependencies without copying secrets, and check types and the build
 before the non-forced branch update. Verify all selected blob hashes and the
 exact comparison against the current target.
+
+An immediate reference read can return the old head after a successful Git Data update.
+
+**Why:** A non-forced update succeeded, but the first identical GET still showed
+the parent; a cache-busted read confirmed the new head and exact comparison.
+
+**How to apply:** Before retrying a write, verify the reference with a unique
+query parameter and `Cache-Control: no-cache`, then compare the intended commit
+and changed paths. Do not create duplicate commits or force-push on this evidence.
