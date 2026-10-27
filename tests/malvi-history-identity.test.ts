@@ -115,7 +115,7 @@ test('actual text endpoint and greeting consume the shared identity without conf
   assert.doesNotMatch(chat, /Kwabena Atta Panyi|ALWAYS reference these exact values|SYNCHRONIZED APP STATE|read only from the synced memory layer/);
   assert.match(chat, /UNVERIFIED CLIENT WORKSPACE CONTEXT/);
   const view = fs.readFileSync(new URL('../src/components/malvi/MalviView.tsx', import.meta.url), 'utf8');
-  assert.match(view, /text: MALVI_INTRODUCTION/);
+  assert.match(view, /text: selectMalviWelcome\(\)/);
   assert.match(view, /\{MALVI_IDENTITY\.fullName\}/);
   assert.match(view, /key=\{ownerId\}/);
   assert.doesNotMatch(view, /nanivio_malvi_chat_history_v1|Kwabena Atta Panyi/);

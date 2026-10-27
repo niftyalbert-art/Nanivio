@@ -1,6 +1,7 @@
 import type { Express, Request, Response, NextFunction } from 'express';
 import { AssistantError, getAssistantStore } from './redisStore.ts';
-import { AI_DISCLOSURE, liveAvatarService, liveAvatarSetup, malviVideoQuality } from './liveAvatarService.ts';
+import { liveAvatarService, liveAvatarSetup, malviVideoQuality } from './liveAvatarService.ts';
+import { selectMalviWelcome } from '../../shared/malviIdentity.ts';
 import { getLiveBrainProviderConfig } from './brainProviderConfig.ts';
 import { malviLiveBrainController } from './liveBrain.ts';
 import { getMalviLanguage } from '../../lib/malviLanguages.ts';
@@ -161,9 +162,10 @@ export function registerAssistantRoutes(app: Express, auth: Auth, enabled: () =>
     if (session.language && session.language !== 'en') throw new AssistantError(409, 'LIVE_BRAIN_GREETING_REQUIRED', 'The live brain supplies Malvi’s greeting in your selected language. An English welcome was not played.');
     if (!malviSpeechSetup().configured) throw new AssistantError(503, 'WELCOME_VOICE_REQUIRED', 'Malvi’s ElevenLabs voice is not configured.');
     await liveAvatarService.claimWelcome(validId(req));
-    // The first spoken utterance always identifies Malvi as an AI. No LLM or provider persona controls this text.
-    const pcm24k = (await synthesizeMalviSpeech(AI_DISCLOSURE, 'en', AbortSignal.timeout(15_000))).toString('base64');
-    res.json({ success: true, text: AI_DISCLOSURE, pcm24k, sampleRate: 24000, format: 'pcm_s16le', channels: 1 });
+    // Use the same selected greeting for speech and captions.
+    const welcome = selectMalviWelcome();
+    const pcm24k = (await synthesizeMalviSpeech(welcome, 'en', AbortSignal.timeout(15_000))).toString('base64');
+    res.json({ success: true, text: welcome, pcm24k, sampleRate: 24000, format: 'pcm_s16le', channels: 1 });
   }));
   app.post('/api/assistant/session/:id/end', auth, run(async (req, res) => {
     await malviLiveBrainController.stopSession(userId(req), validId(req));

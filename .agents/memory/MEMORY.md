@@ -21,6 +21,7 @@
 - [Billing display contracts](billing-display-contracts.md) — normalize persisted rows for display; distinguish zero from unknown and never show demonstration balances as funds.
 - [Malvi upgrade direction](malvi-upgrade-direction.md) — responses, visuals, and brain are being upgraded; the user specified “Heygen lite mode.”
 - [Malvi brand expansion](malvi-brand-expansion.md) — owner-defined MALVI expansion and its approved wording.
+- [Malvi customer presentation](malvi-customer-presentation.md) — Nanivio-branded controls, concise help, varied greetings; preserve citations and attribution.
 - [Malvi brain routing](live-brain-routing.md) — one selected provider per session; no audio fan-out or silent cross-provider fallback; knowledge sources are separate.
 - [Browser wait predicates](browser-wait-predicates.md) — CDP waits must return booleans, not DOM elements that cannot be serialized by value.
 - [External production hosting](external-production-host.md) — the user’s live app is on Render; this fork’s Replit deployment state does not describe it.

@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { AlertCircle, Check, ChevronDown, ChevronUp, Clock3, Copy, ExternalLink, Globe2, LoaderCircle, Search, Send, ShieldCheck, Trash2 } from 'lucide-react';
 import { authClient } from '../../lib/authClient';
+import { malviPublicCopy } from '../../lib/malviPublicCopy';
 
 type MemoryMessage = {
   id: string | number;
@@ -250,7 +251,7 @@ export const MalviContinuityControls: React.FC = () => {
         </p>
         {error && (
           <div role="alert" className="mt-2 flex items-start gap-2 rounded-lg border border-[#a65e48]/35 bg-[#542d25]/25 px-2.5 py-2 text-[11px] leading-relaxed text-[#e8b5a4]">
-            <AlertCircle size={14} className="mt-0.5 shrink-0" /> <span>{error}</span>
+            <AlertCircle size={14} className="mt-0.5 shrink-0" /> <span>{malviPublicCopy(error)}</span>
           </div>
         )}
         {notice && !error && <p role="status" className="mt-2 flex items-center gap-1.5 text-[11px] text-[#d5c080]"><Check size={13} />{notice}</p>}
@@ -338,7 +339,7 @@ export const MalviContinuityControls: React.FC = () => {
           <div>
             <h3 className="text-xs font-semibold tracking-wide text-[#e4d3a8]">Public web research</h3>
             <p className="mt-1 text-[11px] leading-relaxed text-[#c6c4bc]">
-              Ask Malvi to search public web sources or publicly available social pages. This may use Gemini and search services and can incur usage.
+              Ask Malvi to research public websites or social pages. Research counts toward your usage allowance.
             </p>
           </div>
         </div>
@@ -379,10 +380,10 @@ export const MalviContinuityControls: React.FC = () => {
         {researchLoading && (
           <div role="status" className="mt-3 rounded-lg border border-[#b89a5a]/20 bg-[#101211] px-3 py-3 text-[11px] text-[#d4c48f]">
             <span className="inline-flex items-center gap-2"><LoaderCircle size={14} className="animate-spin motion-reduce:animate-none" />Searching public sources…</span>
-            <p className="mt-1 text-[#aaa9a2]">This may take a moment and may incur Gemini or search-provider usage.</p>
+            <p className="mt-1 text-[#aaa9a2]">Research may take a moment and counts toward your usage allowance.</p>
           </div>
         )}
-        {researchError && <p role="alert" className="mt-3 rounded-lg border border-[#a65e48]/35 bg-[#542d25]/25 px-3 py-2 text-[11px] leading-relaxed text-[#e8b5a4]">{researchError}</p>}
+        {researchError && <p role="alert" className="mt-3 rounded-lg border border-[#a65e48]/35 bg-[#542d25]/25 px-3 py-2 text-[11px] leading-relaxed text-[#e8b5a4]">{malviPublicCopy(researchError)}</p>}
         {research && !researchLoading && (
           <div className="mt-3 space-y-3 rounded-xl border border-white/[.08] bg-[#101211] p-3">
             <div>

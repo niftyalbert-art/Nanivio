@@ -47,7 +47,7 @@ import { LangpretationIcon } from '../common/LangpretationIcon';
 import { billingClient } from '../../lib/billingClient';
 import { authClient } from '../../lib/authClient';
 import { clearMalviHistory, loadMalviHistory, malviHistoryKey, saveMalviHistory } from '../../lib/malviHistory';
-import { MALVI_IDENTITY, MALVI_INTRODUCTION } from '../../shared/malviIdentity';
+import { MALVI_IDENTITY, selectMalviWelcome, selectMalviReturningWelcome } from '../../shared/malviIdentity';
 import type { MalviMediaItem } from '../../shared/malviInputTypes';
 
 type MalviResearchMetadata = {
@@ -125,10 +125,10 @@ const MalviResearchMetadataView: React.FC<{ metadata: MalviResearchMetadata }> =
   );
 };
 
-const INITIAL_GREETING: MalviChatMessage = {
+const createInitialGreeting = (): MalviChatMessage => ({
   id: 'msg_malvi_welcome',
   sender: 'malvi',
-  text: MALVI_INTRODUCTION,
+  text: selectMalviWelcome(),
   timestamp: Date.now(),
   emotion: 'warm',
   suggestedActions: [
@@ -137,7 +137,7 @@ const INITIAL_GREETING: MalviChatMessage = {
     'How much is in my wallets?',
     'Find verified doctors online',
   ],
-};
+});
 
 const SUGGESTION_TOPICS = [
   {
@@ -274,7 +274,7 @@ const MalviAccountWorkspace: React.FC<{ ownerId: string | null }> = ({ ownerId }
     } catch (err) {
       console.warn('Error loading persisted Malvi chat history:', err);
     }
-    return [INITIAL_GREETING];
+    return [createInitialGreeting()];
   });
   const [inputText, setInputText] = useState('');
   const [interimTranscript, setInterimTranscript] = useState('');
@@ -372,10 +372,10 @@ const MalviAccountWorkspace: React.FC<{ ownerId: string | null }> = ({ ownerId }
     }).then(result => {
       if (!result.enabled || !result.hasPrevious || !isCurrentOwner()) return;
       setHistoryMessages(previous => {
-        if (previous.length !== 1 || previous[0]?.id !== INITIAL_GREETING.id || !isCurrentOwner()) return previous;
+        if (previous.length !== 1 || previous[0]?.id !== 'msg_malvi_welcome' || !isCurrentOwner()) return previous;
         return [{
-          ...INITIAL_GREETING,
-          text: 'Would you like to continue our previous conversation, or talk about something new?',
+          ...previous[0],
+          text: selectMalviReturningWelcome(),
           suggestedActions: [],
         }];
       });
@@ -390,7 +390,7 @@ const MalviAccountWorkspace: React.FC<{ ownerId: string | null }> = ({ ownerId }
       if (!isCurrentOwner() || (event.key !== null && event.key !== malviHistoryKey(ownerId))) return;
       try {
         const stored = loadMalviHistory(localStorage, ownerId);
-        const next = stored.length ? stored : [INITIAL_GREETING];
+        const next = stored.length ? stored : [createInitialGreeting()];
         setHistoryMessages(previous => JSON.stringify(previous) === JSON.stringify(next) ? previous : next);
       } catch (error) {
         console.warn('Error refreshing Malvi chat history:', error);
@@ -794,7 +794,7 @@ const MalviAccountWorkspace: React.FC<{ ownerId: string | null }> = ({ ownerId }
 
   const handleResetConversation = () => {
     stopSpeaking();
-    setMessages([INITIAL_GREETING]);
+    setMessages([createInitialGreeting()]);
     try {
       if (typeof window !== 'undefined' && window.localStorage) {
         clearMalviHistory(localStorage, ownerId);

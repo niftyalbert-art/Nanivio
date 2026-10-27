@@ -17,7 +17,7 @@ The user selected automatic lookup of relevant sources, rather than requiring an
 
 **Why:** The user approved a multi-provider Malvi architecture, not indiscriminate sharing of private conversations. Keeping selection explicit makes privacy, cost, and failures understandable.
 
-**How to apply:** Add providers behind the server boundary and disclose the selected audio recipient. Fail clearly when that provider is unavailable. Route reference queries only to relevant approved sources and present citations; treat retrieved content as untrusted evidence. Keep company knowledge and user-owned memory as separately authorized context sources, not additional audio recipients.
+**How to apply:** Add providers behind the server boundary. Keep technical provider identity in administrator diagnostics; customer copy follows the Nanivio branding rules in malvi-customer-presentation.md, with accurate connected-service privacy notices. Fail clearly when a service is unavailable. Route reference queries only to relevant approved sources and present citations; treat retrieved content as untrusted evidence. Keep company knowledge and user-owned memory as separately authorized context sources, not additional audio recipients.
 
 Gemini's built-in voice with the approved Malvi style is the default.
 ElevenLabs remains an administrator-selectable alternative, not an automatic
