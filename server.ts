@@ -56,6 +56,7 @@ import { uploadStreamAttachment } from "./src/server/streamService.ts";
 import { audioCallingEnabled, featureSettingsHandler, videoCallingEnabled } from "./src/server/featureSettings.ts";
 import { quotePaystackOrder, validateVerifiedOrder } from "./src/server/paystackOrders.ts";
 import { assertLivePaystackPayment, paystackLiveConfigurationError } from "./src/server/paystackPaymentSafety.ts";
+import { buildLangpretationReadiness } from "./src/shared/langpretationReadiness.ts";
 import { activatePaystackSubscriptionPersistent } from "./src/server/normalizedBillingRepository.ts";
 import { callKhayaEngine, callSunbirdEngine } from "./src/server/translationProviders.ts";
 import { translateWithProductionProviders, translationProviderConfigured } from "./src/server/translationRouter.ts";
@@ -1000,6 +1001,25 @@ app.post("/api/translate/fan-out", requireAuthenticatedUser, async (req, res) =>
 
 // In-memory runtime overrides for language capabilities configured by Admin
 const serverLanguageOverrides = new Map<string, Partial<MatrixLanguageInfo>>();
+
+app.get("/api/langpretation/admin/readiness", requireAdmin, async (_req, res) => {
+  try {
+    const persisted = new Map<string, boolean>();
+    if (normalizedBillingEnabled()) {
+      const { data, error } = await getServerSupabase()!.from('nanivio_langpretation_configs').select('code,active');
+      if (error) throw new Error('Language settings could not be loaded.');
+      for (const row of data || []) persisted.set(row.code, row.active);
+    }
+    const report = buildLangpretationReadiness({
+      active: code => serverLanguageOverrides.get(code)?.active ?? persisted.get(code) ?? getLanguageCapability(code).active,
+      speech: speechConfigured,
+      translation: translationProviderConfigured,
+    });
+    res.json({ success: true, report });
+  } catch {
+    res.status(503).json({ success: false, error: 'Language readiness is unavailable. No live verification was performed.' });
+  }
+});
 
 // 1. Authoritative 18-Language Capability Matrix
 const handleLanguageMatrixRequest = async (_req: express.Request, res: express.Response) => {

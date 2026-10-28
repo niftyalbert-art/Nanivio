@@ -29,6 +29,8 @@ import {
 } from '../../lib/translator-engine/matrix/universal18Matrix';
 import { NanivioTranslatorEngine } from '../../lib/translator-engine/engine';
 import { NanivioTtsAudioGenerator } from '../../lib/translator-engine/audio/ttsAudioGenerator';
+import { authenticatedFetch } from '../../lib/authenticatedFetch';
+import { LangpretationReadinessPanel } from './LangpretationReadinessPanel';
 
 export const AdminLangpretationManager: React.FC = () => {
   const [languages, setLanguages] = useState<Record<string, MatrixLanguageInfo>>(NANIVIO_18_LANGUAGES);
@@ -54,26 +56,12 @@ export const AdminLangpretationManager: React.FC = () => {
   // Telemetry and usage statistics
   const [usageSummary, setUsageSummary] = useState<{
     totalMinutes: number;
-    totalCalls: number;
-    totalVoiceNotes: number;
-    estimatedCostUsd: number;
-    providerCounts: Record<string, number>;
-  }>({
-    totalMinutes: 342.5,
-    totalCalls: 89,
-    totalVoiceNotes: 214,
-    estimatedCostUsd: 4.12,
-    providerCounts: {
-      'Khaya AI (Ghana NLP)': 142,
-      'Sunbird AI': 56,
-      'Palabra Realtime MT': 168,
-      'Meta NLLB-200': 37,
-    },
-  });
+    estimatedCostUsd?: number;
+  } | null>(null);
 
   // Load live languages and usage from server
   useEffect(() => {
-    fetch('/api/langpretation/languages')
+    authenticatedFetch('/api/langpretation/languages')
       .then((r) => r.json())
       .then((data) => {
         if (data.success && Array.isArray(data.languages)) {
@@ -86,8 +74,8 @@ export const AdminLangpretationManager: React.FC = () => {
       })
       .catch((e) => console.warn('Failed to load server languages:', e));
 
-    fetch('/api/langpretation/usage-summary')
-      .then((r) => r.json())
+    authenticatedFetch('/api/langpretation/usage-summary')
+      .then((r) => { if (!r.ok) throw new Error('Usage summary is unavailable.'); return r.json(); })
       .then((data) => {
         if (data && data.totalMinutes !== undefined) {
           setUsageSummary(data);
@@ -103,7 +91,7 @@ export const AdminLangpretationManager: React.FC = () => {
 
     setIsUpdating(code);
     try {
-      const res = await fetch('/api/langpretation/admin/update-language', {
+      const res = await authenticatedFetch('/api/langpretation/admin/update-language', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -133,7 +121,7 @@ export const AdminLangpretationManager: React.FC = () => {
   ) => {
     setIsUpdating(code);
     try {
-      const res = await fetch('/api/langpretation/admin/update-language', {
+      const res = await authenticatedFetch('/api/langpretation/admin/update-language', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -247,14 +235,14 @@ export const AdminLangpretationManager: React.FC = () => {
             </h2>
             <p className="text-xs text-slate-400 max-w-3xl leading-relaxed">
               Realtime speech-to-speech translation, chunked VAD turn processing, neural machine translation, and
-              audio synthesis router across all 18 launch languages. Change provider assignments live without rebuilding the applet.
+              audio synthesis routing across all 18 launch languages. Configuration and verified live output are reported separately.
             </p>
           </div>
 
           <div className="flex items-center gap-2 self-stretch sm:self-auto justify-end">
             <button
               onClick={() => {
-                fetch('/api/langpretation/languages')
+                authenticatedFetch('/api/langpretation/languages')
                   .then((r) => r.json())
                   .then((data) => {
                     if (data.languages) {
@@ -305,9 +293,9 @@ export const AdminLangpretationManager: React.FC = () => {
           <div className="bg-slate-950/60 border border-slate-800/80 rounded-2xl p-3.5">
             <span className="text-[10px] text-slate-400 font-mono uppercase tracking-wider block">Incurred Cost Estimate</span>
             <div className="text-2xl font-black text-cyan-400 font-mono mt-0.5">
-              ${usageSummary.estimatedCostUsd.toFixed(2)}
+              {usageSummary?.estimatedCostUsd != null ? `$${usageSummary.estimatedCostUsd.toFixed(2)}` : 'Unavailable'}
             </div>
-            <span className="text-[10px] text-slate-500">{usageSummary.totalMinutes.toFixed(0)} mins logged</span>
+            <span className="text-[10px] text-slate-500">{usageSummary ? `${usageSummary.totalMinutes.toFixed(0)} mins logged` : 'No usage report loaded'}</span>
           </div>
         </div>
       </div>
@@ -504,6 +492,8 @@ export const AdminLangpretationManager: React.FC = () => {
             </tbody>
           </table>
         </div>
+
+        <LangpretationReadinessPanel refreshKey={JSON.stringify((Object.values(languages) as MatrixLanguageInfo[]).map(language => [language.code, language.active]))} />
 
         {/* Selected Language Route Config Drawer */}
         {selectedLangCode && languages[selectedLangCode] && (

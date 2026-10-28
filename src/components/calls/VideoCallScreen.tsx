@@ -116,8 +116,7 @@ export const VideoCallScreen: React.FC<VideoCallScreenProps> = ({ onEndCall }) =
       setIsListeningToSpeech(false);
       setSpeechStatus('');
     } else {
-      setSpeechStatus('Listening to your mic...');
-      setIsListeningToSpeech(true);
+      setSpeechStatus('Starting speech recognition…');
 
       const started = await speechService.startListening(
         hostLang.code,
@@ -134,13 +133,19 @@ export const VideoCallScreen: React.FC<VideoCallScreenProps> = ({ onEndCall }) =
           }
         },
         () => {
-          setSpeechStatus('Mic active (Speak clearly)');
+          speechService.stopListening();
+          setIsListeningToSpeech(false);
+          setLangpretationStage('listening');
+          setSpeechStatus('Speech recognition stopped. Check microphone permission and language setup, then try again.');
         }
       );
 
-      if (!started) {
+      if (started) {
+        setIsListeningToSpeech(true);
+        setSpeechStatus('Listening to your mic…');
+      } else {
         setIsListeningToSpeech(false);
-        setSpeechStatus('Mic unsupported or denied');
+        setSpeechStatus('Speech recognition could not start. Check microphone permission and language setup.');
       }
     }
   };
