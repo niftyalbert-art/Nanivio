@@ -12,10 +12,11 @@ const [speechBundle, translationBundle] = await Promise.all([
 
 function fixture(bundle: typeof speechBundle, reply: (request: any) => Response, configured = true) {
   const requests: any[] = [];
+  const warnings: any[] = [];
   const context = vm.createContext({
     module: { exports: {} }, Buffer, AbortSignal, Response, URL, FormData, Blob,
     process: { env: configured ? { GEMINI_API_KEY: 'fixture-only' } : {} },
-    console: { warn() {} },
+    console: { warn(...args: unknown[]) { warnings.push(args); } },
     fetch: async (url: string, options: any) => {
       const request = { url, ...options, json: JSON.parse(options.body) };
       requests.push(request);
@@ -25,7 +26,7 @@ function fixture(bundle: typeof speechBundle, reply: (request: any) => Response,
     },
   });
   vm.runInContext(bundle.outputFiles[0].text, context);
-  return { api: (context.module as any).exports, requests };
+  return { api: (context.module as any).exports, requests, warnings };
 }
 const textResult = (text: string) => new Response(JSON.stringify({
   candidates: [{ finishReason: 'STOP', content: { parts: [{ text: JSON.stringify({ text }) }] } }],
@@ -123,4 +124,58 @@ test('missing key or invalid audio is rejected before any provider request', asy
   const invalid = fixture(speechBundle, () => { throw new Error('Must not call'); });
   await assert.rejects(() => invalid.api.transcribeProviderAudio(Buffer.from('bad'), 'en'), /valid PCM WAV/);
   assert.equal(invalid.requests.length, 0);
+});
+
+test('HTTP rejection diagnostics survive speech error wrapping without leaking upstream text or keys', async () => {
+  const f = fixture(speechBundle, () => new Response(JSON.stringify({
+    error: { status: 'PERMISSION_DENIED', message: 'Do not log fixture-only or conversation contents',
+      details: [{ reason: 'API_KEY_SERVICE_BLOCKED', metadata: { key: 'fixture-only', transcript: 'private text' } }] },
+  }), { status: 403 }));
+  await assert.rejects(() => f.api.transcribeProviderAudio(wav(), 'en'), (error: any) => {
+    assert.equal(error.status, 502);
+    assert.equal(error.diagnostic.upstreamHttpStatus, 403);
+    assert.equal(error.diagnostic.providerStatus, 'PERMISSION_DENIED');
+    assert.equal(error.diagnostic.reason, 'API_KEY_SERVICE_BLOCKED');
+    assert.equal(error.diagnostic.apiVersion, 'v1beta');
+    assert.equal(error.diagnostic.model, 'gemini-3.8-flash');
+    assert.doesNotMatch(JSON.stringify(error), /fixture-only|private text|Do not log/);
+    return true;
+  });
+  assert.equal(f.requests.length, 1);
+  assert.doesNotMatch(JSON.stringify(f.warnings), /fixture-only|private text|Do not log/);
+});
+
+test('unknown, malformed and oversized diagnostic payloads never escape or hide the HTTP status', async () => {
+  for (const body of [
+    JSON.stringify({ error: { status: 'UNTRUSTED_STATUS', details: [{ reason: 'PRIVATE_DATA' }], message: 'private contents' } }),
+    '<html>private contents</html>',
+    'x'.repeat(20_000),
+  ]) {
+    const f = fixture(speechBundle, () => new Response(body, { status: 404 }));
+    await assert.rejects(() => f.api.synthesizeProviderAudio('Hello.', 'en'), (error: any) => {
+      assert.equal(error.diagnostic.upstreamHttpStatus, 404);
+      assert.equal(error.diagnostic.providerStatus, undefined);
+      assert.equal(error.diagnostic.reason, undefined);
+      assert.doesNotMatch(JSON.stringify(error), /PRIVATE|private contents|UNTRUSTED/);
+      return true;
+    });
+    assert.equal(f.requests.length, 1);
+  }
+});
+
+test('a stalled error body cannot indefinitely delay safe diagnostics', async () => {
+  let cancelled = false;
+  const stream = new ReadableStream({ cancel() { cancelled = true; } });
+  const f = fixture(speechBundle, () => new Response(stream, { status: 503 }));
+  // AbortSignal.timeout uses an unreferenced timer in Node. Keep this isolated
+  // stalled-stream fixture alive until the tested deadline settles.
+  const keepAlive = setTimeout(() => {}, 2000);
+  try {
+    await assert.rejects(() => f.api.transcribeProviderAudio(wav(), 'en'), (error: any) => {
+      assert.equal(error.diagnostic.upstreamHttpStatus, 503);
+      return true;
+    });
+    assert.equal(cancelled, true);
+    assert.equal(f.requests.length, 1);
+  } finally { clearTimeout(keepAlive); }
 });

@@ -1,10 +1,10 @@
 import { speechProvider, khayaSpeechCode, sunbirdSpeechCode } from '../lib/translator-engine/languagePlan.ts';
-import { LangpretationGeminiError, transcribeGeminiAudio, synthesizeGeminiAudio } from './langpretationGemini.ts';
+import { LangpretationGeminiError, transcribeGeminiAudio, synthesizeGeminiAudio, type GeminiRequestDiagnostic } from './langpretationGemini.ts';
 
 export const SPEECH_LOCALES:Record<string,string>={en:'en-US',fr:'fr-FR',es:'es-ES',ar:'ar-SA',de:'de-DE',it:'it-IT',pt:'pt-BR',zh:'zh-CN',ja:'ja-JP',ko:'ko-KR'};
 const voices:Record<string,string>={en:'en-US-JennyNeural',fr:'fr-FR-DeniseNeural',es:'es-ES-ElviraNeural',ar:'ar-SA-ZariyahNeural',de:'de-DE-KatjaNeural',it:'it-IT-ElsaNeural',pt:'pt-BR-FranciscaNeural',zh:'zh-CN-XiaoxiaoNeural',ja:'ja-JP-NanamiNeural',ko:'ko-KR-SunHiNeural'};
 export class SpeechProviderError extends Error {
-  constructor(public status:number,message:string){super(message);}
+  constructor(public status:number,message:string,public diagnostic?:GeminiRequestDiagnostic){super(message);}
 }
 export function speechConfigured(language:string,operation:'asr'|'tts'):boolean {
   const provider=speechProvider(language);
@@ -56,7 +56,7 @@ export async function transcribeProviderAudio(audio:Buffer,language:string,conte
   if(provider==='gemini'){
     if(!wavDurationSeconds(audio))throw new SpeechProviderError(400,'A valid PCM WAV recording is required.');
     try { return {...await transcribeGeminiAudio(audio,language,contentType),durationSeconds:wavDurationSeconds(audio)}; }
-    catch(error){if(error instanceof LangpretationGeminiError)throw new SpeechProviderError(error.status,error.message);throw error;}
+    catch(error){if(error instanceof LangpretationGeminiError)throw new SpeechProviderError(error.status,error.message,error.diagnostic);throw error;}
   }
   let url:URL,headers:Record<string,string>,body:any;
   if(provider==='khaya'){
@@ -88,7 +88,7 @@ export async function synthesizeProviderAudio(text:string,language:string){
       const audio=await synthesizeGeminiAudio(text,language),durationSeconds=wavDurationSeconds(audio);
       if(!durationSeconds)throw new SpeechProviderError(502,'Speech provider returned an invalid WAV recording.');
       return {audioBase64:audio.toString('base64'),contentType:'audio/wav',provider:'gemini-tts',durationSeconds};
-    }catch(error){if(error instanceof LangpretationGeminiError)throw new SpeechProviderError(error.status,error.message);throw error;}
+    }catch(error){if(error instanceof LangpretationGeminiError)throw new SpeechProviderError(error.status,error.message,error.diagnostic);throw error;}
   }else if(provider==='sunbird'){
     url=endpoint(process.env.SUNBIRD_TTS_URL||'https://api.sunbird.ai/tasks/audio/speech');
     headers={'Content-Type':'application/json',Authorization:`Bearer ${process.env.SUNBIRD_API_KEY}`};

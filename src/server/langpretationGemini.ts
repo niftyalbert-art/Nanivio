@@ -6,8 +6,59 @@ const languageNames: Record<string, string> = {
   sw:'Swahili', lg:'Luganda', ak:'Twi / Akan', 'tw-ak':'Akuapem Twi',
   fat:'Fante', ee:'Ewe', gaa:'Ga',
 };
+export interface GeminiRequestDiagnostic {
+  model: string;
+  apiVersion: 'v1beta';
+  operation: 'text' | 'speech';
+  upstreamHttpStatus?: number;
+  providerStatus?: string;
+  reason?: string;
+  failure?: 'timeout' | 'transport';
+}
 export class LangpretationGeminiError extends Error {
-  constructor(public status: number, message: string) { super(message); }
+  constructor(public status: number, message: string, public diagnostic?: GeminiRequestDiagnostic) { super(message); }
+}
+
+const SAFE_STATUSES = new Set([
+  'INVALID_ARGUMENT', 'FAILED_PRECONDITION', 'NOT_FOUND', 'PERMISSION_DENIED',
+  'UNAUTHENTICATED', 'RESOURCE_EXHAUSTED', 'INTERNAL', 'UNAVAILABLE', 'DEADLINE_EXCEEDED',
+]);
+const SAFE_REASONS = new Set([
+  'API_KEY_INVALID', 'API_KEY_SERVICE_BLOCKED', 'API_KEY_HTTP_REFERRER_BLOCKED',
+  'API_KEY_IP_ADDRESS_BLOCKED', 'SERVICE_DISABLED', 'BILLING_DISABLED',
+  'RATE_LIMIT_EXCEEDED', 'MODEL_NOT_FOUND', 'ACCESS_TOKEN_SCOPE_INSUFFICIENT',
+  'RESOURCE_PROJECT_INVALID', 'CONSUMER_INVALID', 'LOCATION_POLICY_VIOLATED',
+]);
+
+/** Keep only allowlisted enums, never upstream messages, request bodies or headers. */
+async function providerFailure(response: Response) {
+  if (!response.body) return {};
+  const reader = response.body.getReader(), chunks: Buffer[] = [];
+  const deadline = AbortSignal.timeout(750);
+  let cancel!: () => void, size = 0;
+  const timeout = new Promise<never>((_, reject) => {
+    cancel = () => reject(new Error('Diagnostic deadline exceeded.'));
+    deadline.addEventListener('abort', cancel, { once: true });
+  });
+  try {
+    while (true) {
+      const { done, value } = await Promise.race([reader.read(), timeout]);
+      if (done) break;
+      size += value.length;
+      if (size > 16_384) return {};
+      chunks.push(Buffer.from(value));
+    }
+    const error = JSON.parse(Buffer.concat(chunks).toString('utf8')).error;
+    const providerStatus = SAFE_STATUSES.has(error?.status) ? error.status : undefined;
+    const reason = Array.isArray(error?.details)
+      ? error.details.map((item: any) => item?.reason).find((value: unknown) => SAFE_REASONS.has(value as string))
+      : undefined;
+    return { ...(providerStatus ? { providerStatus } : {}), ...(reason ? { reason } : {}) };
+  } catch { return {}; }
+  finally {
+    deadline.removeEventListener('abort', cancel);
+    void reader.cancel().catch(() => {});
+  }
 }
 
 /** One bounded request: no automatic retries, cross-provider fallback or raw error logging. */
@@ -28,10 +79,19 @@ async function generate(operation: 'text' | 'speech', contents: unknown[], gener
         ...(instruction ? { systemInstruction: { parts: [{ text: instruction }] } } : {}),
       }),
     });
-  } catch { throw new LangpretationGeminiError(502, 'Nanivio language request failed or timed out.'); }
+  } catch (error) {
+    const diagnostic: GeminiRequestDiagnostic = { model, apiVersion: 'v1beta', operation,
+      failure: error instanceof Error && ['TimeoutError', 'AbortError'].includes(error.name) ? 'timeout' : 'transport' };
+    console.warn('[Nanivio language] request failed', diagnostic);
+    throw new LangpretationGeminiError(502, 'Nanivio language request failed or timed out.', diagnostic);
+  }
   if (!response.ok) {
+    const diagnostic: GeminiRequestDiagnostic = { model, apiVersion: 'v1beta', operation,
+      upstreamHttpStatus: response.status, ...await providerFailure(response) };
+    console.warn('[Nanivio language] provider rejected request', diagnostic);
     throw new LangpretationGeminiError(response.status === 429 ? 429 : 502,
-      response.status === 429 ? 'Nanivio language service quota is temporarily unavailable.' : 'Nanivio language provider could not complete the request.');
+      response.status === 429 ? 'Nanivio language service quota is temporarily unavailable.' : 'Nanivio language provider could not complete the request.',
+      diagnostic);
   }
   const max = operation === 'speech' ? 12 * 1024 * 1024 : 128 * 1024;
   if (!response.body) throw new LangpretationGeminiError(502, 'Nanivio language provider returned no response.');
