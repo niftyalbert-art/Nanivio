@@ -55,6 +55,7 @@ import { productionStatus } from "./src/server/productionStatus.ts";
 import { uploadStreamAttachment } from "./src/server/streamService.ts";
 import { audioCallingEnabled, featureSettingsHandler, videoCallingEnabled } from "./src/server/featureSettings.ts";
 import { quotePaystackOrder, validateVerifiedOrder } from "./src/server/paystackOrders.ts";
+import { assertLivePaystackPayment, paystackLiveConfigurationError } from "./src/server/paystackPaymentSafety.ts";
 import { activatePaystackSubscriptionPersistent } from "./src/server/normalizedBillingRepository.ts";
 import { callKhayaEngine, callSunbirdEngine } from "./src/server/translationProviders.ts";
 import { translateWithProductionProviders, translationProviderConfigured } from "./src/server/translationRouter.ts";
@@ -1898,8 +1899,9 @@ app.post("/api/paystack/initialize", requireAuthenticatedUser, async (req, res) 
     const email = accountUser.email;
 
     const paystackSecretKey = process.env.PAYSTACK_SECRET_KEY;
-    if (!paystackSecretKey) {
-      return res.status(503).json({ success: false, error: "Paystack production payments are not configured on this server." });
+    const configurationError = paystackLiveConfigurationError(paystackSecretKey);
+    if (configurationError) {
+      return res.status(503).json({ success: false, error: configurationError });
     }
     if (purpose === 'SUBSCRIPTION') {
       try { await activatePaystackSubscriptionPersistent({ preflight:true }); }
@@ -2095,7 +2097,8 @@ app.get("/api/paystack/verify/:reference", requireAuthenticatedUser, async (req,
   try {
     const { reference } = req.params;
     const paystackSecretKey = process.env.PAYSTACK_SECRET_KEY;
-    if (!paystackSecretKey) return res.status(503).json({ success: false, error: "Paystack production payments are not configured." });
+    const configurationError = paystackLiveConfigurationError(paystackSecretKey);
+    if (configurationError) return res.status(503).json({ success: false, error: configurationError });
 
     let verifiedAmount = 0;
     let verifiedCurrency = "GHS";
@@ -2113,6 +2116,8 @@ app.get("/api/paystack/verify/:reference", requireAuthenticatedUser, async (req,
         });
         const data = await response.json();
         if (response.ok && data.status && data.data?.status === "success") {
+          try { assertLivePaystackPayment(data.data); }
+          catch (error: any) { return res.status(400).json({ success: false, error: error.message }); }
           isSuccess = true;
           verifiedAmount = data.data.amount / 100;
           verifiedCurrency = (data.data.currency || "GHS").toUpperCase();
@@ -2379,6 +2384,10 @@ app.post("/api/paystack/webhook", async (req, res) => {
     // Do not acknowledge a failed delivery just because an earlier attempt was received.
 
     if (event?.event === "charge.success") {
+      const configurationError = paystackLiveConfigurationError(paystackSecretKey);
+      if (configurationError) return res.status(503).json({ success: false, error: configurationError });
+      try { assertLivePaystackPayment(data); }
+      catch (error: any) { return res.status(400).json({ success: false, error: error.message }); }
       if (!ref) return res.status(400).json({ error: "Paystack event is missing transaction reference" });
       const durableOrder = await getPaystackOrder(ref);
       if (!durableOrder?.userId) {
