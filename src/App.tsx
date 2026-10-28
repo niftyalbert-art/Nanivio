@@ -23,6 +23,7 @@ import { MalviView } from './components/malvi/MalviView';
 import { MalviFloatingWidget } from './components/malvi/MalviFloatingWidget';
 import { MalviLiveAssistantProvider } from './components/malvi/MalviLiveAssistant';
 import { ErrorBoundary } from './components/common/ErrorBoundary';
+import { NanivioLandingPage } from './components/landing/NanivioLandingPage';
 
 const MainLayout: React.FC = () => {
   const { activeTab, incomingCall, acceptIncomingCall, declineIncomingCall } = useNanivio();
@@ -84,7 +85,9 @@ const AppOrchestrator: React.FC = () => {
     setIsAuthModalOpen,
     activeCelebrationEffect,
     clearCelebrationEffect,
+    setAuthMode,
   } = useNanivio();
+  const [showPublicAuth, setShowPublicAuth] = React.useState(false);
   const isAdminRoute = typeof window !== 'undefined' && window.location.pathname === '/admin';
 
   // The signature belongs only to a successful authentication, never app startup.
@@ -109,8 +112,33 @@ const AppOrchestrator: React.FC = () => {
 
   // Phase 3: Nanivio Authentication & Identity Entry
   if (!isAuthenticated) {
+    if (!showPublicAuth) {
+      return (
+        <NanivioLandingPage
+          onSignIn={() => {
+            setAuthMode('signin');
+            setShowPublicAuth(true);
+            window.scrollTo(0, 0);
+          }}
+          onGetStarted={() => {
+            setAuthMode('personal');
+            setShowPublicAuth(true);
+            window.scrollTo(0, 0);
+          }}
+        />
+      );
+    }
     return (
       <>
+        <div className="bg-[#121417] px-5 py-3">
+          <button
+            type="button"
+            onClick={() => setShowPublicAuth(false)}
+            className="inline-flex min-h-11 items-center gap-2 rounded-lg px-3 text-sm text-[#e2bb62] hover:bg-[#202329] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#e2bb62]"
+          >
+            <span aria-hidden="true">←</span> Back to Nanivio
+          </button>
+        </div>
         <NanivioAuthScreen onSuccess={() => setIsAuthModalOpen(false)} />
         <NewUserInstallPrompt />
       </>
