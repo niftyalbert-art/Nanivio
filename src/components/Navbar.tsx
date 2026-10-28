@@ -8,6 +8,7 @@ import { SUPPORTED_LANGUAGES } from '../types';
 import { NanivioLogo } from './common/NanivioLogo';
 import { LangpretationIcon } from './common/LangpretationIcon';
 import { PWAInstallButton } from './common/PWAInstallButton';
+import { MalviFloatingWidget } from './malvi/MalviFloatingWidget';
 
 export const Navbar: React.FC = () => {
   const {
@@ -24,7 +25,7 @@ export const Navbar: React.FC = () => {
   const currentLangObj = SUPPORTED_LANGUAGES.find((l) => l.code === myLanguage) || SUPPORTED_LANGUAGES[0];
 
   return (
-    <header className="sticky top-0 z-40 bg-[#fbf9f2] border-b border-[#d9d4c8]">
+    <header className="sticky top-0 z-40 shrink-0 bg-[#fbf9f2] border-b border-[#d9d4c8]">
       {/* Maintenance Mode Alert Banner if active */}
       {adminFeatures.maintenanceMode && (
         <div className="bg-amber-50 border-b border-amber-200 px-4 py-1.5 text-center text-xs text-amber-900 flex items-center justify-center gap-2">
@@ -109,6 +110,11 @@ export const Navbar: React.FC = () => {
             </button>
           </div>
         </div>
+        {activeTab === 'chat' && adminFeatures.malviAiAssistantEnabled && (
+          <div className="flex justify-end pb-2" data-malvi-chat-dock>
+            <MalviFloatingWidget placement="header" />
+          </div>
+        )}
       </div>
     </header>
   );
