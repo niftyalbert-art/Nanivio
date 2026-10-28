@@ -20,6 +20,19 @@ Do not infer invalid credentials, exhausted quota, or a particular provider-side
 failure from a timeout alone. Public documentation being reachable does not
 establish that inference is available within the application's latency budget.
 
+A successful model-list request is discovery metadata, not proof that the same
+key can use that model for inference.
+
+**Why:** Gemini listed a model whose subsequent recognition and translation
+requests returned `404 NOT_FOUND`. Another listed model returned service
+unavailability and timeouts. The model lifecycle documentation alone did not
+explain those runtime results.
+
+**How to apply:** Verify the exact model, endpoint and operation with an approved,
+bounded probe before recommending a switch. Keep model-list results separate
+from inference results, and do not assert retirement, invalid credentials or a
+working alternative based on catalogue presence or absence alone.
+
 The user expects translation audits to cover the full 18 × 18 language design,
 not only Twi and Luganda.
 
