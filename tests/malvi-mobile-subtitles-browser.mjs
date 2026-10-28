@@ -13,11 +13,15 @@ const bundle = await build({
     import React, {useState,useRef} from 'react';
     import {createRoot} from 'react-dom/client';
     import {MalviLiveOverlay} from './src/components/malvi/MalviLiveOverlay';
+    import {malviAllowanceIsUsedUp,openMalviSubscriptionPlans} from './src/lib/malviSubscriptionNavigation';
     const noop=()=>{};
     function Fixture(){
       const [caption,setCaption]=useState('Malvi reply. '.repeat(100)+'LATEST REPLY');
       const [text,setText]=useState('User speech. '.repeat(100)+'LATEST SPEECH');
-      const [phase,setPhase]=useState('connected');
+      const exhausted=new URLSearchParams(location.search).has('exhausted');
+      const [phase,setPhase]=useState(exhausted?'error':'connected');
+      const [error,setError]=useState(exhausted?'Your Malvi allowance is used up. Open Billing to review your plan.':null);
+      const [navigation,setNavigation]=useState({activeTab:null,pending:null,closed:false});
       const videoRef=useRef(null);
       const attachVideo=React.useCallback(video=>{
         videoRef.current=video;
@@ -26,8 +30,16 @@ const bundle = await build({
       window.updateCaption=setCaption;
       window.updateTranscript=setText;
       window.changePhase=setPhase;
+      window.showExhaustion=()=>{setError('Your Malvi allowance is used up. Open Billing to review your plan.');setPhase('error');};
+      window.showProviderFailure=()=>{setError('Speech provider quota_exceeded.');setPhase('error');};
+      if(navigation.activeTab==='billing')return <main><h1>Malvi billing destination</h1><pre id="billing-navigation">{JSON.stringify(navigation)}</pre></main>;
       return <MalviLiveOverlay videoRef={videoRef} onVideoElement={attachVideo}
-        phase={phase} error={null} secondsRemaining={50} onClose={noop}
+        phase={phase} error={error} secondsRemaining={50} onClose={noop} onRetry={noop}
+        onSubscribe={malviAllowanceIsUsedUp(error)?()=>openMalviSubscriptionPlans({
+          close:()=>setNavigation(n=>({...n,closed:true})),
+          setPendingBillingAction:pending=>setNavigation(n=>({...n,pending})),
+          setActiveTab:activeTab=>setNavigation(n=>({...n,activeTab}))
+        }):undefined}
         onInterrupt={noop} onPlayAudio={noop} audioBlocked
         caption={caption} userTranscript={text} brainReady microphoneOn
         microphoneError="Please check microphone access." brainProvider="gemini"
@@ -113,6 +125,27 @@ if (preview) {
       await page.evaluate("window.changePhase('connecting');true");
       await page.wait("!document.querySelector('[aria-label=\"Conversation subtitles\"]')");
       assert.ok(await page.evaluate("!!document.querySelector('[aria-label=\"Session status and feedback\"]')"));
+      await page.evaluate('window.showProviderFailure();true');
+      await page.wait("!!document.querySelector('[role=\"alert\"]')");
+      assert.equal(await page.evaluate("!!document.querySelector('[aria-label=\"Subscribe to Malvi\"]')"), false,
+        'provider quota errors must not suggest that buying a plan fixes provider availability');
+      await page.evaluate('window.showExhaustion();true');
+      await page.wait("!!document.querySelector('[aria-label=\"Subscribe to Malvi\"]')");
+      const shortcut = await page.evaluate(`(()=>{
+        const button=document.querySelector('[aria-label="Subscribe to Malvi"]');
+        const controls=document.querySelector('[aria-label="Live session controls"]');
+        const r=button.getBoundingClientRect();
+        const f=document.querySelector('[aria-label="Session status and feedback"]').getBoundingClientRect();
+        const c=controls.getBoundingClientRect();
+        return {height:r.height,visible:r.top>=0&&r.bottom<=innerHeight+1&&r.top>=f.top&&r.bottom<=f.bottom&&r.top>=c.top&&r.bottom<=c.bottom,retry:[...document.querySelectorAll('button')].some(b=>b.textContent.includes('Start a new conversation'))};
+      })()`);
+      assert.ok(shortcut.visible && shortcut.height>=44 && !shortcut.retry, JSON.stringify(shortcut));
+      await page.evaluate("document.querySelector('[aria-label=\"Subscribe to Malvi\"]').click();true");
+      await page.wait("!!document.querySelector('#billing-navigation')");
+      assert.deepEqual(await page.evaluate("JSON.parse(document.querySelector('#billing-navigation').textContent)"),
+        {activeTab:'billing',pending:{subTab:'malvi',purpose:'MALVI_SUBSCRIPTION'},closed:true});
+      assert.equal(await page.evaluate("!!document.querySelector('[role=\"dialog\"]')"), false,
+        'the live overlay closes so the billing section is accessible');
     }
     console.log(JSON.stringify({ passed: true, viewports: 9, fullOverlay: true, uncroppedPortrait: true, paidProviderRequests: 0 }));
   } finally {
