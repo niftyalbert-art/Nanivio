@@ -45,6 +45,7 @@ export class MalviAvatarPlayout {
   private gain: GainNode | null = null;
   private timer: ReturnType<typeof setInterval> | null = null;
   private pending: Pending[] = [];
+  private utterancePlaying = false;
   private samples = new Float32Array(1024);
   constructor(
     private startCaption: (track: MalviCaptionTrack, clock: () => number | null) => void,
@@ -85,19 +86,22 @@ export class MalviAvatarPlayout {
     if (this.pending.length >= 64 || this.pending.reduce((sum, item) => sum + item.track.durationMs, 0) + track.durationMs > 65_000) {
       throw new Error('Malvi’s subtitle playback queue is full.');
     }
-    this.pending.push({ track, leadingMs: malviLeadingSilenceMs(pcm), eligible: false, providerEnded: false, startedAt: null, eligibleAt: 0 });
+    this.pending.push({ track, leadingMs: malviLeadingSilenceMs(pcm), eligible: this.utterancePlaying, providerEnded: false, startedAt: null, eligibleAt: performance.now() });
   }
 
   providerStart() {
     // Processing events only make a packet eligible. They never start captions.
-    if (this.pending.some(p => p.eligible && !p.providerEnded)) return;
-    const next = this.pending.find(p => !p.eligible);
-    if (next) { next.eligible = true; next.eligibleAt = performance.now(); }
+    this.utterancePlaying = true;
+    for (const item of this.pending) {
+      if (!item.eligible) { item.eligible = true; item.eligibleAt = performance.now(); }
+    }
   }
 
   providerEnd() {
-    const next = this.pending.find(p => p.eligible && !p.providerEnded);
-    if (next) next.providerEnded = true;
+    this.utterancePlaying = false;
+    for (const item of this.pending) {
+      if (item.eligible) item.providerEnded = true;
+    }
     // Do not cut off buffered playback when the provider finishes generation.
   }
 
@@ -124,11 +128,12 @@ export class MalviAvatarPlayout {
     }
     if ((context.currentTime - item.startedAt) * 1000 >= item.track.durationMs) {
       this.pending.shift();
+      if (this.pending[0]?.eligible) this.pending[0].eligibleAt = performance.now();
       this.finishCaption(item.track);
     }
   }
 
-  cancel() { this.pending = []; }
+  cancel() { this.pending = []; this.utterancePlaying = false; }
 
   private detach() {
     if (this.timer) clearInterval(this.timer);

@@ -19,10 +19,14 @@ const bundle = await build({
       const [text,setText]=useState('User speech. '.repeat(100)+'LATEST SPEECH');
       const [phase,setPhase]=useState('connected');
       const videoRef=useRef(null);
+      const attachVideo=React.useCallback(video=>{
+        videoRef.current=video;
+        if(video)video.poster='/portrait.jpg';
+      },[]);
       window.updateCaption=setCaption;
       window.updateTranscript=setText;
       window.changePhase=setPhase;
-      return <MalviLiveOverlay videoRef={videoRef} onVideoElement={noop}
+      return <MalviLiveOverlay videoRef={videoRef} onVideoElement={attachVideo}
         phase={phase} error={null} secondsRemaining={50} onClose={noop}
         onInterrupt={noop} onPlayAudio={noop} audioBlocked
         caption={caption} userTranscript={text} brainReady microphoneOn
@@ -35,6 +39,11 @@ const bundle = await build({
   bundle: true, write: false, format: 'iife', loader: { '.png': 'dataurl' }, define: { 'process.env.NODE_ENV': '"production"' },
 });
 const server = createServer((req, res) => {
+  if (req.url === '/portrait.jpg') {
+    res.setHeader('Content-Type', 'image/jpeg');
+    void readFile('public/malvi_avatar_v2.jpg').then(image => res.end(image));
+    return;
+  }
   res.setHeader('Content-Type', req.url === '/app.js' ? 'text/javascript' : req.url === '/style.css' ? 'text/css' : 'text/html');
   res.end(req.url === '/app.js' ? bundle.outputFiles[0].text : req.url === '/style.css' ? css :
     '<!doctype html><meta name="viewport" content="width=device-width,initial-scale=1"><link rel="stylesheet" href="/style.css"><div id="root"></div><script src="/app.js"></script>');
@@ -46,11 +55,23 @@ if (preview) {
 } else {
   const browser = await launchBrowser();
   try {
-    for (const [width, height] of [[320,568], [360,640], [390,844], [412,915], [844,390], [1440,900]]) {
+    for (const [width, height] of [[320,568], [360,640], [390,844], [412,915], [844,390], [768,1024], [1024,768], [1440,900], [1920,1080]]) {
       console.log(`Checking full overlay at ${width}x${height}`);
       const page = await browser.page(`http://127.0.0.1:${server.address().port}`);
       await page.command('Emulation.setDeviceMetricsOverride', { width, height, deviceScaleFactor: 1, mobile: width < 900 });
       await page.wait("!!document.querySelector('[aria-label=\"Live subtitles\"]')");
+      assert.equal(await page.evaluate("getComputedStyle(document.querySelector('[aria-label=\"Malvi live video\"]')).objectFit"), 'contain',
+        `${width}x${height}: the entire live portrait fits without face cropping`);
+      await page.evaluate(`document.querySelector('[aria-label="Malvi live video"]').poster='/portrait.jpg';true`);
+      await page.evaluate('document.fonts.ready.then(()=>true)');
+      if (width >= 768) {
+        assert.equal(await page.evaluate(`(()=>{
+          const v=document.querySelector('[aria-label="Malvi live video"]').getBoundingClientRect();
+          const s=document.querySelector('[aria-label="Conversation subtitles"]').getBoundingClientRect();
+          const c=document.querySelector('[aria-label="Live session controls"]').getBoundingClientRect();
+          return v.right<=s.left+1 && v.right<=c.left+1;
+        })()`), true, 'tablet and desktop captions/controls never cover the avatar stage');
+      }
       await page.wait("[document.getElementById('malvi-spoken-transcript'),document.getElementById('malvi-user-transcript')].every(el=>el.scrollHeight-el.clientHeight-el.scrollTop<3)");
       const check = async () => {
         const result = await page.evaluate(`(()=>{
@@ -93,7 +114,7 @@ if (preview) {
       await page.wait("!document.querySelector('[aria-label=\"Conversation subtitles\"]')");
       assert.ok(await page.evaluate("!!document.querySelector('[aria-label=\"Session status and feedback\"]')"));
     }
-    console.log(JSON.stringify({ passed: true, viewports: 6, fullOverlay: true, paidProviderRequests: 0 }));
+    console.log(JSON.stringify({ passed: true, viewports: 9, fullOverlay: true, uncroppedPortrait: true, paidProviderRequests: 0 }));
   } finally {
     await browser.close();
     await new Promise(resolve => server.close(resolve));

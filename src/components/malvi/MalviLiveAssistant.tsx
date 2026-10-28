@@ -417,9 +417,12 @@ export const MalviLiveAssistantProvider: React.FC<{ children: React.ReactNode }>
         return;
       }
       sessionId.current = info.id; deadline.current = info.idleDeadline; sessionClock.current.update(info);
-      const { LiveAvatarSession, SessionEvent, SessionMode, AgentEventsEnum } = await import('@heygen/liveavatar-web-sdk');
+      const [{ SessionEvent, SessionMode, AgentEventsEnum }, { MalviLiveAvatarSession }] = await Promise.all([
+        import('@heygen/liveavatar-web-sdk'),
+        import('../../lib/malviLiveAvatarSession'),
+      ]);
       if (run !== generation.current) return;
-      const live = new LiveAvatarSession(info.sessionToken, {
+      const live = new MalviLiveAvatarSession(info.sessionToken, {
         autoKeepAlive: false,
         voiceChat: { defaultMuted: true },
       });

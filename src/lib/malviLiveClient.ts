@@ -69,11 +69,12 @@ export async function assistantRequest(path: string, body?: unknown, keepalive =
 
 // Only backend-produced, PCM16 / 24kHz / mono speech enters the LITE renderer.
 // Never call SDK message()/repeat(): they invoke provider-owned conversation/TTS.
-export function deliverMalviAudio(session: { repeatAudio: (audio: string) => unknown }, audio: {
-  pcm24k: string; sampleRate: number; format: string; channels: number;
+export function deliverMalviAudio(session: { repeatAudio: (audio: string) => unknown; appendAudio?: (audio: string, ended: boolean) => unknown }, audio: {
+  pcm24k: string; sampleRate: number; format: string; channels: number; ended?: boolean;
 }) {
   if (!audio.pcm24k || audio.sampleRate !== 24000 || audio.format !== 'pcm_s16le' || audio.channels !== 1) {
     throw new Error('Live avatar speech must be backend-generated PCM16 mono at 24 kHz.');
   }
-  session.repeatAudio(audio.pcm24k);
+  if (session.appendAudio) session.appendAudio(audio.pcm24k, audio.ended !== false);
+  else session.repeatAudio(audio.pcm24k);
 }
