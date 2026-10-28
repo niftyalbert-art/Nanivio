@@ -17,6 +17,7 @@ export interface MalviLiveOverlayProps {
   error: string | null;
   secondsRemaining: number;
   onClose: () => void;
+  onRetry?: () => void;
   onInterrupt: () => void;
   onPlayAudio: () => void;
   audioBlocked: boolean;
@@ -59,6 +60,7 @@ export const MalviLiveOverlay: React.FC<MalviLiveOverlayProps> = ({
   error,
   secondsRemaining,
   onClose,
+  onRetry,
   onInterrupt,
   onPlayAudio,
   audioBlocked,
@@ -333,7 +335,7 @@ export const MalviLiveOverlay: React.FC<MalviLiveOverlayProps> = ({
             </span>
             <div>
               <h1 id="malvi-live-title" className="text-sm font-semibold tracking-wide text-white">
-                Malvi <span className="font-normal text-[#cfddd4]">· {voiceOnly ? 'Voice-only test' : 'Nanivio'}</span>
+                Malvi <span className="font-normal text-[#cfddd4]">· {voiceOnly ? 'Voice' : 'Nanivio'}</span>
               </h1>
               <p id="malvi-live-disclosure" className="mt-0.5 text-[11px] text-[#dae4dd]/80">
                 AI assistant · {phase === 'connected' ? (voiceOnly ? 'Voice connected · no avatar' : 'Live session connected') : phaseCopy}
@@ -506,6 +508,7 @@ export const MalviLiveOverlay: React.FC<MalviLiveOverlayProps> = ({
                     We couldn’t connect just now
                   </p>
                   <p className="mt-1">{malviPublicCopy(error || 'Please close this window and try again.')}</p>
+                  {onRetry && <button type="button" onClick={onRetry} className="mt-3 rounded-xl border border-[#e3d09a]/60 px-4 py-2 font-semibold text-[#e3d09a]">Start a new conversation</button>}
                 </div>
               )}
               {microphoneError && (

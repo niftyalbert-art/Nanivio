@@ -23,9 +23,9 @@ export interface MalviCatalogResponse {
 export const MALVI_CATALOG_TIERS: MalviSubscriptionTier[] = [
   'free', 'malvi_voice', 'malvi_basic', 'malvi_premium', 'malvi_business',
 ];
-// The existing live service always provisions an avatar. Do not sell a
-// voice-only product until that delivery path and its usage enforcement exist.
-export const MALVI_VOICE_PLAN_PUBLISHABLE = false;
+// Customer voice delivery now has a separate, metered no-avatar route.
+// The server still verifies runtime database setup before first publication.
+export const MALVI_VOICE_PLAN_PUBLISHABLE = true;
 
 export class MalviCatalogError extends Error {
   constructor(public status: number, public code: string, message: string) { super(message); }

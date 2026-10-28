@@ -4,6 +4,7 @@ import { claimResearch, researchPublicWeb, WEB_TOOL_NAME } from './webResearch.t
 import { createReferenceToolRunner } from './referenceTools.ts';
 import { MEDIA_TOOL, researchPublicMedia } from './mediaResearch.ts';
 import { MAPS_TOOL, prepareDrivingRoute } from './mapTools.ts';
+import { claimMalviRequest } from './liveUsage.ts';
 
 export function createConversationTools(owner: string, notify: (payload: Record<string, unknown>) => void, closed: () => boolean) {
   const reference = createReferenceToolRunner(notify, closed);
@@ -23,12 +24,17 @@ export function createConversationTools(owner: string, notify: (payload: Record<
         return { enabled: state.enabled, context: conversationMemoryContext(state), found: state.messages.length };
       } catch { return { error: 'Saved account history is unavailable. Do not claim to remember it.' }; }
     }
-    if (![WEB_TOOL_NAME, MEDIA_TOOL.name].includes(name || '')) return reference(name, args);
+    if (![WEB_TOOL_NAME, MEDIA_TOOL.name].includes(name || '')) {
+      try { await claimMalviRequest(owner, 'research'); }
+      catch { return { error: 'Research is unavailable or its account safety limit has been reached. Do not invent research results.' }; }
+      return reference(name, args);
+    }
     if (active || used >= 6 || Date.now() - startedAt < 3000) return { error: 'Web research limit reached. Use the available evidence or wait before another lookup.' };
     active = true; used++; startedAt = Date.now();
     notify({ status: 'searching', results: [], unavailable: [] });
     try {
       claimResearch(owner);
+      await claimMalviRequest(owner, 'research');
       if (name === MEDIA_TOOL.name) {
         const result = await researchPublicMedia(args);
         if (closed()) return { error: 'The conversation has ended.' };

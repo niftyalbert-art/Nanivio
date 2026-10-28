@@ -11,6 +11,7 @@ import { createConversationTools } from "./src/server/assistant/conversationTool
 import { WEB_TOOL } from "./src/server/assistant/webResearch.ts";
 import { MEDIA_TOOL } from "./src/server/assistant/mediaResearch.ts";
 import { MAPS_TOOL } from "./src/server/assistant/mapTools.ts";
+import { malviSpeechSetup } from "./src/server/assistant/malviSpeech.ts";
 import {
   setupRealtimeServer,
   getActiveConnectedUsersList,
@@ -46,6 +47,7 @@ import { billingEngine } from "./src/server/billingEngine.ts";
 import { requireBillingAdmin, billingAdminActor, canRefund, ownsBillingRecord, ownsProviderEarnings, ownsBusinessBilling } from "./src/server/billingAccess.ts";
 import { createMalviCostRouter } from "./src/server/malviCostCalculator.ts";
 import { createMalviPlanRouter, malviCatalogService } from "./src/server/malviPlanCatalog.ts";
+import { createMalviRuntimeRouter } from "./src/server/malviRuntimeLimits.ts";
 import { getPersistentInvoice } from "./src/server/normalizedBillingRepository.ts";
 import { authDb } from "./src/server/authDb.ts";
 import * as persistentAuth from "./src/server/persistentAuth.ts";
@@ -2203,6 +2205,13 @@ app.post("/api/billing/malvi-subscription/change", requireAuthenticatedUser, asy
     if(!Number.isFinite(price) || price<0 || (tier!=="free" && price<=0)) return res.status(400).json({success:false,error:"The selected currency price is unavailable. Reload plans before paying."});
     if(tier!=="free" && req.body.expectedAmount!==price) return res.status(409).json({success:false,error:"The payable price or conversion changed. Reload plans before paying; no credit was debited."});
     if(paymentMethod!=="NANIVIO_CREDIT") return res.status(503).json({success:false,error:"Use Paystack checkout for external Malvi subscription payment."});
+    if(tier==="free") {
+      // A free selection is not a purchase. Never replace a paid term, refill
+      // consumption or mint another trial through this self-service endpoint.
+      await ensureMalviEntitlement(userId);
+      const existing=await getPersistentMalviSubscription(userId);
+      return res.json({success:true,result:{subscription:existing,unchanged:true},message:"Your existing Malvi allowance and expiry were preserved. Free selection does not restart a trial."});
+    }
     const now=Date.now();
     const result=await activateMalviSubscriptionFromWalletPersistent({userId,tier,billingCycle,price,currency,paymentMethod:"Nanivio credit",planId:plan.id,planName:plan.name,videoMinutesAllowed:plan.videoInteractionMinutesLimit,voiceMinutesAllowed:plan.voiceInteractionMinutesLimit,referenceId:`REF-NV-MALVI-${now}-${crypto.randomBytes(4).toString("hex")}`,transactionId:`tx_malvi_${crypto.randomBytes(8).toString("hex")}`,metadata:{source:"malvi_subscription",catalogVersion:plan.catalogVersion,planSnapshot:plan}});
     return res.json({success:true,result});
@@ -2691,6 +2700,7 @@ app.get("/api/billing/business", requireAuthenticatedUser, (req, res) => {
 app.use("/api/admin/billing", requireAuthenticatedUser, requireBillingAdmin);
 app.use("/api/admin/billing/malvi-costs", createMalviCostRouter());
 app.use("/api/admin/billing/malvi-plans", createMalviPlanRouter());
+app.use("/api/admin/billing/malvi-runtime", createMalviRuntimeRouter());
 
 // Admin Financial Overview
 app.get("/api/admin/billing/overview", (_req, res) => {
@@ -3724,6 +3734,11 @@ async function startServer() {
 
   httpServer.listen(PORT, "0.0.0.0", () => {
     console.log(`Nanivio real-time telecom platform server running on http://localhost:${PORT}`);
+    const speech = malviSpeechSetup();
+    console.info("[Malvi] Speech configuration", {
+      transport: speech.transport,
+      configured: speech.configured,
+    });
   });
 }
 

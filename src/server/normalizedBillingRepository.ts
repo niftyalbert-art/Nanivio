@@ -219,7 +219,7 @@ export async function ensureMalviEntitlement(userId:string){
   const {data:existing,error:ee}=await dbx.from('malvi_credit_ledger').select('id').eq('user_id',userId).eq('reference',reference).maybeSingle();
   if(ee) throw new Error(ee.message);
   if(!existing){
-    const amount=Math.max(0,Number(sub.videoMinutesAllowed||0));
+    const amount=Math.max(0,Number(sub.videoMinutesAllowed||0),Number(sub.voiceMinutesAllowed||0));
     if(amount>0) await creditMalviAccount(userId,amount,reference,'MALVI_SUBSCRIPTION','MALVI_MINUTES',{planId:sub.planId,tier:sub.tier,periodStart:sub.currentPeriodStart,periodEnd:sub.currentPeriodEnd});
   }
   return getMalviCreditAccount(userId);

@@ -10,6 +10,7 @@ import {
   type MalviPlanStatus,
 } from '../../lib/malviPlanCatalog';
 import { loadMalviPlanCatalog, saveMalviPlanCatalog } from '../../lib/malviPlanClient';
+import { AdminMalviRuntimeLimits } from './AdminMalviRuntimeLimits';
 
 const panel = 'rounded-2xl border border-slate-800 bg-[#0c1424]';
 const inputClass = 'w-full min-w-0 rounded-xl border border-slate-700 bg-[#080e18] px-3 py-2.5 text-sm text-slate-100 outline-none transition focus:border-amber-400 focus:ring-2 focus:ring-amber-400/20 disabled:cursor-not-allowed disabled:opacity-60';
@@ -256,6 +257,7 @@ export const AdminMalviPlanManager: React.FC = () => {
 
   return (
     <section className="w-full min-w-0 space-y-5 text-slate-100" aria-labelledby="malvi-plans-title">
+      <AdminMalviRuntimeLimits />
       <header className={`${panel} overflow-hidden`}>
         <div className="border-b border-slate-800 bg-gradient-to-r from-[#141d2b] via-[#101a29] to-[#14241f] p-5 sm:p-6">
           <div className="flex flex-col justify-between gap-4 md:flex-row md:items-start">
@@ -375,11 +377,11 @@ export const AdminMalviPlanManager: React.FC = () => {
                         <label className={labelClass} htmlFor={`${plan.id}-status`}>Catalogue status</label>
                         <select id={`${plan.id}-status`} className={inputClass} value={plan.status} disabled={planDisabled || isFree} onChange={(event) => updatePlan(tier, 'status', event.currentTarget.value as MalviPlanStatus)}>
                           <option value="DRAFT">Draft · not offered for new purchases</option>
-                          <option value="PUBLISHED" disabled={isVoice}>Published · offered for new purchases</option>
+                          <option value="PUBLISHED">Published · offered for new purchases</option>
                           { !isFree && <option value="ARCHIVED">Archived · unavailable for new purchases</option> }
                         </select>
                         {isFree && <p className="text-[11px] leading-4 text-slate-500">Free remains published and zero-priced.</p>}
-                        {isVoice && <p className="text-[11px] leading-4 text-amber-200">Voice is an editable draft only. Voice-only session delivery and usage enforcement must be completed before it can be sold.</p>}
+                        {isVoice && <p className="text-[11px] leading-4 text-amber-200">Voice is avatar-free. Before publishing, apply the live-allowance database setup, save a positive shared live-minute limit, and approve this plan’s price and allowance.</p>}
                       </div>
                       {!isFree && <p className="self-end rounded-xl border border-slate-800 bg-slate-950/40 p-3 text-xs leading-5 text-slate-400">
                         Archiving preserves this stable plan and existing purchase history while removing it from new purchases. Physical deletion is not available.

@@ -101,9 +101,12 @@ class NanivioRealtimeClient {
         }
       };
 
+      const closingSocket = this.socket;
       this.socket.onclose = () => {
+        if (this.socket !== closingSocket) return;
         this.isConnecting = false;
         this.socket = null;
+        this.emit('connection:lost', {});
         // Reconnect after 3 seconds
         if (!this.reconnectTimer) {
           this.reconnectTimer = setTimeout(() => {

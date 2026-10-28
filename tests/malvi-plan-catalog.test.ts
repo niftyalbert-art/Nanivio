@@ -74,7 +74,6 @@ test('plan validation protects identities, prices, flags, free access and unpubl
     (p: any[]) => { p[0].status = 'ARCHIVED'; },
     (p: any[]) => { p[0].priceAnnualUSD = 1; },
     (p: any[]) => { p[1].avatarInteractive = true; },
-    (p: any[]) => { p[1].status = 'PUBLISHED'; p[1].priceMonthlyUSD = 6; p[1].priceAnnualUSD = 60; p[1].voiceInteractionMinutesLimit = 120; },
     (p: any[]) => { p[2].features = ['x'.repeat(301)]; },
     (p: any[]) => { p[2].priceMonthlyGHS = 1; },
   ]) {
@@ -82,6 +81,8 @@ test('plan validation protects identities, prices, flags, free access and unpubl
     assert.throws(() => validateMalviPlans(draft), errorCode('PLAN_INPUT_INVALID'));
   }
   const draft = plans();
+  draft[1].status = 'PUBLISHED'; draft[1].priceMonthlyUSD = 6; draft[1].priceAnnualUSD = 60; draft[1].voiceInteractionMinutesLimit = 120;
+  assert.doesNotThrow(() => validateMalviPlans(draft));
   draft[2].features = [' First ', '', 'Second'];
   assert.deepEqual(validateMalviPlans(draft)[2].features, ['First', 'Second']);
 });
