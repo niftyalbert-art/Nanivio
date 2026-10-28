@@ -64,3 +64,13 @@ actual account's allowance or an approved spending budget.
 safety caps distinct. Preserve prices and term dates when configuring caps.
 An unpaid Free selection is not a new purchase and must not replenish a trial
 or replace a paid term.
+
+The user confirmed the three-minute allowance followed by a subscription prompt
+is the expected experience.
+
+**Why:** They tested one account and explicitly confirmed the subscription gate
+appeared after its three minutes were consumed.
+
+**How to apply:** Preserve the allowance-exhaustion subscription flow. This
+confirmation covers the tested account, not every entitlement or payment path;
+allowances remain administrator-configurable rather than hardcoded.
