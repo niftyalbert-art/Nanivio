@@ -11,12 +11,12 @@ export interface CompleteRoutePlan {
   canExecuteRealtimeAudio:boolean; canExecuteVoiceNote:boolean; estimatedLatencyMs:number | null;
 }
 export interface RouteDecision {
-  providerId:'khaya'|'sunbird'|'azure'|'nllb'; provider:IMtProvider; fallbackProviders:IMtProvider[];
+  providerId:'khaya'|'sunbird'|'gemini'|'nllb'; provider:IMtProvider; fallbackProviders:IMtProvider[];
   requiresPivot:boolean; pivotLanguage?:string; estimatedLatencyMs:number | null;
 }
 export interface Language18MatrixItem {
   code:string; name:string; region:string; flag:string;
-  primaryProvider:'Khaya AI'|'Sunbird AI'|'Azure Translator'|'NLLB-200'|'Unavailable';
+  primaryProvider:'Khaya AI'|'Sunbird AI'|'Gemini'|'NLLB-200'|'Unavailable';
   fallbackProvider:string; pivotRequiredForNonEnglish:boolean; asrSupported:boolean; ttsSupported:boolean;
   subSecondLatencyCapable:boolean;
 }
@@ -40,14 +40,14 @@ export class LanguageRouter {
   }
   public resolveRoute(sourceLang:string,targetLang:string):RouteDecision {
     const plan=planTranslation(sourceLang,targetLang);
-    return {providerId:plan.hops[0]?.provider||'azure',provider:this.server,fallbackProviders:[],
+    return {providerId:plan.hops[0]?.provider||'gemini',provider:this.server,fallbackProviders:[],
       requiresPivot:plan.requiresPivot,pivotLanguage:plan.requiresPivot?'en':undefined,estimatedLatencyMs:null};
   }
   public get18LanguageMatrix():Language18MatrixItem[] {
     return AUTHORITATIVE_18_LANG_CODES.map(code=>{
       const language=NANIVIO_18_LANGUAGES[code],provider=mtProvider(code);
       return {code,name:language.name,region:language.region,flag:language.flag,
-        primaryProvider:provider==='khaya'?'Khaya AI':provider==='sunbird'?'Sunbird AI':provider==='azure'?'Azure Translator':'Unavailable',
+        primaryProvider:provider==='khaya'?'Khaya AI':provider==='sunbird'?'Sunbird AI':provider==='gemini'?'Gemini':'Unavailable',
         fallbackProvider:'NONE',pivotRequiredForNonEnglish:provider==='khaya',
         asrSupported:false,ttsSupported:false,subSecondLatencyCapable:false};
     });

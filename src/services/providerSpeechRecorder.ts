@@ -23,6 +23,7 @@ export class ProviderSpeechRecorder {
     if(this.abort.signal.aborted){this.stop();return false;}
     this.context=new AudioContext();
     await this.context.resume();
+    if(this.abort.signal.aborted){this.stop();return false;}
     const source=this.context.createMediaStreamSource(this.stream);
     this.processor=this.context.createScriptProcessor(2048,1,1);
     const context=this.context,rate=context.sampleRate;

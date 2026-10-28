@@ -39,8 +39,8 @@ export class ProviderRegistry {
     });
 
     this.register({
-      id: 'azure',
-      name: 'Azure Translator + Speech',
+      id: 'gemini',
+      name: 'Gemini Translation + Speech',
       type: 'full-duplex',
       isRealtime: false,
       averageLatencyMs: null,

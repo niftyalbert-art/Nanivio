@@ -542,7 +542,7 @@ export const AdminLangpretationManager: React.FC = () => {
                 >
                   <option value="Khaya AI Ghana Acoustic Models">Khaya AI Acoustic Models</option>
                   <option value="Sunbird AI Luganda ASR Models">Sunbird AI Models</option>
-                  <option value="Palabra / Azure Speech">Palabra / Azure Speech</option>
+                  <option value="gemini">Gemini</option>
                   <option value="Google Cloud Speech">Google Cloud Speech</option>
                   <option value="Whisper Neural ASR">Whisper Large v3</option>
                 </select>

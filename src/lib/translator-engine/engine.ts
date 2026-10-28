@@ -168,8 +168,8 @@ export class NanivioTranslatorEngine {
       activeProviderRoutes: {
         'ak,tw-ak,fat,ee,gaa,ha': 'Khaya AI (Ghana NLP)',
         'sw,lg': 'Sunbird AI (East Africa)',
-        'en,fr,es,ar,de,it,pt,zh,ja,ko': 'Azure Translator / Speech',
-        'cross-continental': 'Azure English Pivot + African specialist providers',
+        'en,fr,es,ar,de,it,pt,zh,ja,ko': 'Gemini Translation / Speech',
+        'cross-continental': 'English Pivot + African specialist providers',
       },
       cacheHitRatio: this.cache.getHitRatio(),
       lastRecordedTurn: this.metrics.getLastTurn(),

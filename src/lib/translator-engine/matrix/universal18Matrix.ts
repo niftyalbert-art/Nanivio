@@ -8,8 +8,8 @@ export interface MatrixLanguageInfo {
   textToSpeech:boolean; realtimeSpeechTranslation:boolean; voiceNotes:boolean; twoWayConversation:boolean;
   realtimeStrategy:RealtimeStrategy; specializedAfricanInfrastructure:boolean; active:boolean;
   provider:string; asrProvider:string; mtProvider:string; ttsProvider:string; costPerMinuteUsd:number|null;
-  notes:string; lastVerified:number|null; defaultAsrProvider:'khaya'|'sunbird'|'azure';
-  defaultMtProvider:'khaya'|'sunbird'|'azure'|'nllb'|'unavailable'; defaultTtsProvider:'khaya'|'sunbird'|'azure';
+  notes:string; lastVerified:number|null; defaultAsrProvider:'khaya'|'sunbird'|'gemini';
+  defaultMtProvider:'khaya'|'sunbird'|'gemini'|'nllb'|'unavailable'; defaultTtsProvider:'khaya'|'sunbird'|'gemini';
 }
 type Description = [string,string,string,string,MatrixLanguageInfo['family']];
 const descriptions:Record<string,Description> = {
@@ -37,10 +37,10 @@ export const AUTHORITATIVE_18_LANG_CODES:string[]=[...LANGUAGE_CODES];
 export const NANIVIO_18_LANGUAGES:Record<string,MatrixLanguageInfo>=Object.fromEntries(
   LANGUAGE_CODES.map(code=>{
     const [name,nativeName,region,flag,family]=descriptions[code], speech=speechProvider(code),mt=mtProvider(code);
-    return [code,{code,name,nativeName,region,flag,family,isAfrican:speech!=='azure',
+    return [code,{code,name,nativeName,region,flag,family,isAfrican:speech!=='gemini',
       capability:mt?'NOT_VERIFIED':'UNAVAILABLE',speechRecognition:false,translation:Boolean(mt),
       textToSpeech:false,realtimeSpeechTranslation:false,voiceNotes:false,twoWayConversation:false,
-      realtimeStrategy:'PIPELINE_STT_MT_TTS',specializedAfricanInfrastructure:speech!=='azure',active:true,
+      realtimeStrategy:'PIPELINE_STT_MT_TTS',specializedAfricanInfrastructure:speech!=='gemini',active:true,
       provider:mt||'unavailable',asrProvider:speech,mtProvider:mt||'unavailable',ttsProvider:speech,
       costPerMinuteUsd:null,lastVerified:null,
       notes:mt?'Declared provider contract; configuration and real output must be checked separately.'

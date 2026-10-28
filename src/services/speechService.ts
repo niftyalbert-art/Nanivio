@@ -1,68 +1,51 @@
-/** Production Nanivio speech service.
- * Azure Speech is used for supported speech languages. Browser Web Speech is not used
- * for Langpretation because it is device/browser dependent and cannot provide production guarantees.
- */
-import * as SpeechSDK from 'microsoft-cognitiveservices-speech-sdk';
+/** Nanivio-owned capture and server ASR. No browser speech recognizer or Azure SDK. */
 import { authenticatedFetch } from '../lib/authenticatedFetch';
-import { speechProvider } from '../lib/translator-engine/languagePlan';
 import { ProviderSpeechRecorder } from './providerSpeechRecorder';
 
 export interface SpeechRecognitionResultPayload { transcript:string; isFinal:boolean; confidence:number|null; }
 export type SpeechCallback = (payload: SpeechRecognitionResultPayload) => void;
 export type AudioLevelCallback = (level:number) => void;
 
-const LOCALES: Record<string,string> = {
-  en:'en-US', fr:'fr-FR', es:'es-ES', ar:'ar-SA', de:'de-DE', it:'it-IT', pt:'pt-BR', zh:'zh-CN', ja:'ja-JP', ko:'ko-KR', sw:'sw-KE', ha:'ha-NG', lg:'lg-UG'
-};
-
 class SpeechService {
   private providerRecorder:ProviderSpeechRecorder|null=null;
   private playback:HTMLAudioElement|null=null;
   private playbackUrl:string|null=null;
-  private recognizer: SpeechSDK.SpeechRecognizer | null = null;
+  private generation = 0;
   private listening = false;
   private visualStream: MediaStream | null = null;
   private audioContext: AudioContext | null = null;
   private analyser: AnalyserNode | null = null;
   private frame: number | null = null;
 
-  private locale(code:string){ return LOCALES[code] || code; }
   public isSupported(){ return typeof window !== 'undefined' && !!navigator.mediaDevices?.getUserMedia; }
   public isTTSSupported(){ return true; }
 
   public async startListening(langCode:string,onResult:SpeechCallback,onError?:(err:any)=>void):Promise<boolean>{
     if (!this.isSupported()) { onError?.(new Error('Microphone access is unavailable.')); return false; }
     this.stopListening();
+    const generation=this.generation;
+    const recorder=new ProviderSpeechRecorder();
+    this.providerRecorder=recorder;
     try {
-      if(speechProvider(langCode)!=='azure'){
-        this.providerRecorder=new ProviderSpeechRecorder();
-        this.listening=await this.providerRecorder.start(langCode,(text,confidence)=>onResult({transcript:text,isFinal:true,confidence}),error=>{this.stopListening();onError?.(error);});
-        return this.listening;
-      }
-      const tokenRes=await authenticatedFetch('/api/langpretation/azure-speech-token');
-      const tokenData=await tokenRes.json();
-      if (!tokenRes.ok) throw new Error(tokenData.error || 'Azure Speech is not configured.');
-      const config=SpeechSDK.SpeechConfig.fromAuthorizationToken(tokenData.token,tokenData.region);
-      config.speechRecognitionLanguage=this.locale(langCode);
-      config.outputFormat=SpeechSDK.OutputFormat.Detailed;
-      const audio=SpeechSDK.AudioConfig.fromDefaultMicrophoneInput();
-      this.recognizer=new SpeechSDK.SpeechRecognizer(config,audio);
-      this.recognizer.recognizing=(_,e)=>{ if(e.result?.text) onResult({transcript:e.result.text,isFinal:false,confidence:null}); };
-      this.recognizer.recognized=(_,e)=>{ if(e.result.reason===SpeechSDK.ResultReason.RecognizedSpeech && e.result.text) {
-        let confidence:number|null=null;
-        try{const details=JSON.parse(e.result.properties.getProperty(SpeechSDK.PropertyId.SpeechServiceResponse_JsonResult));const actual=details?.NBest?.[0]?.Confidence;if(typeof actual==='number')confidence=actual;}catch{}
-        onResult({transcript:e.result.text,isFinal:true,confidence});
-      }};
-      this.recognizer.canceled=(_,e)=>{ onError?.(new Error(e.errorDetails || `Azure Speech canceled: ${e.reason}`)); };
-      await new Promise<void>((resolve,reject)=>this.recognizer!.startContinuousRecognitionAsync(resolve,reject));
-      this.listening=true; return true;
-    } catch(e){this.providerRecorder?.stop();this.providerRecorder=null;this.listening=false; this.recognizer?.close(); this.recognizer=null; onError?.(e); return false; }
+      const started=await recorder.start(langCode,(text,confidence)=>{
+        if(generation===this.generation)onResult({transcript:text,isFinal:true,confidence});
+      },error=>{
+        if(generation!==this.generation)return;
+        this.stopListening();onError?.(error);
+      });
+      if(generation!==this.generation){recorder.stop();return false;}
+      this.listening=started;return started;
+    }catch(e){
+      recorder.stop();
+      if(generation===this.generation){this.stopListening();onError?.(e);}
+      return false;
+    }
   }
 
   public stopListening(){
+    this.generation++;
     this.listening=false;
     this.providerRecorder?.stop();this.providerRecorder=null;
-    if(this.recognizer){ const recognizer=this.recognizer;this.recognizer=null;recognizer.stopContinuousRecognitionAsync(()=>recognizer.close(),()=>recognizer.close()); }
   }
 
   public async startAudioVisualizer(onLevel:AudioLevelCallback){

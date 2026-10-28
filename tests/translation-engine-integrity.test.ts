@@ -25,8 +25,8 @@ test('all 324 directed declarations and both browser planners use the same autho
 test('mixed specialist routes select each English-pivot leg independently',()=>{
   assert.deepEqual(planTranslation('ak','lg').hops,[{source:'ak',target:'en',provider:'khaya'},{source:'en',target:'lg',provider:'sunbird'}]);
   assert.deepEqual(planTranslation('lg','ak').hops,[{source:'lg',target:'en',provider:'sunbird'},{source:'en',target:'ak',provider:'khaya'}]);
-  assert.deepEqual(planTranslation('ak','ha').hops.map(h=>h.provider),['khaya','azure']);
-  assert.deepEqual(planTranslation('fr','ar').hops,[{source:'fr',target:'ar',provider:'azure'}]);
+  assert.deepEqual(planTranslation('ak','ha').hops.map(h=>h.provider),['khaya','gemini']);
+  assert.deepEqual(planTranslation('fr','ar').hops,[{source:'fr',target:'ar',provider:'gemini'}]);
 });
 test('distinct Akuapem MT is never silently substituted or advertised as supported',()=>{
   assert.equal(planTranslation('en','tw-ak').supported,false);

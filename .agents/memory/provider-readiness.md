@@ -41,6 +41,19 @@ an initial English/Twi or English/Luganda pair.
 whole matrix. Individual test pairs can be execution steps, not a replacement
 for the full scope; same-language sessions preserve original speech.
 
+For Langpretation, the owner chose the existing Gemini service instead of
+Azure for international-language recognition, translation and spoken output.
+Keep Khaya and Sunbird specialist routes and Malvi's approved voice settings
+separate from this choice.
+
+**Why:** The owner explicitly selected “Use existing Gemini” rather than
+waiting for Azure setup or comparing other providers.
+
+**How to apply:** Do not reintroduce an Azure credential requirement or silently
+switch providers on failure. Verify the chosen models and real language output
+separately from routing tests, and account for Langpretation and Malvi sharing
+Gemini quota. This selection does not establish Akuapem dialect coverage.
+
 Do not treat absence from a published language catalogue as proof that every
 provider rejects that language. Preserve distinct dialect codes when probing.
 
