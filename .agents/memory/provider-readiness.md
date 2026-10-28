@@ -30,6 +30,17 @@ implementations and changes needed across the engine and all available languages
 ASR/MT/TTS stage. Separate exhaustive planning checks from actual provider output
 and real speech-to-speech evidence.
 
+Do not ask the owner to narrow Langpretation to a selected language pair as the
+implementation scope. The required product is any pairing across all 18
+languages in both directions.
+
+**Why:** The owner reiterated the 18 × 18 requirement after being asked to choose
+an initial English/Twi or English/Luganda pair.
+
+**How to apply:** Organize implementation and readiness reporting around the
+whole matrix. Individual test pairs can be execution steps, not a replacement
+for the full scope; same-language sessions preserve original speech.
+
 Do not treat absence from a published language catalogue as proof that every
 provider rejects that language. Preserve distinct dialect codes when probing.
 
