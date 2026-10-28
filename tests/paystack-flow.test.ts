@@ -5,6 +5,7 @@ import vm from 'node:vm';
 import test from 'node:test';
 import ts from 'typescript';
 import { quotePaystackOrder, validateVerifiedOrder } from '../src/server/paystackOrders.ts';
+import { assertLivePaystackPayment, paystackLiveConfigurationError } from '../src/server/paystackPaymentSafety.ts';
 
 // Execute the actual production handlers with a stubbed gateway and isolated stores.
 // No real provider credential, network payment, or customer account is used.
@@ -41,7 +42,8 @@ function system() {
   };
   const context: any = {
     Buffer, crypto, AbortSignal, quotePaystackOrder, validateVerifiedOrder,
-    process:{ env:{ PAYSTACK_SECRET_KEY:'sk_test_fixture_only' } },
+    assertLivePaystackPayment, paystackLiveConfigurationError,
+    process:{ env:{ PAYSTACK_SECRET_KEY:'sk_live_fixture_only' } },
     authenticatedUserId:(req: any)=>req.authId,
     persistentAuth:{ findById:async()=>({ email:'fixture@example.test' }) },
     normalizedBillingEnabled:()=>true,
@@ -61,7 +63,7 @@ function system() {
     fetch:async(url: string,init: any)=>{
       if (url.endsWith('/initialize')) {
         const request = JSON.parse(init.body);
-        provider.set(request.reference, { ...request, status:'success' });
+        provider.set(request.reference, { ...request, domain:'live', status:'success' });
         assert.equal(request.email,'fixture@example.test');
         return { ok:true, json:async()=>({ status:true, data:{
           authorization_url:'https://checkout.paystack.com/fixture', access_code:'fixture',
@@ -162,7 +164,7 @@ test('missing credentials and unpaid gateway statuses cannot deliver value',asyn
   s.context.process.env={};
   assert.equal((await s.call(s.initialize,{ authId:'owner', body:{ amount:20 } })).code,503);
   assert.equal(s.provider.size,0);
-  s.context.process.env={ PAYSTACK_SECRET_KEY:'sk_test_fixture_only' };
+  s.context.process.env={ PAYSTACK_SECRET_KEY:'sk_live_fixture_only' };
   const init=await s.call(s.initialize,{ authId:'owner', body:{ amount:20 } });
   const reference=init.body.reference;
   s.provider.get(reference).status='pending';
@@ -175,7 +177,7 @@ test('a failed signed webhook can retry and recover without duplicate value',asy
   const init=await s.call(s.initialize,{ authId:'owner', body:{ amount:20 } });
   const event={ event:'charge.success', data:{ ...s.provider.get(init.body.reference), id:123 } };
   const rawBody=Buffer.from(JSON.stringify(event));
-  const signature=crypto.createHmac('sha512','sk_test_fixture_only').update(rawBody).digest('hex');
+  const signature=crypto.createHmac('sha512','sk_live_fixture_only').update(rawBody).digest('hex');
   const req={ body:event, rawBody, headers:{ 'x-paystack-signature':signature } };
   s.failOnce();
   assert.equal((await s.call(s.webhook,req)).code,500);
@@ -184,4 +186,51 @@ test('a failed signed webhook can retry and recover without duplicate value',asy
   assert.equal(s.deliveries.length,1);
   assert.equal((await s.call(s.webhook,req)).code,200);
   assert.equal(s.deliveries.length,1);
+});
+
+test('test-mode credentials never open checkout or create an order', async () => {
+  const s = system();
+  s.context.process.env.PAYSTACK_SECRET_KEY = 'sk_test_fixture_only';
+  const init = await s.call(s.initialize, { authId:'owner', body:{ amount:20 } });
+  assert.equal(init.code, 503);
+  assert.equal(s.orders.size, 0);
+  assert.equal(s.provider.size, 0);
+  assert.equal(s.deliveries.length, 0);
+});
+
+test('actual verify and signed webhook routes reject test or missing domain for both card and mobile money', async () => {
+  for (const channel of ['card', 'mobile_money']) {
+    for (const domain of ['test', undefined]) {
+      const s = system();
+      const init = await s.call(s.initialize, { authId:'owner', body:{
+        purpose:'MALVI_SUBSCRIPTION', planTier:'premium', amount:145,
+      } });
+      const reference = init.body.reference;
+      Object.assign(s.provider.get(reference), { channel, domain });
+      assert.equal((await s.call(s.verify, { authId:'owner', params:{ reference } })).code, 400);
+      const event = { event:'charge.success', data:s.provider.get(reference) };
+      const rawBody = Buffer.from(JSON.stringify(event));
+      const signature = crypto.createHmac('sha512', 'sk_live_fixture_only').update(rawBody).digest('hex');
+      assert.equal((await s.call(s.webhook, {
+        body:event, rawBody, headers:{ 'x-paystack-signature':signature },
+      })).code, 400);
+      assert.equal(s.deliveries.length, 0);
+    }
+  }
+});
+
+test('card and mobile money pending authorizations do not activate Malvi; completed live payments do', async () => {
+  for (const channel of ['card', 'mobile_money']) {
+    const s = system();
+    const init = await s.call(s.initialize, { authId:'owner', body:{
+      purpose:'MALVI_SUBSCRIPTION', planTier:'premium', amount:145,
+    } });
+    const reference = init.body.reference;
+    Object.assign(s.provider.get(reference), { channel, status:'pending' });
+    assert.equal((await s.call(s.verify, { authId:'owner', params:{ reference } })).code, 400);
+    assert.equal(s.deliveries.length, 0);
+    s.provider.get(reference).status = 'success';
+    assert.equal((await s.call(s.verify, { authId:'owner', params:{ reference } })).body.verified, true);
+    assert.equal(s.deliveries.length, 1);
+  }
 });
