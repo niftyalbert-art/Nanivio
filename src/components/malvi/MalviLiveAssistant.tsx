@@ -19,6 +19,7 @@ import { BrowserMicCapture, browserMicStreamId } from '../../lib/nanivioMic/Brow
 import { NANIVIO_MIC_EVENTS } from '../../shared/nanivioMicProtocol';
 import { parseMalviAssets, type MalviAssetResult } from '../../shared/malviInputTypes';
 import { MalviSessionClock } from '../../lib/malviSessionClock';
+import { malviAllowanceIsUsedUp, openMalviSubscriptionPlans } from '../../lib/malviSubscriptionNavigation';
 
 type Phase = 'idle' | 'connecting' | 'connected' | 'error';
 interface LiveControls {
@@ -45,7 +46,7 @@ interface LiveControls {
 const LiveContext = createContext<LiveControls | null>(null);
 
 export const MalviLiveAssistantProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const { currentUser, appLanguage } = useNanivio();
+  const { currentUser, appLanguage, setPendingBillingAction, setActiveTab } = useNanivio();
   const preferredLanguage = appLanguage || currentUser?.appLanguage || currentUser?.myLanguage || 'en';
   const languageRef = useRef(preferredLanguage);
   languageRef.current = preferredLanguage;
@@ -638,6 +639,9 @@ export const MalviLiveAssistantProvider: React.FC<{ children: React.ReactNode }>
       assets={liveAssets}
         videoRef={videoRef} onVideoElement={attachVideo} phase={phase} error={error} secondsRemaining={secondsRemaining}
         onClose={close} onInterrupt={interrupt} audioBlocked={audioBlocked} caption={caption}
+        onSubscribe={malviAllowanceIsUsedUp(error) ? () => openMalviSubscriptionPlans({
+          close, setPendingBillingAction, setActiveTab,
+        }) : undefined}
         onRetry={phase === 'error' ? () => {
           const wasVoiceOnly = voiceMode.current;
           close();

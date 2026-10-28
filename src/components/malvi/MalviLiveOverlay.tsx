@@ -18,6 +18,7 @@ export interface MalviLiveOverlayProps {
   secondsRemaining: number;
   onClose: () => void;
   onRetry?: () => void;
+  onSubscribe?: () => void;
   onInterrupt: () => void;
   onPlayAudio: () => void;
   audioBlocked: boolean;
@@ -61,6 +62,7 @@ export const MalviLiveOverlay: React.FC<MalviLiveOverlayProps> = ({
   secondsRemaining,
   onClose,
   onRetry,
+  onSubscribe,
   onInterrupt,
   onPlayAudio,
   audioBlocked,
@@ -371,7 +373,7 @@ export const MalviLiveOverlay: React.FC<MalviLiveOverlayProps> = ({
           </div>
         )}
 
-        <footer aria-label="Live session controls" className={`flex max-h-[30dvh] min-h-0 shrink-0 flex-col items-center gap-2 overflow-y-auto overscroll-contain px-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-2 sm:gap-3 sm:px-7 sm:pb-[max(1.75rem,env(safe-area-inset-bottom))] [&>*]:shrink-0 ${!voiceOnly ? 'md:ml-auto md:w-[22rem] md:px-4' : ''}`}>
+        <footer aria-label="Live session controls" className={`flex ${onSubscribe ? 'max-h-[70dvh]' : 'max-h-[30dvh]'} min-h-0 shrink-0 flex-col items-center gap-2 overflow-y-auto overscroll-contain px-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-2 sm:gap-3 sm:px-7 sm:pb-[max(1.75rem,env(safe-area-inset-bottom))] [&>*]:shrink-0 ${!voiceOnly ? 'md:ml-auto md:w-[22rem] md:px-4' : ''}`}>
           {phase === 'connected' && (
             <div className="flex min-h-7 items-center justify-center gap-2.5 text-[11px] text-[#e0e8e2]/90" aria-label={`Microphone status: ${listeningCopy}`}>
               <span aria-hidden="true" className="flex h-4 items-center gap-[3px]">
@@ -489,7 +491,7 @@ export const MalviLiveOverlay: React.FC<MalviLiveOverlayProps> = ({
               role="region"
               aria-label="Session status and feedback"
               tabIndex={0}
-              className="max-h-24 w-full max-w-lg overflow-y-auto overscroll-contain rounded-xl border border-white/15 bg-[#10201f]/85 px-3.5 py-2.5 text-center text-xs leading-relaxed text-[#f1f3eb] backdrop-blur-md focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#d6e7da]"
+              className={`${onSubscribe ? '' : 'max-h-24'} w-full max-w-lg overflow-y-auto overscroll-contain rounded-xl border border-white/15 bg-[#10201f]/85 px-3.5 py-2.5 text-center text-xs leading-relaxed text-[#f1f3eb] backdrop-blur-md focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#d6e7da]`}
             >
               {phase === 'connecting' && (
                 <div role="status" className="flex items-start justify-center gap-2 text-[#e6f0e7]">
@@ -506,10 +508,15 @@ export const MalviLiveOverlay: React.FC<MalviLiveOverlayProps> = ({
                 <div role="alert" className="text-[#f0ded0]">
                   <p className="flex items-center justify-center gap-2 font-medium">
                     <AlertCircle size={15} className="shrink-0 text-[#e6c4a9]" />
-                    We couldn’t connect just now
+                    {onSubscribe ? 'Malvi minutes used up' : 'We couldn’t connect just now'}
                   </p>
                   <p className="mt-1">{malviPublicCopy(error || 'Please close this window and try again.')}</p>
-                  {onRetry && <button type="button" onClick={onRetry} className="mt-3 rounded-xl border border-[#e3d09a]/60 px-4 py-2 font-semibold text-[#e3d09a]">Start a new conversation</button>}
+                  {onSubscribe ? (
+                    <button type="button" onClick={onSubscribe} aria-label="Subscribe to Malvi"
+                      className="mt-3 min-h-11 rounded-xl bg-[#e3d09a] px-5 py-2 font-semibold text-[#10201f] transition-colors hover:bg-[#f2e2b8] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#e3d09a]">
+                      Subscribe
+                    </button>
+                  ) : onRetry && <button type="button" onClick={onRetry} className="mt-3 rounded-xl border border-[#e3d09a]/60 px-4 py-2 font-semibold text-[#e3d09a]">Start a new conversation</button>}
                 </div>
               )}
               {microphoneError && (
