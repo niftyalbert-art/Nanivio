@@ -245,4 +245,19 @@ uri = "file://generated-artifacts/malvi-spec-audit.html"
 type = "html"
 title = "Malvi specification audit"
 description = "Full 24-part assessment: existing capabilities, privacy and billing gaps, provider costs, test evidence and recommended implementation order."
+logical_id = "46b856b6-a8ed-4e0e-8c2d-7cc0a2597b3f"
 content_type = "text/html"
+
+[[outputs]]
+id = "IWWo-y5A6APq6qY_EzYwA"
+uri = "file://generated-artifacts/langpretation-gemini-live-sample.wav"
+type = "audio"
+title = "Langpretation voice test"
+description = "The 2.56-second English speech-generation check succeeded. This is Langpretation’s test voice, not a change to Malvi’s approved voice."
+logical_id = "c5caeb74-f261-47df-8852-1fb2f75d531c"
+content_hash = "sha256:da87c391fe31fdc02ce1b7ff4b72c0466fc16e14333ec843021edaf2d2ff9645"
+size = 128998
+mtime_ms = 1793228717046
+storage_uri = "gcs://replit-rams-assets-sisko/rams/assets/repl:8a53f482-19ae-49f0-ab16-31b527f92091/c5caeb74-f261-47df-8852-1fb2f75d531c/7c5e54e3-fd5c-47c2-9f8c-5451d6e911df"
+storage_version_token = "1793228760192331"
+content_type = "audio/wav"
