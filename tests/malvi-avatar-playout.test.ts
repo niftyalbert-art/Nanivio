@@ -69,6 +69,18 @@ test('captions wait for output audio, ignore early provider end, pause when mute
     observer.enqueue(track,Buffer.alloc(4800).toString('base64'));
     observer.providerStart(); observer.cancel(); await wait();
     assert.equal(started,1,'cancelled turns cannot restart captions');
+    observer.enqueue(track,Buffer.alloc(4800).toString('base64'));
+    observer.providerStart();
+    context.currentTime=3; await wait();
+    assert.equal(started,2);
+    // Later native packets belong to this same utterance. The avatar sends
+    // no second speak_started event, but captions must still follow output.
+    observer.enqueue(track,Buffer.alloc(4800).toString('base64'));
+    context.currentTime=4.1; await wait(); await wait();
+    assert.equal(started,3,'continuing packets do not need another provider start event');
+    observer.providerEnd();
+    context.currentTime=5.2; await wait();
+    assert.equal(ended,3,'all packets finish on actual playback despite one provider end');
     observer.close();
     assert.equal(captureStopped,2); assert.equal(sdkStopped,0);
     assert.equal(context.state,'closed');

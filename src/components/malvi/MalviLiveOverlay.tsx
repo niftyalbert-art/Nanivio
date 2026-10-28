@@ -303,7 +303,7 @@ export const MalviLiveOverlay: React.FC<MalviLiveOverlayProps> = ({
         autoPlay
         playsInline
         aria-label="Malvi live video"
-        className="absolute inset-0 h-full w-full object-cover"
+        className="absolute inset-0 h-full w-full object-contain object-center md:w-[calc(100%_-_22rem)]"
       />}
 
       {!voiceOnly && (phase === 'connecting' || phase === 'error') && (
@@ -311,12 +311,13 @@ export const MalviLiveOverlay: React.FC<MalviLiveOverlayProps> = ({
           <img
             src={MALVI_PROFILE}
             alt={phase === 'connecting' ? 'Malvi portrait preview while connecting' : 'Malvi portrait preview'}
-            className="h-full w-full object-cover object-[50%_32%] opacity-75"
+            className="absolute inset-0 h-full w-full object-contain object-center opacity-75 md:w-[calc(100%_-_22rem)]"
           />
           <div className="absolute inset-0 bg-gradient-to-b from-[#10201f]/45 via-[#10201f]/15 to-[#081614]/80" />
         </div>
       )}
 
+      {!voiceOnly && <div aria-hidden="true" className="pointer-events-none absolute inset-y-0 right-0 hidden w-[22rem] border-l border-white/10 bg-[#071311] md:block" />}
       <div aria-hidden="true" className="pointer-events-none absolute inset-0 bg-gradient-to-b from-[#071311]/60 via-transparent to-[#071311]/75" />
 
       <div
@@ -364,13 +365,13 @@ export const MalviLiveOverlay: React.FC<MalviLiveOverlayProps> = ({
         <div aria-hidden="true" className="min-h-0 flex-1" />
 
         {phase === 'connected' && (caption?.trim() || userTranscript?.trim()) && (
-          <div aria-label="Conversation subtitles" className="flex max-h-[48dvh] w-full shrink-0 flex-col items-center gap-2 overflow-y-auto overscroll-contain px-4 pt-2 sm:px-7">
+          <div aria-label="Conversation subtitles" className={`flex max-h-[48dvh] w-full shrink-0 flex-col items-center gap-2 overflow-y-auto overscroll-contain px-4 pt-2 sm:px-7 ${!voiceOnly ? 'md:ml-auto md:w-[22rem] md:px-4' : ''}`}>
             {caption?.trim() && <MalviUserTranscript text={caption} speaker="malvi" compact label={`${speaking ? 'Malvi is speaking' : 'Malvi'}${approximateCaptions ? ' · Approximate captions' : ''}`} />}
             {userTranscript?.trim() && <MalviUserTranscript text={userTranscript} compact />}
           </div>
         )}
 
-        <footer aria-label="Live session controls" className="flex max-h-[30dvh] min-h-0 shrink-0 flex-col items-center gap-2 overflow-y-auto overscroll-contain px-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-2 sm:gap-3 sm:px-7 sm:pb-[max(1.75rem,env(safe-area-inset-bottom))] [&>*]:shrink-0">
+        <footer aria-label="Live session controls" className={`flex max-h-[30dvh] min-h-0 shrink-0 flex-col items-center gap-2 overflow-y-auto overscroll-contain px-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-2 sm:gap-3 sm:px-7 sm:pb-[max(1.75rem,env(safe-area-inset-bottom))] [&>*]:shrink-0 ${!voiceOnly ? 'md:ml-auto md:w-[22rem] md:px-4' : ''}`}>
           {phase === 'connected' && (
             <div className="flex min-h-7 items-center justify-center gap-2.5 text-[11px] text-[#e0e8e2]/90" aria-label={`Microphone status: ${listeningCopy}`}>
               <span aria-hidden="true" className="flex h-4 items-center gap-[3px]">
