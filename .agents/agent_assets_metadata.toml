@@ -289,3 +289,31 @@ mtime_ms = 1793244998338
 storage_uri = "gcs://replit-rams-assets-sisko/rams/assets/repl:8a53f482-19ae-49f0-ab16-31b527f92091/b963af48-ffac-406a-be6b-35ab263e4b57/8940f2dc-fe46-47c1-8a8c-87de59b25072"
 storage_version_token = "1793245017321639"
 content_type = "audio/wav"
+
+[[outputs]]
+id = "Hsdk9Ycx7uq0_2POKw_T4"
+uri = "file://generated-artifacts/palabra-voice-reference.wav"
+type = "audio"
+title = "English reference — generated test voice"
+description = "The existing generated greeting used as the reference. It was repeated during the controlled stream; this is not a real user’s voice."
+logical_id = "a3e33b81-cf62-4973-b12c-b1dd6066ae8d"
+content_hash = "sha256:da87c391fe31fdc02ce1b7ff4b72c0466fc16e14333ec843021edaf2d2ff9645"
+size = 128998
+mtime_ms = 1793246892306
+storage_uri = "gcs://replit-rams-assets-sisko/rams/assets/repl:8a53f482-19ae-49f0-ab16-31b527f92091/a3e33b81-cf62-4973-b12c-b1dd6066ae8d/be4bb016-89e4-45c1-b2d4-5c33b904e45f"
+storage_version_token = "1793246915335174"
+content_type = "audio/wav"
+
+[[outputs]]
+id = "YyetOxaqM-Jtw5T_QCGsU"
+uri = "file://generated-artifacts/palabra-preserved-voice-french-late.wav"
+type = "audio"
+title = "French translation — later voice-preservation sample"
+description = "About 6.4 seconds of translated audio received after 20 seconds of streaming input, with experimental voice preservation requested. Speaker similarity has not been independently verified."
+logical_id = "b43b6e01-a09a-4907-b238-9148825e8a6d"
+content_hash = "sha256:ff85f04b7858db12f79ebe61e86ead39d1ec8d7fa0b327e5b19bb851e2600471"
+size = 307034
+mtime_ms = 1793246892318
+storage_uri = "gcs://replit-rams-assets-sisko/rams/assets/repl:8a53f482-19ae-49f0-ab16-31b527f92091/b43b6e01-a09a-4907-b238-9148825e8a6d/9e91a9cf-5823-48b7-98f0-025269e14dc3"
+storage_version_token = "1793246916627832"
+content_type = "audio/wav"
