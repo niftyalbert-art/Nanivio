@@ -31,3 +31,13 @@ Palabra's per-session voice preservation is experimental and needs an initial
 adaptation period; do not present it as an instant or permanent personal voice.
 Obtain the speaker's permission and verify similarity through a consented real
 listening test before claiming this requirement is fully complete.
+
+Retain the current voice-preservation approach as the owner-approved starting
+point for international live calls.
+
+**Why:** The owner compared the generated English reference with the later French
+voice-preservation sample and answered “Sounds close.”
+
+**How to apply:** This is subjective approval of that sample only, not proof of
+an exact human voice clone, instant matching, all-language quality, or a working
+two-account browser call. Preserve the consent and adaptation disclosures.
