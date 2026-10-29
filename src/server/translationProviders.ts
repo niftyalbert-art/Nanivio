@@ -65,6 +65,7 @@ async function requestTranslation(
   endpoint: string,
   headers: Record<string, string>,
   body: Record<string, string>,
+  signal?:AbortSignal,
 ): Promise<ProviderTranslation | null> {
   try {
     const url = translationEndpoint(provider, endpoint);
@@ -76,7 +77,7 @@ async function requestTranslation(
       method: 'POST',
       headers: { 'Content-Type': 'application/json', ...headers },
       body: JSON.stringify(body),
-      signal: AbortSignal.timeout(10000),
+      signal: AbortSignal.any([AbortSignal.timeout(10000),...(signal?[signal]:[])]),
       redirect: 'error',
     });
     if (!response.ok) {
@@ -99,7 +100,7 @@ async function requestTranslation(
   }
 }
 
-export async function callKhayaEngine(text: string, sourceLang: string, targetLang: string): Promise<ProviderTranslation | null> {
+export async function callKhayaEngine(text: string, sourceLang: string, targetLang: string,signal?:AbortSignal): Promise<ProviderTranslation | null> {
   const apiKey = process.env.KHAYA_API_KEY;
   if (!apiKey) return null;
   const endpoint = process.env.KHAYA_TRANSLATION_URL || 'https://translation-api.ghananlp.org/v1/translate';
@@ -107,10 +108,10 @@ export async function callKhayaEngine(text: string, sourceLang: string, targetLa
   return requestTranslation('khaya', endpoint, { 'Ocp-Apim-Subscription-Key': apiKey }, {
     in: text,
     lang: `${khayaLanguageCode(sourceLang, version2)}-${khayaLanguageCode(targetLang, version2)}`,
-  });
+  },signal);
 }
 
-export async function callSunbirdEngine(text: string, sourceLang: string, targetLang: string): Promise<ProviderTranslation | null> {
+export async function callSunbirdEngine(text: string, sourceLang: string, targetLang: string,signal?:AbortSignal): Promise<ProviderTranslation | null> {
   const apiKey = process.env.SUNBIRD_API_KEY;
   if (!apiKey) return null;
   return requestTranslation(
@@ -122,5 +123,6 @@ export async function callSunbirdEngine(text: string, sourceLang: string, target
       target_language: sunbirdLanguageCode(targetLang),
       text,
     },
+    signal,
   );
 }

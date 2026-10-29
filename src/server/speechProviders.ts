@@ -6,8 +6,8 @@ const voices:Record<string,string>={en:'en-US-JennyNeural',fr:'fr-FR-DeniseNeura
 export class SpeechProviderError extends Error {
   constructor(public status:number,message:string,public diagnostic?:GeminiRequestDiagnostic){super(message);}
 }
-export function speechConfigured(language:string,operation:'asr'|'tts'):boolean {
-  const provider=speechProvider(language);
+type SpeechOptions={provider?:'khaya';signal?:AbortSignal};
+export function speechConfigured(language:string,operation:'asr'|'tts',provider=speechProvider(language)):boolean {
   if(provider==='gemini')return Boolean(process.env.GEMINI_API_KEY);
   if(provider==='sunbird')return Boolean(process.env.SUNBIRD_API_KEY);
   return Boolean(process.env.KHAYA_API_KEY);
@@ -17,13 +17,26 @@ function endpoint(value:string) {
   if(url.protocol!=='https:')throw new SpeechProviderError(503,'Speech endpoints must use HTTPS.');
   return url;
 }
-async function boundedBody(response:Response,max=8*1024*1024):Promise<Buffer>{
+async function boundedBody(response:Response,max=8*1024*1024,signal?:AbortSignal):Promise<Buffer>{
   if(!response.body)throw new SpeechProviderError(502,'Speech provider returned no body.');
   const parts:Buffer[]=[];let size=0;
-  for await(const part of response.body as any){
-    size+=part.length;
-    if(size>max)throw new SpeechProviderError(502,'Speech provider response exceeded the audio limit.');
-    parts.push(Buffer.from(part));
+  const reader=response.body.getReader();
+  let abort=()=>{};
+  const aborted=new Promise<never>((_,reject)=>{
+    abort=()=>{void reader.cancel().catch(()=>{});reject(new SpeechProviderError(504,'Speech response took too long.'));};
+  });
+  signal?.addEventListener('abort',abort,{once:true});
+  try{
+    if(signal?.aborted)abort();
+    while(true){
+      const {value,done}=await Promise.race([reader.read(),aborted]);
+      if(done)break;
+      size+=value.length;
+      if(size>max)throw new SpeechProviderError(502,'Speech provider response exceeded the audio limit.');
+      parts.push(Buffer.from(value));
+    }
+  }finally{
+    signal?.removeEventListener('abort',abort);void reader.cancel().catch(()=>{});
   }
   return Buffer.concat(parts);
 }
@@ -49,10 +62,11 @@ export function wavDurationSeconds(bytes:Buffer):number|null {
   }
   return byteRate>0&&blockAlign>0&&data>0&&data%blockAlign===0?data/byteRate:null;
 }
-export async function transcribeProviderAudio(audio:Buffer,language:string,contentType='audio/wav'){
+export async function transcribeProviderAudio(audio:Buffer,language:string,contentType='audio/wav',options:SpeechOptions={}){
   if(!audio.length||audio.length>4*1024*1024)throw new SpeechProviderError(400,'Audio must be nonempty and smaller than 4 MB.');
-  const provider=speechProvider(language);
-  if(!speechConfigured(language,'asr'))throw new SpeechProviderError(503,`${provider} speech recognition is not configured for this language.`);
+  const provider=options.provider??speechProvider(language);
+  if(options.signal?.aborted)throw new SpeechProviderError(499,'Speech request was cancelled.');
+  if(!speechConfigured(language,'asr',provider))throw new SpeechProviderError(503,'Nanivio speech recognition is not configured for this language.');
   if(provider==='gemini'){
     if(!wavDurationSeconds(audio))throw new SpeechProviderError(400,'A valid PCM WAV recording is required.');
     try { return {...await transcribeGeminiAudio(audio,language,contentType),durationSeconds:wavDurationSeconds(audio)}; }
@@ -68,20 +82,22 @@ export async function transcribeProviderAudio(audio:Buffer,language:string,conte
     const form=new FormData();form.set('language',sunbirdSpeechCode(language));form.set('audio',new Blob([new Uint8Array(audio)],{type:contentType}),'recording.wav');body=form;
   }else{throw new SpeechProviderError(400,'Unsupported speech recognition provider.');}
   let response:Response;
-  try{response=await fetch(url,{method:'POST',headers,body,signal:AbortSignal.timeout(20000),redirect:'error'});}
-  catch{throw new SpeechProviderError(502,`${provider} speech recognition request failed or timed out.`);}
+  const signal=AbortSignal.any([AbortSignal.timeout(20000),...(options.signal?[options.signal]:[])]);
+  try{response=await fetch(url,{method:'POST',headers,body,signal,redirect:'error'});}
+  catch{throw new SpeechProviderError(options.signal?.aborted?499:signal.aborted?504:502,'Nanivio speech recognition request failed or timed out.');}
   if(!response.ok)throw new SpeechProviderError(502,`${provider} speech recognition failed (${response.status}).`);
-  const raw=(await boundedBody(response,1024*1024)).toString('utf8');
+  const raw=(await boundedBody(response,1024*1024,signal)).toString('utf8');
   let data:any;try{data=JSON.parse(raw);}catch{throw new SpeechProviderError(502,'Speech provider returned an invalid transcription response.');}
   const text=typeof data==='string'?data:data.audio_transcription||data.text||data.transcript||data.transcription||data.DisplayText||data.NBest?.[0]?.Display;
   if(typeof text!=='string'||!text.trim())throw new SpeechProviderError(502,'Speech recognition returned no transcription.');
   const confidence=data.NBest?.[0]?.Confidence;
   return {text:text.trim(),provider:`${provider}-asr`,confidence:typeof confidence==='number'?confidence:null,durationSeconds:wavDurationSeconds(audio)};
 }
-export async function synthesizeProviderAudio(text:string,language:string){
+export async function synthesizeProviderAudio(text:string,language:string,options:SpeechOptions={}){
   if(typeof text!=='string'||!text.trim()||text.length>5000)throw new SpeechProviderError(400,'Speech text must contain 1–5000 characters.');
-  const provider=speechProvider(language);
-  if(!speechConfigured(language,'tts'))throw new SpeechProviderError(503,`${provider} speech synthesis is not configured for this language.`);
+  const provider=options.provider??speechProvider(language);
+  if(options.signal?.aborted)throw new SpeechProviderError(499,'Speech request was cancelled.');
+  if(!speechConfigured(language,'tts',provider))throw new SpeechProviderError(503,'Nanivio speech synthesis is not configured for this language.');
   let url:URL,headers:Record<string,string>,body:string;
   if(provider==='gemini'){
     try{
@@ -99,10 +115,11 @@ export async function synthesizeProviderAudio(text:string,language:string){
     body=JSON.stringify({text,language:khayaSpeechCode(language)});
   }
   let response:Response;
-  try{response=await fetch(url,{method:'POST',headers,body,signal:AbortSignal.timeout(20000),redirect:'error'});}
-  catch{throw new SpeechProviderError(502,`${provider} speech synthesis request failed or timed out.`);}
+  const signal=AbortSignal.any([AbortSignal.timeout(20000),...(options.signal?[options.signal]:[])]);
+  try{response=await fetch(url,{method:'POST',headers,body,signal,redirect:'error'});}
+  catch{throw new SpeechProviderError(options.signal?.aborted?499:signal.aborted?504:502,'Nanivio speech synthesis request failed or timed out.');}
   if(!response.ok)throw new SpeechProviderError(502,`${provider} speech synthesis failed (${response.status}).`);
-  let audio=await boundedBody(response),contentType=response.headers.get('content-type')||'audio/wav';
+  let audio=await boundedBody(response,8*1024*1024,signal),contentType=response.headers.get('content-type')||'audio/wav';
   if(contentType.includes('json')){
     let data:any;try{data=JSON.parse(audio.toString('utf8'));}catch{throw new SpeechProviderError(502,'Invalid speech provider response.');}
     const base64=data.audio_base64||data.audioBase64||data.audio;

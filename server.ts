@@ -60,6 +60,7 @@ import { buildLangpretationReadiness } from "./src/shared/langpretationReadiness
 import { supportsPalabraPair } from "./src/shared/palabraLanguages.ts";
 import { palabraConfigured, PalabraError, parsePalabraWav, translatePalabraAudio } from "./src/server/palabraSpeech.ts";
 import { reservePalabraCapacity } from "./src/server/palabraCapacity.ts";
+import {processStagedVoiceNote,VoiceNoteProcessingError} from "./src/server/voiceNotePipeline.ts";
 import { createPalabraCallHandler } from "./src/server/palabraCallRoute.ts";
 import { canTranslateLiveCall } from "./src/server/realtimeServer.ts";
 import { activatePaystackSubscriptionPersistent } from "./src/server/normalizedBillingRepository.ts";
@@ -1270,7 +1271,6 @@ app.post("/api/langpretation/voice-note/process-audio", requireAuthenticatedUser
       chunks.push(Buffer.isBuffer(chunk)?chunk:Buffer.from(chunk));
     }
     const audio=Buffer.concat(chunks); if(!audio.length) return res.status(400).json({success:false,error:"Raw audio body is required."});
-    if(supportsPalabraPair(sourceLang,targetLang)){
       if(!adminFeatureSwitches.langpretationEnabled||adminFeatureSwitches.voiceNoteLangpretationEnabled===false)
         throw new SpeechProviderError(403,'Voice-message translation is currently disabled.');
       const input=parsePalabraWav(audio,60);
@@ -1281,9 +1281,10 @@ app.post("/api/langpretation/voice-note/process-audio", requireAuthenticatedUser
           throw new SpeechProviderError(403,'One of the selected languages is disabled.');
       }
       const subscription=await getPersistentSubscription(authenticatedUserId(req));
-      if(!subscription||!['ACTIVE','TRIAL'].includes(subscription.status)||subscription.currentPeriodEnd<=Date.now()
-        ||subscription.langpretationMinutesRemaining<input.seconds/60)
+      if(!subscription||!['ACTIVE','TRIAL'].includes(subscription.status)||!(subscription.currentPeriodEnd>Date.now())
+        ||!(subscription.langpretationMinutesRemaining>=input.seconds/60))
         throw new SpeechProviderError(402,'Your translation allowance is insufficient for this voice message.');
+    if(supportsPalabraPair(sourceLang,targetLang)){
       release=reservePalabraCapacity(authenticatedUserId(req));
       const spoken=await translatePalabraAudio(audio,sourceLang,targetLang,controller.signal,60);
       const usage=await recordTranslatedVoiceNoteUsage(audio,{userId:authenticatedUserId(req),sourceLang,targetLang,provider:spoken.provider},recordLangpretationUsagePersistent);
@@ -1291,19 +1292,10 @@ app.post("/api/langpretation/voice-note/process-audio", requireAuthenticatedUser
         asrProvider:spoken.provider,translationProvider:spoken.provider,...spoken,usage,requiresSynthesis:false});
     }
 
-    const recognized=await transcribeProviderAudio(audio,sourceLang,contentType);
-    const transcript=recognized.text,asrProvider=recognized.provider;
-    if(!transcript.trim()) return res.status(502).json({success:false,error:"ASR returned no transcription."});
-
-    const translated=sourceLang===targetLang ? {text:transcript,provider:"direct-passthrough"} : await translateWithProductionProviders(transcript,sourceLang,targetLang);
-    if(!translated?.text) return res.status(503).json({success:false,error:"No production translation route is available for this language pair."});
-
-    const durationSeconds=recognized.durationSeconds;
-    if(!durationSeconds)throw new SpeechProviderError(400,'A WAV recording with measurable duration is required.');
-    const synthesized=await synthesizeProviderAudio(translated.text,targetLang);
-    const usage=await recordTranslatedVoiceNoteUsage(audio,{userId:authenticatedUserId(req),sourceLang,targetLang,provider:`${asrProvider}+${translated.provider}+${synthesized.provider}`},recordLangpretationUsagePersistent);
-    return res.json({success:true,sourceLang,targetLang,transcript,translatedTranscript:translated.text,asrProvider,translationProvider:translated.provider,...synthesized,usage,requiresSynthesis:false});
-  } catch(err:any){ return res.status(err instanceof SpeechProviderError||err instanceof PalabraError?err.status:500).json({success:false,error:err instanceof SpeechProviderError||err instanceof PalabraError?err.message:"Voice-note pipeline failed"}); }
+    const result=await processStagedVoiceNote(audio,sourceLang,targetLang,controller.signal);
+    const usage=await recordTranslatedVoiceNoteUsage(audio,{userId:authenticatedUserId(req),sourceLang,targetLang,provider:result.providerChain},recordLangpretationUsagePersistent);
+    return res.json({success:true,sourceLang,targetLang,...result,usage,requiresSynthesis:false});
+  } catch(err:any){ return res.status(err instanceof SpeechProviderError||err instanceof PalabraError?err.status:500).json({success:false,error:err instanceof SpeechProviderError||err instanceof PalabraError?err.message:"Voice-note pipeline failed",...(err instanceof VoiceNoteProcessingError?{stage:err.stage}:{})}); }
   finally{release?.();res.removeListener('close',onClose);}
 });
 
