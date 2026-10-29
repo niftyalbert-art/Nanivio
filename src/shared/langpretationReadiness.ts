@@ -24,6 +24,8 @@ export function buildLangpretationReadiness(checks: {
   active: (language: string) => boolean;
   speech: (language: string, operation: 'asr' | 'tts') => boolean;
   translation: (provider: TranslationProvider) => boolean;
+  /** Optional integrated live-audio route. Undefined means use the staged route. */
+  integratedSpeech?: (source: string, target: string) => boolean | undefined;
 }): LangpretationReadiness {
   const pairs: PairReadiness[] = LANGUAGE_CODES.flatMap(source => LANGUAGE_CODES.map(target => {
     const sameLanguage = source === target;
@@ -33,17 +35,22 @@ export function buildLangpretationReadiness(checks: {
       if (!checks.active(language)) blockers.push({ stage: 'language', reason: `${language}: disabled by administrator.` });
     }
     if (!sameLanguage) {
-      if (!checks.speech(source, 'asr')) blockers.push({ stage: 'recognition', reason: `${source}: recognition is not configured.` });
-      if (!plan.supported) {
-        blockers.push({ stage: 'translation', reason: plan.reason || 'Translation is not implemented.' });
+      const integrated = checks.integratedSpeech?.(source,target);
+      if (integrated !== undefined) {
+        if (!integrated) blockers.push({stage:'translation',reason:'Nanivio live audio translation is not configured.'});
       } else {
-        for (const hop of plan.hops) {
-          if (!checks.translation(hop.provider)) blockers.push({
-            stage: 'translation', reason: `${hop.source} → ${hop.target}: ${hop.provider} translation is not configured.`,
-          });
+        if (!checks.speech(source, 'asr')) blockers.push({ stage: 'recognition', reason: `${source}: recognition is not configured.` });
+        if (!plan.supported) {
+          blockers.push({ stage: 'translation', reason: plan.reason || 'Translation is not implemented.' });
+        } else {
+          for (const hop of plan.hops) {
+            if (!checks.translation(hop.provider)) blockers.push({
+              stage: 'translation', reason: `${hop.source} → ${hop.target}: ${hop.provider} translation is not configured.`,
+            });
+          }
         }
+        if (!checks.speech(target, 'tts')) blockers.push({ stage: 'speech', reason: `${target}: spoken output is not configured.` });
       }
-      if (!checks.speech(target, 'tts')) blockers.push({ stage: 'speech', reason: `${target}: spoken output is not configured.` });
     }
     return { source, target, sameLanguage, configured: blockers.length === 0, liveVerified: false, blockers };
   }));

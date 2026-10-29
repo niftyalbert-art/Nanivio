@@ -35,3 +35,4 @@
 - [Malvi plan packaging](malvi-plan-packaging.md) — voice-to-advanced plans; admin-approved prices and usage caps; preserve purchased benefits and prevent unpaid trial refills.
 - [Malvi session activity](malvi-session-activity.md) — count verified speech and reply playback, without extending unattended sessions or bypassing the hard cap.
 - [Live avatar streaming](live-avatar-streaming.md) — keep native voice packets in one utterance; provider events do not establish phoneme-level lip synchronization.
+- [Langpretation providers](langpretation-provider-policy.md) — Palabra for international speech; preserve Malvi and specialist routes; audio integration does not establish text-route coverage.

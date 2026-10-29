@@ -37,6 +37,7 @@ export function LangpretationReadinessPanel({ refreshKey }: { refreshKey: string
         </button>
       </div>
       <p className="mt-2 text-xs text-slate-400">Configuration checks only—no provider credits are used. Configured does not mean live verified. Same-language calls preserve original audio.</p>
+      <p className="mt-2 text-xs text-slate-400">International live-call pairs use the integrated audio route. Text and voice-note translation retain their separate provider checks.</p>
       {error && <p role="alert" className="mt-3 text-sm text-amber-300">{error}</p>}
       {report && <>
         <p className="mt-3 text-sm text-slate-200">

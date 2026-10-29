@@ -1,6 +1,6 @@
 /** Nanivio-owned capture and server ASR. No browser speech recognizer or Azure SDK. */
 import { authenticatedFetch } from '../lib/authenticatedFetch';
-import { ProviderSpeechRecorder } from './providerSpeechRecorder';
+import { ProviderSpeechRecorder, type RecordedSpeechOptions } from './providerSpeechRecorder';
 
 export interface SpeechRecognitionResultPayload { transcript:string; isFinal:boolean; confidence:number|null; }
 export type SpeechCallback = (payload: SpeechRecognitionResultPayload) => void;
@@ -20,7 +20,7 @@ class SpeechService {
   public isSupported(){ return typeof window !== 'undefined' && !!navigator.mediaDevices?.getUserMedia; }
   public isTTSSupported(){ return true; }
 
-  public async startListening(langCode:string,onResult:SpeechCallback,onError?:(err:any)=>void):Promise<boolean>{
+  public async startListening(langCode:string,onResult:SpeechCallback,onError?:(err:any)=>void,options?:RecordedSpeechOptions):Promise<boolean>{
     if (!this.isSupported()) { onError?.(new Error('Microphone access is unavailable.')); return false; }
     this.stopListening();
     const generation=this.generation;
@@ -32,7 +32,9 @@ class SpeechService {
       },error=>{
         if(generation!==this.generation)return;
         this.stopListening();onError?.(error);
-      });
+      },options?.onAudio ? {...options,onAudio:async (audio,signal)=>{
+        if(generation===this.generation&&!signal.aborted)await options.onAudio!(audio,signal);
+      }} : undefined);
       if(generation!==this.generation){recorder.stop();return false;}
       this.listening=started;return started;
     }catch(e){

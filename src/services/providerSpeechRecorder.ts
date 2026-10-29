@@ -1,6 +1,11 @@
 import { authenticatedFetch } from '../lib/authenticatedFetch';
 import { PcmUtils } from '../lib/translator-engine/audio/pcm';
 
+export interface RecordedSpeechOptions {
+  targetLanguage?: string;
+  /** A combined speech route consumes actual microphone WAV, never a supplied transcript. */
+  onAudio?: (audioBase64: string, signal: AbortSignal) => Promise<void>;
+}
 /** Real microphone PCM, VAD-delimited utterances, authenticated provider ASR.
  * No generated audio, browser transcript, or synthetic ASR fallback is used.
  */
@@ -14,8 +19,9 @@ export class ProviderSpeechRecorder {
   private silence=0;
   private pending=0;
   private queue:Promise<void>=Promise.resolve();
-  async start(language:string,onText:(text:string,confidence:number|null)=>void,onError:(error:Error)=>void){
-    const check=await authenticatedFetch('/api/langpretation/speech-readiness?language='+encodeURIComponent(language));
+  async start(language:string,onText:(text:string,confidence:number|null)=>void,onError:(error:Error)=>void,options?:RecordedSpeechOptions){
+    const check=await authenticatedFetch('/api/langpretation/speech-readiness?language='+encodeURIComponent(language)
+      +(options?.onAudio&&options.targetLanguage?'&targetLang='+encodeURIComponent(options.targetLanguage):''),{signal:this.abort.signal});
     const readiness=await check.json();
     if(!check.ok||!readiness.asrConfigured)throw new Error(readiness.error||'Speech recognition is not configured for this language.');
     if(this.abort.signal.aborted)return false;
@@ -51,6 +57,11 @@ export class ProviderSpeechRecorder {
         const wav=PcmUtils.float32ToWavBlob(rendered.getChannelData(0),16000);
         const bytes=new Uint8Array(await wav.arrayBuffer());let binary='';
         for(let i=0;i<bytes.length;i+=32768)binary+=String.fromCharCode(...bytes.subarray(i,i+32768));
+        if(this.abort.signal.aborted)return;
+        if(options?.onAudio){
+          await options.onAudio(btoa(binary),this.abort.signal);
+          return;
+        }
         const response=await authenticatedFetch('/api/langpretation/transcribe',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({language,audioBase64:btoa(binary)}),signal:this.abort.signal});
         const result=await response.json();
         if(!response.ok||!result.success||!result.text)throw new Error(result.error||'Speech recognition returned no transcript.');

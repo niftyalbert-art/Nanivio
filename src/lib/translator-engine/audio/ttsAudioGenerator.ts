@@ -15,6 +15,13 @@ export class NanivioTtsAudioGenerator {
     return this.audioCtx;
   }
 
+  public static async decodeProviderAudio(audioBase64:string):Promise<AudioBuffer>{
+    if(!audioBase64||audioBase64.length>2_100_000)throw new Error('Invalid translated audio.');
+    const bytes=base64ToBytes(audioBase64),ctx=this.getAudioContext();
+    if(!ctx)throw new Error('Audio playback is unavailable.');
+    return ctx.decodeAudioData(bytes.buffer.slice(bytes.byteOffset,bytes.byteOffset+bytes.byteLength));
+  }
+
   public static async generateSpokenAudioBuffer(text:string,language:string,audioCtx?:AudioContext):Promise<AudioBuffer|null>{
     const start=performance.now();
     const r=await authenticatedFetch('/api/langpretation/synthesize',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({text,language})});

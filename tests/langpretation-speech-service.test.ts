@@ -15,7 +15,7 @@ const bundle = await build({
         ? 'export function authenticatedFetch(){throw new Error("No network allowed in this test")}'
         : `export class ProviderSpeechRecorder {
             constructor(){globalThis.fixtureRecorders.push(this)}
-            start(language,onText,onError){this.language=language;this.onText=onText;this.onError=onError;return new Promise(resolve=>{this.resolve=resolve})}
+            start(language,onText,onError,options){this.language=language;this.onText=onText;this.onError=onError;this.options=options;return new Promise(resolve=>{this.resolve=resolve})}
             stop(){this.stopped=true}
           }`,
       }));
@@ -74,4 +74,17 @@ test('recognition failure stops capture and notifies the caller without a fallba
   assert.equal(recorder.stopped, true);
   assert.equal(errors.length, 1);
   assert.equal(f.recorders.length, 1);
+});
+
+test('combined audio processing receives microphone WAV only while its capture session is current',async()=>{
+  const f=fixture(),calls:string[]=[];
+  const options={targetLanguage:'fr',onAudio:async(audio:string)=>{calls.push(audio);}};
+  const start=f.service.startListening('en',()=>{throw new Error('No separate recognition expected');},undefined,options);
+  const recorder=f.recorders[0];recorder.resolve(true);assert.equal(await start,true);
+  assert.equal(recorder.options.targetLanguage,'fr');
+  await recorder.options.onAudio('recorded-wav-fixture',{aborted:false});
+  assert.deepEqual(calls,['recorded-wav-fixture']);
+  f.service.stopListening();
+  await recorder.options.onAudio('stale-wav-fixture',{aborted:false});
+  assert.equal(calls.length,1);
 });

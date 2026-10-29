@@ -100,6 +100,7 @@ import type {
   BusinessSignUpData,
 } from '../types/auth';
 import { authClient } from '../lib/authClient';
+import { authenticatedFetch } from '../lib/authenticatedFetch';
 
 interface NanivioContextType {
   // Authentication & Permanent NV Identity
@@ -183,7 +184,7 @@ interface NanivioContextType {
   toggleCallLangpretation: () => void;
   toggleCallMute: () => void;
   toggleCallVideo: () => void;
-  processLiveSpeechUtterance: (speakerId: string, text: string) => Promise<void>;
+  processLiveSpeechUtterance: (speakerId: string, text: string, audio?: {audioBase64:string;signal:AbortSignal}) => Promise<void>;
   
   // Chat & Voice Notes (Powered by GetStream Chat)
   streamState: StreamClientState;
@@ -1049,6 +1050,8 @@ export const NanivioProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
   // Calling, WebRTC Signaling & Agora RTC Telemetry
   const [activeCall, setActiveCall] = useState<CallSession | null>(null);
+  const activeTranslationCall = useRef(activeCall);
+  activeTranslationCall.current = activeCall;
   const [incomingCall, setIncomingCall] = useState<IncomingCallEvent | null>(null);
   const [onlineUsers, setOnlineUsers] = useState<RealtimeUser[]>([]);
   const [agoraStats, setAgoraStats] = useState<AgoraTelemetryStats>(agoraClient.getStats());
@@ -2076,12 +2079,15 @@ export const NanivioProvider: React.FC<{ children: React.ReactNode }> = ({ child
   const toggleCallMute = async () => {
     if (!activeCall || mediaControlPendingRef.current.audio) return;
     const callId = activeCall.id;
-    const nextMuted = !activeCall.host.isMuted;
+    const local = activeCall.participants.find(p => p.id === currentUser.id) || currentUser;
+    const nextMuted = !local.isMuted;
     mediaControlPendingRef.current.audio = true;
     try {
       await agoraClient.setAudioMuted(nextMuted);
       setActiveCall(prev => prev?.id === callId ? {
-        ...prev, host: { ...prev.host, isMuted: nextMuted },
+        ...prev,
+        host: prev.host.id === currentUser.id ? { ...prev.host, isMuted: nextMuted } : prev.host,
+        participants: prev.participants.map(p=>p.id === currentUser.id ? {...p,isMuted:nextMuted} : p),
       } : prev);
     } catch {
       setActiveCall(prev => prev?.id === callId ? {
@@ -2241,8 +2247,11 @@ export const NanivioProvider: React.FC<{ children: React.ReactNode }> = ({ child
   }, [activeCall?.status, billingSummary]);
 
   // Process and route speaker utterance with live Langpretation production translation and vocalization
-  const processLiveSpeechUtterance = async (speakerId: string, text: string) => {
-    if (!activeCall) return;
+  const processLiveSpeechUtterance = async (speakerId: string, text: string, audio?: {audioBase64:string;signal:AbortSignal}) => {
+    if (!activeCall || activeCall.id !== activeTranslationCall.current?.id || audio?.signal.aborted) return;
+    const callId = activeCall.id;
+    const stillCurrent = () => activeTranslationCall.current?.id === callId
+      && activeTranslationCall.current.langpretationEnabled && !audio?.signal.aborted;
     const speaker = activeCall.participants.find(p => p.id === speakerId) || activeCall.host;
     if(speaker.id!==speakerId)throw new Error('Speaker is not a call participant.');
     const recipient = activeCall.participants.find(p => p.id !== speakerId)
@@ -2252,7 +2261,7 @@ export const NanivioProvider: React.FC<{ children: React.ReactNode }> = ({ child
     
     // Set speaking indicator
     setActiveCall(prev => {
-      if (!prev) return null;
+      if (!prev || prev.id !== callId) return prev;
       return {
         ...prev,
         activeSpeakerId: speakerId,
@@ -2261,24 +2270,34 @@ export const NanivioProvider: React.FC<{ children: React.ReactNode }> = ({ child
     });
 
     try {
-      // Execute translation via NanivioTranslatorEngine orchestrator (Khaya, Sunbird, Azure)
-      const engine = NanivioTranslatorEngine.getInstance();
-      const mtResult = await engine.translateText(
-        text,
-        speaker.myLanguage || 'en',
-        receiverLanguage
-      );
-      const translatedText = mtResult.translatedText;
+      let translatedText: string;
+      let translatedAudio: string | undefined;
+      if (audio) {
+        const response = await authenticatedFetch('/api/langpretation/call/translate-audio',{
+          method:'POST',headers:{'Content-Type':'application/json'},signal:audio.signal,
+          body:JSON.stringify({sessionId:callId,sourceLang:speaker.myLanguage||'en',targetLang:receiverLanguage,audioBase64:audio.audioBase64})
+        });
+        const result = await response.json();
+        if(!response.ok||!result.success||!result.text||!result.translatedText||!result.audioBase64)
+          throw new Error(result.error||'Live translation returned no spoken result.');
+        text = result.text; translatedText = result.translatedText; translatedAudio = result.audioBase64;
+      } else {
+        const engine = NanivioTranslatorEngine.getInstance();
+        const mtResult = await engine.translateText(text,speaker.myLanguage||'en',receiverLanguage);
+        translatedText = mtResult.translatedText;
+      }
+      if(!stillCurrent())return;
 
       // Update call receiver transcript display (ONLY in receiver's language!)
       setActiveCall(prev => {
-        if (!prev) return null;
+        if (!prev || prev.id !== callId) return prev;
         return {
           ...prev,
           currentTranscript: {
             speakerId,
             speakerName: speaker.name,
             speakerLang: speaker.myLanguage,
+            textInSpeakerLang: text,
             textInReceiverLang: translatedText,
             timestamp: Date.now(),
           },
@@ -2286,35 +2305,32 @@ export const NanivioProvider: React.FC<{ children: React.ReactNode }> = ({ child
         };
       });
 
-      // The translation input is produced by the real Azure Speech microphone recognizer.
-      // Do not broadcast caller-supplied text as if it were the audio source.
-
-      // Synthesize target-language audio from the real provider and inject it into Agora.
-      if (activeCall.langpretationEnabled) {
+      // Same-language calls retain original audio instead of resynthesizing it.
+      if (stillCurrent() && (speaker.myLanguage||'en') !== receiverLanguage) {
         try {
           const { NanivioTtsAudioGenerator } = await import('../lib/translator-engine/audio/ttsAudioGenerator');
-          const audioBuf = await NanivioTtsAudioGenerator.generateSpokenAudioBuffer(
-            translatedText,
-            receiverLanguage
-          );
+          const audioBuf = translatedAudio
+            ? await NanivioTtsAudioGenerator.decodeProviderAudio(translatedAudio)
+            : await NanivioTtsAudioGenerator.generateSpokenAudioBuffer(translatedText,receiverLanguage);
+          if(!stillCurrent())return;
           if (audioBuf) {
             if (!await agoraClient.injectTranslatedAudioToRemote(audioBuf)) throw new Error('Translated audio was not published.');
           }
         } catch (audioErr) {
           console.warn('Audio track injection notice:', audioErr);
-          setActiveCall(prev => prev ? { ...prev, langpretationState: 'Error' } : null);
+          setActiveCall(prev => prev?.id === callId ? { ...prev, langpretationState: 'Error' } : prev);
           throw audioErr;
         }
       }
 
       // Clear speaker indicator after natural duration
       setTimeout(() => {
-        setActiveCall(prev => prev ? { ...prev, activeSpeakerId: undefined } : null);
+        setActiveCall(prev => prev?.id === callId ? { ...prev, activeSpeakerId: undefined } : prev);
       }, 4500);
 
     } catch (e) {
       console.error('Translation processing error:', e);
-      setActiveCall(prev => prev ? { ...prev, langpretationState: 'Error' } : null);
+      setActiveCall(prev => prev?.id === callId ? { ...prev, langpretationState: 'Error' } : prev);
       throw e;
     }
   };

@@ -137,6 +137,12 @@ export function canJoinAgoraCall(userId: string, nvId: string, channelName: stri
   );
 }
 
+/** Unlike room admission, paid interpretation is unavailable while ringing. */
+export function canTranslateLiveCall(userId: string, callId: string): boolean {
+  const call = activeCalls.get(callId);
+  return Boolean(call && call.status === 'connected' && call.participants.includes(userId));
+}
+
 // Supported Language Names mapping for Langpretation translation (Authoritative 18 Launch Languages)
 const LANGUAGE_NAMES: Record<string, string> = {
   en: "English",

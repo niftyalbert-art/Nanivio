@@ -5,6 +5,7 @@ import { readFileSync } from 'node:fs';
 import vm from 'node:vm';
 import ts from 'typescript';
 import { getLanguageCapability } from '../src/lib/translator-engine/matrix/universal18Matrix.ts';
+import { supportsPalabraPair } from '../src/shared/palabraLanguages.ts';
 
 const available = { active: () => true, speech: () => true, translation: () => true };
 
@@ -71,6 +72,8 @@ async function requestReadiness(options: { rows?: { code: string; active: boolea
     }) }) }),
     speechConfigured: () => false,
     translationProviderConfigured: () => false,
+    supportsPalabraPair,
+    palabraConfigured: () => false,
   });
   const handler = vm.runInContext(ts.transpile(`(${route.arguments.at(-1)!.getText(server)})`, {
     target: ts.ScriptTarget.ES2022,

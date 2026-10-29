@@ -26,6 +26,7 @@ import { formatBillingAmount } from '../../lib/billingPresentation';
 import { speechService } from '../../services/speechService';
 import { NanivioTranslatorEngine } from '../../lib/translator-engine/engine';
 import { agoraClient } from '../../lib/agoraClient';
+import { supportsPalabraPair } from '../../shared/palabraLanguages';
 
 interface VideoCallScreenProps {
   onEndCall: () => void;
@@ -99,6 +100,15 @@ export const VideoCallScreen: React.FC<VideoCallScreenProps> = ({ onEndCall }) =
     };
   }, []);
 
+  // Capture and queued requests belong to this call and its language settings.
+  useEffect(() => {
+    return () => {
+      speechService.stopListening();
+      setIsListeningToSpeech(false);
+      setSpeechStatus('');
+    };
+  }, [activeCall?.id, activeCall?.status, activeCall?.langpretationEnabled, host.isMuted, hostLang.code, remoteLang?.code]);
+
   // Keep transcript updated when activeCall currentTranscript changes
   useEffect(() => {
     if (activeCall?.currentTranscript && activeCall.currentTranscript.textInReceiverLang) {
@@ -116,6 +126,10 @@ export const VideoCallScreen: React.FC<VideoCallScreenProps> = ({ onEndCall }) =
       setIsListeningToSpeech(false);
       setSpeechStatus('');
     } else {
+      if (!activeCall?.langpretationEnabled || host.isMuted || activeCall.status !== 'connected') {
+        setSpeechStatus('Enable translation and unmute your microphone in a connected call first.');
+        return;
+      }
       setSpeechStatus('Starting speech recognition…');
 
       const started = await speechService.startListening(
@@ -132,12 +146,25 @@ export const VideoCallScreen: React.FC<VideoCallScreenProps> = ({ onEndCall }) =
             }catch{setSpeechStatus('Translation unavailable.');setLangpretationStage('listening');}
           }
         },
-        () => {
+        (error) => {
           speechService.stopListening();
           setIsListeningToSpeech(false);
           setLangpretationStage('listening');
-          setSpeechStatus('Speech recognition stopped. Check microphone permission and language setup, then try again.');
-        }
+          setSpeechStatus(error instanceof Error ? error.message : 'Speech recognition stopped. Check microphone permission and language setup, then try again.');
+        },
+        remoteLang && supportsPalabraPair(hostLang.code,remoteLang.code) ? {
+          targetLanguage:remoteLang.code,
+          onAudio:async (audioBase64,signal) => {
+            if(signal.aborted)return;
+            setSpeechStatus('Langpretating…');setLangpretationStage('interpreting');
+            try {
+              await processLiveSpeechUtterance(host.id,'',{audioBase64,signal});
+              if(!signal.aborted){setLangpretationStage('listening');setSpeechStatus('Listening to your mic…');}
+            } catch(error) {
+              if(!signal.aborted){setLangpretationStage('listening');throw error;}
+            }
+          }
+        } : undefined
       );
 
       if (started) {

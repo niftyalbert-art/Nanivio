@@ -57,6 +57,10 @@ import { audioCallingEnabled, featureSettingsHandler, videoCallingEnabled } from
 import { quotePaystackOrder, validateVerifiedOrder } from "./src/server/paystackOrders.ts";
 import { assertLivePaystackPayment, paystackLiveConfigurationError } from "./src/server/paystackPaymentSafety.ts";
 import { buildLangpretationReadiness } from "./src/shared/langpretationReadiness.ts";
+import { supportsPalabraPair } from "./src/shared/palabraLanguages.ts";
+import { palabraConfigured, PalabraError } from "./src/server/palabraSpeech.ts";
+import { createPalabraCallHandler } from "./src/server/palabraCallRoute.ts";
+import { canTranslateLiveCall } from "./src/server/realtimeServer.ts";
 import { activatePaystackSubscriptionPersistent } from "./src/server/normalizedBillingRepository.ts";
 import { callKhayaEngine, callSunbirdEngine } from "./src/server/translationProviders.ts";
 import { translateWithProductionProviders, translationProviderConfigured } from "./src/server/translationRouter.ts";
@@ -1014,6 +1018,7 @@ app.get("/api/langpretation/admin/readiness", requireAdmin, async (_req, res) =>
       active: code => serverLanguageOverrides.get(code)?.active ?? persisted.get(code) ?? getLanguageCapability(code).active,
       speech: speechConfigured,
       translation: translationProviderConfigured,
+      integratedSpeech: (source,target) => supportsPalabraPair(source,target) ? palabraConfigured() : undefined,
     });
     res.json({ success: true, report });
   } catch {
@@ -1289,9 +1294,39 @@ app.post("/api/malvi/voice/transcribe", requireAuthenticatedUser, async (req, re
 });
 
 // 5. Speech Synthesis Endpoint for Langpretation Audio Generation
+app.post("/api/langpretation/call/translate-audio",requireAuthenticatedUser,createPalabraCallHandler({
+  userId: authenticatedUserId,
+  authorize: async (userId,sessionId,source,target) => {
+    if (!adminFeatureSwitches.langpretationEnabled) throw new PalabraError(403,'Live translation is currently disabled.');
+    const session = billingDb.activeUsageSessions.get(sessionId);
+    if (!canTranslateLiveCall(userId,sessionId) || !session || session.status !== 'ACTIVE' || !session.isLangpretationActive)
+      throw new PalabraError(403,'Start an active translated call before using live translation.');
+    // The existing call meter owns one shared call session. Both connected
+    // participants can interpret its two directions; each must also have allowance.
+    if (!((session.sourceLang === source && session.targetLang === target)
+      || (session.sourceLang === target && session.targetLang === source)))
+      throw new PalabraError(409,'The call language settings have changed. Restart translation.');
+    if (!normalizedBillingEnabled()) throw new PalabraError(503,'Persistent call billing is required.');
+    const subscription = await getPersistentSubscription(userId);
+    if (!subscription || !['ACTIVE','TRIAL'].includes(subscription.status)
+      || subscription.currentPeriodEnd <= Date.now() || !(subscription.langpretationMinutesRemaining > 0))
+      throw new PalabraError(402,'Your translation allowance is used up. Please check your subscription.');
+    const {data,error} = await getServerSupabase()!.from('nanivio_langpretation_configs').select('code,active').in('code',[source,target]);
+    if (error) throw new PalabraError(503,'Language settings could not be checked.');
+    for (const code of [source,target]) {
+      const active = serverLanguageOverrides.get(code)?.active ?? data?.find(row => row.code === code)?.active ?? getLanguageCapability(code).active;
+      if (!active) throw new PalabraError(403,'One of the selected languages is disabled.');
+    }
+  }
+}));
 app.get("/api/langpretation/speech-readiness",requireAuthenticatedUser,(req,res)=>{
   try{
     const language=String(req.query.language||'en');requireLanguage(language);
+    const target=String(req.query.targetLang||language);requireLanguage(target);
+    if (supportsPalabraPair(language,target)) return res.json({
+      success:true,language,target,provider:'nanivio-live',asrConfigured:palabraConfigured(),
+      ttsConfigured:palabraConfigured(),integratedSpeech:true,liveVerified:false
+    });
     res.json({success:true,language,provider:speechProvider(language),asrConfigured:speechConfigured(language,'asr'),ttsConfigured:speechConfigured(language,'tts'),liveVerified:false});
   }catch{return res.status(400).json({success:false,error:'Unsupported speech language.'});}
 });
