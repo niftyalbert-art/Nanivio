@@ -268,6 +268,10 @@
 .chat-app-shell > header { flex: 0 0 auto; }
 .chat-main { min-height: 0; }
 .nv-chat-page { height: 100%; }
+.nv-chat-page { max-width: none; padding: 0; }
+.nv-chat-workspace { gap: 0; }
+.nv-chat-workspace > *,
+.nv-chat-workspace .chat-thread-surface { border-radius: 0 !important; }
 .nv-chat-workspace > *,
 .nv-chat-workspace .chat-thread-surface { min-width: 0; }
 .nv-chat-workspace .chat-thread-surface { overflow: hidden; }

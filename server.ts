@@ -58,7 +58,8 @@ import { quotePaystackOrder, validateVerifiedOrder } from "./src/server/paystack
 import { assertLivePaystackPayment, paystackLiveConfigurationError } from "./src/server/paystackPaymentSafety.ts";
 import { buildLangpretationReadiness } from "./src/shared/langpretationReadiness.ts";
 import { supportsPalabraPair } from "./src/shared/palabraLanguages.ts";
-import { palabraConfigured, PalabraError } from "./src/server/palabraSpeech.ts";
+import { palabraConfigured, PalabraError, parsePalabraWav, translatePalabraAudio } from "./src/server/palabraSpeech.ts";
+import { reservePalabraCapacity } from "./src/server/palabraCapacity.ts";
 import { createPalabraCallHandler } from "./src/server/palabraCallRoute.ts";
 import { canTranslateLiveCall } from "./src/server/realtimeServer.ts";
 import { activatePaystackSubscriptionPersistent } from "./src/server/normalizedBillingRepository.ts";
@@ -1254,13 +1255,41 @@ app.post("/api/langpretation/asr", requireAuthenticatedUser, async (req, res) =>
 // Production voice-note audio pipeline: raw audio -> ASR -> MT -> provider TTS -> audio response.
 // This endpoint intentionally accepts raw audio and never treats a client transcript as proof of speech.
 app.post("/api/langpretation/voice-note/process-audio", requireAuthenticatedUser, async (req, res) => {
+  let release:(()=>void)|undefined;
+  const controller=new AbortController();
+  const onClose=()=>{if(!res.writableEnded)controller.abort();};
+  res.once('close',onClose);
   try {
     if(!normalizedBillingEnabled())return res.status(503).json({success:false,error:'Persistent billing is required for translated voice notes.'});
     const sourceLang=String(req.query.sourceLang || req.headers["x-source-language"] || "en");
     const targetLang=String(req.query.targetLang || req.headers["x-target-language"] || "ak");
     const contentType=String(req.headers["content-type"] || "audio/wav");
-    const chunks:Buffer[]=[]; for await (const chunk of req) chunks.push(Buffer.isBuffer(chunk)?chunk:Buffer.from(chunk));
+    const chunks:Buffer[]=[];let size=0;
+    for await (const chunk of req) {
+      size+=chunk.length;if(size>4*1024*1024)throw new SpeechProviderError(413,'Voice recording is too large.');
+      chunks.push(Buffer.isBuffer(chunk)?chunk:Buffer.from(chunk));
+    }
     const audio=Buffer.concat(chunks); if(!audio.length) return res.status(400).json({success:false,error:"Raw audio body is required."});
+    if(supportsPalabraPair(sourceLang,targetLang)){
+      if(!adminFeatureSwitches.langpretationEnabled||adminFeatureSwitches.voiceNoteLangpretationEnabled===false)
+        throw new SpeechProviderError(403,'Voice-message translation is currently disabled.');
+      const input=parsePalabraWav(audio,60);
+      const settings=await getServerSupabase()!.from('nanivio_langpretation_configs').select('code,active').in('code',[sourceLang,targetLang]);
+      if(settings.error)throw new SpeechProviderError(503,'Language settings could not be checked.');
+      for(const code of [sourceLang,targetLang]){
+        if(!(serverLanguageOverrides.get(code)?.active??settings.data?.find(row=>row.code===code)?.active??getLanguageCapability(code).active))
+          throw new SpeechProviderError(403,'One of the selected languages is disabled.');
+      }
+      const subscription=await getPersistentSubscription(authenticatedUserId(req));
+      if(!subscription||!['ACTIVE','TRIAL'].includes(subscription.status)||subscription.currentPeriodEnd<=Date.now()
+        ||subscription.langpretationMinutesRemaining<input.seconds/60)
+        throw new SpeechProviderError(402,'Your translation allowance is insufficient for this voice message.');
+      release=reservePalabraCapacity(authenticatedUserId(req));
+      const spoken=await translatePalabraAudio(audio,sourceLang,targetLang,controller.signal,60);
+      const usage=await recordTranslatedVoiceNoteUsage(audio,{userId:authenticatedUserId(req),sourceLang,targetLang,provider:spoken.provider},recordLangpretationUsagePersistent);
+      return res.json({success:true,sourceLang,targetLang,transcript:spoken.text,translatedTranscript:spoken.translatedText,
+        asrProvider:spoken.provider,translationProvider:spoken.provider,...spoken,usage,requiresSynthesis:false});
+    }
 
     const recognized=await transcribeProviderAudio(audio,sourceLang,contentType);
     const transcript=recognized.text,asrProvider=recognized.provider;
@@ -1274,7 +1303,8 @@ app.post("/api/langpretation/voice-note/process-audio", requireAuthenticatedUser
     const synthesized=await synthesizeProviderAudio(translated.text,targetLang);
     const usage=await recordTranslatedVoiceNoteUsage(audio,{userId:authenticatedUserId(req),sourceLang,targetLang,provider:`${asrProvider}+${translated.provider}+${synthesized.provider}`},recordLangpretationUsagePersistent);
     return res.json({success:true,sourceLang,targetLang,transcript,translatedTranscript:translated.text,asrProvider,translationProvider:translated.provider,...synthesized,usage,requiresSynthesis:false});
-  } catch(err:any){ return res.status(err instanceof SpeechProviderError?err.status:500).json({success:false,error:err instanceof SpeechProviderError?err.message:"Voice-note pipeline failed"}); }
+  } catch(err:any){ return res.status(err instanceof SpeechProviderError||err instanceof PalabraError?err.status:500).json({success:false,error:err instanceof SpeechProviderError||err instanceof PalabraError?err.message:"Voice-note pipeline failed"}); }
+  finally{release?.();res.removeListener('close',onClose);}
 });
 
 // Malvi production voice input: raw PCM/WAV -> provider ASR. No browser transcript is trusted.

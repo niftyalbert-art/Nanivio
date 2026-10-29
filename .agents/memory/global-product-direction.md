@@ -18,6 +18,9 @@ card must be removed, with those destinations available under one click. The
 conversation and multiline composer must have full usable space, including visible
 emoji entry. Both ringing and connected audio/video views should minimize written
 clutter and keep secondary controls together.
+The user repeated that the chat page still looked short and asked to enlarge it
+like WhatsApp. Prioritize usable conversation height over a multi-row global
+header, outer padding, or a centered maximum-width card.
 The user further asked for the chat box features “exactly as WhatsApp”; use its
 familiar conversation and composing interactions while preserving Nanivio's identity.
 Calls should open straight into the phone dialer, with clear audio/video choices.

@@ -10,7 +10,7 @@ import { LangpretationIcon } from './common/LangpretationIcon';
 import { PWAInstallButton } from './common/PWAInstallButton';
 import { MalviFloatingWidget } from './malvi/MalviFloatingWidget';
 
-export const Navbar: React.FC = () => {
+export const Navbar: React.FC<{compact?:boolean}> = ({compact=false}) => {
   const {
     activeTab,
     setActiveTab,
@@ -23,6 +23,17 @@ export const Navbar: React.FC = () => {
   } = useNanivio();
 
   const currentLangObj = SUPPORTED_LANGUAGES.find((l) => l.code === myLanguage) || SUPPORTED_LANGUAGES[0];
+
+  if(compact)return (
+    <header className="nv-chat-toolbar flex h-14 shrink-0 items-center justify-between gap-2 border-b border-white/10 bg-[#121417] px-3" aria-label="Chat navigation">
+      <button type="button" onClick={()=>setActiveTab('home')} className="min-h-11 px-1 text-sm font-semibold text-white" aria-label="Nanivio home"><span className="sm:hidden">N</span><span className="hidden sm:inline">Nanivio</span></button>
+      <div className="flex min-w-0 items-center gap-2">
+        <button type="button" onClick={()=>setIsLanguageModalOpen(true)} className="min-h-11 px-1 text-xs text-white" aria-label="Select your language">{currentLangObj.flag} <span className="hidden sm:inline">{currentLangObj.name}</span><span className="sm:hidden">{currentLangObj.code.toUpperCase()}</span></button>
+        <button id="toggle-global-langpretation" type="button" role="switch" aria-checked={globalLangpretationEnabled} onClick={()=>setGlobalLangpretationEnabled(!globalLangpretationEnabled)} className="min-h-11 rounded-lg border border-white/15 px-2 text-xs text-white">Translate {globalLangpretationEnabled?'ON':'OFF'}</button>
+        {adminFeatures.malviAiAssistantEnabled&&<MalviFloatingWidget placement="header"/>}
+      </div>
+    </header>
+  );
 
   return (
     <header className="sticky top-0 z-40 shrink-0 bg-[#fbf9f2] border-b border-[#d9d4c8]">

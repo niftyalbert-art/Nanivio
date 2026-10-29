@@ -16,7 +16,8 @@ international routes still use the existing staged pipeline, including its Gemin
 text-translation legs. Distinct Akuapem Twi is not silently mapped to generic Twi.
 
 Malvi's Gemini voice and owned microphone engine are not changed. Standalone text
-translation and voice-note processing also retain their existing provider paths.
+translation retains its separate provider path; a working call stream does not
+verify text translation.
 The administrator's readiness screen distinguishes the integrated live-call path
 from these separate paths.
 
@@ -43,6 +44,27 @@ from these separate paths.
 The existing call meter owns the user's debit. The phrase endpoint must not debit
 the same call again.
 
+## Voice messages and selected languages
+
+International voice messages use the integrated speech-to-speech provider rather
+than the separate Gemini ASR/MT/TTS chain. Recordings are limited to sixty seconds,
+validated as PCM16 mono WAV, and checked against the signed-in account's active
+allowance before opening a provider session. The shared provider capacity limit,
+request cancellation, bounded output, and idempotent recorded-input usage debit
+also apply. Voice messages currently use a standard voice, not the call's
+per-speaker cloning permission. Specialist voice-message routes remain unchanged.
+
+Language selection is a validated user preference, not an identity claim.
+Authenticated presence broadcasts the selected language; contacts and call
+participants are refreshed from it, and the accepting participant updates the
+caller's copy. Profile persistence and verified chat membership refresh keep old
+conversation snapshots from silently forcing the wrong target language.
+
+The call's translation switch permits translation but is not proof that capture
+is running. A visible Start translation control initiates microphone capture.
+Listener readiness alone must never mute original call audio; actual playable
+translated PCM is required.
+
 ## Speaker voice preservation
 
 Nanivio's existing voice-profile types were definitions, not an operational saved
@@ -67,7 +89,7 @@ do not gain voice cloning from this change.
 - Continuous path: fixed 320 ms PCM16 mono frames, sequence and wall-clock rate
   checks, bounded socket buffers and at most six seconds of queued receiver audio.
 - One provider stream/request per account and eight concurrent streams/requests per
-  server process, shared with the legacy phrase endpoint. These are not a
+  server process, shared with voice messages and the legacy phrase endpoint. These are not a
   distributed account-wide provider spending limit.
 - Twelve-second setup/receiver-readiness deadline; seven-second upstream handshake;
   microphone delivery stalls close the stream; account/call authorization rechecks;

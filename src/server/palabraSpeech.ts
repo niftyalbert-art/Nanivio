@@ -8,8 +8,8 @@ export class PalabraError extends Error {
 export const palabraConfigured = () => Boolean(process.env.PALABRA_API_KEY);
 
 /** Only recorded PCM16 mono WAV, 16–48kHz, at most nine seconds per phrase. */
-export function parsePalabraWav(audio: Buffer) {
-  if (audio.length < 44 || audio.length > 900_000 || audio.toString('ascii',0,4) !== 'RIFF'
+export function parsePalabraWav(audio: Buffer, maximumSeconds:9|60=9) {
+  if (audio.length < 44 || audio.length > (maximumSeconds===9?900_000:5_800_000) || audio.toString('ascii',0,4) !== 'RIFF'
     || audio.toString('ascii',8,12) !== 'WAVE' || audio.readUInt32LE(4) + 8 !== audio.length)
     throw new PalabraError(400, 'A short PCM WAV recording is required.');
   let rate = 0, pcm: Buffer | undefined;
@@ -33,8 +33,8 @@ export function parsePalabraWav(audio: Buffer) {
     if (offset > audio.length) throw new PalabraError(400, 'Invalid WAV padding.');
   }
   const seconds = rate && pcm ? pcm.length/(rate*2) : 0;
-  if (!pcm?.length || pcm.length%2 || seconds < 0.25 || seconds > 9)
-    throw new PalabraError(400, 'Record between a quarter-second and nine seconds per phrase.');
+  if (!pcm?.length || pcm.length%2 || seconds < 0.25 || seconds > maximumSeconds)
+    throw new PalabraError(400, `Record between a quarter-second and ${maximumSeconds} seconds.`);
   return { pcm, rate, seconds };
 }
 function outputWav(pcm: Buffer) {
@@ -49,9 +49,9 @@ function outputWav(pcm: Buffer) {
 /** One bounded provider connection, no automatic retries or provider fallback.
  * Aborting a browser request also closes the paid upstream session.
  */
-export async function translatePalabraAudio(audio: Buffer, source: string, target: string, signal?: AbortSignal) {
+export async function translatePalabraAudio(audio: Buffer, source: string, target: string, signal?: AbortSignal, maximumSeconds:9|60=9) {
   if (!supportsPalabraPair(source,target)) throw new PalabraError(422, 'This pair uses a different language route.');
-  const { pcm, rate, seconds } = parsePalabraWav(audio);
+  const { pcm, rate, seconds } = parsePalabraWav(audio,maximumSeconds);
   if (!palabraConfigured()) throw new PalabraError(503, 'Nanivio live translation is not configured.');
   if (signal?.aborted) throw new PalabraError(499, 'Translation was cancelled.');
   return new Promise<{
@@ -78,7 +78,7 @@ export async function translatePalabraAudio(audio: Buffer, source: string, targe
       settled = true; cleanup(); reject(new PalabraError(status,message));
     };
     const abort = () => fail(499,'Translation was cancelled.');
-    const deadline = setTimeout(() => fail(504,'Nanivio live translation took too long. Please try again.'),25000);
+    const deadline = setTimeout(() => fail(504,'Nanivio live translation took too long. Please try again.'),Math.max(25000,(seconds+16)*1000));
     signal?.addEventListener('abort',abort,{once:true});
     if (signal?.aborted) { abort(); return; }
     const send = (message_type: string, data: unknown) => {
@@ -128,7 +128,7 @@ export async function translatePalabraAudio(audio: Buffer, source: string, targe
           fail(502,'Live translation returned an unexpected transcript.'); return;
         }
         const texts = m.message_type === 'validated_transcription' ? sourceTexts : targetTexts;
-        if (texts.size >= 40) { fail(502,'Live translation exceeded the phrase limit.'); return; }
+        if (texts.size >= (maximumSeconds===9?40:160)) { fail(502,'Live translation exceeded the phrase limit.'); return; }
         texts.set(`${t.transcription_id}:${t.translation_part_id ?? 0}`,t.text);
       }
       if (m.message_type === 'output_audio_data') {
@@ -139,7 +139,7 @@ export async function translatePalabraAudio(audio: Buffer, source: string, targe
         }
         const chunk = Buffer.from(data.data,'base64');
         outputSize += chunk.length;
-        if (chunk.length%2 || outputSize > 1_500_000) { fail(502,'Live translation exceeded the audio limit.'); return; }
+        if (chunk.length%2 || outputSize > (maximumSeconds===9?1_500_000:6_000_000)) { fail(502,'Live translation exceeded the audio limit.'); return; }
         chunks.push(chunk);
       }
       if (m.message_type === 'end_of_stream') {

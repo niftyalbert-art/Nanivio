@@ -197,8 +197,10 @@ test('receiver schedules successive PCM chunks immediately and isolates call, st
   const f=clientFixture();await f.service.unlock();
   f.emit('langpretation:remote_start',{callId:'call-one',streamId:'remote-123',speakerId:'speaker-B',voiceConsent:true});
   await flush();
+  assert.equal(f.remote.includes(true),false,'Receiver readiness must not silence the original call before translated audio exists.');
   const chunk={callId:'call-one',streamId:'remote-123',speakerId:'speaker-B',data:Buffer.alloc(4800).toString('base64')};
   f.emit('langpretation:audio_out',{...chunk,sequence:0});f.emit('langpretation:audio_out',{...chunk,sequence:1});
+  assert.ok(f.remote.includes(true),'Translated playback should replace original audio only after actual PCM arrives.');
   assert.equal(f.contexts[0].starts.length,2);assert.equal(f.contexts[0].starts[0],0.06);
   assert.equal(f.contexts[0].starts[1],0.16);
   f.emit('langpretation:audio_out',{...chunk,callId:'other-call',sequence:2});

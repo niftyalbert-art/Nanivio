@@ -94,6 +94,7 @@ export const VideoCallScreen: React.FC<VideoCallScreenProps> = ({ onEndCall }) =
   const [preserveMyVoice,setPreserveMyVoice]=useState(false);
   const [remoteTranslationActive,setRemoteTranslationActive]=useState(false);
   const [remoteVoiceAdapting,setRemoteVoiceAdapting]=useState(false);
+  const [isStartingTranslation,setIsStartingTranslation]=useState(false);
   const liveTranslation=useRef<LiveCallTranslation|null>(null);
 
   useEffect(()=>{
@@ -116,7 +117,7 @@ export const VideoCallScreen: React.FC<VideoCallScreenProps> = ({ onEndCall }) =
 
   useEffect(()=>{
     liveTranslation.current?.setMuted(!isSpeakerOn||!autoVocalize);
-    agoraClient.setRemoteAudioMuted(!isSpeakerOn||remoteTranslationActive);
+    agoraClient.setRemoteAudioMuted(!isSpeakerOn||(autoVocalize&&remoteTranslationActive));
     return ()=>agoraClient.setRemoteAudioMuted(!isSpeakerOn);
   },[isSpeakerOn,autoVocalize,remoteTranslationActive]);
 
@@ -152,6 +153,7 @@ export const VideoCallScreen: React.FC<VideoCallScreenProps> = ({ onEndCall }) =
 
   // Toggle Live Microphone Speech Recognition
   const toggleSpeechRecognition = async () => {
+    if(isStartingTranslation)return;
     if (isListeningToSpeech) {
       liveTranslation.current?.stop();
       speechService.stopListening();
@@ -164,10 +166,13 @@ export const VideoCallScreen: React.FC<VideoCallScreenProps> = ({ onEndCall }) =
         return;
       }
       if(remoteLang&&supportsPalabraPair(hostLang.code,remoteLang.code)){
+        setIsStartingTranslation(true);
         setSpeechStatus('Connecting live translation…');
-        const started=await liveTranslation.current?.start(hostLang.code,remoteLang.code,preserveMyVoice);
-        setIsListeningToSpeech(Boolean(started));
-        if(started)setSpeechStatus(preserveMyVoice?'Listening continuously. Voice preservation requested; allow about 10–20 seconds of speech.':'Listening continuously.');
+        try{
+          const started=await liveTranslation.current?.start(hostLang.code,remoteLang.code,preserveMyVoice);
+          setIsListeningToSpeech(Boolean(started));
+          if(started)setSpeechStatus(preserveMyVoice?'Listening continuously. Voice preservation requested; allow about 10–20 seconds of speech.':'Listening continuously.');
+        }finally{setIsStartingTranslation(false);}
         return;
       }
       setSpeechStatus('Starting speech recognition…');
@@ -669,7 +674,11 @@ export const VideoCallScreen: React.FC<VideoCallScreenProps> = ({ onEndCall }) =
                   )}
                 </div>
 
-                <span className="text-[10px] text-white/40">{isListeningToSpeech ? 'Mic on' : ''}</span>
+                <button type="button" onClick={()=>void toggleSpeechRecognition()} disabled={activeCall?.status!=='connected'||!isLangpretationOn||isMuted||isStartingTranslation}
+                  className="min-h-11 shrink-0 rounded-xl border border-emerald-400/40 bg-emerald-500/15 px-3 text-xs font-semibold text-white disabled:opacity-50"
+                  aria-label={isListeningToSpeech?'Stop live translation':'Start live translation'}>
+                  {isStartingTranslation?'Starting…':isListeningToSpeech?'Stop translation':'Start translation'}
+                </button>
               </div>
 
               {/* Compact translated-caption strip; no synthetic audio meter. */}

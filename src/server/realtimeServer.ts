@@ -25,6 +25,7 @@ import { createNanivioMicGateway } from './assistant/nanivioMicGateway.ts';
 const nanivioMicGateway = createNanivioMicGateway(malviLiveBrainController);
 import { PalabraLiveGateway, type LangpretationAuthorizer } from './palabraLiveStream.ts';
 import { PalabraError } from './palabraSpeech.ts';
+import { participantLanguage } from '../shared/participantLanguage.ts';
 let langpretationGateway:PalabraLiveGateway|null=null;
 
 export interface ConnectedUser {
@@ -425,9 +426,12 @@ export function setupRealtimeServer(httpServer: HttpServer,options?:{authorizeLa
               name,
               avatar: user.avatar || undefined,
               role: String(user.role || 'PERSONAL'),
-              myLanguage: String(user.preferredLanguage || 'en'),
+              myLanguage: participantLanguage(payload?.myLanguage, user.preferredLanguage),
               connectedAt: Date.now(),
             };
+            for(const call of activeCalls.values()){
+              if(call.caller.id===currentUser.userId)call.caller.myLanguage=currentUser.myLanguage;
+            }
 
             // Register in lookup maps
             if (!clientsByUserId.has(currentUser.userId)) {

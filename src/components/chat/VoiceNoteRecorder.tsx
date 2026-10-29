@@ -35,7 +35,7 @@ export const VoiceNoteRecorder: React.FC<VoiceNoteRecorderProps> = ({
   const [isProcessing, setIsProcessing] = useState(false);
   const [processingError,setProcessingError]=useState('');
   const [voiceMode, setVoiceMode] = useState<'normal' | 'langpretation'>(
-    globalLangpretationEnabled ? 'langpretation' : 'normal'
+    globalLangpretationEnabled && myLanguage!==targetLang ? 'langpretation' : 'normal'
   );
 
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
@@ -183,6 +183,10 @@ export const VoiceNoteRecorder: React.FC<VoiceNoteRecorderProps> = ({
 
     const originalAudioBlobUrl = URL.createObjectURL(recordedBlob);
     const durationSec = Math.max(1, seconds);
+    if(voiceMode==='langpretation'&&durationSec>60){
+      URL.revokeObjectURL(originalAudioBlobUrl);
+      setIsProcessing(false);setProcessingError('Translated voice messages can be up to 60 seconds. Please record a shorter message.');return;
+    }
     const rawTranscript = transcript.trim() || `Voice Note (${durationSec}s)`;
 
     if (voiceMode === 'normal') {

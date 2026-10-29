@@ -7,7 +7,7 @@ import { renderToStaticMarkup } from 'react-dom/server';
 
 async function component(path: string, name: string) {
   const built = await build({ entryPoints: [path], bundle: true, write: false,
-    format: 'cjs', platform: 'node', packages: 'external',
+    format: 'cjs', platform: 'node', packages: 'external', loader:{'.png':'dataurl'},
     plugins: [{ name: 'isolated-communication-fixture', setup(builder) {
       builder.onResolve({ filter: /context\/NanivioContext$/ }, () => ({ path: 'context', namespace: 'fixture' }));
       builder.onResolve({ filter: /lib\/agoraClient$/ }, () => ({ path: 'agora', namespace: 'fixture' }));
@@ -52,6 +52,7 @@ test('real ChatView renders a full thread, an accessible voice action for an emp
   const ChatView = await component('src/components/chat/ChatView.tsx', 'ChatView');
   const html = renderToStaticMarkup(React.createElement(ChatView));
   assert.match(html, /Synthetic regression fixture/);
+  assert.doesNotMatch(html,/max-w-\[1600px\]/);
   const action = html.match(/<button[^>]*id="btn-chat-send-msg"[^>]*>/)?.[0];
   assert.ok(action, 'Composer action must be present');
   assert.match(action, /aria-label="Record voice note"/);
@@ -59,6 +60,28 @@ test('real ChatView renders a full thread, an accessible voice action for an emp
   assert.match(html, /aria-label="Choose chat category"/);
   assert.match(html, /Attachments|Attachment options|Attach/);
   assert.doesNotMatch(html, /Nanivio Live Support &amp; Services/);
+});
+
+test('English–French call exposes live translation start outside its overflow menu',async()=>{
+  const values=fixture();
+  values.activeCall.status='connected';
+  values.activeCall.langpretationEnabled=true;
+  values.activeCall.participants[1].myLanguage='fr';
+  const Screen=await component('src/components/calls/VideoCallScreen.tsx','VideoCallScreen');
+  const html=renderToStaticMarkup(React.createElement(Screen,{onEndCall:()=>{}}));
+  assert.match(html,/aria-label="Start live translation"/);
+  assert.match(html,/>Start translation<\/button>/);
+});
+
+test('compact chat navigation retains language and translation controls in one row',async()=>{
+  fixture();
+  const Navbar=await component('src/components/Navbar.tsx','Navbar');
+  const html=renderToStaticMarkup(React.createElement(Navbar,{compact:true}));
+  assert.match(html,/nv-chat-toolbar/);
+  assert.match(html,/h-14/);
+  assert.match(html,/Select your language/);
+  assert.match(html,/role="switch"/);
+  assert.doesNotMatch(html,/h-\[68px\]/);
 });
 
 test('real call screen reports media errors and does not claim a working remote connection', async () => {

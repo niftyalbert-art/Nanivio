@@ -79,7 +79,11 @@ test('message delivery cannot translate, synthesize or debit a processed voice n
   assert.match(voice, /server voice-note pipeline must complete/);
   const server = readFileSync('server.ts', 'utf8');
   const route = server.slice(server.indexOf('app.post("/api/langpretation/voice-note/process-audio"'), server.indexOf('// Malvi production voice input:'));
-  assert.equal((route.match(/await recordTranslatedVoiceNoteUsage\(/g) || []).length, 1);
+  // Integrated international and staged specialist paths are mutually exclusive.
+  assert.equal((route.match(/await recordTranslatedVoiceNoteUsage\(/g) || []).length, 2);
+  const international=route.slice(route.indexOf('if(supportsPalabraPair'),route.indexOf('const recognized='));
+  assert.equal((international.match(/await recordTranslatedVoiceNoteUsage\(/g)||[]).length,1);
+  assert.match(international,/return res\.json/);
   assert.match(route, /recordLangpretationUsagePersistent/);
   const migration = readFileSync('migrations/007_communication_plan_entitlements.sql', 'utf8');
   assert.match(migration, /pg_advisory_xact_lock/);

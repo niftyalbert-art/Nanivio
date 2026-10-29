@@ -70,6 +70,7 @@ export class LiveCallTranslation {
   private streamId='';
   private remoteStreamId='';
   private remoteSpeakerId='';
+  private remoteVoiceConsent=false;
   private ready=false;
   private generation=0;
   private sequence=0;
@@ -87,11 +88,13 @@ export class LiveCallTranslation {
     this.off.push(transport.on('langpretation:remote_start',p=>{
       if(p.callId!==callId||p.speakerId===userId)return;
       this.remoteStreamId=p.streamId;this.remoteSpeakerId=p.speakerId;this.player.begin(p.streamId);
+      this.remoteVoiceConsent=p.voiceConsent===true;
       void this.player.unlock().then(()=>{
         if(this.remoteStreamId!==p.streamId)return;
         if(!this.transport.send('langpretation:receiver_ready',{callId,streamId:p.streamId,speakerId:p.speakerId}))
           throw new Error('Call connection is not ready.');
-        callbacks.remoteActive(true,p.voiceConsent===true);
+        // Ready is not proof of audible translated media. Keep original call
+        // audio available until an actual translated PCM packet can be played.
       }).catch(error=>{
         if(this.remoteStreamId!==p.streamId)return;
         this.transport.send('langpretation:playback_error',{callId,speakerId:p.speakerId});
@@ -100,7 +103,7 @@ export class LiveCallTranslation {
     }));
     this.off.push(transport.on('langpretation:audio_out',p=>{
       if(p.callId!==callId||p.streamId!==this.remoteStreamId||p.speakerId!==this.remoteSpeakerId)return;
-      try{this.player.push(p);}catch(error){
+      try{this.player.push(p);callbacks.remoteActive(true,this.remoteVoiceConsent);}catch(error){
         this.transport.send('langpretation:playback_error',{callId,speakerId:p.speakerId});
         this.player.end();this.remoteStreamId='';callbacks.remoteActive(false);
         callbacks.error(error instanceof Error?error.message:'Translated audio could not play.');

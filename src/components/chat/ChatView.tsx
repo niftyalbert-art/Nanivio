@@ -424,7 +424,7 @@ export const ChatView: React.FC = () => {
     });
 
   return (
-    <div className="nv-chat-page mx-auto flex min-h-0 w-full max-w-[1600px] flex-1 flex-col gap-3 p-2 sm:p-4 lg:p-5">
+    <div className="nv-chat-page flex min-h-0 w-full flex-1 flex-col">
       {/* Dedicated Nanivio Number Direct Chat Entry Card */}
       {isQuickNvBarOpen && (
         <div className="bg-gradient-to-r from-[#0d1b2a] via-[#0b1626] to-[#091322] border border-emerald-500/30 rounded-2xl p-5 shadow-xl space-y-3.5 animate-in fade-in slide-in-from-top-2 duration-200">
@@ -503,7 +503,7 @@ export const ChatView: React.FC = () => {
       {activeTab === 'stream_channels' ? (
         <StreamChatInterface onCategorySelect={setActiveTab} />
       ) : (
-        <div className="nv-chat-workspace flex min-h-0 flex-1 flex-col lg:flex-row gap-3">
+        <div className="nv-chat-workspace flex min-h-0 flex-1 flex-col lg:flex-row">
           {/* Left Sidebar: Conversations List */}
           <div className={`w-full lg:w-[340px] xl:w-[380px] bg-white border border-[#e1eae3] rounded-2xl flex flex-col overflow-hidden shrink-0 ${showMobileChatThread ? 'hidden lg:flex' : 'flex'}`}>
             {/* Header, Actions & Search */}
@@ -1146,7 +1146,6 @@ export const ChatView: React.FC = () => {
                                 <div className="pt-2 space-y-1">
                                 <div className="flex items-center justify-between text-[9.5px] uppercase font-mono text-emerald-400 font-bold">
                                   <span>Translated to {myLangInfo.name}:</span>
-                                  {msg.voiceNote.provider && <span className="text-slate-500">{msg.voiceNote.provider}</span>}
                                 </div>
                                 <p className="text-[13px] leading-relaxed text-white">
                                   "{msg.voiceNote.translatedTranscript}"

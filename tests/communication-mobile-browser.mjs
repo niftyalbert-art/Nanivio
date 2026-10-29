@@ -44,13 +44,13 @@ const built = await build({
         values.activeTab=screen==='chat'?'chat':'calls';
         values.activeCall.type=screen==='video'?'video_1on1':'audio_1on1';
         root.render(screen==='chat'
-          ? <div className="nanivio-app nv-theme-dark chat-app-shell h-[100dvh] max-h-[100dvh] flex flex-col w-full max-w-full overflow-x-hidden relative"><Navbar/>
+          ? <div className="nanivio-app nv-theme-dark chat-app-shell h-[100dvh] max-h-[100dvh] flex flex-col w-full max-w-full overflow-x-hidden relative"><Navbar compact/>
               <main className="nanivio-main chat-main flex min-h-0 flex-1 flex-col overflow-hidden pb-[calc(4.5rem+env(safe-area-inset-bottom))] w-full max-w-full overflow-x-hidden"><ErrorBoundary fallbackTitle="Fixture chat failure"><ChatView/></ErrorBoundary></main><BottomNavigationBar/></div>
           : <div className="nv-theme-dark"><VideoCallScreen onEndCall={()=>{}}/></div>);
       };
     `,
   },
-  bundle: true, write: false, format: 'iife', platform: 'browser',
+  bundle: true, write: false, format: 'iife', platform: 'browser', loader:{'.png':'dataurl'},
   define: { 'process.env.NODE_ENV': '"test"' },
   plugins: [{ name: 'isolated-communication-fixture', setup(builder) {
     builder.onResolve({ filter: /context\/NanivioContext$/ }, () => ({ path: 'context', namespace: 'fixture' }));

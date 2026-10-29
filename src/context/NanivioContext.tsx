@@ -1088,6 +1088,16 @@ export const NanivioProvider: React.FC<{ children: React.ReactNode }> = ({ child
     const unsubPresence = realtimeClient.on('presence_update', (users: RealtimeUser[]) => {
       if (Array.isArray(users)) {
         setOnlineUsers(users);
+        // Presence is authenticated by the server. Saved contacts/channel members
+        // can still contain the language selected when the chat was first created.
+        const updateLanguage = <T extends {id:string;myLanguage?:string}>(person:T):T => {
+          const online=users.find(user=>user.userId===person.id);
+          return online?.myLanguage && online.myLanguage!==person.myLanguage
+            ? {...person,myLanguage:online.myLanguage} : person;
+        };
+        setContacts(previous=>previous.map(updateLanguage));
+        setConversations(previous=>previous.map(conversation=>({...conversation,participants:conversation.participants.map(updateLanguage)})));
+        setActiveCall(previous=>previous ? {...previous,host:updateLanguage(previous.host),participants:previous.participants.map(updateLanguage)} : previous);
       }
     });
 
@@ -1115,6 +1125,9 @@ export const NanivioProvider: React.FC<{ children: React.ReactNode }> = ({ child
       const isVideo = data?.callType === 'video';
       const callId = data?.callId;
       if (!callId || !data.channelName) return;
+      if(data.responder?.id)setActiveCall(previous=>previous?.id===callId
+        ? {...previous,participants:previous.participants.map(person=>person.id===data.responder.id?{...person,...data.responder}:person)}
+        : previous);
       connectCallMedia(callId, data.channelName, isVideo ? 'video' : 'audio', data.responder?.id).catch(() => {});
     });
 
@@ -1643,6 +1656,11 @@ export const NanivioProvider: React.FC<{ children: React.ReactNode }> = ({ child
       localStorage.setItem('nanivio_translation_language', lang);
     } catch {}
     setCurrentUser((prev) => ({ ...prev, myLanguage: lang, translationLanguage: lang }));
+    // New chats and offline contacts resolve preferences from the server profile,
+    // not this browser's local storage.
+    void authClient.updateProfile({preferredLanguage:lang as SupportedLanguageCode}).catch(()=>{
+      alert('Your language is selected for this session, but could not be saved to your profile. Please try again when connected.');
+    });
   }, []);
 
   const setMyLanguage = useCallback((lang: SupportedLanguageCode) => {
@@ -1917,7 +1935,11 @@ export const NanivioProvider: React.FC<{ children: React.ReactNode }> = ({ child
       providerId: caller.id,
       sourceLang: (currentUser.myLanguage || 'en') as any,
       targetLang: (caller.myLanguage || 'en') as any,
-    })).catch(() => {});
+    })).catch((error) => {
+      setActiveCall(previous=>previous?.id===session.id
+        ? {...previous,mediaError:error instanceof Error?error.message:'Call billing could not start. Translation is unavailable.'}
+        : previous);
+    });
 
     setIncomingCall(null);
   };
@@ -2482,6 +2504,10 @@ export const NanivioProvider: React.FC<{ children: React.ReactNode }> = ({ child
       throw new Error('Choose a registered contact or conversation before sending.');
     }
 
+    // Refresh verified member profiles before choosing the translation target.
+    // A saved conversation can predate the recipient's language change.
+    activeConv=linkedPrivateConversation(activeConv,await privateConversationChannel(activeConv,currentUser.id));
+    setConversations(previous=>previous.map(conversation=>conversation.id===targetConvId?activeConv!:conversation));
     // Realtime translation if recipient speaks a different language
     const otherParticipant = activeConv.participants.find(p => p.id !== currentUser.id);
     const translation = await prepareChatTranslation(
