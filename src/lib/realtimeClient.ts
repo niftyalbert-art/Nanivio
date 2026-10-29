@@ -127,12 +127,13 @@ class NanivioRealtimeClient {
 
   public send(type: string, payload: any) {
     if (this.socket && this.socket.readyState === WebSocket.OPEN) {
+      if(type.startsWith('langpretation:')&&this.socket.bufferedAmount>128000)return false;
       this.socket.send(JSON.stringify({ type, payload }));
       return true;
     } else {
       // Live microphone frames must never be delayed/replayed after reconnect.
       // Let the caller stop capture and show the disconnected state instead.
-      if (type === 'malvi:brain_audio' || type.startsWith('nanivio:mic_')) return false;
+      if (type === 'malvi:brain_audio' || type.startsWith('nanivio:mic_') || type.startsWith('langpretation:')) return false;
       // Connect and queue
       this.connect();
       setTimeout(() => {

@@ -22,49 +22,82 @@ from these separate paths.
 
 ## Data flow
 
-1. The existing owned browser recorder captures actual microphone PCM WAV and
-   detects phrase boundaries. It does not use browser speech recognition.
-2. For an international pair, send the WAV to the authenticated
-   `/api/langpretation/call/translate-audio` endpoint, not the separate ASR endpoint.
+1. The owned browser capture sends actual microphone PCM16 mono at 16 kHz in
+   320 ms chunks over Nanivio's authenticated WebSocket. Capture does not wait
+   for silence, a complete utterance, a WAV upload or browser speech recognition.
+2. `langpretation:start` creates a speaker-owned live session through the existing
+   authenticated call connection. The bounded HTTP phrase endpoint remains for
+   compatibility; the international call screen no longer uses it.
 3. The server verifies a connected call participant, an active funded translation
    session, current account allowance, the language pair, and administrator settings.
-4. One server-to-Palabra WebSocket performs recognition, translation, and synthesis.
-   Audio starts only after task acknowledgement and is paced in real time.
-5. Complete target-language PCM becomes a WAV, decoded once by the browser and
-   published to the remote participant through the existing Agora audio path.
-   There is no second synthesis request or local duplicate voice playback.
+4. One persistent server-to-Palabra WebSocket per speaker performs recognition,
+   translation and synthesis. Wait for task acknowledgement and a receiving
+   participant's playback-ready acknowledgement before sending microphone frames.
+5. Incremental target-language PCM goes only to other connected call participants,
+   not back to its speaker. The listener schedules each PCM chunk on a continuous,
+   bounded Web Audio clock. Original Agora remote audio is muted while translated
+   playback is active. No per-chunk TTS, Agora republishing or end-of-stream wait.
 6. Stop, mute, call/language changes, or a lost browser request cancel queued
-   capture requests and terminate the upstream connection.
+   capture and terminate the upstream connection. No audio is queued for reconnect.
 
 The existing call meter owns the user's debit. The phrase endpoint must not debit
 the same call again.
 
+## Speaker voice preservation
+
+Nanivio's existing voice-profile types were definitions, not an operational saved
+voice-cloning service. The call UI now asks the speaker to allow their own voice
+to be used for this call's translation. Only that speaker's explicitly opted-in
+session enables Palabra's `speech_generation.voice_cloning`.
+
+Palabra documents this as experimental: adaptation normally needs 10–20 seconds
+of speech. Initial audio can use a standard voice; this is not an instant exact
+clone, an enrolled permanent voice, or a guarantee of speaker similarity across
+all languages. Nanivio neither stores a voice reference nor creates a saved
+provider voice profile through this flow. Upstream processing remains subject
+to the provider's privacy/retention terms.
+
+The two speakers have separate provider sessions, consent flags and stream IDs.
+Consent is not carried across calls. Disabling permission stops the current
+capture/session; restarting uses the newly chosen permission. Specialist paths
+do not gain voice cloning from this change.
+
 ## Limits and failure behavior
 
-- PCM16 mono, 16–48 kHz, 0.25–9 seconds per input phrase. The browser normally
-  cuts phrases at eight seconds.
-- One in-flight phrase per account and eight concurrent requests per server
-  process. These are not a distributed account-wide provider spending limit.
-- 25-second upstream deadline, seven-second connection handshake, bounded response
-  messages/output audio; no automatic retries or silent provider fallback.
-- A success requires source text, translated text, correct-language audio, and a
-  clean end-of-stream. An HTTP connection alone is not a successful translation.
+- Continuous path: fixed 320 ms PCM16 mono frames, sequence and wall-clock rate
+  checks, bounded socket buffers and at most six seconds of queued receiver audio.
+- One provider stream/request per account and eight concurrent streams/requests per
+  server process, shared with the legacy phrase endpoint. These are not a
+  distributed account-wide provider spending limit.
+- Twelve-second setup/receiver-readiness deadline; seven-second upstream handshake;
+  microphone delivery stalls close the stream; account/call authorization rechecks;
+  a one-minute speech inactivity stop and ten-minute hard session limit.
+- Legacy HTTP path: 16–48 kHz PCM WAV, 0.25–9 seconds, 25-second deadline and bounded
+  output. It requires complete source/target text, correct-language audio and a
+  clean end-of-stream. Continuous output instead arrives before end-of-stream.
+- No automatic retries or silent provider fallback.
 - Upstream credentials and raw provider error descriptions are never returned.
-- No extra provider voice cloning, paid metadata calls, or trial-balance assumptions.
+- No paid metadata calls or trial-balance assumptions. Speaker voice adaptation is
+  enabled only when explicitly selected by the speaker.
 
-This first bridge is phrase-based, not a continuous browser-to-provider stream.
-Input pacing and provider processing add latency after phrase capture. It must not
-be advertised as instant or sub-second.
+The gateway streams while the person talks, but the provider still requires enough
+linguistic context to translate. Continuous transport is not a promise of zero
+delay or sub-second translation. Measure real target devices before such claims.
 
 ## Verification and remaining acceptance
 
 Mocked automated checks exercise the actual provider bridge, routing, readiness,
 audio validation, error sanitation, cleanup, acknowledgement, pacing and concurrency.
-Speech-service checks exercise delivery and stopped-session suppression.
+Additional live-path checks exercise PCM capture before silence, ordered chunks,
+incremental receiver playback, two speaker-isolated sessions, consent-controlled
+voice adaptation, stalled capture, authorization revocation and call cleanup.
 They make no provider requests.
 
-The previously authorized English/French diagnostic demonstrated real provider
+The previously authorized, non-cloning English/French diagnostic demonstrated real provider
 recognition, translation and output audio in both directions. It was not a
 two-person browser call. A separate approved two-account call on the target
 devices is still needed to verify microphone capture, remote playback, subtitles,
 call billing and speech quality together. Do not run paid tests without approval.
+
+References: Palabra's [settings reference](https://docs.palabra.ai/docs/streaming_api/translation_settings_breakdown)
+documents experimental voice cloning and its 10–20 second adaptation period.

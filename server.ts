@@ -1294,9 +1294,7 @@ app.post("/api/malvi/voice/transcribe", requireAuthenticatedUser, async (req, re
 });
 
 // 5. Speech Synthesis Endpoint for Langpretation Audio Generation
-app.post("/api/langpretation/call/translate-audio",requireAuthenticatedUser,createPalabraCallHandler({
-  userId: authenticatedUserId,
-  authorize: async (userId,sessionId,source,target) => {
+const authorizeLiveLangpretation = async (userId:string,sessionId:string,source:string,target:string) => {
     if (!adminFeatureSwitches.langpretationEnabled) throw new PalabraError(403,'Live translation is currently disabled.');
     const session = billingDb.activeUsageSessions.get(sessionId);
     if (!canTranslateLiveCall(userId,sessionId) || !session || session.status !== 'ACTIVE' || !session.isLangpretationActive)
@@ -1317,7 +1315,9 @@ app.post("/api/langpretation/call/translate-audio",requireAuthenticatedUser,crea
       const active = serverLanguageOverrides.get(code)?.active ?? data?.find(row => row.code === code)?.active ?? getLanguageCapability(code).active;
       if (!active) throw new PalabraError(403,'One of the selected languages is disabled.');
     }
-  }
+};
+app.post("/api/langpretation/call/translate-audio",requireAuthenticatedUser,createPalabraCallHandler({
+  userId: authenticatedUserId,authorize:authorizeLiveLangpretation
 }));
 app.get("/api/langpretation/speech-readiness",requireAuthenticatedUser,(req,res)=>{
   try{
@@ -3768,7 +3768,7 @@ async function startServer() {
   const httpServer = http.createServer(app);
 
   // Initialize Real-time WebSockets & Calling Signaling Server
-  setupRealtimeServer(httpServer);
+    setupRealtimeServer(httpServer,{authorizeLangpretation:authorizeLiveLangpretation});
 
   // Determine production environment:
   // - Explicit NODE_ENV=production

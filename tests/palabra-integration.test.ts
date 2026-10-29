@@ -164,7 +164,7 @@ test('production endpoint requires authentication and authorizes connected parti
   function visit(n:ts.Node){if(ts.isCallExpression(n)&&n.arguments[0]?.getText(ast)==='"/api/langpretation/call/translate-audio"')route=n;ts.forEachChild(n,visit);}
   visit(ast);assert.ok(route);
   assert.equal(route.arguments[1].getText(ast),'requireAuthenticatedUser');
-  const body=route.arguments[2].getText(ast);
+  const body=source.slice(source.indexOf('const authorizeLiveLangpretation'),source.indexOf('app.get("/api/langpretation/speech-readiness"'));
   for(const guard of ['canTranslateLiveCall','session.status','getPersistentSubscription','langpretationMinutesRemaining','normalizedBillingEnabled','nanivio_langpretation_configs','serverLanguageOverrides'])
     assert.ok(body.includes(guard),guard);
   assert.doesNotMatch(source.slice(source.indexOf('app.post("/api/langpretation/call/translate-audio"'),source.indexOf('app.get("/api/langpretation/speech-readiness"')),/recordLangpretationUsagePersistent/,'existing call meter must not be charged twice');

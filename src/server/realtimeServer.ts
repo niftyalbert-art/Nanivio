@@ -23,6 +23,9 @@ import { translateWithProductionProviders as callProductionTranslation } from '.
 import { malviLiveBrainController } from './assistant/liveBrain.ts';
 import { createNanivioMicGateway } from './assistant/nanivioMicGateway.ts';
 const nanivioMicGateway = createNanivioMicGateway(malviLiveBrainController);
+import { PalabraLiveGateway, type LangpretationAuthorizer } from './palabraLiveStream.ts';
+import { PalabraError } from './palabraSpeech.ts';
+let langpretationGateway:PalabraLiveGateway|null=null;
 
 export interface ConnectedUser {
   socket: WebSocket;
@@ -72,6 +75,7 @@ function clearRingingTimer(callId: string) {
 function finishCall(callId: string, endedBy: string, reason?: string) {
   const call = activeCalls.get(callId);
   if (!call) return false;
+  langpretationGateway?.endCall(callId);
   clearRingingTimer(callId);
   call.status = 'ended';
   const durationSeconds = call.connectedAt
@@ -313,7 +317,24 @@ export async function broadcastStreamReaction(channelId: string, message: Stream
   });
 }
 
-export function setupRealtimeServer(httpServer: HttpServer) {
+export function setupRealtimeServer(httpServer: HttpServer,options?:{authorizeLangpretation:LangpretationAuthorizer}) {
+  langpretationGateway=new PalabraLiveGateway({
+    authorize:options?.authorizeLangpretation||(async()=>{throw new Error('Translation authorization unavailable.');}),
+    remote:(callId,speakerId,event,payload)=>{
+      const call=activeCalls.get(callId);
+      if(!call||call.status!=='connected'||!call.participants.includes(speakerId))return false;
+      let sent=false;
+      const message=JSON.stringify({type:event,payload});
+      for(const id of call.participants.filter(id=>id!==speakerId)){
+        for(const target of clientsByUserId.get(id)||[]){
+          if(target.socket.readyState===WebSocket.OPEN&&target.socket.bufferedAmount<256000){
+            target.socket.send(message);sent=true;
+          }
+        }
+      }
+      return sent;
+    }
+  });
   const wss = new WebSocketServer({ server: httpServer, path: '/ws' });
 
   wss.on('error', (err) => {
@@ -323,6 +344,9 @@ export function setupRealtimeServer(httpServer: HttpServer) {
   wss.on('connection', (socket: WebSocket) => {
     allSockets.add(socket);
     let currentUser: ConnectedUser | null = null;
+    const translationPeer={closed:false,send:(type:string,payload:any)=>{
+      if(socket.readyState===WebSocket.OPEN&&socket.bufferedAmount<512000)socket.send(JSON.stringify({type,payload}));
+    }};
     let messageChain: Promise<void> = Promise.resolve();
 
     // Heartbeat ping/pong
@@ -351,6 +375,26 @@ export function setupRealtimeServer(httpServer: HttpServer) {
         }
 
         switch (type) {
+          case 'langpretation:start': {
+            try { await langpretationGateway!.start(translationPeer,currentUser!.userId,payload); }
+            catch(error){translationPeer.send('langpretation:stopped',{
+              callId:payload?.callId,streamId:payload?.streamId,
+              message:error instanceof PalabraError?error.message:'Live translation could not be authorized.'
+            });}
+            break;
+          }
+          case 'langpretation:audio':
+            langpretationGateway?.audio(translationPeer,payload);break;
+          case 'langpretation:stop':
+            langpretationGateway?.stopStream(translationPeer,payload?.streamId);break;
+          case 'langpretation:receiver_ready':
+            if(canTranslateLiveCall(currentUser!.userId,payload?.callId))
+              langpretationGateway?.acknowledgeReceiver(payload.callId,payload.speakerId,payload.streamId,currentUser!.userId);
+            break;
+          case 'langpretation:playback_error':
+            if(canTranslateLiveCall(currentUser!.userId,payload?.callId))
+              langpretationGateway?.stopSpeaker(payload.callId,payload.speakerId);
+            break;
           // -------------------------------------------------------------
           // 1. PRESENCE / USER AUTHENTICATION
           // -------------------------------------------------------------
@@ -877,6 +921,7 @@ export function setupRealtimeServer(httpServer: HttpServer) {
     });
 
     socket.on('close', () => {
+      translationPeer.closed=true;langpretationGateway?.stop(translationPeer);
       clearInterval(pingInterval);
       allSockets.delete(socket);
       nanivioMicGateway.closeSocket(socket);

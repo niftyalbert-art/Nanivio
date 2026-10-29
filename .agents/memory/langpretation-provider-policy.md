@@ -17,3 +17,17 @@ translation provider just because its integrated audio service works. Configured
 coverage is not live verification of every language pair, and a short generated
 audio diagnostic is not verification of a two-person browser call. Further paid
 tests need explicit approval.
+
+Langpretation must translate continuously while the user is still speaking, and
+the listener should hear the translation in the speaker's own voice, not just a
+generic AI voice.
+
+**Why:** The owner explicitly clarified that a phrase-upload bridge and standard
+synthetic speech do not fulfill the intended Nanivio experience.
+
+**How to apply:** Treat continuous streaming and speaker identity as separate
+acceptance criteria. A voice-profile type definition is not a working clone.
+Palabra's per-session voice preservation is experimental and needs an initial
+adaptation period; do not present it as an instant or permanent personal voice.
+Obtain the speaker's permission and verify similarity through a consented real
+listening test before claiming this requirement is fully complete.
