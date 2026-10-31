@@ -44,37 +44,39 @@ export const HomeView: React.FC = () => {
     } catch { /* Clipboard may be unavailable in restricted browsers. */ }
   };
 
+  const firstName = currentUser?.name?.trim().split(/\s+/)[0];
   return (
-    <div className="nv-home mx-auto w-full max-w-7xl px-4 pb-8 pt-5 sm:px-6 lg:px-8">
-      <section className="nv-home-hero">
-        <div className="nv-home-orbit" aria-hidden="true"><span /><span /><span /><i /></div>
+    <div className="nv-home nv-home-dashboard mx-auto w-full max-w-7xl px-4 pb-8 pt-5 sm:px-6 lg:px-8">
+      <section className="nv-home-hero" aria-labelledby="home-title">
         <div className="nv-home-hero-copy">
-          <p className="nv-eyebrow"><span className="nv-home-mark">N</span> GHANA ROOTS · GLOBAL REACH</p>
-          <h1>Make the world<br /><em>feel closer.</em></h1>
-          <p className="nv-home-lede">Real conversations, across distance and language. Start with a number, a voice, or a familiar face.</p>
-          <button className="nv-primary-action" onClick={() => setActiveTab('calls')}><Phone size={17} /> Open keypad <ArrowUpRight size={16} /></button>
+          <p className="nv-eyebrow"><span className="nv-home-mark">N</span> YOUR NANIVIO</p>
+          <h1 id="home-title">{firstName ? `Good to see you, ${firstName}.` : 'Good to see you.'}</h1>
+          <p className="nv-home-lede">Your conversations, calls and people—together in one place.</p>
+          <div className="nv-home-hero-actions">
+            <button className="nv-primary-action" onClick={() => setActiveTab('chat')}><MessageCircle size={17} /> Open messages <ArrowUpRight size={16} /></button>
+            <button className="nv-secondary-action" onClick={() => setActiveTab('calls')}><Phone size={17} /> Make a call</button>
+          </div>
         </div>
         <div className="nv-home-identity">
           <div className="nv-id-top"><Fingerprint size={18} /><span>YOUR NANIVIO ID</span></div>
           <div className="nv-id-value">{nvId || 'Not assigned'}</div>
           {nvId && <button className="nv-copy-button" onClick={copyId} aria-label="Copy Nanivio ID">{copied ? <Check size={15} /> : <Copy size={15} />}{copied ? 'Copied' : 'Copy ID'}</button>}
           <div className="nv-id-rule" />
-          <p>One identity. Conversations anywhere.</p>
+          <p>Share this ID so people can find you.</p>
         </div>
-        <div className="nv-home-coordinate" aria-hidden="true">05° 36′ N&nbsp; / &nbsp;00° 11′ W</div>
       </section>
 
       <section className="nv-home-connect" aria-labelledby="connect-title">
         <div className="nv-section-heading">
-          <div><span className="nv-section-index">01 / CONNECT</span><h2 id="connect-title">Start with a person.</h2></div>
-          <button className="nv-quiet-link" onClick={() => setActiveTab('contacts')}>Your contacts <ArrowUpRight size={15} /></button>
+          <div><span className="nv-section-index">FIND SOMEONE</span><h2 id="connect-title">Start with a person.</h2></div>
+          <button className="nv-quiet-link" onClick={() => setActiveTab('contacts')}>Open contacts <ArrowUpRight size={15} /></button>
         </div>
         <form className="nv-lookup" onSubmit={searchUser}>
           <Search size={18} />
           <input aria-label="Search by Nanivio ID or name" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Nanivio ID, phone number, or name" />
           <button type="submit" disabled={loading || !query.trim()}>{loading ? 'Searching…' : 'Find person'} <ArrowUpRight size={15} /></button>
         </form>
-        {feedback && <div className={`nv-lookup-result ${feedback.error ? 'is-error' : ''}`}>
+        {feedback && <div className={`nv-lookup-result ${feedback.error ? 'is-error' : ''}`} role={feedback.error ? 'alert' : 'status'}>
           <span>{feedback.message}</span>
           {feedback.user && <div className="nv-result-actions">
             <button aria-label="Start audio call" disabled={!audioEnabled} onClick={() => audioEnabled && start1on1Call(feedback.user, 'audio')}><Phone size={16} /></button>
@@ -87,29 +89,29 @@ export const HomeView: React.FC = () => {
           </div>}
         </div>}
         <div className="nv-home-shortcuts">
-          <button onClick={() => setActiveTab('calls')}><span className="nv-shortcut-icon"><AudioLines size={19} /></span><span><strong>Audio &amp; video</strong><small>Call it like a phone.</small></span><ArrowUpRight size={16} /></button>
-          <button onClick={() => setActiveTab('chat')}><span className="nv-shortcut-icon"><MessageCircle size={19} /></span><span><strong>Messages</strong><small>Keep the conversation going.</small></span><ArrowUpRight size={16} /></button>
-          <button onClick={() => setActiveTab('nvnumber')}><span className="nv-shortcut-icon"><Fingerprint size={19} /></span><span><strong>NV Number</strong><small>Meet your global identity.</small></span><ArrowUpRight size={16} /></button>
+          <button onClick={() => setActiveTab('chat')}><span className="nv-shortcut-icon"><MessageCircle size={19} /></span><span><strong>Messages</strong><small>Continue a conversation</small></span><ArrowUpRight size={16} /></button>
+          <button onClick={() => setActiveTab('calls')}><span className="nv-shortcut-icon"><AudioLines size={19} /></span><span><strong>Audio &amp; video</strong><small>Call someone on Nanivio</small></span><ArrowUpRight size={16} /></button>
+          <button onClick={() => setActiveTab('nvnumber')}><span className="nv-shortcut-icon"><Fingerprint size={19} /></span><span><strong>NV Number</strong><small>Manage your identity</small></span><ArrowUpRight size={16} /></button>
         </div>
       </section>
 
       <section className="nv-home-language">
         <div className="nv-language-stamp"><span>NV</span><i /></div>
-        <div><span className="nv-section-index">SPEAK AS YOU ARE</span><h2>Language shouldn’t<br className="hidden sm:block" /> end a conversation.</h2></div>
-        <p>Langpretation helps people understand one another across African and international languages. Find it in your conversation controls.</p>
+        <div><span className="nv-section-index">LANGPRETATION</span><h2>Make room for every language.</h2></div>
+        <p>Find Langpretation in your conversation controls to help people understand one another across languages.</p>
       </section>
 
       <section className="nv-home-services">
-        <div className="nv-section-heading"><div><span className="nv-section-index">02 / AROUND YOU</span><h2>More ways to meet.</h2></div></div>
+        <div className="nv-section-heading"><div><span className="nv-section-index">EXPLORE NANIVIO</span><h2>More ways to connect.</h2></div></div>
         <VerifiedServicesLocationSection />
       </section>
 
       <section className="nv-home-footer">
-        <div><span className="nv-section-index">BUILT FOR REAL CONNECTION</span><h2>From Accra,<br />to everywhere.</h2></div>
+        <div><span className="nv-section-index">YOUR NANIVIO</span><h2>Everything you need<br />to stay in touch.</h2></div>
         <div className="nv-home-footer-links">
           <button onClick={() => setActiveTab('services')}><Tv size={18} /><span>Services &amp; live</span><ArrowUpRight size={15} /></button>
-          <button onClick={() => setActiveTab('malvi')}><Sparkles size={18} /><span>Explore Malvi</span><ArrowUpRight size={15} /></button>
-          <button onClick={() => setActiveTab('contacts')}><Users size={18} /><span>People you know</span><ArrowUpRight size={15} /></button>
+          <button onClick={() => setActiveTab('malvi')}><Sparkles size={18} /><span>Ask Malvi</span><ArrowUpRight size={15} /></button>
+          <button onClick={() => setActiveTab('contacts')}><Users size={18} /><span>Your contacts</span><ArrowUpRight size={15} /></button>
         </div>
       </section>
     </div>

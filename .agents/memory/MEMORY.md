@@ -27,7 +27,7 @@
 - [External production hosting](external-production-host.md) — the user’s live app is on Render; this fork’s Replit deployment state does not describe it.
 - [Supabase owner-run assessments](supabase-owner-run-assessments.md) — use one result set; the SQL editor may show only the final SELECT.
 - [Authentication delivery](auth-delivery-policy.md) — collect unique email and phone at signup; verify email instead of sending paid signup SMS.
-- [Global product direction](global-product-direction.md) — international/Ghana-Africa roots; reference-matched black/graphite and cream landing/chat; no blur or fake activity.
+- [Global product direction](global-product-direction.md) — global/Ghana-Africa roots; app-wide graphite/cream, fintech-style Home, Langpretation wording; no blur or fake activity.
 - [Didit phone API restrictions](didit-phone-restrictions.md) — phone-specific 403 meanings differ from generic API-key docs; read the full endpoint Markdown.
 - [Malvi microphone verification](malvi-microphone-verification.md) — exercise the real audio worklet; simulated recorder controls do not prove frame capture or recognition.
 - [Nanivio Mic direction](nanivio-mic-direction.md) — owned engine across browsers, cloud, and apps; user chose current AI providers, not self-hosted recognition.

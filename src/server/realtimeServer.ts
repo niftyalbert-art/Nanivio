@@ -16,8 +16,9 @@ import {
 } from './streamService.ts';
 import { authDb } from './authDb.ts';
 import * as persistentAuth from './persistentAuth.ts';
-import { channelRecipients, normalizeChannelId } from './chatPrivacy.ts';
+import { channelRecipients, normalizeChannelId, StreamAccessError } from './chatPrivacy.ts';
 import { privateMessageMedia } from './chatAttachments.ts';
+import { confirmSavedChat } from './chatDelivery.ts';
 import { callKhayaEngine as khaya, callSunbirdEngine as sunbird } from './translationProviders.ts';
 import { translateWithProductionProviders as callProductionTranslation } from './translationRouter.ts';
 import { malviLiveBrainController } from './assistant/liveBrain.ts';
@@ -853,7 +854,12 @@ export function setupRealtimeServer(httpServer: HttpServer,options?:{authorizeLa
               message.id = saved.id;
               // A canonical provider channel ID, not a caller-chosen local
               // conversation ID, binds the receiving UI to the right room.
-              await broadcastToChannel(channelId,
+              await confirmSavedChat(
+                () => socket.send(JSON.stringify({
+                  type: 'chat:message_ack',
+                  payload: { requestId: chatRequestId, channelId, messageId: originalMessageId, savedMessageId: saved.id, status: 'sent' },
+                })),
+                async () => broadcastToChannel(channelId,
                 {
                   type: 'chat:message',
                   payload: {
@@ -866,11 +872,9 @@ export function setupRealtimeServer(httpServer: HttpServer,options?:{authorizeLa
                   },
                 },
                 socket
+                ),
+                () => console.warn('Saved chat message could not notify live recipients; history remains available.'),
               );
-              socket.send(JSON.stringify({
-                type: 'chat:message_ack',
-                payload: { requestId: chatRequestId, channelId, messageId: originalMessageId, savedMessageId: saved.id, status: 'sent' },
-              }));
             }
             break;
           }
@@ -917,7 +921,11 @@ export function setupRealtimeServer(httpServer: HttpServer,options?:{authorizeLa
         }
         } catch (err) {
           if (chatRequestId && socket.readyState === WebSocket.OPEN) {
-            socket.send(JSON.stringify({ type: 'chat:error', payload: { requestId: chatRequestId, message: 'Private chat request could not be authorized or completed.' } }));
+            socket.send(JSON.stringify({ type: 'chat:error', payload: {
+              requestId: chatRequestId,
+              code: err instanceof StreamAccessError && err.status === 403 ? 'access' : 'unavailable',
+              message: 'Private chat request could not be authorized or completed.',
+            } }));
           }
           console.warn('WebSocket request could not be completed.');
         }

@@ -4,6 +4,7 @@
  * live Langpretation speech streaming, and GetStream real-time chat broadcasts.
  */
 import { authClient } from './authClient';
+import { ChatSendError } from './chatSendFeedback';
 
 export interface RealtimeUser {
   userId: string;
@@ -295,7 +296,8 @@ class NanivioRealtimeClient {
 
   public sendPrivateChatMessage(conversationId: string, channelId: string, message: any): Promise<string> {
     if (!this.socket || this.socket.readyState !== WebSocket.OPEN || this.currentUser?.userId !== message.senderId) {
-      return Promise.reject(new Error('An authenticated chat connection is required.'));
+      this.connect();
+      return Promise.reject(new ChatSendError('connection'));
     }
     const requestId = crypto.randomUUID();
     return new Promise((resolve, reject) => {
@@ -308,14 +310,15 @@ class NanivioRealtimeClient {
       const offError = this.on('chat:error', data => {
         if (data?.requestId !== requestId) return;
         cleanup();
-        reject(new Error(data.message || 'Private message was rejected.'));
+        reject(new ChatSendError(data.code === 'access' ? 'access' : 'unavailable'));
       });
-      const timeout = setTimeout(() => { cleanup(); reject(new Error('Private message acknowledgment timed out.')); }, 20000);
+      // An acknowledgment timed out does not prove the server failed to save.
+      const timeout = setTimeout(() => { cleanup(); reject(new ChatSendError('unconfirmed')); }, 20000);
       try {
         this.socket!.send(JSON.stringify({ type: 'chat:message', payload: { requestId, conversationId, channelId, message } }));
       } catch {
         cleanup();
-        reject(new Error('Private message could not be sent.'));
+        reject(new ChatSendError('connection'));
       }
     });
   }

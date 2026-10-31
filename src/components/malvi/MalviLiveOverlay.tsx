@@ -299,7 +299,7 @@ export const MalviLiveOverlay: React.FC<MalviLiveOverlayProps> = ({
   const meterBars = [0.16, 0.34, 0.53, 0.72, 0.91];
 
   return createPortal(
-    <div className="fixed inset-0 z-[100] isolate flex h-[100dvh] min-h-0 items-center justify-center overflow-hidden bg-[#071311] text-[#f1f3eb]">
+    <div className="nv-theme-dark fixed inset-0 z-[100] isolate flex h-[100dvh] min-h-0 items-center justify-center overflow-hidden bg-[#071311] text-[#f1f3eb]">
       {!voiceOnly && <video
         ref={onVideoElement}
         autoPlay

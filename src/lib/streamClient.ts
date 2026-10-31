@@ -3,6 +3,7 @@
  * Coordinates real-time messaging, channels, typing indicators, and Langpretation integration.
  */
 import { authClient } from './authClient';
+import { ChatSendError } from './chatSendFeedback';
 
 function streamHeaders() {
   const token = authClient.getToken();
@@ -224,12 +225,15 @@ class NanivioStreamClient {
         headers: streamHeaders(),
         body: JSON.stringify({ id, name, members, type, custom }),
       });
-      if (!res.ok) return null;
+      if (!res.ok) throw new ChatSendError(
+        res.status === 401 ? 'session' : res.status === 403 ? 'access' : 'unavailable',
+      );
       const data = await res.json();
+      if (!data.channel) throw new ChatSendError('unavailable');
       return data.channel;
     } catch (e) {
-      console.warn('Failed to create Stream channel:', e);
-      return null;
+      if (e instanceof ChatSendError) throw e;
+      throw new ChatSendError('connection');
     }
   }
 

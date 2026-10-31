@@ -39,24 +39,24 @@ export function NanivioLandingPage({ onSignIn, onGetStarted }: NanivioLandingPag
           {menuOpen ? <X /> : <Menu />}
         </button>
         <nav className={menuOpen ? "nl-nav is-open" : "nl-nav"} aria-label="Main navigation">
-          <a href="#experience" onClick={closeMenu}>The experience</a>
+          <a href="#experience" onClick={closeMenu}>Messaging & calls</a>
           <a href="#langpretation" onClick={closeMenu}>Langpretation</a>
-          <a href="#malvi" onClick={closeMenu}>Meet Malvi</a>
-          <a href="#about" onClick={closeMenu}>Our story</a>
+          <a href="#malvi" onClick={closeMenu}>Malvi assistant</a>
+          <a href="#faq" onClick={closeMenu}>How it works</a>
           <button className="nl-signin" onClick={() => { closeMenu(); onSignIn(); }}>Sign in</button>
-          <button className="nl-nav-cta" onClick={() => { closeMenu(); onGetStarted(); }}>Join Nanivio <ArrowUpRight size={15} /></button>
+          <button className="nl-nav-cta" onClick={() => { closeMenu(); onGetStarted(); }}>Create account <ArrowUpRight size={15} /></button>
         </nav>
       </header>
 
       <section className="nl-hero" id="top">
         <div className="nl-hero-grid" aria-hidden="true" />
         <div className="nl-hero-copy">
-          <p className="nl-kicker"><span className="nl-kicker-line" /> FROM GHANA, FOR EVERYWHERE</p>
-          <h1>Your world.<br />One conversation<br /><em>away.</em></h1>
-          <p className="nl-hero-lede">The people who matter don’t always speak the same language. Nanivio brings your conversations closer—across borders, across languages, across the miles.</p>
+          <p className="nl-kicker"><span className="nl-kicker-line" /> A COMMUNICATION APP FOR EVERYWHERE</p>
+          <h1>Stay close,<br />wherever life<br /><em>takes you.</em></h1>
+          <p className="nl-hero-lede">Message, call and understand one another with Nanivio. Made for the people you care about, wherever they are.</p>
           <div className="nl-hero-actions">
-            <button className="nl-button nl-button-gold" onClick={onGetStarted}>Come on in <ArrowRight size={17} /></button>
-            <a className="nl-text-link" href="#experience">Discover Nanivio <ArrowDown size={15} /></a>
+            <button className="nl-button nl-button-gold" onClick={onGetStarted}>Create your account <ArrowRight size={17} /></button>
+            <a className="nl-text-link" href="#experience">See how it works <ArrowDown size={15} /></a>
           </div>
           <div className="nl-origin-note"><span className="nl-origin-mark">GH</span><span>Rooted in Ghana.<br /><strong>Made for the world.</strong></span></div>
         </div>
@@ -72,22 +72,22 @@ export function NanivioLandingPage({ onSignIn, onGetStarted }: NanivioLandingPag
             <div className="nl-preview-reply"><span>Write a message…</span><span className="nl-send-mark"><ArrowUpRight size={15} /></span></div>
             <small className="nl-illustrative">Illustrative preview</small>
           </div>
-          <div className="nl-orbit-caption"><span className="nl-caption-dot" /> ONE WORLD, MANY WAYS TO SAY “I’M HERE”</div>
-          <span className="nl-coordinate">05°36′N 00°11′W &nbsp; / &nbsp; EVERYWHERE</span>
+          <div className="nl-orbit-caption"><span className="nl-caption-dot" /> MESSAGES · VOICE · VIDEO</div>
+          <span className="nl-coordinate">ROOTED IN GHANA · OPEN TO THE WORLD</span>
         </div>
         <a className="nl-scroll-cue" href="#experience"><span>SCROLL TO CONNECT</span><ArrowDown size={14} /></a>
       </section>
 
       <section className="nl-intro-band" id="about">
-        <span className="nl-section-no">A NOTE ON BELONGING / 01</span>
-        <p>Some things travel farther than we do.<br /><em>A voice. A laugh. A “how are you?”</em></p>
-        <span className="nl-band-aside">Nanivio is a place for all of it.</span>
+          <span className="nl-section-no">NANIVIO / COMMUNICATION</span>
+          <p>Messages for the everyday.<br /><em>Calls for the moments that matter.</em></p>
+          <span className="nl-band-aside">One place to keep in touch.</span>
       </section>
 
       <section className="nl-experience nl-section-wrap" id="experience">
         <div className="nl-section-head">
-          <div><p className="nl-kicker"><span className="nl-kicker-line" /> THE NANIVIO EXPERIENCE</p><h2>Closer, in every<br /><em>way that matters.</em></h2></div>
-          <p className="nl-section-summary">Not another thing to keep up with. A more human way to keep in touch—with the people, places and languages that make your world yours.</p>
+          <div><p className="nl-kicker"><span className="nl-kicker-line" /> WHAT YOU CAN DO</p><h2>Communication,<br /><em>all together.</em></h2></div>
+          <p className="nl-section-summary">Nanivio brings messaging, audio and video calls, language support and Malvi into one communication app.</p>
         </div>
         <div className="nl-feature-list">
           {features.map(({ number, icon: Icon, title, text }) => <article className="nl-feature-row" key={number}>
@@ -105,9 +105,9 @@ export function NanivioLandingPage({ onSignIn, onGetStarted }: NanivioLandingPag
           <span className="nl-lang-art-note">A SHARED MOMENT<br />NEEDS NO PERFECT SCRIPT</span>
         </div>
         <div className="nl-lang-copy">
-          <p className="nl-kicker"><span className="nl-kicker-line" /> LANGUAGE, WITH MORE HEART</p>
-          <h2>Different words.<br /><em>Same feeling.</em></h2>
-          <p>Language should open doors, not quietly close them. Langpretation is Nanivio’s way of helping people meet in the meaning—so the conversation stays about the people in it.</p>
+          <p className="nl-kicker"><span className="nl-kicker-line" /> LANGPRETATION</p>
+          <h2>Understand more.<br /><em>Stay in the moment.</em></h2>
+          <p>Langpretation helps people communicate across languages, so a different first language needn’t mean distance. Find it in your Nanivio conversation controls.</p>
           <a className="nl-underlined-link" href="#experience">Explore the experience <ArrowRight size={16} /></a>
           <span className="nl-ghanian-note">Medaase — thank you, in Twi.<br /><small>One small word. A whole lot of warmth.</small></span>
         </div>
@@ -115,10 +115,10 @@ export function NanivioLandingPage({ onSignIn, onGetStarted }: NanivioLandingPag
 
       <section className="nl-malvi-section" id="malvi">
         <div className="nl-malvi-copy">
-          <p className="nl-kicker"><span className="nl-kicker-line" /> A FRIENDLY FACE IN YOUR CORNER</p>
-          <h2>Meet Malvi.<br /><em>Your Nanivio sidekick.</em></h2>
-          <p>Every good conversation has someone who helps things along. Malvi is your personal assistant on Nanivio—here to help you find your way around and make more of the moments you share.</p>
-          <button className="nl-button nl-button-outline" onClick={onGetStarted}>Get to know Nanivio <ArrowRight size={16} /></button>
+          <p className="nl-kicker"><span className="nl-kicker-line" /> YOUR NANIVIO ASSISTANT</p>
+          <h2>Meet Malvi.<br /><em>Here when you need help.</em></h2>
+          <p>Malvi can help you find your way around Nanivio and support your conversations. Your assistant lives right inside the app.</p>
+          <button className="nl-button nl-button-outline" onClick={onGetStarted}>Explore Nanivio <ArrowRight size={16} /></button>
         </div>
         <div className="nl-malvi-visual">
           <div className="nl-malvi-frame"><div className="nl-malvi-topline"><span>YOUR PERSONAL ASSISTANT</span><span>NV / M-01</span></div>
@@ -130,16 +130,16 @@ export function NanivioLandingPage({ onSignIn, onGetStarted }: NanivioLandingPag
       </section>
 
       <section className="nl-calls-section">
-        <div className="nl-call-heading"><p className="nl-kicker"><span className="nl-kicker-line" /> THE DISTANCE, LESS DISTANT</p><h2>Say it. Hear it.<br /><em>See you there.</em></h2></div>
+        <div className="nl-call-heading"><p className="nl-kicker"><span className="nl-kicker-line" /> VOICE & VIDEO CALLS</p><h2>Talk it through.<br /><em>See each other.</em></h2></div>
         <div className="nl-call-story">
           <div className="nl-call-art"><div className="nl-call-disc"><span className="nl-call-wave wave-a" /><span className="nl-call-wave wave-b" /><span className="nl-call-wave wave-c" /><div className="nl-call-person"><Video size={25} strokeWidth={1.3} /></div></div><span className="nl-call-art-label">VOICE & VIDEO / TOGETHER, FROM ANYWHERE</span></div>
-          <div className="nl-call-copy"><p>Some news is better heard. Some days are better seen. And some silences are only comfortable with your people.</p><p>Nanivio makes space for voice and video calls—so connection can sound like itself, and feel a little more like home.</p><a href="#faq" className="nl-underlined-link">A few things you may wonder <ArrowRight size={16} /></a></div>
+          <div className="nl-call-copy"><p>Choose an audio or video call when a message is not enough.</p><p>Nanivio brings the conversation closer, whether you are catching up across town or across the world.</p><a href="#faq" className="nl-underlined-link">Questions about Nanivio <ArrowRight size={16} /></a></div>
         </div>
       </section>
 
       <section className="nl-quote-section">
-        <span className="nl-quote-mark">“</span><p>A world apart<br />can still feel<br /><em>close at heart.</em></p>
-        <span className="nl-quote-rule" /><span className="nl-quote-caption">BUILT FOR THE CONVERSATIONS THAT BRING US HOME.</span>
+        <span className="nl-quote-mark">“</span><p>Your people,<br />in your pocket<br /><em>wherever you go.</em></p>
+        <span className="nl-quote-rule" /><span className="nl-quote-caption">MESSAGING AND CALLING, WITH LANGUAGE SUPPORT BUILT IN.</span>
       </section>
 
       <section className="nl-faq-section nl-section-wrap" id="faq">
@@ -151,10 +151,10 @@ export function NanivioLandingPage({ onSignIn, onGetStarted }: NanivioLandingPag
       </section>
 
       <section className="nl-final-cta">
-        <span className="nl-final-index">YOUR WORLD IS WAITING / 01</span>
-        <p className="nl-kicker"><span className="nl-kicker-line" /> THE FIRST HELLO IS YOURS</p>
-        <h2>Bring your world<br /><em>a little closer.</em></h2>
-        <button className="nl-button nl-button-gold" onClick={onGetStarted}>Start a conversation <ArrowRight size={17} /></button>
+        <span className="nl-final-index">NANIVIO / COMMUNICATION</span>
+        <p className="nl-kicker"><span className="nl-kicker-line" /> READY WHEN YOU ARE</p>
+        <h2>Keep in touch.<br /><em>Start with Nanivio.</em></h2>
+        <button className="nl-button nl-button-gold" onClick={onGetStarted}>Create your account <ArrowRight size={17} /></button>
         <span className="nl-final-flourish" aria-hidden="true"><Globe2 /></span>
       </section>
 

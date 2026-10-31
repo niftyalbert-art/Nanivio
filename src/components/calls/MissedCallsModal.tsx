@@ -103,7 +103,7 @@ export const MissedCallsModal: React.FC<MissedCallsModalProps> = ({ isOpen, onCl
 
   return (
     createPortal(
-    <div className="fixed inset-0 z-[100] flex items-center justify-center p-3 sm:p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-200" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
+    <div className="nv-theme-dark nv-portal-backdrop fixed inset-0 z-[100] flex items-center justify-center p-3 sm:p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-200" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
       <div ref={dialogRef} role="dialog" aria-modal="true" aria-labelledby="missed-calls-title" tabIndex={-1} className="bg-[#0b1424] border border-red-500/40 rounded-3xl p-4 sm:p-6 max-w-lg w-full shadow-2xl space-y-4 sm:space-y-5 max-h-[calc(100dvh-1.5rem)] flex flex-col overflow-hidden">
         {/* Header */}
         <div className="flex items-center justify-between border-b border-slate-800 pb-3">

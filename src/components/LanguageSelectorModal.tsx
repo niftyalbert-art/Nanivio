@@ -100,7 +100,7 @@ export const LanguageSelectorModal: React.FC = () => {
             </span>
             <span className="text-slate-600">•</span>
             <span className="px-2 py-0.5 rounded bg-slate-800 text-white font-medium flex items-center gap-1">
-              Translating: <strong className="text-amber-400">{currentTranslationLang?.name || translationLanguage}</strong>
+              Langpretation: <strong className="text-amber-400">{currentTranslationLang?.name || translationLanguage}</strong>
             </span>
           </div>
         </div>

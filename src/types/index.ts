@@ -114,7 +114,7 @@ export interface ChatMessage {
   isVoiceNote?: boolean;
   voiceNote?: VoiceNoteData;
   isTranslated?: boolean;
-  status: 'sending' | 'sent' | 'delivered' | 'read' | 'failed';
+  status: 'sending' | 'sent' | 'delivered' | 'read' | 'failed' | 'unconfirmed';
   mediaType?: 'text' | 'image' | 'video' | 'document';
   mediaUrl?: string;
   mediaFileName?: string;

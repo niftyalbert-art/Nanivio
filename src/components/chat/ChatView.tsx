@@ -1,4 +1,5 @@
 import { TranslationUnavailableNotice } from './TranslationUnavailableNotice';
+import { chatSendFeedback } from '../../lib/chatSendFeedback';
 import React, { useState, useRef, useEffect } from 'react';
 import {
   Send,
@@ -270,8 +271,8 @@ export const ChatView: React.FC = () => {
     try {
       await sendMessage(text);
       setInputMsg('');
-    } catch {
-      setSendMessageError('Message not sent. Your draft is still here—try again.');
+    } catch (error) {
+      setSendMessageError(chatSendFeedback(error));
     } finally {
       setIsSendingMessage(false);
     }
@@ -1394,6 +1395,8 @@ export const ChatView: React.FC = () => {
                             <span>
                               {msg.status === 'failed' ? (
                                 <span className="text-red-400 font-sans" title="Private channel membership or the chat connection could not be verified.">Not sent</span>
+                              ) : msg.status === 'unconfirmed' ? (
+                                <span className="font-sans" title="The server has not confirmed delivery. Check history before sending again.">Delivery unconfirmed</span>
                               ) : msg.status === 'sending' ? (
                                 <span className="font-sans">Sending…</span>
                               ) : msg.status === 'read' ? (

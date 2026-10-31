@@ -29,7 +29,7 @@ export const Navbar: React.FC<{compact?:boolean}> = ({compact=false}) => {
       <button type="button" onClick={()=>setActiveTab('home')} className="min-h-11 px-1 text-sm font-semibold text-white" aria-label="Nanivio home"><span className="sm:hidden">N</span><span className="hidden sm:inline">Nanivio</span></button>
       <div className="flex min-w-0 items-center gap-2">
         <button type="button" onClick={()=>setIsLanguageModalOpen(true)} className="min-h-11 px-1 text-xs text-white" aria-label="Select your language">{currentLangObj.flag} <span className="hidden sm:inline">{currentLangObj.name}</span><span className="sm:hidden">{currentLangObj.code.toUpperCase()}</span></button>
-        <button id="toggle-global-langpretation" type="button" role="switch" aria-checked={globalLangpretationEnabled} onClick={()=>setGlobalLangpretationEnabled(!globalLangpretationEnabled)} className="min-h-11 rounded-lg border border-white/15 px-2 text-xs text-white">Translate {globalLangpretationEnabled?'ON':'OFF'}</button>
+        <button id="toggle-global-langpretation" type="button" role="switch" aria-checked={globalLangpretationEnabled} onClick={()=>setGlobalLangpretationEnabled(!globalLangpretationEnabled)} className="min-h-11 rounded-lg border border-white/15 px-2 text-xs text-white">Langpretation {globalLangpretationEnabled?'ON':'OFF'}</button>
         {adminFeatures.malviAiAssistantEnabled&&<MalviFloatingWidget placement="header"/>}
       </div>
     </header>

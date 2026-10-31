@@ -14,6 +14,7 @@ const built = await build({
       import React from 'react';
       import {createRoot} from 'react-dom/client';
       import {ChatView} from './src/components/chat/ChatView';
+      import {HomeView} from './src/components/home/HomeView';
       import {ErrorBoundary} from './src/components/common/ErrorBoundary';
       import {VideoCallScreen} from './src/components/calls/VideoCallScreen';
       import {Navbar} from './src/components/Navbar';
@@ -41,9 +42,11 @@ const built = await build({
       let root;
       window.__renderCommunicationFixture=(screen)=>{
         root?.unmount(); root=createRoot(document.getElementById('fixture-root'));
-        values.activeTab=screen==='chat'?'chat':'calls';
+        values.activeTab=screen==='home'?'home':screen==='chat'?'chat':'calls';
         values.activeCall.type=screen==='video'?'video_1on1':'audio_1on1';
-        root.render(screen==='chat'
+        root.render(screen==='home'
+          ? <div className="nanivio-app nv-theme-dark"><div style={{padding:'8px',fontSize:'12px'}}>Isolated design review · sample account · no live account data</div><Navbar/><main className="nanivio-main pb-28"><HomeView/></main><BottomNavigationBar/></div>
+          : screen==='chat'
           ? <div className="nanivio-app nv-theme-dark chat-app-shell h-[100dvh] max-h-[100dvh] flex flex-col w-full max-w-full overflow-x-hidden relative"><Navbar compact/>
               <main className="nanivio-main chat-main flex min-h-0 flex-1 flex-col overflow-hidden pb-[calc(4.5rem+env(safe-area-inset-bottom))] w-full max-w-full overflow-x-hidden"><ErrorBoundary fallbackTitle="Fixture chat failure"><ChatView/></ErrorBoundary></main><BottomNavigationBar/></div>
           : <div className="nv-theme-dark"><VideoCallScreen onEndCall={()=>{}}/></div>);
@@ -56,8 +59,10 @@ const built = await build({
     builder.onResolve({ filter: /context\/NanivioContext$/ }, () => ({ path: 'context', namespace: 'fixture' }));
     builder.onResolve({ filter: /lib\/agoraClient$/ }, () => ({ path: 'agora', namespace: 'fixture' }));
     builder.onResolve({ filter: /services\/speechService$/ }, () => ({ path: 'speech', namespace: 'fixture' }));
-    builder.onLoad({ filter: /.*/, namespace: 'fixture' }, args => ({ loader: 'js', contents:
+    builder.onResolve({ filter: /VerifiedServicesLocationSection$/ }, () => ({ path: 'services-preview', namespace: 'fixture' }));
+    builder.onLoad({ filter: /.*/, namespace: 'fixture' }, args => ({ loader: 'js', resolveDir: process.cwd(), contents:
       args.path === 'context' ? 'export const useNanivio=()=>window.__communicationFixture;'
+      : args.path === 'services-preview' ? 'import React from "react"; export const VerifiedServicesLocationSection=()=>React.createElement("p",null,"Live service listings are not loaded in this isolated preview.");'
       : args.path === 'agora' ? `export const agoraClient={getLocalStream:()=>null,getRemoteStream:()=>null,
           subscribeLocalStream:()=>()=>{},subscribeRemoteStream:()=>()=>{},setRemoteAudioMuted:()=>{}};`
       : 'export const speechService={stopListening(){},stopSpeaking(){},stopAudioVisualizer(){}};',
@@ -66,9 +71,12 @@ const built = await build({
 });
 
 const base = process.env.NANIVIO_TEST_URL || 'http://127.0.0.1:5000';
-const cssResponse = await fetch(`${base}/src/index.css?direct`);
-assert.equal(cssResponse.ok, true, 'Running Vite stylesheet unavailable');
-const css = await cssResponse.text();
+const stylesheets = ['/src/index.css', '/src/components/chat/ChatView.css', '/src/styles/app-theme.css'];
+const css = (await Promise.all(stylesheets.map(async path => {
+  const response = await fetch(`${base}${path}?direct`);
+  assert.equal(response.ok, true, `Running Vite stylesheet unavailable: ${path}`);
+  return response.text();
+}))).join('\n');
 const profile = await mkdtemp(join(tmpdir(), 'nanivio-mobile-fixture-'));
 const port = 9236;
 const browser = spawn('/repl/tools/bin/chromium', [
@@ -176,16 +184,16 @@ try {
       `Long messages must wrap inside the conversation rather than scroll sideways at ${width}`);
     assert.ok(chat.categoryClosed && chat.categoryButton, 'Category destinations should be collapsed under one button');
     const palette = await evaluate(`(()=>{
-      const background=selector=>getComputedStyle(document.querySelector(selector)).backgroundColor;
+      const background=selector=>{const style=getComputedStyle(document.querySelector(selector));return style.backgroundImage==='none'?style.backgroundColor:style.backgroundImage;};
       return {thread:background('.chat-thread-surface'),composer:background('.chat-composer'),
         incoming:background('.chat-incoming-bubble'),outgoing:background('.chat-outgoing-bubble'),
         action:background('#btn-chat-send-msg')};
     })()`);
-    assert.equal(palette.thread, 'rgb(18, 20, 23)', 'Chat thread must match the Calls stage');
-    assert.equal(palette.composer, 'rgb(25, 28, 32)', 'Chat composer must match Calls panels');
-    assert.equal(palette.incoming, 'rgb(32, 35, 41)', 'Incoming bubble must use shared charcoal');
-    assert.equal(palette.outgoing, 'rgb(36, 35, 31)', 'Outgoing bubble must use the warm-gold/charcoal treatment');
-    assert.equal(palette.action, 'rgb(226, 187, 98)', 'Chat action must match Calls gold');
+    assert.equal(palette.thread, 'rgb(28, 29, 31)', 'Chat thread must use the approved graphite');
+    assert.match(palette.composer, /rgb\(36, 37, 39\).*rgb\(32, 33, 35\)/, 'Composer must use smoky graphite');
+    assert.match(palette.incoming, /rgb\(41, 42, 44\).*rgb\(36, 37, 39\)/, 'Incoming bubble must use shared charcoal');
+    assert.match(palette.outgoing, /rgb\(54, 55, 57\).*rgb\(46, 47, 49\)/, 'Outgoing bubble must use neutral raised graphite');
+    assert.equal(palette.action, 'rgb(233, 225, 209)', 'Chat action must use the app-wide cream accent');
     if (process.env.NANIVIO_SCREENSHOT_DIR && width === 390 && height === 844) {
       await mkdir(process.env.NANIVIO_SCREENSHOT_DIR, { recursive: true });
       const screenshot = await call('Page.captureScreenshot', { format: 'png' });
@@ -259,6 +267,18 @@ try {
   await delay(100);
   assert.ok(await evaluate(`!!document.querySelector('textarea[aria-label="Write a message"]').value`), 'Failed send erased draft');
   assert.ok(await evaluate(`document.querySelector('[role="alert"]')?.textContent.includes('Message not sent')`), 'Failed send needs an explicit error');
+
+  for (const [width, height] of [[390, 844], [1366, 900]]) {
+    await call('Emulation.setDeviceMetricsOverride', { width, height, deviceScaleFactor: 1, mobile: width < 768 });
+    await evaluate(`window.__renderCommunicationFixture('home')`);
+    await delay(150);
+    assert.ok(await evaluate(`!!document.querySelector('#home-title') && document.documentElement.scrollWidth<=innerWidth+1`),
+      `Home must render without horizontal overflow at ${width}`);
+    if (process.env.NANIVIO_SCREENSHOT_DIR) {
+      const screenshot = await call('Page.captureScreenshot', { format: 'png' });
+      await writeFile(join(process.env.NANIVIO_SCREENSHOT_DIR, width === 390 ? 'home-mobile.png' : 'home-desktop.png'), Buffer.from(screenshot.data, 'base64'));
+    }
+  }
   console.log(JSON.stringify({ isolatedFixture: true, historyStates, emptyHistory: true, failedSendKeepsDraft: true, report }, null, 2));
 } finally {
   socket?.close();

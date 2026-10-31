@@ -13,7 +13,7 @@ controls grouped under one menu, and a clear Send button. Chat should behave lik
 a real WhatsApp-style dialog, including sending images, videos and documents,
 with “no fakes.”
 
-For the landing and chat pages, the user's newer image reference supersedes
+Across the entire app, the user's newer image reference supersedes
 the sharper Bybit treatment: near-black and smoky graphite, pale cream accents, rounded
 dimensional cards, pill selections and circular controls. Keep the generous
 conversation area, clear typography and no-blur/no-fake-activity constraints.
@@ -22,10 +22,14 @@ comes from a localized soft beige glow and pale cream controls.
 
 **Why:** The user explicitly asked both pages to copy that reference's style and
 to see completed image reviews, then reiterated “use the same colour just as
-the image i sent.”
+the image i sent.” They subsequently extended those colours to all app pages,
+not only Chat, requested “Langpretation” instead of “Translate,” and asked for
+a premium fintech-style Home rather than a web-design-agency look.
 
-**How to apply:** Preserve this scoped landing/chat direction during future
-refreshes rather than reverting them to the older angular gold treatment.
+**How to apply:** Preserve this app-wide direction during future
+refreshes rather than reverting individual pages to the older angular gold treatment.
+Keep Home product-focused while retaining Nanivio's communication purpose; do not
+invent banking services or account balances to achieve the requested feel.
 Present source-based desktop/mobile reviews; clearly label any sample chat data.
 
 The user reiterated that the persistent “Direct & Group Chats, Community Channels”

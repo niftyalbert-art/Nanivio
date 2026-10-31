@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useState, useEffect, useLayoutEffect, useRef, useCallback } from 'react';
 import confetti from 'canvas-confetti';
 import { prepareChatTranslation } from '../lib/chatTranslation';
+import { ChatSendError } from '../lib/chatSendFeedback';
 import {
   SupportedLanguageCode,
   SUPPORTED_LANGUAGES,
@@ -2485,13 +2486,13 @@ export const NanivioProvider: React.FC<{ children: React.ReactNode }> = ({ child
       }));
       playMessageSentTone();
       return true;
-    } catch {
-      if (currentAccountIdRef.current !== message.senderId) return false;
+    } catch (error) {
+      if (currentAccountIdRef.current !== message.senderId) throw new ChatSendError('session');
       setMessages(prev => ({
         ...prev, [conversation.id]: (prev[conversation.id] || []).map(m =>
-          m.id === message.id ? { ...m, status: 'failed' } : m),
+          m.id === message.id ? { ...m, status: error instanceof ChatSendError && error.code === 'unconfirmed' ? 'unconfirmed' : 'failed' } : m),
       }));
-      return false;
+      throw error;
     }
   }, []);
 
@@ -2501,7 +2502,7 @@ export const NanivioProvider: React.FC<{ children: React.ReactNode }> = ({ child
     let targetConvId = activeConversationId;
     let activeConv = conversations.find(c => c.id === targetConvId);
     if (!activeConv) {
-      throw new Error('Choose a registered contact or conversation before sending.');
+      throw new ChatSendError('conversation');
     }
 
     // Refresh verified member profiles before choosing the translation target.

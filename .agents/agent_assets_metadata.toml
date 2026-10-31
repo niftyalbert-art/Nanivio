@@ -387,3 +387,31 @@ mtime_ms = 1793410138470
 storage_uri = "gcs://replit-rams-assets-sisko/rams/assets/repl:8a53f482-19ae-49f0-ab16-31b527f92091/f51677a8-be09-4a05-89cb-71faccb9880d/243f7e19-11be-4fab-a42f-f3aca5b37dae"
 storage_version_token = "1793410181468277"
 content_type = "image/jpeg"
+
+[[outputs]]
+id = "xlFr30ApuNZ60XecQvaJl"
+uri = "file://generated-artifacts/nanivio-appwide/home-desktop.png"
+type = "image"
+title = "Updated Home — desktop"
+description = "Premium graphite-and-cream Home layout, rendered from the actual component with a labelled sample account. Live services are not loaded in this isolated review."
+logical_id = "3b9a5998-0683-47a7-ae96-72bc8898d765"
+content_hash = "sha256:e25115c3865c6d2d5fff82685b521403a7b1d3e21ad81e9905dde5e3ce21094a"
+size = 134902
+mtime_ms = 1793413556817
+storage_uri = "gcs://replit-rams-assets-sisko/rams/assets/repl:8a53f482-19ae-49f0-ab16-31b527f92091/3b9a5998-0683-47a7-ae96-72bc8898d765/478757dd-9a68-407e-8a08-7c5b4c9784f7"
+storage_version_token = "1793413587424334"
+content_type = "image/png"
+
+[[outputs]]
+id = "3szMRhhaTgSp7BU3y_57E"
+uri = "file://generated-artifacts/nanivio-appwide/home-mobile.png"
+type = "image"
+title = "Updated Home — mobile"
+description = "Mobile Home review using the shared app palette. Sample account only; signed-in production UI has not been verified."
+logical_id = "141c4407-e41f-46aa-a0e1-09ee66d06828"
+content_hash = "sha256:fd22df900ea0e387540495c50798bc0c9e076a6723628b29e342987e59e9a802"
+size = 80028
+mtime_ms = 1793413556433
+storage_uri = "gcs://replit-rams-assets-sisko/rams/assets/repl:8a53f482-19ae-49f0-ab16-31b527f92091/141c4407-e41f-46aa-a0e1-09ee66d06828/ead4516f-64c8-4f05-b0b5-6fcbe56d60e2"
+storage_version_token = "1793413588732807"
+content_type = "image/png"
