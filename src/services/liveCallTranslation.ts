@@ -125,12 +125,15 @@ export class LiveCallTranslation {
   unlock(){return this.player.unlock();}
   setMuted(muted:boolean){this.player.setMuted(muted);}
 
-  async start(sourceLang:string,targetLang:string,voiceConsent:boolean){
+  async start(sourceLang:string,targetLang:string,voiceConsent:boolean,inputStream?:MediaStream|null){
     this.stop();
     const generation=this.generation;
     try{
       // Obtain capture permission before opening any paid upstream session.
-      const stream=await navigator.mediaDevices.getUserMedia({audio:{channelCount:1,echoCancellation:true,noiseSuppression:true},video:false});
+      const inputTracks = inputStream?.getAudioTracks().filter(track => track.readyState === 'live') || [];
+      const stream = inputTracks.length
+        ? new MediaStream(inputTracks.map(track => track.clone()))
+        : await navigator.mediaDevices.getUserMedia({audio:{channelCount:1,echoCancellation:true,noiseSuppression:true},video:false});
       if(generation!==this.generation){stream.getTracks().forEach(t=>t.stop());return false;}
       this.capture=stream;
       await this.unlock();

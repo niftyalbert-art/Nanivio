@@ -31,6 +31,18 @@ Akuapem Twi. Distinguish completed audio generation from accurate translation:
 a generated round-trip sample completed but changed meaning and misheard the
 brand. Do not describe this as native-speaker or real-account quality approval.
 
+Apply the same pair-aware speech choice to specialist live-call audio. A working
+voice-note route does not justify splitting call recognition back onto the
+general English provider.
+
+**Why:** Separate call recognition can fail even when the approved specialist
+speech-to-speech route works. The owner's call tests distinguished working raw
+calls from non-working Langpretation.
+
+**How to apply:** Reuse the established ASR/MT/TTS selection for actual microphone
+audio. Keep continuous international streaming separate from phrase-based
+specialist speech; do not claim either proves two-account delivery on Render.
+
 Langpretation must translate continuously while the user is still speaking, and
 the listener should hear the translation in the speaker's own voice, not just a
 generic AI voice.

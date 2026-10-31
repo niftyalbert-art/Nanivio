@@ -162,6 +162,7 @@ function clientFixture(){
   }
   const context=vm.createContext({
     module:{exports:{}},transport,window:{AudioContext:Context},crypto:{randomUUID:()=> 'browser-stream-123'},
+    MediaStream:class{constructor(public tracks:any[]){}getTracks(){return this.tracks;}},
     navigator:{mediaDevices:{getUserMedia:async()=>{
       const track={stopped:false,stop(){this.stopped=true;}};tracks.push(track);return {getTracks:()=>[track]};
     }}},setTimeout,clearTimeout,Int16Array,Uint8Array,Float32Array,DataView,Math,Error,
@@ -176,6 +177,23 @@ function clientFixture(){
   const emit=(event:string,p:any)=>{for(const fn of listeners.get(event)||[])fn(p);};
   return {service,exports,contexts,sent,tracks,emit,errors,remote,transcripts};
 }
+
+test('live translation clones existing call capture and cannot stop the call microphone',async()=>{
+  const f=clientFixture();
+  const clone={stopped:false,stop(){this.stopped=true;}};
+  const original={readyState:'live',stopped:false,clone(){return clone;},stop(){this.stopped=true;}};
+  const start=f.service.start('en','fr',false,{getAudioTracks:()=>[original]});
+  await flush();
+  const request=f.sent.find(p=>p.event==='langpretation:start');
+  assert.ok(request);
+  f.emit('langpretation:ready',{callId:'call-one',streamId:request.payload.streamId});
+  assert.equal(await start,true);
+  assert.equal(f.tracks.length,0,'Do not open another device capture during the call');
+  f.service.stop();
+  assert.equal(clone.stopped,true);
+  assert.equal(original.stopped,false,'Ending translation must keep original call audio alive');
+  f.service.dispose();
+});
 
 test('browser streams fixed PCM chunks before silence, stops on mute and discards stale callbacks',async()=>{
   const f=clientFixture(),start=f.service.start('en','fr',true);await flush();

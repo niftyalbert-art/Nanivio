@@ -61,7 +61,7 @@ import { supportsPalabraPair } from "./src/shared/palabraLanguages.ts";
 import { palabraConfigured, PalabraError, parsePalabraWav, translatePalabraAudio } from "./src/server/palabraSpeech.ts";
 import { reservePalabraCapacity } from "./src/server/palabraCapacity.ts";
 import {processStagedVoiceNote,VoiceNoteProcessingError} from "./src/server/voiceNotePipeline.ts";
-import { createPalabraCallHandler } from "./src/server/palabraCallRoute.ts";
+import { createPalabraCallHandler, stagedCallPairConfigured } from "./src/server/palabraCallRoute.ts";
 import { canTranslateLiveCall } from "./src/server/realtimeServer.ts";
 import { activatePaystackSubscriptionPersistent } from "./src/server/normalizedBillingRepository.ts";
 import { callKhayaEngine, callSunbirdEngine } from "./src/server/translationProviders.ts";
@@ -1318,8 +1318,13 @@ app.post("/api/malvi/voice/transcribe", requireAuthenticatedUser, async (req, re
 const authorizeLiveLangpretation = async (userId:string,sessionId:string,source:string,target:string) => {
     if (!adminFeatureSwitches.langpretationEnabled) throw new PalabraError(403,'Live translation is currently disabled.');
     const session = billingDb.activeUsageSessions.get(sessionId);
-    if (!canTranslateLiveCall(userId,sessionId) || !session || session.status !== 'ACTIVE' || !session.isLangpretationActive)
-      throw new PalabraError(403,'Start an active translated call before using live translation.');
+    if (!canTranslateLiveCall(userId,sessionId))
+      throw new PalabraError(403,'Join a connected call before starting Langpretation.');
+    if (!session) throw new PalabraError(425,'Call billing is still starting. Please wait a moment.');
+    if (session.status !== 'ACTIVE')
+      throw new PalabraError(403,'This call no longer has an active usage session.');
+    if (!session.isLangpretationActive)
+      throw new PalabraError(409,'Langpretation was off when this call started. End this call, enable Langpretation, and call again.');
     // The existing call meter owns one shared call session. Both connected
     // participants can interpret its two directions; each must also have allowance.
     if (!((session.sourceLang === source && session.targetLang === target)
@@ -1337,6 +1342,21 @@ const authorizeLiveLangpretation = async (userId:string,sessionId:string,source:
       if (!active) throw new PalabraError(403,'One of the selected languages is disabled.');
     }
 };
+app.get("/api/langpretation/call/readiness", requireAuthenticatedUser, async (req, res) => {
+  try {
+    const callId = String(req.query.callId || '');
+    const source = String(req.query.sourceLang || ''), target = String(req.query.targetLang || '');
+    requireLanguage(source); requireLanguage(target);
+    if (!callId || callId.length > 160) return res.status(400).json({ success:false, error:'A connected call is required.' });
+    await authorizeLiveLangpretation(authenticatedUserId(req), callId, source, target);
+    return res.json({ success:true });
+  } catch (error) {
+    return res.status(error instanceof PalabraError ? error.status : 400).json({
+      success:false, error:error instanceof PalabraError ? error.message : 'Choose a supported Langpretation language pair.',
+      ...(error instanceof PalabraError && error.status === 425 ? { code:'CALL_STARTING' } : {}),
+    });
+  }
+});
 app.post("/api/langpretation/call/translate-audio",requireAuthenticatedUser,createPalabraCallHandler({
   userId: authenticatedUserId,authorize:authorizeLiveLangpretation
 }));
@@ -1348,6 +1368,11 @@ app.get("/api/langpretation/speech-readiness",requireAuthenticatedUser,(req,res)
       success:true,language,target,provider:'nanivio-live',asrConfigured:palabraConfigured(),
       ttsConfigured:palabraConfigured(),integratedSpeech:true,liveVerified:false
     });
+    if (target !== language) {
+      const configured = stagedCallPairConfigured(language, target);
+      return res.json({success:true,language,target,provider:'nanivio-speech',
+        asrConfigured:configured,ttsConfigured:configured,liveVerified:false});
+    }
     res.json({success:true,language,provider:speechProvider(language),asrConfigured:speechConfigured(language,'asr'),ttsConfigured:speechConfigured(language,'tts'),liveVerified:false});
   }catch{return res.status(400).json({success:false,error:'Unsupported speech language.'});}
 });

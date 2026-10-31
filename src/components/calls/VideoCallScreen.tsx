@@ -28,6 +28,7 @@ import { NanivioTranslatorEngine } from '../../lib/translator-engine/engine';
 import { agoraClient } from '../../lib/agoraClient';
 import { supportsPalabraPair } from '../../shared/palabraLanguages';
 import { LiveCallTranslation } from '../../services/liveCallTranslation';
+import { waitForCallTranslation } from '../../services/callTranslationReadiness';
 
 interface VideoCallScreenProps {
   onEndCall: () => void;
@@ -95,6 +96,10 @@ export const VideoCallScreen: React.FC<VideoCallScreenProps> = ({ onEndCall }) =
   const [remoteTranslationActive,setRemoteTranslationActive]=useState(false);
   const [remoteVoiceAdapting,setRemoteVoiceAdapting]=useState(false);
   const [isStartingTranslation,setIsStartingTranslation]=useState(false);
+  const [translationPaused,setTranslationPaused]=useState(false);
+  const translationGeneration=useRef(0);
+  const translationStarting=useRef(false);
+  const readinessRequest=useRef<AbortController|null>(null);
   const liveTranslation=useRef<LiveCallTranslation|null>(null);
 
   useEffect(()=>{
@@ -131,17 +136,27 @@ export const VideoCallScreen: React.FC<VideoCallScreenProps> = ({ onEndCall }) =
     };
   }, []);
 
-  // Capture and queued requests belong to this call and its language settings.
+  // Enabling Langpretation must start capture, not merely change an ON badge.
+  // A failed attempt stays stopped until an explicit retry or settings change.
   useEffect(() => {
+    translationGeneration.current++;
+    if (activeCall?.status === 'connected' && activeCall.langpretationEnabled && !host.isMuted && !translationPaused) {
+      void startTranslation();
+    }
     return () => {
+      translationGeneration.current++;
+      readinessRequest.current?.abort();
+      translationStarting.current=false;
       speechService.stopListening();
       liveTranslation.current?.stop();
       setIsListeningToSpeech(false);
+      setIsStartingTranslation(false);
       setSpeechStatus('');
     };
-  }, [activeCall?.id, activeCall?.status, activeCall?.langpretationEnabled, host.isMuted, hostLang.code, remoteLang?.code,preserveMyVoice]);
+  }, [activeCall?.id, activeCall?.status, activeCall?.langpretationEnabled, host.isMuted, hostLang.code, remoteLang?.code,preserveMyVoice,translationPaused]);
 
-  useEffect(()=>{setPreserveMyVoice(false);setRemoteTranslationActive(false);setRemoteVoiceAdapting(false);},[activeCall?.id]);
+  useEffect(()=>{setPreserveMyVoice(false);setRemoteTranslationActive(false);setRemoteVoiceAdapting(false);setTranslationPaused(false);},[activeCall?.id]);
+  useEffect(()=>{if(!activeCall?.langpretationEnabled)setTranslationPaused(false);},[activeCall?.langpretationEnabled]);
   // Keep transcript updated when activeCall currentTranscript changes
   useEffect(() => {
     if (activeCall?.currentTranscript && activeCall.currentTranscript.textInReceiverLang) {
@@ -151,54 +166,60 @@ export const VideoCallScreen: React.FC<VideoCallScreenProps> = ({ onEndCall }) =
     }
   }, [activeCall?.currentTranscript, autoVocalize, hostLang.code]);
 
-  // Toggle Live Microphone Speech Recognition
-  const toggleSpeechRecognition = async () => {
-    if(isStartingTranslation)return;
-    if (isListeningToSpeech) {
-      liveTranslation.current?.stop();
-      speechService.stopListening();
-      speechService.stopAudioVisualizer();
-      setIsListeningToSpeech(false);
-      setSpeechStatus('');
-    } else {
+  async function startTranslation() {
+    if(translationStarting.current)return;
+    const generation=translationGeneration.current;
+    const current=()=>generation===translationGeneration.current;
+    translationStarting.current=true;
+    setIsStartingTranslation(true);
+    const request=new AbortController();
+    readinessRequest.current=request;
+    try {
       if (!activeCall?.langpretationEnabled || host.isMuted || activeCall.status !== 'connected') {
-        setSpeechStatus('Enable translation and unmute your microphone in a connected call first.');
+        setSpeechStatus('Enable Langpretation and unmute your microphone in a connected call first.');
         return;
       }
+      if(!remoteLang)throw new Error('Waiting for the other caller’s language setting.');
+      if(hostLang.code===remoteLang.code){
+        setSpeechStatus('Same language selected. Original call audio is used.');
+        return;
+      }
+      setSpeechStatus('Checking Langpretation setup…');
+      await waitForCallTranslation(activeCall.id,hostLang.code,remoteLang.code,request.signal);
+      if(!current())return;
       if(remoteLang&&supportsPalabraPair(hostLang.code,remoteLang.code)){
-        setIsStartingTranslation(true);
-        setSpeechStatus('Connecting live translation…');
-        try{
-          const started=await liveTranslation.current?.start(hostLang.code,remoteLang.code,preserveMyVoice);
+        setSpeechStatus('Connecting Langpretation…');
+          const started=await liveTranslation.current?.start(hostLang.code,remoteLang.code,preserveMyVoice,agoraClient.getLocalStream());
+          if(!current())return;
           setIsListeningToSpeech(Boolean(started));
           if(started)setSpeechStatus(preserveMyVoice?'Listening continuously. Voice preservation requested; allow about 10–20 seconds of speech.':'Listening continuously.');
-        }finally{setIsStartingTranslation(false);}
         return;
       }
-      setSpeechStatus('Starting speech recognition…');
+      setSpeechStatus('Starting speech Langpretation…');
 
       const started = await speechService.startListening(
         hostLang.code,
-        async ({ transcript, isFinal }) => {
-          setCurrentSpokenSubtitle(transcript);
-          setLangpretationStage('interpreting');
-
-          if (isFinal && transcript.trim()) {
-            setSpeechStatus('Langpretating...');
-            try{
-              await processLiveSpeechUtterance(host.id, transcript);
-              setLangpretationStage('speaking');setSpeechStatus('');
-            }catch{setSpeechStatus('Translation unavailable.');setLangpretationStage('listening');}
-          }
-        },
+        () => {},
         (error) => {
+          if(!current())return;
           speechService.stopListening();
           setIsListeningToSpeech(false);
           setLangpretationStage('listening');
-          setSpeechStatus(error instanceof Error ? error.message : 'Speech recognition stopped. Check microphone permission and language setup, then try again.');
-        }
+          setSpeechStatus(error instanceof Error ? error.message : 'Speech Langpretation stopped. Please try again.');
+        },
+        {
+          targetLanguage:remoteLang.code,
+          inputStream:agoraClient.getLocalStream() || undefined,
+          onAudio:async (audioBase64, signal)=>{
+            if(!current()||signal.aborted)return;
+            setLangpretationStage('interpreting');setSpeechStatus('Langpretating your speech…');
+            await processLiveSpeechUtterance(host.id,'',{audioBase64,signal});
+            if(current()&&!signal.aborted){setLangpretationStage('listening');setSpeechStatus('Listening. Speech is translated in short phrases.');}
+          },
+        },
       );
 
+      if(!current())return;
       if (started) {
         setIsListeningToSpeech(true);
         setSpeechStatus('Listening to your mic…');
@@ -206,7 +227,21 @@ export const VideoCallScreen: React.FC<VideoCallScreenProps> = ({ onEndCall }) =
         setIsListeningToSpeech(false);
         setSpeechStatus('Speech recognition could not start. Check microphone permission and language setup.');
       }
+    } catch(error) {
+      if(current()){
+        setIsListeningToSpeech(false);
+        setSpeechStatus(error instanceof Error?error.message:'Langpretation could not start.');
+      }
+    } finally {
+      if(current()){translationStarting.current=false;setIsStartingTranslation(false);}
     }
+  }
+
+  const toggleSpeechRecognition = async () => {
+    if(isStartingTranslation)return;
+    if(isListeningToSpeech){setTranslationPaused(true);setSpeechStatus('Langpretation paused.');}
+    else if(translationPaused)setTranslationPaused(false);
+    else await startTranslation();
   };
 
   // Production Langpretation is driven by real microphone audio/ASR.
@@ -593,14 +628,14 @@ export const VideoCallScreen: React.FC<VideoCallScreenProps> = ({ onEndCall }) =
                 <div className="flex min-w-0 items-center gap-1.5">
                   <LangpretationIcon size={18} glow={isLangpretationOn} />
                   <div className="flex items-center gap-1 text-[10px] font-bold tracking-tight">
-                    <span className="text-white">Translation</span>
+                    <span className="text-white">Langpretation</span>
                     <span
                       className={`w-1.5 h-1.5 rounded-full ${
-                        isLangpretationOn ? 'bg-emerald-400 animate-pulse' : 'bg-slate-500'
+                        isListeningToSpeech ? 'bg-emerald-400 animate-pulse' : 'bg-slate-500'
                       }`}
                     />
-                    <span className={isLangpretationOn ? 'text-emerald-400' : 'text-slate-500'}>
-                      {isLangpretationOn ? 'ON' : 'OFF'}
+                    <span className={isListeningToSpeech ? 'text-emerald-400' : 'text-slate-500'}>
+                      {!isLangpretationOn ? 'OFF' : isStartingTranslation ? 'STARTING' : isListeningToSpeech ? 'LISTENING' : 'NOT LISTENING'}
                     </span>
                   </div>
 

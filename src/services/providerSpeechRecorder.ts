@@ -3,6 +3,7 @@ import { PcmUtils } from '../lib/translator-engine/audio/pcm';
 
 export interface RecordedSpeechOptions {
   targetLanguage?: string;
+  inputStream?: MediaStream;
   /** A combined speech route consumes actual microphone WAV, never a supplied transcript. */
   onAudio?: (audioBase64: string, signal: AbortSignal) => Promise<void>;
 }
@@ -25,7 +26,10 @@ export class ProviderSpeechRecorder {
     const readiness=await check.json();
     if(!check.ok||!readiness.asrConfigured)throw new Error(readiness.error||'Speech recognition is not configured for this language.');
     if(this.abort.signal.aborted)return false;
-    this.stream=await navigator.mediaDevices.getUserMedia({audio:true,video:false});
+    const inputTracks = options?.inputStream?.getAudioTracks().filter(track => track.readyState === 'live') || [];
+    this.stream = inputTracks.length
+      ? new MediaStream(inputTracks.map(track => track.clone()))
+      : await navigator.mediaDevices.getUserMedia({audio:true,video:false});
     if(this.abort.signal.aborted){this.stop();return false;}
     this.context=new AudioContext();
     await this.context.resume();
