@@ -93,6 +93,13 @@
 :is(.nv-theme-dark, .nanivio-auth) [class*="bg-yellow-50"] { background-color: #211c0e !important; }
 :is(.nv-theme-dark, .nanivio-auth) [class*="bg-rose-50"],
 :is(.nv-theme-dark, .nanivio-auth) [class*="bg-red-50"] { background-color: #271719 !important; }
+/* Media shading must remain translucent: the surface-theme gradient overrides
+   below intentionally flatten cards, but would hide a playing avatar video. */
+.malvi-live-media-shade {
+  background-color: transparent;
+  background-image: linear-gradient(to bottom, rgb(7 19 17 / 60%), transparent 50%, rgb(7 19 17 / 75%));
+}
+
 :is(.nv-theme-dark, .nanivio-auth) [class*="bg-gradient-to-"][class*="from-[#0"] {
   background-image: none !important;
   background-color: #171b22 !important;

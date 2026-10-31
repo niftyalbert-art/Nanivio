@@ -1,6 +1,6 @@
 ---
 name: Live avatar streaming utterances
-description: Preserve one render utterance across native voice packets and verify protocol changes against real returned media.
+description: Preserve streamed utterances and distinguish returned media, decoded frames, and visible avatar presentation.
 ---
 Do not use SDK repeatAudio separately for every native voice packet: the installed SDK seals an utterance on each call. Keep streamed packets in one utterance until the brain finishes its reply.
 
@@ -22,3 +22,17 @@ video playout before reporting a connected avatar, and retain the paired A/V
 audio path. Test never-arriving tracks, subscribed-but-frozen video, cancellation,
 and both orders of SDK-start/frame readiness without automatically spending on
 replacement sessions.
+
+Receiving and decoding video does not establish that the user can see it:
+app-wide surface theming must not flatten translucent media overlays into
+opaque backgrounds.
+
+**Why:** A production stylesheet's broad dark-gradient surface rule matched
+Malvi's full-screen shading and painted over the video while leaving speech and
+transcripts available. The browser reproduced that opaque layer independently
+of provider credits or account identity.
+
+**How to apply:** Keep live-media shading outside broad card/surface theme
+overrides. Verify computed transparency and actual screen presentation alongside
+frame readiness; a valid stream, nonzero video dimensions, or an uncropped
+bounding rectangle alone cannot detect video concealed by another layer.

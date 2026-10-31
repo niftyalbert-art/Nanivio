@@ -74,6 +74,16 @@ if (preview) {
       await page.wait("!!document.querySelector('[aria-label=\"Live subtitles\"]')");
       assert.equal(await page.evaluate("getComputedStyle(document.querySelector('[aria-label=\"Malvi live video\"]')).objectFit"), 'contain',
         `${width}x${height}: the entire live portrait fits without face cropping`);
+      const mediaShade = await page.evaluate(`(()=>{
+        const video=document.querySelector('[aria-label="Malvi live video"]');
+        const shade=video.parentElement.querySelector(':scope > [aria-hidden="true"].inset-0');
+        const style=getComputedStyle(shade);
+        return {background:style.backgroundColor,image:style.backgroundImage};
+      })()`);
+      assert.equal(mediaShade.background, 'rgba(0, 0, 0, 0)',
+        `${width}x${height}: the global theme must not paint a solid panel over avatar video`);
+      assert.notEqual(mediaShade.image, 'none',
+        `${width}x${height}: preserve the translucent media shading rather than replacing it with a flat surface`);
       await page.evaluate(`document.querySelector('[aria-label="Malvi live video"]').poster='/portrait.jpg';true`);
       await page.evaluate('document.fonts.ready.then(()=>true)');
       if (width >= 768) {
@@ -147,7 +157,7 @@ if (preview) {
       assert.equal(await page.evaluate("!!document.querySelector('[role=\"dialog\"]')"), false,
         'the live overlay closes so the billing section is accessible');
     }
-    console.log(JSON.stringify({ passed: true, viewports: 9, fullOverlay: true, uncroppedPortrait: true, paidProviderRequests: 0 }));
+    console.log(JSON.stringify({ passed: true, viewports: 9, fullOverlay: true, uncroppedPortrait: true, transparentMediaShade: true, paidProviderRequests: 0 }));
   } finally {
     await browser.close();
     await new Promise(resolve => server.close(resolve));

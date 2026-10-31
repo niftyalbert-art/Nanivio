@@ -320,7 +320,7 @@ export const MalviLiveOverlay: React.FC<MalviLiveOverlayProps> = ({
       )}
 
       {!voiceOnly && <div aria-hidden="true" className="pointer-events-none absolute inset-y-0 right-0 hidden w-[22rem] border-l border-white/10 bg-[#071311] md:block" />}
-      <div aria-hidden="true" className="pointer-events-none absolute inset-0 bg-gradient-to-b from-[#071311]/60 via-transparent to-[#071311]/75" />
+      <div aria-hidden="true" className="malvi-live-media-shade pointer-events-none absolute inset-0" />
 
       <div
         ref={dialogRef}
