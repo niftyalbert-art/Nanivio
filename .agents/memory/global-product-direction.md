@@ -14,12 +14,15 @@ a real WhatsApp-style dialog, including sending images, videos and documents,
 with “no fakes.”
 
 For the landing and chat pages, the user's newer image reference supersedes
-the sharper Bybit treatment: warm charcoal, champagne/cream accents, rounded
+the sharper Bybit treatment: near-black and smoky graphite, pale cream accents, rounded
 dimensional cards, pill selections and circular controls. Keep the generous
 conversation area, clear typography and no-blur/no-fake-activity constraints.
+Match the reference colours, not an all-over brown/yellow interpretation; warmth
+comes from a localized soft beige glow and pale cream controls.
 
 **Why:** The user explicitly asked both pages to copy that reference's style and
-to see completed image reviews.
+to see completed image reviews, then reiterated “use the same colour just as
+the image i sent.”
 
 **How to apply:** Preserve this scoped landing/chat direction during future
 refreshes rather than reverting them to the older angular gold treatment.

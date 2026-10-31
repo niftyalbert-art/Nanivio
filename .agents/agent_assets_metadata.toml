@@ -359,3 +359,31 @@ mtime_ms = 1793408770319
 storage_uri = "gcs://replit-rams-assets-sisko/rams/assets/repl:8a53f482-19ae-49f0-ab16-31b527f92091/c131eef6-6664-4800-b18e-e9941ca6b5ce/5cd29464-ba64-493e-9c4f-817a0300c361"
 storage_version_token = "1793409342275616"
 content_type = "image/jpeg"
+
+[[outputs]]
+id = "BOojT3u8g2rEx2656zdby"
+uri = "file://generated-artifacts/nanivio-design-reference/landing-desktop.jpg"
+type = "image"
+title = "Landing page — updated reference colours"
+description = "Full-size desktop screenshot. Near-black, graphite, ivory and pale cream controls with a subtle beige glow. No layout or functionality changes."
+logical_id = "159b05bc-9ac2-4b08-92b7-2bf3e19bc16f"
+content_hash = "sha256:25f735a18e82f48e210a7862241b41fa320c826e4fd8b761cb57ee1f7495ec25"
+size = 63101
+mtime_ms = 1793409972719
+storage_uri = "gcs://replit-rams-assets-sisko/rams/assets/repl:8a53f482-19ae-49f0-ab16-31b527f92091/159b05bc-9ac2-4b08-92b7-2bf3e19bc16f/8dfae373-a9cd-4fa8-88c8-bbdb966ff2ff"
+storage_version_token = "1793410180190363"
+content_type = "image/jpeg"
+
+[[outputs]]
+id = "5cpK6tz-3prXyZyufYrGG"
+uri = "file://generated-artifacts/nanivio-design-reference/chat-desktop.jpg"
+type = "image"
+title = "Chat page — updated reference colours"
+description = "Full-size desktop screenshot with clearly labelled sample messages. Signed-in production chat was not verified. The same palette is applied to the mobile preview."
+logical_id = "f51677a8-be09-4a05-89cb-71faccb9880d"
+content_hash = "sha256:66fec5f7798479ac385cb170645a611cc132d82e641079af2682037d034c5f40"
+size = 71393
+mtime_ms = 1793410138470
+storage_uri = "gcs://replit-rams-assets-sisko/rams/assets/repl:8a53f482-19ae-49f0-ab16-31b527f92091/f51677a8-be09-4a05-89cb-71faccb9880d/243f7e19-11be-4fab-a42f-f3aca5b37dae"
+storage_version_token = "1793410181468277"
+content_type = "image/jpeg"
