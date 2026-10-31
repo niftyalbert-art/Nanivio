@@ -16,6 +16,18 @@ flags, or pure contract tests as live translation evidence. Diagnose failures
 using bounded structural metadata and fixed reason codes, not credentials or
 raw upstream payloads.
 
+Treat paid voice processing and recipient delivery as separate outcomes. Keep a
+completed translation when upload or sending fails; retry delivery rather than
+repeating speech processing. Never automatically resend unconfirmed messages.
+
+**Why:** Processing can consume provider credits and account allowance before
+media upload or message delivery succeeds. Repeating inference after a transport
+failure can charge for the same recording again.
+
+**How to apply:** Latency optimizations may overlap upload and processing, but
+must preserve successful paid output across upload failures. Keep delivery
+verification separate from direct speech-pipeline tests.
+
 Do not infer invalid credentials, exhausted quota, or a particular provider-side
 failure from a timeout alone. Public documentation being reachable does not
 establish that inference is available within the application's latency budget.

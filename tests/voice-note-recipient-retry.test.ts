@@ -35,6 +35,7 @@ const bundle=await build({
     builder.onResolve({filter:/^lucide-react$/},()=>({path:'icons',namespace:'fixture'}));
     builder.onResolve({filter:/NanivioContext$/},()=>({path:'context',namespace:'fixture'}));
     builder.onResolve({filter:/chatSendFeedback$/},()=>({path:'feedback',namespace:'fixture'}));
+    builder.onResolve({filter:/authenticatedFetch$/},()=>({path:'fetch',namespace:'fixture'}));
     builder.onLoad({filter:/.*/,namespace:'fixture'},({path})=>({loader:'js',contents:
       path==='react'?`
         export function useState(initial){const i=hooks.cursor++;if(!(i in hooks.values))hooks.values[i]=typeof initial==='function'?initial():initial;
@@ -44,18 +45,33 @@ const bundle=await build({
         export default {createElement:(type,props,...children)=>({type,props:props||{},children})};`
       :path==='icons'?'export const Mic=()=>null,Square=Mic,Trash2=Mic,Send=Mic,Radio=Mic,Sparkles=Mic,Volume2=Mic;'
       :path==='feedback'?'export const ChatSendError=globalThis.TestChatSendError;export const chatSendFeedback=e=>e.code==="unconfirmed"?"Delivery is not confirmed yet. Your draft is still here.":"Chat is temporarily unavailable. Your draft is still here.";'
+      :path==='fetch'?'export const authenticatedFetch=(...args)=>globalThis.fixtureFetch(...args);'
       :'export const useNanivio=()=>({myLanguage:"en",globalLangpretationEnabled:true});',
     }));
   }}],
 });
-function recorder(send:(payload:any)=>Promise<void>){
+function recorder(send:(payload:any)=>Promise<void>,options?:{
+  fresh?:boolean;upload?:(url:string)=>Promise<string>;process?:()=>Promise<Response>;
+}){
   const prepared={duration:2,transcript:'fixture',audioBlobUrl:'blob:original',isLangpretation:true,
     translatedAudioUrl:'blob:translated',translatedTranscript:'fixture translation',sourceLang:'en',targetLang:'ak'};
-  const hooks={cursor:0,values:{5:prepared} as Record<number,any>};
-  const context=vm.createContext({module:{exports:{}},hooks,TestChatSendError:ChatSendError,console,URL,
+  const hooks={cursor:0,values:(options?.fresh
+    ?{0:2,5:null,11:{current:[new Blob(['fixture recording'],{type:'audio/webm'})]}}
+    :{5:prepared}) as Record<number,any>};
+  let blobNumber=0;
+  const context=vm.createContext({module:{exports:{}},hooks,TestChatSendError:ChatSendError,console,
+    URL:{createObjectURL:()=>`blob:fixture-${++blobNumber}`,revokeObjectURL(){}},
+    Blob,atob,btoa,Response,fixtureFetch:options?.process,
+    AudioContext:class{async decodeAudioData(){return {duration:1};}async close(){}},
+    OfflineAudioContext:class{
+      destination={};createBufferSource(){return {buffer:null,connect(){},start(){}};}
+      async startRendering(){return {getChannelData:()=>new Float32Array(16000)};}
+    },
     fetch:()=>{throw new Error('Retry must not regenerate speech.');}});
   vm.runInContext(bundle.outputFiles[0].text,context);
-  function render(){hooks.cursor=0;return (context.module as any).exports.VoiceNoteRecorder({targetLang:'ak',onSend:send,onCancel(){}});}
+  function render(){hooks.cursor=0;return (context.module as any).exports.VoiceNoteRecorder({
+    targetLang:'ak',onSend:send,onCancel(){},onPrepareOriginal:options?.upload,
+  });}
   function find(node:any,predicate:(n:any)=>boolean):any{
     if(!node)return;if(Array.isArray(node)){for(const item of node){const hit=find(item,predicate);if(hit)return hit;}return;}
     if(predicate(node))return node;return find(node.children,predicate);
@@ -88,4 +104,37 @@ test('a pending upload/send cannot be started twice',async()=>{
   await f.sendButton().props.onClick();
   assert.equal(calls,1);
   complete();await first;
+});
+test('the actual recorder retains translated audio on early upload failure and retries without processing again',async()=>{
+  let speechCalls=0,uploadCalls=0;
+  const sent:any[]=[];
+  const f=recorder(async payload=>{sent.push(payload);},{
+    fresh:true,
+    upload:async()=>{uploadCalls++;throw new Error('fixture upload unavailable');},
+    process:async()=>{speechCalls++;return Response.json({
+      success:true,transcript:'Fixture original',translatedTranscript:'Fixture translation',audioBase64:btoa('fixture audio'),
+    });},
+  });
+  await f.sendButton().props.onClick();
+  assert.equal(sent.length,0,'A failed early upload must not automatically try sending.');
+  assert.equal(speechCalls,1);assert.equal(uploadCalls,1);
+  assert.match(JSON.stringify(f.render()),/translation are kept here/);
+  assert.equal(f.hooks.values[5].translatedTranscript,'Fixture translation');
+  await f.sendButton().props.onClick();
+  assert.equal(sent.length,1);assert.equal(speechCalls,1);assert.equal(uploadCalls,1);
+  assert.equal(sent[0].audioBlobUrl,'blob:fixture-1');
+  assert.equal(sent[0].translatedAudioUrl,'blob:fixture-2');
+});
+test('the actual recorder reuses the uploaded original instead of sending its device-local URL',async()=>{
+  let sent:any;
+  const f=recorder(async payload=>{sent=payload;},{
+    fresh:true,
+    upload:async()=> 'https://media.example/original.webm',
+    process:async()=>Response.json({
+      success:true,transcript:'Fixture original',translatedTranscript:'Fixture translation',audioBase64:btoa('fixture audio'),
+    }),
+  });
+  await f.sendButton().props.onClick();
+  assert.equal(sent.audioBlobUrl,'https://media.example/original.webm');
+  assert.equal(sent.translatedAudioUrl,'blob:fixture-2');
 });

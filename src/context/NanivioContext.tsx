@@ -196,6 +196,7 @@ interface NanivioContextType {
   chatNotificationToast: ChatNotificationToast | null;
   dismissChatNotificationToast: () => void;
   sendMessage: (text: string) => Promise<void>;
+  prepareVoiceNoteOriginal: (audioBlobUrl: string) => Promise<string>;
   sendVoiceNote: (
     duration: number,
     transcript: string,
@@ -2811,6 +2812,13 @@ export const NanivioProvider: React.FC<{ children: React.ReactNode }> = ({ child
     changeGroupModerator(convId, participantId, 'demote');
   }, [changeGroupModerator]);
 
+  const prepareVoiceNoteOriginal = async (audioBlobUrl: string): Promise<string> => {
+    const conversation = conversations.find(c => c.id === activeConversationId);
+    if (!conversation) throw new Error('Choose a conversation before uploading a recording.');
+    const channel = await privateConversationChannel(conversation, currentUser.id);
+    return durableChatMedia(channel.id, audioBlobUrl, 'voice-note.webm');
+  };
+
   const sendVoiceNote = async (
     duration: number,
     transcript: string,
@@ -2824,9 +2832,11 @@ export const NanivioProvider: React.FC<{ children: React.ReactNode }> = ({ child
     if (!activeConv) throw new Error('Choose a conversation before sending a voice note.');
     if (!audioBlobUrl) throw new Error('No microphone recording is available to send.');
     const channel = await privateConversationChannel(activeConv, currentUser.id);
-    const durableOriginal = await durableChatMedia(channel.id, audioBlobUrl, 'voice-note.webm');
-    const durableTranslated = translatedAudioUrl
-      ? await durableChatMedia(channel.id, translatedAudioUrl, 'translated-voice-note.wav') : undefined;
+    const [durableOriginal, durableTranslated] = await Promise.all([
+      durableChatMedia(channel.id, audioBlobUrl, 'voice-note.webm'),
+      translatedAudioUrl
+        ? durableChatMedia(channel.id, translatedAudioUrl, 'translated-voice-note.wav') : undefined,
+    ]);
 
     const otherParticipant = activeConv.participants.find(p => p.id !== currentUser.id);
     const resolvedTargetLang = targetLangParam || (otherParticipant ? otherParticipant.myLanguage : 'en');
@@ -3429,6 +3439,7 @@ export const NanivioProvider: React.FC<{ children: React.ReactNode }> = ({ child
         chatNotificationToast,
         dismissChatNotificationToast,
         sendMessage,
+        prepareVoiceNoteOriginal,
         sendVoiceNote,
         sendMediaMessage,
         deleteMessage,

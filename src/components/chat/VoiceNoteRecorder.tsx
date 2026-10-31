@@ -4,6 +4,7 @@ import { Mic, Square, Trash2, Send, Radio, Sparkles, Volume2 } from 'lucide-reac
 import { useNanivio } from '../../context/NanivioContext';
 import { PcmUtils } from '../../lib/translator-engine/audio/pcm';
 import { authenticatedFetch } from '../../lib/authenticatedFetch';
+import { prepareTranslatedVoiceNote } from '../../lib/voiceNotePreparation';
 
 export interface VoiceNoteSendPayload {
   duration: number;
@@ -19,6 +20,7 @@ export interface VoiceNoteSendPayload {
 interface VoiceNoteRecorderProps {
   targetLang: string;
   targetUserName?: string;
+  onPrepareOriginal?: (audioBlobUrl: string) => Promise<string>;
   onCancel: () => void;
   onSend: (payload: VoiceNoteSendPayload) => void | Promise<void>;
 }
@@ -26,6 +28,7 @@ interface VoiceNoteRecorderProps {
 export const VoiceNoteRecorder: React.FC<VoiceNoteRecorderProps> = ({
   targetLang,
   targetUserName = 'Recipient',
+  onPrepareOriginal,
   onCancel,
   onSend,
 }) => {
@@ -237,6 +240,7 @@ export const VoiceNoteRecorder: React.FC<VoiceNoteRecorderProps> = ({
     // 2. Langpretation Voice Note: Translate & Synthesize Speech
     try {
       setProcessingError('');
+      const prepared=await prepareTranslatedVoiceNote(originalAudioBlobUrl,onPrepareOriginal,async()=>{
       const context=new AudioContext();
       let recording:AudioBuffer;
       try{recording=await context.decodeAudioData(await recordedBlob.arrayBuffer());}finally{await context.close();}
@@ -250,18 +254,27 @@ export const VoiceNoteRecorder: React.FC<VoiceNoteRecorderProps> = ({
       const verifiedTranscript=recognized.transcript,translatedText=recognized.translatedTranscript;
       const audio=Uint8Array.from(atob(recognized.audioBase64),character=>character.charCodeAt(0));
       const translatedAudioUrl=URL.createObjectURL(new Blob([audio],{type:recognized.contentType||'audio/wav'}));
-
+      return {verifiedTranscript,translatedText,translatedAudioUrl};
+      });
+      const {verifiedTranscript,translatedText,translatedAudioUrl}=prepared.translation;
       recordingUrls.current.push(originalAudioBlobUrl,translatedAudioUrl);
-      await sendPreparedVoiceNote({
+      const payload:VoiceNoteSendPayload={
         duration: durationSec,
         transcript: verifiedTranscript,
-        audioBlobUrl: originalAudioBlobUrl,
+        audioBlobUrl: prepared.originalAudioUrl,
         isLangpretation: true,
         translatedTranscript: translatedText,
         translatedAudioUrl,
         sourceLang: myLanguage,
         targetLang,
-      });
+      };
+      if(prepared.uploadFailed){
+        setPreparedVoiceNote(payload);
+        setProcessingError('Your recording could not upload. The recording and translation are kept here; retry sending without translating again.');
+        setIsProcessing(false);
+      }else{
+        await sendPreparedVoiceNote(payload);
+      }
     } catch (err) {
       console.warn('Langpretation voice note processing warning:', err);
       setIsProcessing(false);
@@ -381,7 +394,8 @@ export const VoiceNoteRecorder: React.FC<VoiceNoteRecorderProps> = ({
           ) : (
             <Send className="w-3.5 h-3.5" />
           )}
-          <span>{isProcessing ? preparedVoiceNote?'Sending voice message…':'Preparing voice message…'
+          <span>{isProcessing ? preparedVoiceNote?'Sending voice message…'
+            :voiceMode==='langpretation'?'Translating and uploading…':'Preparing voice message…'
             :deliveryUnconfirmed?'Check conversation before retrying':preparedVoiceNote?'Retry sending recording'
             :voiceMode === 'langpretation' ? 'Send Langpretation Voice Note' : 'Send Normal Voice Note'}</span>
         </button>

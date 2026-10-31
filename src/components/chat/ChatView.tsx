@@ -89,6 +89,7 @@ export const ChatView: React.FC = () => {
     messages,
     sendMessage,
     sendVoiceNote,
+    prepareVoiceNoteOriginal,
     sendMediaMessage,
     deleteMessage,
     reactToMessage,
@@ -1444,6 +1445,7 @@ export const ChatView: React.FC = () => {
                 {isRecordingVoice ? (
                   <VoiceNoteRecorder
                     key={activeConv.id}
+                    onPrepareOriginal={prepareVoiceNoteOriginal}
                     targetLang={activeConv.participants.find(p=>p.id!==currentUser.id)?.myLanguage||'en'}
                     targetUserName={activeConv.participants.find(p=>p.id!==currentUser.id)?.name||'Recipient'}
                     onCancel={() => setIsRecordingVoice(false)}
