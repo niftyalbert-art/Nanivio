@@ -1443,6 +1443,9 @@ export const ChatView: React.FC = () => {
               <div className="chat-composer relative p-3 sm:p-4 border-t border-slate-800 bg-slate-900/60">
                 {isRecordingVoice ? (
                   <VoiceNoteRecorder
+                    key={activeConv.id}
+                    targetLang={activeConv.participants.find(p=>p.id!==currentUser.id)?.myLanguage||'en'}
+                    targetUserName={activeConv.participants.find(p=>p.id!==currentUser.id)?.name||'Recipient'}
                     onCancel={() => setIsRecordingVoice(false)}
                     onSend={handleVoiceSend}
                   />
@@ -1542,7 +1545,7 @@ export const ChatView: React.FC = () => {
                       });
                     }}
                   />
-                  {sendMessageError && <p role="alert" className="mt-1 px-2 text-xs font-medium text-[#9d352c]">{sendMessageError}</p>}
+                  {sendMessageError && <p role="alert" className="mt-1 min-w-0 whitespace-normal break-words px-2 text-xs font-medium text-[#9d352c]">{sendMessageError}</p>}
                   </>
                 )}
               </div>

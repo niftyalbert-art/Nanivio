@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { ChatSendError, chatSendFeedback } from '../../lib/chatSendFeedback';
 import { Mic, Square, Trash2, Send, Radio, Sparkles, Volume2 } from 'lucide-react';
 import { useNanivio } from '../../context/NanivioContext';
 import { PcmUtils } from '../../lib/translator-engine/audio/pcm';
@@ -16,14 +17,14 @@ export interface VoiceNoteSendPayload {
 }
 
 interface VoiceNoteRecorderProps {
-  targetLang?: string;
+  targetLang: string;
   targetUserName?: string;
   onCancel: () => void;
   onSend: (payload: VoiceNoteSendPayload) => void | Promise<void>;
 }
 
 export const VoiceNoteRecorder: React.FC<VoiceNoteRecorderProps> = ({
-  targetLang = 'ak',
+  targetLang,
   targetUserName = 'Recipient',
   onCancel,
   onSend,
@@ -34,6 +35,10 @@ export const VoiceNoteRecorder: React.FC<VoiceNoteRecorderProps> = ({
   const [transcript, setTranscript] = useState('');
   const [isProcessing, setIsProcessing] = useState(false);
   const [processingError,setProcessingError]=useState('');
+  const [preparedVoiceNote,setPreparedVoiceNote]=useState<VoiceNoteSendPayload|null>(null);
+  const [deliveryUnconfirmed,setDeliveryUnconfirmed]=useState(false);
+  const sendingRef=useRef(false);
+  const recordingUrls=useRef<string[]>([]);
   const [voiceMode, setVoiceMode] = useState<'normal' | 'langpretation'>(
     globalLangpretationEnabled && myLanguage!==targetLang ? 'langpretation' : 'normal'
   );
@@ -141,10 +146,36 @@ export const VoiceNoteRecorder: React.FC<VoiceNoteRecorderProps> = ({
         mediaStreamRef.current.getTracks().forEach((t) => t.stop());
       }
       audioContextRef.current?.close().catch(() => {});
+      recordingUrls.current.forEach(url=>URL.revokeObjectURL(url));
     };
   }, [myLanguage]);
 
+  const sendPreparedVoiceNote=async (payload:VoiceNoteSendPayload)=>{
+    if(sendingRef.current)return;
+    sendingRef.current=true;
+    setPreparedVoiceNote(payload);
+    setIsProcessing(true);
+    setProcessingError('');
+    try{
+      await onSend(payload);
+      setPreparedVoiceNote(null);
+    }catch(error){
+      const uncertain=error instanceof ChatSendError&&error.code==='unconfirmed';
+      setDeliveryUnconfirmed(uncertain);
+      setProcessingError(error instanceof ChatSendError
+        ?chatSendFeedback(error).replace('Your draft is still here.','Your recording is kept here.')
+        :'Your voice message could not be uploaded or sent. Your recording is kept here; retry sending without recording again.');
+    }finally{
+      sendingRef.current=false;
+      setIsProcessing(false);
+    }
+  };
+
   const handleFinish = async () => {
+    if(preparedVoiceNote){
+      if(!deliveryUnconfirmed)await sendPreparedVoiceNote(preparedVoiceNote);
+      return;
+    }
     setIsProcessing(true);
 
     if (recognitionRef.current) {
@@ -191,15 +222,15 @@ export const VoiceNoteRecorder: React.FC<VoiceNoteRecorderProps> = ({
 
     if (voiceMode === 'normal') {
       // 1. Normal Stream Voice Note
-      try { await onSend({
+      recordingUrls.current.push(originalAudioBlobUrl);
+      await sendPreparedVoiceNote({
         duration: durationSec,
         transcript: rawTranscript,
         audioBlobUrl: originalAudioBlobUrl,
         isLangpretation: false,
         sourceLang: myLanguage,
         targetLang,
-      }); } catch (error) { setProcessingError(error instanceof Error ? error.message : 'Voice note was not sent.'); }
-      finally { setIsProcessing(false); }
+      });
       return;
     }
 
@@ -220,8 +251,8 @@ export const VoiceNoteRecorder: React.FC<VoiceNoteRecorderProps> = ({
       const audio=Uint8Array.from(atob(recognized.audioBase64),character=>character.charCodeAt(0));
       const translatedAudioUrl=URL.createObjectURL(new Blob([audio],{type:recognized.contentType||'audio/wav'}));
 
-      setIsProcessing(false);
-      await onSend({
+      recordingUrls.current.push(originalAudioBlobUrl,translatedAudioUrl);
+      await sendPreparedVoiceNote({
         duration: durationSec,
         transcript: verifiedTranscript,
         audioBlobUrl: originalAudioBlobUrl,
@@ -251,10 +282,11 @@ export const VoiceNoteRecorder: React.FC<VoiceNoteRecorderProps> = ({
         </div>
 
         {/* Distinct Mode Selector: Normal vs Langpretation */}
-        {processingError&&<p role="alert" className="text-sm text-red-300">{processingError}</p>}
+        {processingError&&<p role="alert" className="w-full min-w-0 whitespace-normal break-words text-sm text-red-300">{processingError}</p>}
         <div className="flex items-center gap-1.5 bg-slate-950 p-1 rounded-xl border border-slate-800">
           <button
             type="button"
+            disabled={isProcessing||Boolean(preparedVoiceNote)}
             onClick={() => setVoiceMode('normal')}
             className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition-all cursor-pointer ${
               voiceMode === 'normal'
@@ -267,6 +299,7 @@ export const VoiceNoteRecorder: React.FC<VoiceNoteRecorderProps> = ({
 
           <button
             type="button"
+            disabled={isProcessing||Boolean(preparedVoiceNote)}
             onClick={() => setVoiceMode('langpretation')}
             className={`px-2.5 py-1 rounded-lg text-[11px] font-bold flex items-center gap-1.5 transition-all cursor-pointer ${
               voiceMode === 'langpretation'
@@ -336,7 +369,7 @@ export const VoiceNoteRecorder: React.FC<VoiceNoteRecorderProps> = ({
         <button
           type="button"
           onClick={handleFinish}
-          disabled={isProcessing}
+          disabled={isProcessing||deliveryUnconfirmed}
           className={`flex items-center gap-1.5 px-4 py-2 rounded-xl font-bold text-xs shadow-lg transition-all hover:scale-105 cursor-pointer ${
             voiceMode === 'langpretation'
               ? 'bg-emerald-500 hover:bg-emerald-400 text-slate-950 shadow-emerald-500/30'
@@ -348,7 +381,9 @@ export const VoiceNoteRecorder: React.FC<VoiceNoteRecorderProps> = ({
           ) : (
             <Send className="w-3.5 h-3.5" />
           )}
-          <span>{isProcessing ? 'Translating & Synthesizing...' : voiceMode === 'langpretation' ? 'Send Langpretation Voice Note' : 'Send Normal Voice Note'}</span>
+          <span>{isProcessing ? preparedVoiceNote?'Sending voice message…':'Preparing voice message…'
+            :deliveryUnconfirmed?'Check conversation before retrying':preparedVoiceNote?'Retry sending recording'
+            :voiceMode === 'langpretation' ? 'Send Langpretation Voice Note' : 'Send Normal Voice Note'}</span>
         </button>
       </div>
     </div>

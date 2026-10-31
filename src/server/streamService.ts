@@ -44,6 +44,15 @@ async function streamRequest(path: string, method = 'POST', body?: unknown, acti
     signal: AbortSignal.timeout(15000),
   });
   if (!response.ok) {
+    // Do not log provider bodies, credentials, identifiers, or chat contents.
+    const detail = await response.json().catch(() => null);
+    console.warn('[Nanivio chat upstream]', {
+      operation: /\/message$/.test(path) ? 'send'
+        : path.startsWith('/members') ? 'membership'
+        : path === '/channels' ? 'query' : 'request',
+      status: response.status,
+      code: typeof detail?.code === 'number' ? detail.code : undefined,
+    });
     // Never return provider payloads containing private state or request details.
     throw new StreamAccessError(response.status === 404 ? 'Channel not found.' : 'GetStream request failed.', response.status === 404 ? 404 : 502);
   }
