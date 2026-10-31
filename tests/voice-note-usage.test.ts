@@ -81,7 +81,7 @@ test('message delivery cannot translate, synthesize or debit a processed voice n
   const route = server.slice(server.indexOf('app.post("/api/langpretation/voice-note/process-audio"'), server.indexOf('// Malvi production voice input:'));
   // Integrated international and staged specialist paths are mutually exclusive.
   assert.equal((route.match(/await recordTranslatedVoiceNoteUsage\(/g) || []).length, 2);
-  const international=route.slice(route.indexOf('if(supportsPalabraPair'),route.indexOf('const recognized='));
+  const international=route.slice(route.indexOf('if(supportsPalabraPair'),route.indexOf('const result=await processStagedVoiceNote'));
   assert.equal((international.match(/await recordTranslatedVoiceNoteUsage\(/g)||[]).length,1);
   assert.match(international,/return res\.json/);
   assert.match(route, /recordLangpretationUsagePersistent/);

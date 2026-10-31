@@ -11,6 +11,19 @@ international recognition/translation requests could not be completed reliably.
 After a bounded Palabra speech test worked in both directions, the owner approved
 connecting Palabra to Langpretation. This is not approval to change Malvi.
 
+For Twi ↔ English voice notes, select Khaya explicitly for both speech ends and
+text translation rather than using the application's general English speech
+provider.
+
+**Why:** This pair otherwise depended on the unreliable Gemini English speech
+stage even though Khaya documents both English and Twi recognition/synthesis.
+The narrow selection avoids changing Malvi or unrelated English speech.
+
+**How to apply:** Scope the exception to `ak` ↔ `en`; do not alias distinct
+Akuapem Twi. Distinguish completed audio generation from accurate translation:
+a generated round-trip sample completed but changed meaning and misheard the
+brand. Do not describe this as native-speaker or real-account quality approval.
+
 **How to apply:** Keep speech-to-speech routing separate from standalone text
 translation and specialist-language pivots. Do not claim Palabra replaces a text
 translation provider just because its integrated audio service works. Configured

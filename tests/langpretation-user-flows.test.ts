@@ -29,9 +29,10 @@ test('international voice notes authorize allowance before their integrated audi
   const server=readFileSync('server.ts','utf8');
   const route=server.slice(server.indexOf('app.post("/api/langpretation/voice-note/process-audio"'),server.indexOf('// Malvi production voice input'));
   assert.match(route,/requireAuthenticatedUser/);
-  const branch=route.slice(route.indexOf('if(supportsPalabraPair'),route.indexOf('const recognized='));
-  assert.ok(branch.indexOf('langpretationMinutesRemaining')<branch.indexOf('await translatePalabraAudio'));
-  assert.match(branch,/parsePalabraWav\(audio,60\)/);
+  const providerStart=route.indexOf('if(supportsPalabraPair');
+  const branch=route.slice(providerStart,route.indexOf('const result=await processStagedVoiceNote'));
+  assert.ok(route.indexOf('langpretationMinutesRemaining')>=0&&route.indexOf('langpretationMinutesRemaining')<providerStart);
+  assert.match(route,/parsePalabraWav\(audio,60\)/);
   assert.match(branch,/reservePalabraCapacity/);
   assert.match(branch,/recordTranslatedVoiceNoteUsage\(audio,/);
   assert.doesNotMatch(branch,/transcribeProviderAudio|synthesizeProviderAudio/);

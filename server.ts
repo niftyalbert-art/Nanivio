@@ -1264,7 +1264,6 @@ app.post("/api/langpretation/voice-note/process-audio", requireAuthenticatedUser
     if(!normalizedBillingEnabled())return res.status(503).json({success:false,error:'Persistent billing is required for translated voice notes.'});
     const sourceLang=String(req.query.sourceLang || req.headers["x-source-language"] || "en");
     const targetLang=String(req.query.targetLang || req.headers["x-target-language"] || "ak");
-    const contentType=String(req.headers["content-type"] || "audio/wav");
     const chunks:Buffer[]=[];let size=0;
     for await (const chunk of req) {
       size+=chunk.length;if(size>4*1024*1024)throw new SpeechProviderError(413,'Voice recording is too large.');

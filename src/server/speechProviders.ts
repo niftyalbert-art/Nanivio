@@ -23,7 +23,7 @@ async function boundedBody(response:Response,max=8*1024*1024,signal?:AbortSignal
   const reader=response.body.getReader();
   let abort=()=>{};
   const aborted=new Promise<never>((_,reject)=>{
-    abort=()=>{void reader.cancel().catch(()=>{});reject(new SpeechProviderError(504,'Speech response took too long.'));};
+    abort=()=>{reject(new SpeechProviderError(504,'Speech response took too long.'));void reader.cancel().catch(()=>{});};
   });
   signal?.addEventListener('abort',abort,{once:true});
   try{

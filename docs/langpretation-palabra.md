@@ -52,7 +52,12 @@ validated as PCM16 mono WAV, and checked against the signed-in account's active
 allowance before opening a provider session. The shared provider capacity limit,
 request cancellation, bounded output, and idempotent recorded-input usage debit
 also apply. Voice messages currently use a standard voice, not the call's
-per-speaker cloning permission. Specialist voice-message routes remain unchanged.
+per-speaker cloning permission. Twi–English voice notes explicitly use Khaya for
+both English/Twi speech ends and text translation; they do not depend on Gemini's
+English speech stage. Other specialist routes retain their existing selection.
+Staged voice-note errors identify recognition, translation or audio generation
+without exposing provider names to the customer. Cancellation and bounded speech
+response-body reads prevent further stages continuing after a request is stopped.
 
 Language selection is a validated user preference, not an identity claim.
 Authenticated presence broadcasts the selected language; contacts and call
