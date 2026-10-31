@@ -331,3 +331,31 @@ mtime_ms = 1793408904284
 storage_uri = "gcs://replit-rams-assets-sisko/rams/assets/repl:8a53f482-19ae-49f0-ab16-31b527f92091/6a6cdc56-5db0-45eb-b055-f3d42f041bea/f1019b03-f785-4e92-a0f9-917a28c9f872"
 storage_version_token = "1793409167686709"
 content_type = "image/jpeg"
+
+[[outputs]]
+id = "o07kGTLIGJpB9Kid3m5E9"
+uri = "file://generated-artifacts/nanivio-design/landing-desktop.jpg"
+type = "image"
+title = "Landing page — full-size desktop review"
+description = "Separate rendered landing-page screenshot for a clearer review."
+logical_id = "bddaba67-7077-43b5-ae5e-fd3606f32ab6"
+content_hash = "sha256:f5a169acb750b8ad4fd3db6aa5b107ed7f494367bdaa6c9d47fca102cc932c9e"
+size = 65343
+mtime_ms = 1793408764419
+storage_uri = "gcs://replit-rams-assets-sisko/rams/assets/repl:8a53f482-19ae-49f0-ab16-31b527f92091/bddaba67-7077-43b5-ae5e-fd3606f32ab6/45b92f5c-de6f-48e0-a68e-36b8f333391d"
+storage_version_token = "1793409340834892"
+content_type = "image/jpeg"
+
+[[outputs]]
+id = "9IFQHIOn1GJW8do4CpBJz"
+uri = "file://generated-artifacts/nanivio-design/chat-desktop.jpg"
+type = "image"
+title = "Chat page — full-size desktop review"
+description = "Separate rendered chat screenshot with clearly labelled sample messages, not private conversations."
+logical_id = "c131eef6-6664-4800-b18e-e9941ca6b5ce"
+content_hash = "sha256:83a4c28a66d85ebc5292ca82ec2ee0c9fbbd785671a3544317b45bbfd3328322"
+size = 73102
+mtime_ms = 1793408770319
+storage_uri = "gcs://replit-rams-assets-sisko/rams/assets/repl:8a53f482-19ae-49f0-ab16-31b527f92091/c131eef6-6664-4800-b18e-e9941ca6b5ce/5cd29464-ba64-493e-9c4f-817a0300c361"
+storage_version_token = "1793409342275616"
+content_type = "image/jpeg"
