@@ -13,6 +13,7 @@ import { malviAvatarSoundBlocked, playMalviAvatar } from '../../lib/malviAvatarP
 import { MalviCaptionPlayer, estimatedMalviCaptionTrack, type MalviCaptionTrack } from '../../lib/malviSpeechTiming';
 import { MalviAvatarPlayout } from '../../lib/malviAvatarPlayout';
 import { MalviAvatarVideoGate } from '../../lib/malviAvatarVideoGate';
+import { MalviAvatarStartup } from '../../lib/malviAvatarStartup';
 import MalviWakeControls from './MalviWakeControls';
 import { NanivioMicEngine } from '../../lib/nanivioMic/NanivioMicEngine';
 import { BrowserMicCapture, browserMicStreamId } from '../../lib/nanivioMic/BrowserMicCapture';
@@ -96,6 +97,7 @@ export const MalviLiveAssistantProvider: React.FC<{ children: React.ReactNode }>
   const pendingAudio = useRef<{ audio: string; track: MalviCaptionTrack } | null>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
   const videoGate = useRef<MalviAvatarVideoGate | null>(null);
+  const avatarStartup = useRef<MalviAvatarStartup | null>(null);
   const avatarPlayout = useRef<MalviAvatarPlayout | null>(null);
   const removeVideoListeners = useRef<(() => void) | null>(null);
   const mediaReady = useRef(false);
@@ -132,6 +134,7 @@ export const MalviLiveAssistantProvider: React.FC<{ children: React.ReactNode }>
     avatarPlayout.current?.close(); avatarPlayout.current = null;
     setProcessing(false); setUserTranscript(''); userText.current = '';
     videoGate.current?.cancel(); videoGate.current = null;
+    avatarStartup.current?.cancel(); avatarStartup.current = null;
     playback.current?.close(); playback.current = null; pendingAudio.current = null;
     avatarAcceptingAudio.current = false; startupAudio.current = [];
     if (id) realtimeClient.send('malvi:brain_stop', { sessionId: id });
@@ -195,12 +198,21 @@ export const MalviLiveAssistantProvider: React.FC<{ children: React.ReactNode }>
         }
       }
     };
+    const videoFailed = () => {
+      if (videoRef.current === video && sdk.current && mediaReady.current)
+        fail('Malvi’s live video stopped playing. Reconnect to start a new conversation.');
+    };
     const events = ['volumechange', 'playing', 'pause'] as const;
     events.forEach(event => video.addEventListener(event, checkSound));
-    removeVideoListeners.current = () => events.forEach(event => video.removeEventListener(event, checkSound));
+    video.addEventListener('error', videoFailed);
+    removeVideoListeners.current = () => {
+      events.forEach(event => video.removeEventListener(event, checkSound));
+      video.removeEventListener('error', videoFailed);
+    };
     if (!sdk.current || !mediaReady.current) return;
     try {
       sdk.current.attach(video);
+      avatarStartup.current?.observe(video);
       void playMalviAvatar(video).then(checkSound).catch(() => {
         if (videoRef.current === video && sdk.current && mediaReady.current) setAudioBlocked(true);
       });
@@ -258,7 +270,8 @@ export const MalviLiveAssistantProvider: React.FC<{ children: React.ReactNode }>
         else return;
       } catch {
         captions.current?.cancel(); avatarPlayout.current?.cancel(); videoGate.current?.cancel(); setProcessing(false);
-        setMicrophoneError('Malvi’s voice audio could not be played.');
+        if (!voiceMode.current) fail('Malvi’s live voice could not be delivered to the avatar. Reconnect to retry.');
+        else setMicrophoneError('Malvi’s voice audio could not be played.');
       }
     };
     receiveBrainAudio.current = handleAudio;
@@ -398,6 +411,13 @@ export const MalviLiveAssistantProvider: React.FC<{ children: React.ReactNode }>
     setReferenceStatus('idle'); setReferences([]); setUnavailableSources([]); setSearchSuggestions(''); setMemoryFeedback(''); setLiveAssets(null);
     setSecondsRemaining(60); setAudioBlocked(false); setPhase('connecting');
     try {
+      avatarStartup.current = new MalviAvatarStartup(() => {
+        if (run !== generation.current || !mounted.current || !sdk.current) return;
+        avatarAcceptingAudio.current = true;
+        setPhase('connected'); setCaption('');
+        const queued = startupAudio.current.splice(0);
+        for (const audio of queued) receiveBrainAudio.current?.(audio);
+      }, message => { if (run === generation.current && mounted.current) fail(message); });
       videoGate.current = new MalviAvatarVideoGate(() => videoRef.current, fail);
       const observer = new MalviAvatarPlayout(
         (track, clock) => captions.current?.start(clock, track),
@@ -439,22 +459,10 @@ export const MalviLiveAssistantProvider: React.FC<{ children: React.ReactNode }>
       live.on(AgentEventsEnum.AVATAR_SPEAK_ENDED, () => {
         if (run === generation.current) avatarPlayout.current?.providerEnd();
       });
-      let streamReady = false, sessionStarted = false;
-      const releaseReadyAudio = () => {
-        if (streamReady && sessionStarted && run === generation.current) {
-          avatarAcceptingAudio.current = true;
-          const queued = startupAudio.current.splice(0);
-          for (const audio of queued) receiveBrainAudio.current?.(audio);
-        }
-      };
       live.on(SessionEvent.SESSION_STREAM_READY, () => {
         if (run !== generation.current) return;
-        streamReady = true;
-        setPhase('connected');
-        setCaption('');
         mediaReady.current = true;
         attachVideo(videoRef.current);
-        releaseReadyAudio();
       });
       live.on(SessionEvent.SESSION_DISCONNECTED, () => {
         if (run === generation.current) {
@@ -476,8 +484,7 @@ export const MalviLiveAssistantProvider: React.FC<{ children: React.ReactNode }>
       // User audio belongs to our backend, not the provider-managed voice chat.
       await live.voiceChat.stop();
       if (run !== generation.current) { await live.stop(); return; }
-      sessionStarted = true;
-      releaseReadyAudio();
+      avatarStartup.current?.started();
       busy.current = false;
     } catch (err) {
       if (run === generation.current) fail(err instanceof Error ? err.message : 'Unable to connect the live avatar.');
