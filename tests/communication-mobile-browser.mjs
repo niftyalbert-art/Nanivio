@@ -71,7 +71,7 @@ const built = await build({
 });
 
 const base = process.env.NANIVIO_TEST_URL || 'http://127.0.0.1:5000';
-const stylesheets = ['/src/index.css', '/src/components/chat/ChatView.css', '/src/styles/app-theme.css'];
+const stylesheets = ['/src/index.css', '/src/components/chat/ChatView.css', '/src/styles/app-theme.css', '/src/styles/reference-depth.css'];
 const css = (await Promise.all(stylesheets.map(async path => {
   const response = await fetch(`${base}${path}?direct`);
   assert.equal(response.ok, true, `Running Vite stylesheet unavailable: ${path}`);
@@ -189,11 +189,17 @@ try {
         incoming:background('.chat-incoming-bubble'),outgoing:background('.chat-outgoing-bubble'),
         action:background('#btn-chat-send-msg')};
     })()`);
-    assert.equal(palette.thread, 'rgb(28, 29, 31)', 'Chat thread must use the approved graphite');
-    assert.match(palette.composer, /rgb\(36, 37, 39\).*rgb\(32, 33, 35\)/, 'Composer must use smoky graphite');
-    assert.match(palette.incoming, /rgb\(41, 42, 44\).*rgb\(36, 37, 39\)/, 'Incoming bubble must use shared charcoal');
-    assert.match(palette.outgoing, /rgb\(54, 55, 57\).*rgb\(46, 47, 49\)/, 'Outgoing bubble must use neutral raised graphite');
-    assert.equal(palette.action, 'rgb(233, 225, 209)', 'Chat action must use the app-wide cream accent');
+    assert.equal(palette.thread, 'rgb(30, 31, 33)', 'Chat thread must use the approved graphite');
+    assert.match(palette.composer, /rgba\(35, 36, 38, 0.93\).*rgba\(27, 28, 30, 0.98\)/, 'Composer must use smoky graphite');
+    assert.match(palette.incoming, /rgb\(48, 49, 51\).*rgb\(39, 40, 42\)/, 'Incoming bubble must use shared charcoal');
+    assert.match(palette.outgoing, /rgb\(59, 60, 62\).*rgb\(48, 49, 51\)/, 'Outgoing bubble must use neutral raised graphite');
+    assert.match(palette.action, /rgb\(255, 245, 223\).*rgb\(231, 214, 178\)/, 'Chat action must use the raised cream accent');
+    assert.ok(await evaluate(`(()=>{
+      const card=document.querySelector('.chat-composer-card');
+      const input=card.querySelector('textarea').getBoundingClientRect();
+      const actions=card.querySelector('.chat-composer-actions').getBoundingClientRect();
+      return input.bottom<=actions.top+1 && getComputedStyle(card).boxShadow!=='none';
+    })()`), 'Approved composer must have a lit card and controls below the typing area');
     if (process.env.NANIVIO_SCREENSHOT_DIR && width === 390 && height === 844) {
       await mkdir(process.env.NANIVIO_SCREENSHOT_DIR, { recursive: true });
       const screenshot = await call('Page.captureScreenshot', { format: 'png' });

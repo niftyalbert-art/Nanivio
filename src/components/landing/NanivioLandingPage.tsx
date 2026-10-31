@@ -39,24 +39,24 @@ export function NanivioLandingPage({ onSignIn, onGetStarted }: NanivioLandingPag
           {menuOpen ? <X /> : <Menu />}
         </button>
         <nav className={menuOpen ? "nl-nav is-open" : "nl-nav"} aria-label="Main navigation">
-          <a href="#experience" onClick={closeMenu}>Messaging & calls</a>
+          <a href="#experience" onClick={closeMenu}>The experience</a>
           <a href="#langpretation" onClick={closeMenu}>Langpretation</a>
-          <a href="#malvi" onClick={closeMenu}>Malvi assistant</a>
-          <a href="#faq" onClick={closeMenu}>How it works</a>
+          <a href="#malvi" onClick={closeMenu}>Meet Malvi</a>
+          <a href="#about" onClick={closeMenu}>Our story</a>
           <button className="nl-signin" onClick={() => { closeMenu(); onSignIn(); }}>Sign in</button>
-          <button className="nl-nav-cta" onClick={() => { closeMenu(); onGetStarted(); }}>Create account <ArrowUpRight size={15} /></button>
+          <button className="nl-nav-cta" onClick={() => { closeMenu(); onGetStarted(); }}>Join Nanivio <ArrowUpRight size={15} /></button>
         </nav>
       </header>
 
       <section className="nl-hero" id="top">
         <div className="nl-hero-grid" aria-hidden="true" />
         <div className="nl-hero-copy">
-          <p className="nl-kicker"><span className="nl-kicker-line" /> A COMMUNICATION APP FOR EVERYWHERE</p>
-          <h1>Stay close,<br />wherever life<br /><em>takes you.</em></h1>
-          <p className="nl-hero-lede">Message, call and understand one another with Nanivio. Made for the people you care about, wherever they are.</p>
+          <p className="nl-kicker"><span className="nl-kicker-line" /> FROM GHANA, FOR EVERYWHERE</p>
+          <h1>Your world.<br />One conversation<br /><em>away.</em></h1>
+          <p className="nl-hero-lede">The people who matter don’t always speak the same language. Nanivio brings your conversations closer—across borders, across languages, across the miles.</p>
           <div className="nl-hero-actions">
-            <button className="nl-button nl-button-gold" onClick={onGetStarted}>Create your account <ArrowRight size={17} /></button>
-            <a className="nl-text-link" href="#experience">See how it works <ArrowDown size={15} /></a>
+            <button className="nl-button nl-button-gold" onClick={onGetStarted}>Come on in <ArrowRight size={17} /></button>
+            <a className="nl-text-link" href="#experience">Discover Nanivio <ArrowDown size={15} /></a>
           </div>
           <div className="nl-origin-note"><span className="nl-origin-mark">GH</span><span>Rooted in Ghana.<br /><strong>Made for the world.</strong></span></div>
         </div>

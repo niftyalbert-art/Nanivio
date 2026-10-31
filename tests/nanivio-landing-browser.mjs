@@ -25,13 +25,13 @@ try {
   await page.evaluate("document.querySelectorAll('.nl-faq-item button')[1].click()");
   assert.equal(await page.evaluate("document.querySelectorAll('.nl-faq-item button')[1].getAttribute('aria-expanded')"), 'true');
   await page.evaluate("document.querySelector('.nl-hero-actions button').click()");
-  await page.wait("Boolean(document.querySelector('.nanivio-auth'))");
-  assert.ok(await page.evaluate("document.body.innerText.includes('Create Personal') || document.body.innerText.includes('Full Name') || document.body.innerText.includes('Full name')"), 'get started opens existing signup');
+  await page.wait("Boolean(document.querySelector('.nanivio-auth input[type=\"email\"]')) && document.querySelectorAll('.nanivio-auth input[type=\"password\"]').length === 2");
+  assert.equal(await page.evaluate("document.querySelectorAll('.nanivio-auth input[type=\"password\"]').length"), 2, 'get started opens signup with password confirmation');
   await page.evaluate("Array.from(document.querySelectorAll('button')).find(b=>b.textContent.includes('Back to Nanivio')).click()");
   await page.wait("Boolean(document.querySelector('.nanivio-landing'))");
   await page.evaluate("document.querySelector('.nl-signin').click()");
-  await page.wait("Boolean(document.querySelector('input[type=\"password\"]'))");
-  assert.ok(await page.evaluate("document.body.innerText.includes('Sign In to Nanivio')"), 'sign in opens existing login');
+  await page.wait("document.querySelectorAll('.nanivio-auth input[type=\"password\"]').length === 1 && !document.querySelector('.nanivio-auth input[type=\"email\"]')");
+  assert.equal(await page.evaluate("document.querySelectorAll('.nanivio-auth input[type=\"password\"]').length"), 1, 'sign in opens the existing login rather than signup');
   await page.command('Page.navigate', { url: origin + '/admin' });
   await page.wait("Boolean(document.querySelector('.nanivio-auth'))");
   assert.equal(await page.evaluate("Boolean(document.querySelector('.nanivio-landing'))"), false, 'admin gateway remains separate');

@@ -1453,9 +1453,8 @@ export const ChatView: React.FC = () => {
                   />
                 ) : (
                   <>
-                  <form onSubmit={handleSend} className="flex w-full items-end gap-1 p-0.5 sm:gap-2">
-                    {/* WhatsApp-Style Unified Rounded Input Bubble */}
-                    <div className="relative flex min-w-0 w-full flex-1 items-end bg-slate-950/90 border border-slate-700/80 focus-within:border-emerald-500 rounded-[1.45rem] px-2 py-1 transition-colors">
+                  <form onSubmit={handleSend} className="chat-composer-form flex w-full flex-col gap-1.5">
+                    <div className="chat-composer-card relative flex min-w-0 w-full flex-col bg-slate-950/90 border border-slate-700/80 focus-within:border-emerald-500 rounded-[1.45rem] px-2 py-1 transition-colors">
                       {/* Roomy WhatsApp-Sized Input / Auto-growing Textarea */}
                       <textarea
                         ref={messageInputRef}
@@ -1476,9 +1475,10 @@ export const ChatView: React.FC = () => {
                             handleSend();
                           }
                         }}
-                        className="flex-1 min-w-0 w-full bg-transparent border-0 text-base text-white placeholder-slate-400 focus:outline-none px-1.5 py-2 resize-none max-h-32 min-h-[44px] leading-[1.45] whitespace-pre-wrap break-words sm:px-2.5"
+                        className="chat-composer-textarea flex-1 min-w-0 w-full bg-transparent border-0 text-base text-white placeholder-slate-400 focus:outline-none px-1.5 py-2 resize-none max-h-32 min-h-[44px] leading-[1.45] whitespace-pre-wrap break-words sm:px-2.5"
                       />
 
+                      <div className="chat-composer-actions flex w-full items-center gap-1.5">
                       {/* One attachment menu keeps media and voice actions together. */}
                       <button
                         type="button"
@@ -1497,6 +1497,7 @@ export const ChatView: React.FC = () => {
                           aria-expanded={isAttachmentMenuOpen}
                           onClick={() => setIsAttachmentMenuOpen((open) => !open)}
                           className="inline-flex h-10 w-10 items-center justify-center rounded-xl p-0 text-xs font-semibold text-slate-300 hover:bg-slate-800 hover:text-amber-400 transition-colors sm:w-auto sm:px-2.5"
+                          aria-label="Attach media or record a voice note"
                           title="Attach media or record a voice note"
                         >
                           <Paperclip className="w-4 h-4" />
@@ -1516,8 +1517,6 @@ export const ChatView: React.FC = () => {
                           </div>
                         )}
                       </div>
-                    </div>
-
                     <button
                       type={inputMsg.trim() ? 'submit' : 'button'}
                       id="btn-chat-send-msg"
@@ -1525,10 +1524,12 @@ export const ChatView: React.FC = () => {
                       title={inputMsg.trim() ? 'Send message' : 'Record voice note'}
                       onClick={!inputMsg.trim() ? () => setIsRecordingVoice(true) : undefined}
                       disabled={isSendingMessage}
-                      className="chat-send-button h-11 w-11 min-w-[44px] rounded-full font-bold text-sm transition-colors shrink-0 inline-flex items-center justify-center disabled:opacity-75 sm:w-12 sm:h-12"
+                      className="chat-send-button ml-auto h-11 w-11 min-w-[44px] rounded-full font-bold text-sm transition-colors shrink-0 inline-flex items-center justify-center disabled:opacity-75 sm:w-12 sm:h-12"
                     >
                       {isSendingMessage ? <span className="animate-pulse text-xs">…</span> : inputMsg.trim() ? <Send className="w-4 h-4" /> : <Mic className="w-5 h-5" />}
                     </button>
+                      </div>
+                    </div>
                   </form>
                   <EmojiPickerPopover
                     isOpen={isEmojiPickerOpen}

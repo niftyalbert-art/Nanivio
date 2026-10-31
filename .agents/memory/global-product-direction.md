@@ -21,6 +21,8 @@ Match the reference colours, not an all-over brown/yellow interpretation; warmth
 comes from a localized soft beige glow and pale cream controls.
 Match the reference's arrangement and visibly raised 3D buttons, not only its
 colours. The chat composer must have lighting around its rounded card border.
+The approved arrangement puts typing above the composer controls and uses raised
+cream actions with a floating pill navigation bar, kept clear of the typing area.
 
 **Why:** The user explicitly asked both pages to copy that reference's style and
 to see completed image reviews, then reiterated “use the same colour just as
@@ -29,6 +31,7 @@ not only Chat, requested “Langpretation” instead of “Translate,” and ask
 a premium fintech-style Home rather than a web-design-agency look.
 They corrected the colour-only interpretation again and specifically requested
 the reference's 3D buttons, arrangement, and illuminated chat composer.
+They approved applying the resulting landing and chat design to the app.
 
 **How to apply:** Preserve this app-wide direction during future
 refreshes rather than reverting individual pages to the older angular gold treatment.

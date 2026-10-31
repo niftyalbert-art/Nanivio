@@ -457,3 +457,17 @@ mtime_ms = 1793458175211
 storage_uri = "gcs://replit-rams-assets-sisko/rams/assets/repl:8a53f482-19ae-49f0-ab16-31b527f92091/8af7b083-4340-4112-a06f-7502d02e84cf/591b0483-7ccc-4d5b-b18d-5dccbba399e0"
 storage_version_token = "1793458563831341"
 content_type = "image/jpeg"
+
+[[outputs]]
+id = "kq5Z8f5lV5VCMKNVxuw1B"
+uri = "file://generated-artifacts/nanivio-reference-integration/landing-desktop.jpg"
+type = "image"
+title = "Applied landing-page design"
+description = "The updated page running in this workspace, with raised cream controls and the approved graphite lighting."
+logical_id = "be0fafb8-a483-4f04-8b40-65dc76bd524b"
+content_hash = "sha256:f6f457e8eecc1ffa82309ad4fcf3a9ec0622162241ddf63a2aabd11468badc46"
+size = 81326
+mtime_ms = 1793459510039
+storage_uri = "gcs://replit-rams-assets-sisko/rams/assets/repl:8a53f482-19ae-49f0-ab16-31b527f92091/be0fafb8-a483-4f04-8b40-65dc76bd524b/f80a3ebf-a473-4f03-92fd-61d7f0daaa6a"
+storage_version_token = "1793459660394383"
+content_type = "image/jpeg"
