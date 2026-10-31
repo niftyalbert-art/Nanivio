@@ -1,3 +1,4 @@
+import { PaystackPaymentRecovery } from '../billing/PaystackPaymentRecovery';
 import React, { useState } from 'react';
 import {
   X,
@@ -484,6 +485,7 @@ export const MalviSubscriptionHub: React.FC<MalviSubscriptionHubProps> = ({
             })}
           </div>}
 
+          <PaystackPaymentRecovery onRecovered={handlePaystackSuccess} />
           {/* Footer Guarantee */}
           <div className="flex flex-wrap items-center justify-between gap-3 text-xs text-slate-400 pt-3 border-t border-slate-800/80">
             <div className="flex items-center gap-2">

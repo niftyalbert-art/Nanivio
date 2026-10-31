@@ -116,6 +116,42 @@ test('Malvi fulfilment honours purchased voice/video/name/price snapshots after 
   assert.equal(s.deliveries[0].metadata.catalogVersion,1);
 });
 
+test('paid Malvi activation failure is explicit and recoverable after a server restart', async () => {
+  const s = system();
+  const init = await s.call(s.initialize, { authId:'owner', body:{
+    purpose:'MALVI_SUBSCRIPTION', amount:145, planTier:'premium',
+  } });
+  const reference = init.body.reference;
+  s.context.pendingPaystackOrders.clear();
+  s.failOnce();
+  const failed = await s.call(s.verify, { authId:'owner', params:{reference} });
+  assert.equal(failed.code, 503);
+  assert.equal(failed.body.success, false);
+  assert.equal(failed.body.verified, true);
+  assert.equal(failed.body.code, 'PAYMENT_ACTIVATION_PENDING');
+  assert.match(failed.body.error, /Do not pay again/);
+  assert.equal(s.deliveries.length, 0);
+  const recovered = await s.call(s.verify, { authId:'owner', params:{reference} });
+  assert.equal(recovered.body.success, true);
+  assert.equal(s.deliveries.length, 1);
+  const repeated = await s.call(s.verify, { authId:'owner', params:{reference} });
+  assert.equal(repeated.body.alreadyFulfilled, true);
+  assert.equal(s.deliveries.length, 1);
+});
+
+test('recovery rejects unknown and other-account references without delivering value', async () => {
+  const s = system();
+  const init = await s.call(s.initialize, { authId:'owner', body:{
+    purpose:'MALVI_SUBSCRIPTION', amount:145, planTier:'premium',
+  } });
+  for (const [authId, reference] of [
+    ['other', init.body.reference], ['owner', 'NV-PSTK-unknown'],
+  ]) {
+    assert.equal((await s.call(s.verify, {authId, params:{reference}})).code, 403);
+  }
+  assert.equal(s.deliveries.length, 0);
+});
+
 test('actual Malvi wallet route rejects stale versions or prices before debiting and uses separate allowances', async () => {
   const s = system();
   s.plan.catalogVersion=2;

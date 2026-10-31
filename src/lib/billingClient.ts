@@ -196,7 +196,9 @@ export const billingClient = {
     const res = await fetch(url.toString(), { headers: billingHeaders() });
     const data = await res.json();
     if (!res.ok || !data.success) {
-      throw new Error(data.error || 'Failed to verify Paystack payment');
+      const error = new Error(data.error || 'Failed to verify Paystack payment');
+      Object.assign(error, { code: data.code, paymentConfirmed: data.verified === true });
+      throw error;
     }
     if (data.verified !== true) throw new Error('Paystack has not confirmed this payment.');
     return data;

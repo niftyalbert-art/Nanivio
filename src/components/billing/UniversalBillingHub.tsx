@@ -46,6 +46,7 @@ import type { MalviSubscriptionPlan } from '../../types/billing';
 import { billingClient } from '../../lib/billingClient';
 import { billingNumber, formatBillingAmount } from '../../lib/billingPresentation';
 import { PaystackTopUpModal } from './PaystackTopUpModal';
+import { PaystackPaymentRecovery } from './PaystackPaymentRecovery';
 import { TransferValueModal } from './TransferValueModal';
 import { UniversalFlowTracer } from './UniversalFlowTracer';
 import { LiveLangpretationMeter } from './LiveLangpretationMeter';
@@ -1156,6 +1157,7 @@ export const UniversalBillingHub: React.FC = () => {
             <p className="rounded-xl border border-slate-800 bg-slate-950/60 p-3 text-xs leading-5 text-slate-400">
               Plan descriptions and minute allowances are catalogue information; they do not by themselves establish runtime enforcement.
             </p>
+            <PaystackPaymentRecovery onRecovered={refreshBilling} />
             {malviCurrency === 'GHS' && <p className="rounded-xl border border-slate-800 bg-slate-950/60 p-3 text-xs leading-5 text-slate-300" role="status">
               GHS is derived from authoritative USD prices using fresh server FX. Each plan shows the quote source, as-of date and attribution. Expired or missing quotes block selection and checkout.
             </p>}

@@ -2195,8 +2195,16 @@ async function fulfillPaystackOrder({
 
 app.get("/api/paystack/verify/:reference", requireAuthenticatedUser, async (req, res) => {
   const userId = authenticatedUserId(req);
+  let paymentConfirmed = false;
   try {
     const { reference } = req.params;
+    if (!/^[A-Za-z0-9_.=-]{1,120}$/.test(reference)) {
+      return res.status(400).json({ success: false, error: "Enter a valid Paystack transaction reference." });
+    }
+    const savedOrder = await getPaystackOrder(reference);
+    if (!savedOrder || String(savedOrder.userId) !== String(userId)) {
+      return res.status(403).json({ success: false, error: "No purchase with this reference belongs to your account. Check the reference and sign in to the account used for payment." });
+    }
     const paystackSecretKey = process.env.PAYSTACK_SECRET_KEY;
     const configurationError = paystackLiveConfigurationError(paystackSecretKey);
     if (configurationError) return res.status(503).json({ success: false, error: configurationError });
@@ -2223,6 +2231,7 @@ app.get("/api/paystack/verify/:reference", requireAuthenticatedUser, async (req,
           verifiedAmount = data.data.amount / 100;
           verifiedCurrency = (data.data.currency || "GHS").toUpperCase();
           paystackMetadata = data.data.metadata || {};
+          paymentConfirmed = true;
         } else {
           return res.status(400).json({
             success: false,
@@ -2251,7 +2260,15 @@ app.get("/api/paystack/verify/:reference", requireAuthenticatedUser, async (req,
 
     res.status(400).json({ success: false, error: "Payment verification was unsuccessful." });
   } catch (error: any) {
-    res.status(500).json({ error: error.message || "Paystack verification failed" });
+    if (paymentConfirmed) {
+      console.error("Paystack activation pending", { reference: req.params.reference, error: error.message });
+      return res.status(503).json({
+        success: false, verified: true, code: "PAYMENT_ACTIVATION_PENDING",
+        reference: req.params.reference,
+        error: "Paystack confirmed your payment, but your purchase could not be activated yet. Do not pay again. Keep this reference and use Verify & recover to retry the original purchase. If this continues, contact Nanivio support with the reference.",
+      });
+    }
+    res.status(500).json({ success: false, error: "Payment verification is unavailable. Keep your reference and retry; do not pay again." });
   }
 });
 

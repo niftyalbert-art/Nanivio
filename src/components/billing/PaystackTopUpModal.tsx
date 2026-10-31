@@ -111,8 +111,12 @@ export const PaystackTopUpModal: React.FC<PaystackTopUpModalProps> = ({
             setPaymentStep('SUCCESS');
             onSuccess();
           }
-        } catch {
-          // Still pending user authorization on their phone/card
+        } catch (error: any) {
+          if (error.code === 'PAYMENT_ACTIVATION_PENDING') {
+            clearInterval(interval);
+            setErrorMessage(error.message);
+            setHasOpenedCheckout(false);
+          }
         }
       }, 3500);
     }
