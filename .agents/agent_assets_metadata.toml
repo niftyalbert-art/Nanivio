@@ -415,3 +415,45 @@ mtime_ms = 1793413556433
 storage_uri = "gcs://replit-rams-assets-sisko/rams/assets/repl:8a53f482-19ae-49f0-ab16-31b527f92091/141c4407-e41f-46aa-a0e1-09ee66d06828/ead4516f-64c8-4f05-b0b5-6fcbe56d60e2"
 storage_version_token = "1793413588732807"
 content_type = "image/png"
+
+[[outputs]]
+id = "Q9tjGJFR2s5D_sfLmrqzo"
+uri = "file://generated-artifacts/nanivio-reference-review/chat-mobile.jpg"
+type = "image"
+title = "3D chat — mobile review"
+description = "Raised controls, two-row illuminated composer, and floating navigation. Isolated preview with sample messages."
+logical_id = "770ad547-a457-4117-97c0-4fb2669692b6"
+content_hash = "sha256:6331bd1b2fdc0d04d871308a6ab6cf1432816799f991a1f52fa3f2bf508fd2dc"
+size = 44789
+mtime_ms = 1793458370439
+storage_uri = "gcs://replit-rams-assets-sisko/rams/assets/repl:8a53f482-19ae-49f0-ab16-31b527f92091/770ad547-a457-4117-97c0-4fb2669692b6/d83565d8-8628-44d8-82ba-dd737a585d70"
+storage_version_token = "1793458561088176"
+content_type = "image/jpeg"
+
+[[outputs]]
+id = "OVNj8LNPkobpOvMKHDttb"
+uri = "file://generated-artifacts/nanivio-reference-review/chat-desktop.jpg"
+type = "image"
+title = "3D chat — desktop review"
+description = "Full-size desktop arrangement with a spacious conversation area and navigation kept clear of the composer."
+logical_id = "2e620038-9c82-43ab-872d-59737c9480e7"
+content_hash = "sha256:16d9c0a1329b98f2711f6b0315a78489eae97a1b9a3ab0d5e015176408ace6c9"
+size = 83814
+mtime_ms = 1793458478895
+storage_uri = "gcs://replit-rams-assets-sisko/rams/assets/repl:8a53f482-19ae-49f0-ab16-31b527f92091/2e620038-9c82-43ab-872d-59737c9480e7/702d3b69-92e2-4030-a864-865b463b5de5"
+storage_version_token = "1793458562516161"
+content_type = "image/jpeg"
+
+[[outputs]]
+id = "FHDI17EGk4hpc-VyqiQ4g"
+uri = "file://generated-artifacts/nanivio-reference-review/landing-desktop.jpg"
+type = "image"
+title = "3D landing page — desktop review"
+description = "Matching graphite surfaces, warm lighting, raised cream buttons, and illuminated conversation preview."
+logical_id = "8af7b083-4340-4112-a06f-7502d02e84cf"
+content_hash = "sha256:0c9147fd05bbba62d98238681d7d12c4841e32cf9f7fe0c82d5873b83a881e4b"
+size = 76999
+mtime_ms = 1793458175211
+storage_uri = "gcs://replit-rams-assets-sisko/rams/assets/repl:8a53f482-19ae-49f0-ab16-31b527f92091/8af7b083-4340-4112-a06f-7502d02e84cf/591b0483-7ccc-4d5b-b18d-5dccbba399e0"
+storage_version_token = "1793458563831341"
+content_type = "image/jpeg"

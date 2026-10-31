@@ -135,7 +135,7 @@ export const ChatView: React.FC = () => {
   const [playingVoiceTrack, setPlayingVoiceTrack] = useState<Record<string, 'translated' | 'original'>>({});
   const audioPlayerRef = useRef<HTMLAudioElement | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
-  const [showMobileChatThread, setShowMobileChatThread] = useState(false);
+  const [showMobileChatThread, setShowMobileChatThread] = useState(true);
   const [isSendingMessage, setIsSendingMessage] = useState(false);
   const [sendMessageError, setSendMessageError] = useState<string | null>(null);
   const [isAttachmentMenuOpen, setIsAttachmentMenuOpen] = useState(false);
@@ -1448,9 +1448,8 @@ export const ChatView: React.FC = () => {
                   />
                 ) : (
                   <>
-                  <form onSubmit={handleSend} className="flex w-full items-end gap-1 p-0.5 sm:gap-2">
-                    {/* WhatsApp-Style Unified Rounded Input Bubble */}
-                    <div className="relative flex min-w-0 w-full flex-1 items-end bg-slate-950/90 border border-slate-700/80 focus-within:border-emerald-500 rounded-[1.45rem] px-2 py-1 transition-colors">
+                  <form onSubmit={handleSend} className="chat-composer-form flex w-full flex-col gap-1.5">
+                    <div className="chat-composer-card relative flex min-w-0 w-full flex-col bg-slate-950/90 border border-slate-700/80 focus-within:border-emerald-500 rounded-[1.45rem] px-2 py-1 transition-colors">
                       {/* Roomy WhatsApp-Sized Input / Auto-growing Textarea */}
                       <textarea
                         ref={messageInputRef}
@@ -1471,59 +1470,60 @@ export const ChatView: React.FC = () => {
                             handleSend();
                           }
                         }}
-                        className="flex-1 min-w-0 w-full bg-transparent border-0 text-base text-white placeholder-slate-400 focus:outline-none px-1.5 py-2 resize-none max-h-32 min-h-[44px] leading-[1.45] whitespace-pre-wrap break-words sm:px-2.5"
+                        className="chat-composer-textarea flex-1 min-w-0 w-full bg-transparent border-0 text-base text-white placeholder-slate-400 focus:outline-none px-1.5 py-2 resize-none max-h-32 min-h-[44px] leading-[1.45] whitespace-pre-wrap break-words sm:px-2.5"
                       />
 
-                      {/* One attachment menu keeps media and voice actions together. */}
-                      <button
-                        type="button"
-                        aria-label="Open emoji picker"
-                        aria-expanded={isEmojiPickerOpen}
-                        onClick={() => setIsEmojiPickerOpen((open) => !open)}
-                        className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl text-slate-300 hover:bg-slate-800 hover:text-amber-400"
-                      >
-                        <SmilePlus className="h-5 w-5" />
-                      </button>
-                      <div className="relative shrink-0" ref={attachmentMenuRef}>
+                      <div className="chat-composer-actions flex items-center gap-2">
                         <button
                           type="button"
-                          id="btn-chat-attach-media"
-                          aria-haspopup="menu"
-                          aria-expanded={isAttachmentMenuOpen}
-                          onClick={() => setIsAttachmentMenuOpen((open) => !open)}
-                          className="inline-flex h-10 w-10 items-center justify-center rounded-xl p-0 text-xs font-semibold text-slate-300 hover:bg-slate-800 hover:text-amber-400 transition-colors sm:w-auto sm:px-2.5"
-                          title="Attach media or record a voice note"
+                          aria-label="Open emoji picker"
+                          aria-expanded={isEmojiPickerOpen}
+                          onClick={() => setIsEmojiPickerOpen((open) => !open)}
+                          className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl text-slate-300 hover:bg-slate-800 hover:text-amber-400"
                         >
-                          <Paperclip className="w-4 h-4" />
-                          <span className="hidden sm:inline">Attach</span>
+                          <SmilePlus className="h-5 w-5" />
                         </button>
-                        {isAttachmentMenuOpen && (
-                          <div role="menu" aria-label="Attachment options" className="absolute right-0 bottom-full mb-2 w-52 max-w-[calc(100vw-1rem)] max-h-[40dvh] overflow-y-auto rounded-xl border border-slate-700 bg-[#fbf9f2] p-1.5 shadow-[0_12px_32px_rgba(24,35,31,.2)] z-30">
-                            <button type="button" role="menuitem" onClick={() => { setIsAttachmentMenuOpen(false); setIsMediaModalOpen(true); }} className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2.5 text-left text-sm font-medium text-[#26342d] hover:bg-[#f0ece2]">
-                              <Paperclip className="h-4 w-4 text-[#17654b]" /> Photo, video or document
-                            </button>
-                            <button type="button" role="menuitem" onClick={() => { setIsAttachmentMenuOpen(false); setIsLiveCameraOpen(true); }} className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2.5 text-left text-sm font-medium text-[#26342d] hover:bg-[#f0ece2]">
-                              <Camera className="h-4 w-4 text-[#17654b]" /> Take photo or video
-                            </button>
-                            <button type="button" role="menuitem" onClick={() => { setIsAttachmentMenuOpen(false); setIsRecordingVoice(true); }} className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2.5 text-left text-sm font-medium text-[#26342d] hover:bg-[#f0ece2]">
-                              <Mic className="h-4 w-4 text-[#17654b]" /> Record voice note
-                            </button>
-                          </div>
-                        )}
+                        <div className="relative shrink-0" ref={attachmentMenuRef}>
+                          <button
+                            type="button"
+                            id="btn-chat-attach-media"
+                            aria-haspopup="menu"
+                            aria-expanded={isAttachmentMenuOpen}
+                            onClick={() => setIsAttachmentMenuOpen((open) => !open)}
+                            className="inline-flex h-10 w-10 items-center justify-center rounded-xl p-0 text-xs font-semibold text-slate-300 hover:bg-slate-800 hover:text-amber-400 transition-colors sm:w-auto sm:px-2.5"
+                            title="Attach media or record a voice note"
+                          >
+                            <Paperclip className="w-4 h-4" />
+                            <span className="hidden sm:inline">Attach</span>
+                          </button>
+                          {isAttachmentMenuOpen && (
+                            <div role="menu" aria-label="Attachment options" className="absolute right-0 bottom-full mb-2 w-52 max-w-[calc(100vw-1rem)] max-h-[40dvh] overflow-y-auto rounded-xl border border-slate-700 bg-[#fbf9f2] p-1.5 shadow-[0_12px_32px_rgba(24,35,31,.2)] z-30">
+                              <button type="button" role="menuitem" onClick={() => { setIsAttachmentMenuOpen(false); setIsMediaModalOpen(true); }} className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2.5 text-left text-sm font-medium text-[#26342d] hover:bg-[#f0ece2]">
+                                <Paperclip className="h-4 w-4 text-[#17654b]" /> Photo, video or document
+                              </button>
+                              <button type="button" role="menuitem" onClick={() => { setIsAttachmentMenuOpen(false); setIsLiveCameraOpen(true); }} className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2.5 text-left text-sm font-medium text-[#26342d] hover:bg-[#f0ece2]">
+                                <Camera className="h-4 w-4 text-[#17654b]" /> Take photo or video
+                              </button>
+                              <button type="button" role="menuitem" onClick={() => { setIsAttachmentMenuOpen(false); setIsRecordingVoice(true); }} className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2.5 text-left text-sm font-medium text-[#26342d] hover:bg-[#f0ece2]">
+                                <Mic className="h-4 w-4 text-[#17654b]" /> Record voice note
+                              </button>
+                            </div>
+                          )}
+                        </div>
+                        <span className="chat-composer-hint ml-1 hidden sm:block text-xs text-slate-500">Add a thought</span>
+                        <button
+                          type={inputMsg.trim() ? 'submit' : 'button'}
+                          id="btn-chat-send-msg"
+                          aria-label={inputMsg.trim() ? 'Send message' : 'Record voice note'}
+                          title={inputMsg.trim() ? 'Send message' : 'Record voice note'}
+                          onClick={!inputMsg.trim() ? () => setIsRecordingVoice(true) : undefined}
+                          disabled={isSendingMessage}
+                          className="chat-send-button ml-auto h-11 w-11 min-w-[44px] rounded-full font-bold text-sm transition-colors shrink-0 inline-flex items-center justify-center disabled:opacity-75 sm:w-12 sm:h-12"
+                        >
+                          {isSendingMessage ? <span className="animate-pulse text-xs">…</span> : inputMsg.trim() ? <Send className="w-4 h-4" /> : <Mic className="w-5 h-5" />}
+                        </button>
                       </div>
                     </div>
-
-                    <button
-                      type={inputMsg.trim() ? 'submit' : 'button'}
-                      id="btn-chat-send-msg"
-                      aria-label={inputMsg.trim() ? 'Send message' : 'Record voice note'}
-                      title={inputMsg.trim() ? 'Send message' : 'Record voice note'}
-                      onClick={!inputMsg.trim() ? () => setIsRecordingVoice(true) : undefined}
-                      disabled={isSendingMessage}
-                      className="chat-send-button h-11 w-11 min-w-[44px] rounded-full font-bold text-sm transition-colors shrink-0 inline-flex items-center justify-center disabled:opacity-75 sm:w-12 sm:h-12"
-                    >
-                      {isSendingMessage ? <span className="animate-pulse text-xs">…</span> : inputMsg.trim() ? <Send className="w-4 h-4" /> : <Mic className="w-5 h-5" />}
-                    </button>
                   </form>
                   <EmojiPickerPopover
                     isOpen={isEmojiPickerOpen}

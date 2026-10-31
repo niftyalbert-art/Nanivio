@@ -19,12 +19,16 @@ dimensional cards, pill selections and circular controls. Keep the generous
 conversation area, clear typography and no-blur/no-fake-activity constraints.
 Match the reference colours, not an all-over brown/yellow interpretation; warmth
 comes from a localized soft beige glow and pale cream controls.
+Match the reference's arrangement and visibly raised 3D buttons, not only its
+colours. The chat composer must have lighting around its rounded card border.
 
 **Why:** The user explicitly asked both pages to copy that reference's style and
 to see completed image reviews, then reiterated “use the same colour just as
 the image i sent.” They subsequently extended those colours to all app pages,
 not only Chat, requested “Langpretation” instead of “Translate,” and asked for
 a premium fintech-style Home rather than a web-design-agency look.
+They corrected the colour-only interpretation again and specifically requested
+the reference's 3D buttons, arrangement, and illuminated chat composer.
 
 **How to apply:** Preserve this app-wide direction during future
 refreshes rather than reverting individual pages to the older angular gold treatment.
