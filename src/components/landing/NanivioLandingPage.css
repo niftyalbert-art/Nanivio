@@ -216,3 +216,72 @@
 @media (prefers-reduced-motion: reduce) {
   .nanivio-landing *, .nanivio-landing *::before, .nanivio-landing *::after { scroll-behavior: auto !important; animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; }
 }
+
+/* Reference adaptation: warm, dimensional charcoal with soft champagne light. */
+.nanivio-landing {
+  --nl-bg: #201f1d;
+  --nl-panel: #292724;
+  --nl-paper: #f5f0e6;
+  --nl-muted: #c0b9aa;
+  --nl-faint: #969083;
+  --nl-line: #49453d;
+  --nl-gold: #e6c987;
+  --nl-gold-soft: #d7c39a;
+  background:
+    radial-gradient(ellipse at 78% 8%, rgba(207, 177, 117, .15), transparent 33rem),
+    linear-gradient(145deg, #292722 0%, #201f1d 40%, #191a1a 100%);
+  color: #f5f0e6;
+}
+.nl-header { border-color: rgba(233,218,185,.14); }
+.nl-brand { letter-spacing: .09em; }
+.nl-nav-cta,.nl-button,.nl-menu-toggle { border-radius: 999px; }
+.nl-nav-cta { border-color: rgba(230,201,135,.48); padding-inline: 20px; }
+.nl-button { min-height: 52px; border-radius: 999px; padding-inline: 24px; }
+.nl-button-gold {
+  background: linear-gradient(135deg, #f4e7c7 0%, #ddc38e 100%);
+  box-shadow: inset 0 1px rgba(255,255,255,.72), 0 8px 24px rgba(205,174,111,.14);
+}
+.nl-button-gold:hover { background: linear-gradient(135deg,#fff2d3,#e6cd99); }
+.nl-hero-grid { opacity: .12; }
+.nl-hero-copy { max-width: 650px; }
+.nl-hero h1 { font-weight: 500; letter-spacing: -.075em; }
+.nl-hero-art { min-height: 600px; }
+.nl-preview-card {
+  width: min(322px, 58%); padding: 20px; border-radius: 25px;
+  border-color: #5a554a;
+  background: linear-gradient(145deg, #37342d, #242321 76%);
+  box-shadow: 0 28px 70px rgba(0,0,0,.42), inset 0 1px rgba(255,255,255,.08);
+  transform: rotate(1deg);
+}
+.nl-preview-avatar { border-radius: 50%; background: linear-gradient(145deg,#dfbf7b,#87714d); color: #241f15; }
+.nl-message { border-radius: 15px; padding: 11px 13px; }
+.nl-message-in { border-radius: 5px 15px 15px 15px; background: linear-gradient(140deg,#3c3933,#302e2a); }
+.nl-message-out { border-radius: 15px 5px 15px 15px; background: linear-gradient(135deg,#d9c18f,#bfa773); color: #28241c; }
+.nl-preview-reply { border-radius: 999px; padding-left: 13px; }
+.nl-send-mark { border-radius: 50%; }
+.nl-art-globe { color: rgba(231,204,150,.35); border-color: rgba(231,204,150,.3); }
+.nl-art-orbit { border-color: rgba(231,204,150,.2); }
+.nl-intro-band,.nl-lang-section,.nl-calls-section {
+  background: linear-gradient(115deg,rgba(255,255,255,.025),transparent 55%), #252421;
+  border-color: #49453d;
+}
+.nl-feature-row { border-color: #49453d; }
+.nl-feature-icon,.nl-call-person { border-radius: 50%; background: linear-gradient(145deg,#353229,#242321); }
+.nl-feature-row:hover { background: rgba(237,218,179,.035); }
+.nl-lang-center { background: #292724; box-shadow: inset 0 1px rgba(255,255,255,.08), 0 12px 30px rgba(0,0,0,.2); }
+.nl-lang-word { border-radius: 999px; background: linear-gradient(145deg,#39362f,#292724); border-color: #514b3e; }
+.nl-malvi-frame { border-radius: 26px; padding: 14px; background: linear-gradient(145deg,#37342d,#242321); box-shadow: 0 24px 60px rgba(0,0,0,.3), inset 0 1px rgba(255,255,255,.09); }
+.nl-malvi-frame img { border-radius: 17px; }
+.nl-call-art { border-radius: 28px; background-color: #242321; border-color: #4b473f; }
+.nl-call-person { background: linear-gradient(145deg,#494234,#2c2922); }
+.nl-faq-item button { min-height: 72px; }
+.nl-final-cta { background: radial-gradient(ellipse at 50% 100%,rgba(224,196,135,.12),transparent 54%), #242321; border-color: #514b3e; }
+.nl-final-cta .nl-button { min-width: 210px; }
+.nl-footer { border-top: 1px solid rgba(233,218,185,.1); }
+@media (max-width: 680px) {
+  .nl-header { border-color: rgba(233,218,185,.16); }
+  .nl-nav { border-color: #49453d; background: #292724; }
+  .nl-hero-art { min-height: 320px; height: 320px; }
+  .nl-preview-card { width: min(280px,76%); }
+  .nl-footer { border-top: 0; }
+}

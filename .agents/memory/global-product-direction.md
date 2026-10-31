@@ -13,6 +13,18 @@ controls grouped under one menu, and a clear Send button. Chat should behave lik
 a real WhatsApp-style dialog, including sending images, videos and documents,
 with “no fakes.”
 
+For the landing and chat pages, the user's newer image reference supersedes
+the sharper Bybit treatment: warm charcoal, champagne/cream accents, rounded
+dimensional cards, pill selections and circular controls. Keep the generous
+conversation area, clear typography and no-blur/no-fake-activity constraints.
+
+**Why:** The user explicitly asked both pages to copy that reference's style and
+to see completed image reviews.
+
+**How to apply:** Preserve this scoped landing/chat direction during future
+refreshes rather than reverting them to the older angular gold treatment.
+Present source-based desktop/mobile reviews; clearly label any sample chat data.
+
 The user reiterated that the persistent “Direct & Group Chats, Community Channels”
 card must be removed, with those destinations available under one click. The
 conversation and multiline composer must have full usable space, including visible

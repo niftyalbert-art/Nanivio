@@ -1,5 +1,5 @@
 {
-  "exclude": ["node_modules", "dist", "generated-artifacts"],
+  "exclude": ["node_modules", "dist", "generated-artifacts", "artifacts"],
   "compilerOptions": {
     "target": "ES2022",
     "experimentalDecorators": true,

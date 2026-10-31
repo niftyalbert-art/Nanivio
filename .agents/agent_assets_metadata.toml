@@ -317,3 +317,17 @@ mtime_ms = 1793246892318
 storage_uri = "gcs://replit-rams-assets-sisko/rams/assets/repl:8a53f482-19ae-49f0-ab16-31b527f92091/b43b6e01-a09a-4907-b238-9148825e8a6d/9e91a9cf-5823-48b7-98f0-025269e14dc3"
 storage_version_token = "1793246916627832"
 content_type = "audio/wav"
+
+[[outputs]]
+id = "FmmvIXFdyy8nhF_PdJkiP"
+uri = "file://generated-artifacts/nanivio-design/nanivio-style-review.jpg"
+type = "image"
+title = "Nanivio — completed desktop and mobile design review"
+description = "Rendered landing and chat pages in the reference-inspired charcoal/champagne style. Chat screenshots use isolated, clearly labelled sample messages; signed-in production chat was not verified."
+logical_id = "6a6cdc56-5db0-45eb-b055-f3d42f041bea"
+content_hash = "sha256:8c844cc255f346ae039d3e8c49865ec14b7ea65970a935b7ee9831303f472c5a"
+size = 496287
+mtime_ms = 1793408904284
+storage_uri = "gcs://replit-rams-assets-sisko/rams/assets/repl:8a53f482-19ae-49f0-ab16-31b527f92091/6a6cdc56-5db0-45eb-b055-f3d42f041bea/f52ab36d-a729-4d42-b42b-f7c1ea5ce046"
+storage_version_token = "1793408966790876"
+content_type = "image/jpeg"
