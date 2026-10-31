@@ -30,10 +30,15 @@ function fixture(fail: 'none' | 'token' | 'camera' | 'publish' | 'register' = 'n
     stop: () => events.push(`${kind}:stop`), close: () => events.push(`${kind}:close`),
     setEnabled: async (enabled: boolean) => { events.push(`${kind}:enabled:${enabled}`); }, setVolume: () => {},
   });
-  const remote = { setVolume: (volume: number) => events.push(`remote:volume:${volume}`) };
+  const remote = {
+    setVolume: (volume: number) => events.push(`remote:volume:${volume}`),
+    play: () => events.push('remote:play'),
+  };
   const handlers = new Map<string, Function>();
   const client = {
     remoteUsers: [{ audioTrack: remote }], on: (event: string, handler: Function) => handlers.set(event, handler),
+    emit: (event: string, ...args: any[]) => handlers.get(event)?.(...args),
+    subscribe: async () => {},
     join: async () => { events.push('rtc:join'); handlers.get('connection-state-change')?.('CONNECTED'); },
     publish: async () => { events.push('rtc:publish'); if (fail === 'publish') throw new Error('Publication failed'); },
     leave: async () => { events.push('rtc:leave'); },
@@ -44,7 +49,9 @@ function fixture(fail: 'none' | 'token' | 'camera' | 'publish' | 'register' = 'n
     createCameraVideoTrack: async () => { events.push('camera'); if (fail === 'camera') throw new Error('NotAllowedError'); return track('video'); },
   };
   (globalThis as any).MediaStream = class {
-    constructor(public tracks: any[]) {} getTracks() { return this.tracks; }
+    constructor(public tracks: any[] = []) {} getTracks() { return this.tracks; }
+    getAudioTracks() { return this.tracks.filter(track => track.kind === 'audio'); }
+    getVideoTracks() { return this.tracks.filter(track => track.kind === 'video'); }
   };
   globalThis.fetch = async url => {
     if (String(url).endsWith('/token')) {
@@ -60,6 +67,64 @@ function fixture(fail: 'none' | 'token' | 'camera' | 'publish' | 'register' = 'n
   };
   return events;
 }
+
+test('late-mounted call displays immediately receive existing local and remote media', async t => {
+  const original = globalThis.fetch; t.after(() => { globalThis.fetch = original; });
+  fixture(); const client = await loadClient();
+  await client.joinChannel('private-call', 'user', 'User', 'video');
+  const sdk = (globalThis as any).__rtcFixture.createClient();
+  const audio = { kind: 'audio' };
+  await sdk.emit('user-published', { audioTrack: {
+    setVolume() {}, play() {}, getMediaStreamTrack: () => audio,
+  } }, 'audio');
+  const local: any[] = [], remote: any[] = [];
+  const offLocal = client.subscribeLocalStream((stream: any) => local.push(stream));
+  const offRemote = client.subscribeRemoteStream((stream: any) => remote.push(stream));
+  assert.equal(local[0], client.getLocalStream());
+  assert.equal(remote[0].getAudioTracks()[0], audio);
+  offLocal(); offRemote(); await client.leaveChannel();
+});
+
+test('remote audio/video publication and removal create fresh React-visible stream snapshots', async t => {
+  const original = globalThis.fetch; t.after(() => { globalThis.fetch = original; });
+  fixture(); const client = await loadClient();
+  await client.joinChannel('private-call', 'user', 'User', 'video');
+  const sdk = (globalThis as any).__rtcFixture.createClient();
+  const audio = { kind: 'audio' }, video = { kind: 'video' };
+  const user = {
+    audioTrack: { setVolume() {}, play() {}, getMediaStreamTrack: () => audio },
+    videoTrack: { getMediaStreamTrack: () => video },
+  };
+  const snapshots: any[] = [];
+  const off = client.subscribeRemoteStream((stream: any) => snapshots.push(stream));
+  await sdk.emit('user-published', user, 'audio');
+  await sdk.emit('user-published', user, 'video');
+  assert.notEqual(snapshots[1], snapshots[2]);
+  assert.deepEqual(snapshots[1].getTracks(), [audio]);
+  assert.deepEqual(snapshots[2].getTracks(), [audio, video]);
+  sdk.emit('user-unpublished', user, 'video');
+  assert.notEqual(snapshots[2], snapshots[3]);
+  assert.deepEqual(snapshots[3].getTracks(), [audio]);
+  off(); await client.leaveChannel();
+});
+
+test('a muted previous call cannot silence the next call and Speaker retries playback', async t => {
+  const original = globalThis.fetch; t.after(() => { globalThis.fetch = original; });
+  const events = fixture(); const client = await loadClient();
+  await client.joinChannel('first', 'user', 'User', 'audio');
+  client.setRemoteAudioMuted(true);
+  await client.leaveChannel();
+  await client.joinChannel('second', 'user', 'User', 'audio');
+  const sdk = (globalThis as any).__rtcFixture.createClient();
+  let volume = -1;
+  await sdk.emit('user-published', { audioTrack: {
+    setVolume(value: number) { volume = value; }, play() {}, getMediaStreamTrack: () => ({ kind: 'audio' }),
+  } }, 'audio');
+  assert.equal(volume, 100);
+  client.setRemoteAudioMuted(false);
+  assert.ok(events.includes('remote:play'));
+  await client.leaveChannel();
+});
 
 for (const type of ['audio', 'video'] as const) {
   test(`${type} reports connected only after token, real tracks, publication and server registration`, async t => {

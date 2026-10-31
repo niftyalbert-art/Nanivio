@@ -288,7 +288,8 @@ export const ChatView: React.FC = () => {
         payload.isLangpretation,
         payload.translatedAudioUrl,
         payload.translatedTranscript,
-        payload.targetLang
+        payload.targetLang,
+        payload.sourceLang
       );
     } else {
       await sendVoiceNote(payload || 3, 'Voice note');

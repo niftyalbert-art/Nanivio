@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { X, Search, Check, Globe, Mic, Languages, ShieldCheck } from 'lucide-react';
 import { useNanivio } from '../context/NanivioContext';
-import { getAllLanguages, LanguageRegistryItem } from '../i18n/languages';
+import { getAllLanguages, getLangpretationLanguages, LanguageRegistryItem } from '../i18n/languages';
 
 type LanguageTab = 'app' | 'speaking' | 'translation';
 
@@ -22,7 +22,7 @@ export const LanguageSelectorModal: React.FC = () => {
 
   if (!isLanguageModalOpen) return null;
 
-  const allLanguages = getAllLanguages();
+  const allLanguages = activeTab === 'app' ? getAllLanguages() : getLangpretationLanguages();
 
   const filteredLanguages = allLanguages.filter((lang) => {
     const matchesSearch =
@@ -35,7 +35,7 @@ export const LanguageSelectorModal: React.FC = () => {
 
     if (activeTab === 'app') return lang.ui;
     if (activeTab === 'speaking') return lang.speechRecognition || lang.voiceTranslation;
-    return lang.translation;
+    return true;
   });
 
   const getSelectedCode = () => {
@@ -45,6 +45,7 @@ export const LanguageSelectorModal: React.FC = () => {
   };
 
   const handleSelect = (code: string) => {
+    if (activeTab === 'translation' && !allLanguages.find(lang => lang.code === code)?.translation) return;
     if (activeTab === 'app') {
       setAppLanguage(code);
     } else if (activeTab === 'speaking') {
@@ -176,9 +177,12 @@ export const LanguageSelectorModal: React.FC = () => {
           ) : (
             filteredLanguages.map((lang) => {
               const isSelected = getSelectedCode() === lang.code;
+              const unavailable = activeTab === 'translation' && !lang.translation;
               return (
                 <button
                   key={lang.code}
+                  disabled={unavailable}
+                  title={unavailable ? 'This dialect needs a dedicated Langpretation route before it can be selected.' : undefined}
                   onClick={() => handleSelect(lang.code)}
                   className={`w-full flex items-center justify-between p-3 rounded-xl text-left transition-all ${
                     isSelected
@@ -206,6 +210,7 @@ export const LanguageSelectorModal: React.FC = () => {
                         <span>{lang.region}</span>
                         <span className="text-slate-600">•</span>
                         <span className="font-mono text-slate-500">{lang.code.toUpperCase()}</span>
+                        {unavailable && <span>Langpretation not yet available</span>}
                       </div>
                     </div>
                   </div>

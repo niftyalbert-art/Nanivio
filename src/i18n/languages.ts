@@ -6,6 +6,8 @@
  * without hard-coding or restricting to an arbitrary limit.
  */
 
+import { LANGUAGE_CODES, mtProvider } from '../lib/translator-engine/languagePlan';
+
 export interface LanguageRegistryItem {
   code: string; // ISO 639-1 or 639-3 language code
   name: string; // English / International display name
@@ -520,6 +522,12 @@ export function registerLanguage(lang: LanguageRegistryItem): void {
 
 export function getAllLanguages(): LanguageRegistryItem[] {
   return runtimeRegistry;
+}
+
+/** Product language scope, not proof of provider availability or live quality. */
+export function getLangpretationLanguages(): LanguageRegistryItem[] {
+  return runtimeRegistry.filter(lang => (LANGUAGE_CODES as readonly string[]).includes(lang.code))
+    .map(lang => ({ ...lang, translation: mtProvider(lang.code) !== null }));
 }
 
 export function getLanguageByCode(code: string): LanguageRegistryItem | undefined {

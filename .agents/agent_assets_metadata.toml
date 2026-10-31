@@ -471,3 +471,31 @@ mtime_ms = 1793459510039
 storage_uri = "gcs://replit-rams-assets-sisko/rams/assets/repl:8a53f482-19ae-49f0-ab16-31b527f92091/be0fafb8-a483-4f04-8b40-65dc76bd524b/f80a3ebf-a473-4f03-92fd-61d7f0daaa6a"
 storage_version_token = "1793459660394383"
 content_type = "image/jpeg"
+
+[[outputs]]
+id = "O5UgrFiGmCRbqsakSBoqy"
+uri = "file://generated-artifacts/communication-audio-en-fr.wav"
+type = "audio"
+title = "English to French — audio test"
+description = "Translated speech returned by the approved short diagnostic. Not a two-user Render call."
+logical_id = "de84d61b-4691-48f7-95cb-b32e8ecc20a4"
+content_hash = "sha256:0e911e786a29138ea618a0f1005fad44a8fbe3b814c781dad6b57a2fc9df599b"
+size = 100604
+mtime_ms = 1793473455619
+storage_uri = "gcs://replit-rams-assets-sisko/rams/assets/repl:8a53f482-19ae-49f0-ab16-31b527f92091/de84d61b-4691-48f7-95cb-b32e8ecc20a4/c8a0e124-b8e2-4984-b9c0-8a394fd87c38"
+storage_version_token = "1793473476692895"
+content_type = "audio/wav"
+
+[[outputs]]
+id = "TzyTP6qRSrorg03vFM1XP"
+uri = "file://generated-artifacts/communication-audio-en-ak.wav"
+type = "audio"
+title = "English to Twi — audio test"
+description = "Translated speech returned by the approved short diagnostic. Native-speaker accuracy and recipient delivery remain unverified."
+logical_id = "25b007a4-ca59-4b65-9e2b-b994110d52dc"
+content_hash = "sha256:b8dc601dad416b1baba6f25e19d87cefbf0b4d0ac55a5fb0d5044b64c9b75d77"
+size = 127034
+mtime_ms = 1793473460608
+storage_uri = "gcs://replit-rams-assets-sisko/rams/assets/repl:8a53f482-19ae-49f0-ab16-31b527f92091/25b007a4-ca59-4b65-9e2b-b994110d52dc/87599307-5c7a-4e83-9049-cbe1fe26ebd9"
+storage_version_token = "1793473478015467"
+content_type = "audio/wav"

@@ -32,7 +32,8 @@ export const VoiceNoteRecorder: React.FC<VoiceNoteRecorderProps> = ({
   onCancel,
   onSend,
 }) => {
-  const { myLanguage, globalLangpretationEnabled } = useNanivio();
+  const { speakingLanguage, myLanguage, globalLangpretationEnabled } = useNanivio();
+  const sourceLang = speakingLanguage || myLanguage;
   const [seconds, setSeconds] = useState(0);
   const [waveformData, setWaveformData] = useState<number[]>(Array(12).fill(0));
   const [transcript, setTranscript] = useState('');
@@ -43,7 +44,7 @@ export const VoiceNoteRecorder: React.FC<VoiceNoteRecorderProps> = ({
   const sendingRef=useRef(false);
   const recordingUrls=useRef<string[]>([]);
   const [voiceMode, setVoiceMode] = useState<'normal' | 'langpretation'>(
-    globalLangpretationEnabled && myLanguage!==targetLang ? 'langpretation' : 'normal'
+    globalLangpretationEnabled && sourceLang!==targetLang ? 'langpretation' : 'normal'
   );
 
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
@@ -112,7 +113,7 @@ export const VoiceNoteRecorder: React.FC<VoiceNoteRecorderProps> = ({
         const recognition = new SpeechRec();
         recognition.continuous = true;
         recognition.interimResults = true;
-        recognition.lang = myLanguage || 'en-US';
+        recognition.lang = sourceLang || 'en-US';
 
         recognition.onresult = (event: any) => {
           let liveText = '';
@@ -151,7 +152,7 @@ export const VoiceNoteRecorder: React.FC<VoiceNoteRecorderProps> = ({
       audioContextRef.current?.close().catch(() => {});
       recordingUrls.current.forEach(url=>URL.revokeObjectURL(url));
     };
-  }, [myLanguage]);
+  }, [sourceLang]);
 
   const sendPreparedVoiceNote=async (payload:VoiceNoteSendPayload)=>{
     if(sendingRef.current)return;
@@ -231,7 +232,7 @@ export const VoiceNoteRecorder: React.FC<VoiceNoteRecorderProps> = ({
         transcript: rawTranscript,
         audioBlobUrl: originalAudioBlobUrl,
         isLangpretation: false,
-        sourceLang: myLanguage,
+        sourceLang,
         targetLang,
       });
       return;
@@ -248,7 +249,7 @@ export const VoiceNoteRecorder: React.FC<VoiceNoteRecorderProps> = ({
       const source=offline.createBufferSource();source.buffer=recording;source.connect(offline.destination);source.start();
       const rendered=await offline.startRendering();
       const wav=PcmUtils.float32ToWavBlob(rendered.getChannelData(0),16000);
-      const response=await authenticatedFetch(`/api/langpretation/voice-note/process-audio?sourceLang=${encodeURIComponent(myLanguage)}&targetLang=${encodeURIComponent(targetLang)}`,{method:'POST',headers:{'Content-Type':'audio/wav'},body:wav});
+      const response=await authenticatedFetch(`/api/langpretation/voice-note/process-audio?sourceLang=${encodeURIComponent(sourceLang)}&targetLang=${encodeURIComponent(targetLang)}`,{method:'POST',headers:{'Content-Type':'audio/wav'},body:wav});
       const recognized=await response.json();
       if(!response.ok||!recognized.success||!recognized.transcript||!recognized.translatedTranscript||!recognized.audioBase64)throw new Error(recognized.error||'Voice-note translation did not complete.');
       const verifiedTranscript=recognized.transcript,translatedText=recognized.translatedTranscript;
@@ -265,7 +266,7 @@ export const VoiceNoteRecorder: React.FC<VoiceNoteRecorderProps> = ({
         isLangpretation: true,
         translatedTranscript: translatedText,
         translatedAudioUrl,
-        sourceLang: myLanguage,
+        sourceLang,
         targetLang,
       };
       if(prepared.uploadFailed){

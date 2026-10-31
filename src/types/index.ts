@@ -1,4 +1,4 @@
-import { LanguageRegistryItem, INITIAL_LANGUAGE_REGISTRY } from '../i18n/languages';
+import { LanguageRegistryItem, INITIAL_LANGUAGE_REGISTRY, getLangpretationLanguages } from '../i18n/languages';
 export type { LanguageRegistryItem };
 export { INITIAL_LANGUAGE_REGISTRY };
 
@@ -19,7 +19,7 @@ export interface LanguageInfo {
   voiceTranslation?: boolean;
 }
 
-export const SUPPORTED_LANGUAGES: LanguageInfo[] = INITIAL_LANGUAGE_REGISTRY;
+export const SUPPORTED_LANGUAGES: LanguageInfo[] = getLangpretationLanguages();
 
 export type LangpretationState = 'OFF' | 'Starting' | 'ON' | 'Translating' | 'Unavailable' | 'Error';
 

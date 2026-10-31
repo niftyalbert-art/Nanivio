@@ -204,7 +204,8 @@ interface NanivioContextType {
     isLangpretation?: boolean,
     translatedAudioUrl?: string,
     translatedTranscript?: string,
-    targetLang?: string
+    targetLang?: string,
+    sourceLang?: string
   ) => Promise<void>;
   sendMediaMessage: (media: {
     type: 'image' | 'video' | 'document';
@@ -718,9 +719,9 @@ export const NanivioProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
   const [speakingLanguage, setSpeakingLanguageState] = useState<string>(() => {
     try {
-      return localStorage.getItem('nanivio_speaking_language') || 'ak';
+      return localStorage.getItem('nanivio_speaking_language') || currentUser.myLanguage || 'en';
     } catch {
-      return 'ak';
+      return currentUser.myLanguage || 'en';
     }
   });
 
@@ -2826,7 +2827,8 @@ export const NanivioProvider: React.FC<{ children: React.ReactNode }> = ({ child
     isLangpretation?: boolean,
     translatedAudioUrl?: string,
     translatedTranscriptParam?: string,
-    targetLangParam?: string
+    targetLangParam?: string,
+    sourceLangParam?: string
   ) => {
     const activeConv = conversations.find(c => c.id === activeConversationId);
     if (!activeConv) throw new Error('Choose a conversation before sending a voice note.');
@@ -2864,7 +2866,7 @@ export const NanivioProvider: React.FC<{ children: React.ReactNode }> = ({ child
       transcript,
       translatedTranscript: shouldLangpretate ? finalTranslatedTranscript : undefined,
       hasLangpretation: shouldLangpretate,
-      sourceLang: myLanguage,
+      sourceLang: sourceLangParam || speakingLanguage || myLanguage,
       targetLang: resolvedTargetLang,
       provider: voiceNoteProvider,
     };
@@ -2874,7 +2876,7 @@ export const NanivioProvider: React.FC<{ children: React.ReactNode }> = ({ child
       senderId: currentUser.id,
       senderName: currentUser.name,
       senderAvatar: currentUser.avatar,
-      senderLang: myLanguage,
+      senderLang: sourceLangParam || speakingLanguage || myLanguage,
       text: shouldLangpretate
         ? `🌐 Langpretation Voice Note (${duration}s)`
         : `🎤 Voice note (${duration}s)`,

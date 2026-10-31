@@ -199,9 +199,8 @@ class NanivioAgoraClient {
     });
     this.client.on('user-unpublished', (user, mediaType) => {
       if (this.client !== client || !this.remoteStream) return;
-      const tracks = mediaType === 'audio' ? this.remoteStream.getAudioTracks() : this.remoteStream.getVideoTracks();
-      tracks.forEach(track => this.remoteStream?.removeTrack(track));
-      if (!this.remoteStream.getTracks().length) this.remoteStream = null;
+      const remaining = mediaType === 'audio' ? this.remoteStream.getVideoTracks() : this.remoteStream.getAudioTracks();
+      this.remoteStream = remaining.length ? new MediaStream(remaining) : null;
       this.notifyRemoteStream();
       this.notifyStats();
     });
@@ -218,16 +217,12 @@ class NanivioAgoraClient {
 
   private attachRemoteAudio(track: IRemoteAudioTrack) {
     const msTrack = track.getMediaStreamTrack();
-    if (!this.remoteStream) this.remoteStream = new MediaStream();
-    this.remoteStream.getAudioTracks().forEach(t => this.remoteStream?.removeTrack(t));
-    this.remoteStream.addTrack(msTrack);
+    this.remoteStream = new MediaStream([...(this.remoteStream?.getVideoTracks() || []), msTrack]);
     this.notifyRemoteStream();
   }
   private attachRemoteVideo(track: IRemoteVideoTrack) {
     const msTrack = track.getMediaStreamTrack();
-    if (!this.remoteStream) this.remoteStream = new MediaStream();
-    this.remoteStream.getVideoTracks().forEach(t => this.remoteStream?.removeTrack(t));
-    this.remoteStream.addTrack(msTrack);
+    this.remoteStream = new MediaStream([...(this.remoteStream?.getAudioTracks() || []), msTrack]);
     this.notifyRemoteStream();
   }
   private rebuildLocalStream() {
@@ -353,7 +348,11 @@ class NanivioAgoraClient {
   }
   public setRemoteAudioMuted(muted: boolean) {
     this.remoteAudioMuted = muted;
-    this.client?.remoteUsers.forEach(user => user.audioTrack?.setVolume(muted ? 0 : 100));
+    this.client?.remoteUsers.forEach(user => {
+      user.audioTrack?.setVolume(muted ? 0 : 100);
+      // A volume change alone cannot retry playback blocked by mobile autoplay.
+      if (!muted) user.audioTrack?.play();
+    });
   }
   public async switchCamera(facing: 'user' | 'environment') {
     if (!this.localVideo) throw new Error('The camera is not active.');
@@ -390,8 +389,8 @@ class NanivioAgoraClient {
   }
   public getLocalStream() { return this.localStream; }
   public getRemoteStream() { return this.remoteStream; }
-  public subscribeLocalStream(cb: StreamCallback) { this.localStreamListeners.add(cb); return () => this.localStreamListeners.delete(cb); }
-  public subscribeRemoteStream(cb: StreamCallback) { this.remoteStreamListeners.add(cb); return () => this.remoteStreamListeners.delete(cb); }
+  public subscribeLocalStream(cb: StreamCallback) { this.localStreamListeners.add(cb); cb(this.localStream); return () => this.localStreamListeners.delete(cb); }
+  public subscribeRemoteStream(cb: StreamCallback) { this.remoteStreamListeners.add(cb); cb(this.remoteStream); return () => this.remoteStreamListeners.delete(cb); }
   private notifyLocalStream() { this.localStreamListeners.forEach(cb => cb(this.localStream)); }
   private notifyRemoteStream() { this.remoteStreamListeners.forEach(cb => cb(this.remoteStream)); }
   public subscribeTelemetry(cb: (stats: AgoraTelemetryStats) => void) { this.listeners.add(cb); cb(this.getStats()); return () => this.listeners.delete(cb); }
@@ -399,6 +398,7 @@ class NanivioAgoraClient {
   public async leaveChannel() {
     this.mediaGeneration++;
     this.mediaReady = false;
+    this.remoteAudioMuted = false;
     if (this.currentChannel) {
       const token = authClient.getToken();
       const headers: Record<string, string> = { 'Content-Type': 'application/json' };
