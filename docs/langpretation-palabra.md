@@ -59,6 +59,17 @@ Staged voice-note errors identify recognition, translation or audio generation
 without exposing provider names to the customer. Cancellation and bounded speech
 response-body reads prevent further stages continuing after a request is stopped.
 
+Staged voice messages also emit one server-only `[Nanivio voice-note timing]`
+event with recognition, translation and synthesis milliseconds, total processing
+time, the slowest measured stage, input duration, language pair and outcome.
+Failed or cancelled requests retain timings only for stages that were attempted.
+These measurements use a monotonic clock and exclude client recording preparation,
+upload, authorization/billing, message delivery and playback. They do not split
+Palabra's integrated speech-to-speech request into internal stages. No audio,
+transcripts, account identifiers or credentials are included; the customer response
+and provider request count are unchanged. New real-provider measurements still
+require approved credits or a normal authorized user operation.
+
 Language selection is a validated user preference, not an identity claim.
 Authenticated presence broadcasts the selected language; contacts and call
 participants are refreshed from it, and the accepting participant updates the

@@ -16,9 +16,11 @@ function wav(seconds=.25){
   a.writeUInt16LE(16,34);a.write('data',36);a.writeUInt32LE(a.length-44,40);return a;
 }
 function fixture(reply?:(request:any)=>Response|Promise<Response>|undefined,fastDeadline=false){
-  const requests:any[]=[],warnings:any[]=[];
+  const requests:any[]=[],warnings:any[]=[],timings:any[]=[];
+  let now=0;
   const context=vm.createContext({
     module:{exports:{}},Buffer,URL,Response,FormData,Blob,
+    performance:{now:()=>now},
     AbortSignal:fastDeadline?{
       any:AbortSignal.any.bind(AbortSignal),
       timeout:(ms:number)=>{
@@ -27,9 +29,10 @@ function fixture(reply?:(request:any)=>Response|Promise<Response>|undefined,fast
       },
     }:AbortSignal,
     process:{env:{KHAYA_API_KEY:'fixture-key-not-a-real-secret'}},
-    console:{warn:(...args:any[])=>warnings.push(args)},
+    console:{warn:(...args:any[])=>warnings.push(args),info:(...args:any[])=>timings.push(args)},
     fetch:async(url:any,options:any)=>{
       const request={url:new URL(url),...options};requests.push(request);
+      now+=request.url.pathname.includes('/transcribe')?20:request.url.pathname.endsWith('/translate')?30:40;
       assert.equal(request.url.hostname,'translation-api.ghananlp.org','This pair must never request Gemini or another provider.');
       const custom=reply?.(request);if(custom)return await custom;
       if(request.url.pathname.includes('/transcribe'))return new Response(JSON.stringify({text:'Recognized speech fixture'}));
@@ -39,7 +42,7 @@ function fixture(reply?:(request:any)=>Response|Promise<Response>|undefined,fast
     },
   });
   vm.runInContext(bundle.outputFiles[0].text,context);
-  return {api:(context.module as any).exports,requests,warnings};
+  return {api:(context.module as any).exports,requests,warnings,timings};
 }
 test('both Twi–English directions use the documented Khaya speech codes without requiring Gemini',async()=>{
   const f=fixture();
@@ -105,6 +108,9 @@ test('a response-body timeout reports the recognition stage and closes the unrea
     assert.match(error.message,/timed out while recognizing/);return true;
   });
   assert.equal(f.requests.length,1);assert.ok(cancelled);
+  const event=JSON.parse(f.timings[0][1]);
+  assert.equal(event.outcome,'timeout');assert.equal(event.failedStage,'recognition');
+  assert.equal(event.status,504);assert.equal(event.stagesMs.translation,undefined);
 });
 test('cancellation before processing, unsupported dialect MT and excessive duration never spend credits',async()=>{
   const f=fixture(),abort=new AbortController();abort.abort();
@@ -112,4 +118,41 @@ test('cancellation before processing, unsupported dialect MT and excessive durat
   await assert.rejects(()=>f.api.processStagedVoiceNote(wav(),'tw-ak','en'),(error:any)=>error.status===422);
   await assert.rejects(()=>f.api.processStagedVoiceNote(wav(61),'en','ak'),(error:any)=>error.status===400);
   assert.equal(f.requests.length,0);
+});
+test('stage timing uses the monotonic clock and identifies the slowest stage without extra requests',async()=>{
+  const f=fixture();
+  const result=await f.api.processStagedVoiceNote(wav(),'en','ak');
+  assert.equal(f.requests.length,3);
+  assert.equal(f.timings.length,1);
+  assert.equal(f.timings[0][0],'[Nanivio voice-note timing]');
+  const event=JSON.parse(f.timings[0][1]);
+  assert.deepEqual(event,{
+    sourceLanguage:'en',targetLanguage:'ak',inputDurationMs:250,
+    stagesMs:{recognition:20,translation:30,synthesis:40},
+    totalProcessingMs:90,slowestStage:'synthesis',outcome:'success',status:200,
+  });
+  assert.ok(result.audioBase64);
+  assert.equal(result.stagesMs,undefined,'Internal diagnostics must not expand the customer response.');
+  assert.doesNotMatch(JSON.stringify(event),/fixture|speech fixture|khaya|key|base64|transcript|account/i);
+});
+test('failed-stage timings are retained without inventing durations for stages that never ran',async()=>{
+  const f=fixture(request=>request.url.pathname.endsWith('/translate')?new Response('',{status:503}):undefined);
+  await assert.rejects(()=>f.api.processStagedVoiceNote(wav(),'ak','en'));
+  assert.equal(f.timings.length,1);
+  const event=JSON.parse(f.timings[0][1]);
+  assert.equal(event.outcome,'failed');assert.equal(event.failedStage,'translation');
+  assert.equal(event.status,503);assert.equal(event.totalProcessingMs,50);
+  assert.deepEqual({...event.stagesMs},{recognition:20,translation:30});
+  assert.equal(event.slowestStage,'translation');
+  assert.equal(f.requests.length,2);
+});
+test('cancelled requests are timed once without attributing work to later stages',async()=>{
+  const f=fixture(),abort=new AbortController();abort.abort();
+  await assert.rejects(()=>f.api.processStagedVoiceNote(wav(),'en','ak',abort.signal));
+  assert.equal(f.timings.length,1);
+  const event=JSON.parse(f.timings[0][1]);
+  assert.equal(event.outcome,'cancelled');assert.equal(event.status,499);
+  assert.equal(event.failedStage,'recognition');
+  assert.deepEqual({...event.stagesMs},{recognition:0});
+  assert.equal(event.totalProcessingMs,0);assert.equal(f.requests.length,0);
 });

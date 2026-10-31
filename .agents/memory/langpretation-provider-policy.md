@@ -11,6 +11,13 @@ international recognition/translation requests could not be completed reliably.
 After a bounded Palabra speech test worked in both directions, the owner approved
 connecting Palabra to Langpretation. This is not approval to change Malvi.
 
+**How to apply:** Keep speech-to-speech routing separate from standalone text
+translation and specialist-language pivots. Do not claim Palabra replaces a text
+translation provider just because its integrated audio service works. Configured
+coverage is not live verification of every language pair, and a short generated
+audio diagnostic is not verification of a two-person browser call. Further paid
+tests need explicit approval.
+
 For Twi ↔ English voice notes, select Khaya explicitly for both speech ends and
 text translation rather than using the application's general English speech
 provider.
@@ -23,13 +30,6 @@ The narrow selection avoids changing Malvi or unrelated English speech.
 Akuapem Twi. Distinguish completed audio generation from accurate translation:
 a generated round-trip sample completed but changed meaning and misheard the
 brand. Do not describe this as native-speaker or real-account quality approval.
-
-**How to apply:** Keep speech-to-speech routing separate from standalone text
-translation and specialist-language pivots. Do not claim Palabra replaces a text
-translation provider just because its integrated audio service works. Configured
-coverage is not live verification of every language pair, and a short generated
-audio diagnostic is not verification of a two-person browser call. Further paid
-tests need explicit approval.
 
 Langpretation must translate continuously while the user is still speaking, and
 the listener should hear the translation in the speaker's own voice, not just a
