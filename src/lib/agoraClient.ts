@@ -11,6 +11,7 @@ import AgoraRTC, {
   IRemoteVideoTrack,
 } from 'agora-rtc-sdk-ng';
 import { authClient } from './authClient';
+import { CallMediaSetupError, type CallMediaStage } from './callMediaErrors';
 
 export interface AgoraRtcConfig {
   appId: string;
@@ -88,10 +89,12 @@ class NanivioAgoraClient {
     const res = await fetch('/api/agora/token', {
       method: 'POST', headers,
       body: JSON.stringify({ channelName, uid, role: 'publisher', expireTimeSeconds: 3600 }),
+      signal: AbortSignal.timeout(15000),
     });
     const data = await res.json().catch(() => ({}));
     if (!res.ok || !data.token || !data.appId || data.isMock) {
-      throw new Error(data.error || 'Production Agora credentials/token are not configured.');
+      throw new CallMediaSetupError('token',
+        new Error(data.error || 'Production credentials/token are not configured.'), res.status);
     }
     this.token = data.token; this.appId = data.appId; this.agoraUid = data.agoraUid;
     return { token: data.token, appId: data.appId, agoraUid: data.agoraUid };
@@ -113,6 +116,7 @@ class NanivioAgoraClient {
     let audio: ILocalAudioTrack | null = null;
     let video: ILocalVideoTrack | null = null;
     let client: IAgoraRTCClient | null = null;
+    let stage: CallMediaStage = 'token';
     try {
     // An unresolved getUserMedia request cannot be cancelled by stopping tracks.
     // Let its cancellation cleanup finish before reacquiring the same devices.
@@ -125,12 +129,14 @@ class NanivioAgoraClient {
     const token = await this.fetchToken(channelName, uid);
     stillCurrent();
     const numericUid = token.agoraUid ?? this.agoraUid ?? 0;
+    stage = 'join';
     this.client = AgoraRTC.createClient({ mode: 'rtc', codec: 'vp8' });
     client = this.client;
     this.registerClientEvents();
     await this.client.join(token.appId, channelName, token.token, numericUid);
     stillCurrent();
 
+    stage = 'microphone';
     audio = await AgoraRTC.createMicrophoneAudioTrack({
       encoderConfig: 'speech_standard',
       AEC: true, ANS: true, AGC: true,
@@ -141,12 +147,14 @@ class NanivioAgoraClient {
     await audio.setEnabled(!this.isAudioMuted);
     stillCurrent();
     if (callType === 'video') {
+      stage = 'camera';
       video = await AgoraRTC.createCameraVideoTrack();
       stillCurrent();
       this.localVideo = video;
       await video.setEnabled(!this.isVideoOff);
       stillCurrent();
     }
+    stage = 'publish';
     await this.client.publish([this.localAudio, ...(this.localVideo ? [this.localVideo] : [])]);
     stillCurrent();
     this.rebuildLocalStream();
@@ -157,16 +165,19 @@ class NanivioAgoraClient {
       headers.Authorization = `Bearer ${authToken}`;
       headers['x-nanivio-token'] = authToken;
     }
+    stage = 'registration';
     try {
       const joinResponse = await fetch('/api/agora/join', {
         method: 'POST',
         headers,
         body: JSON.stringify({ channelName, callType }),
+        signal: AbortSignal.timeout(15000),
       });
       const joinResult = await joinResponse.json().catch(() => ({}));
       stillCurrent();
       if (!joinResponse.ok || !joinResult.success) {
-        throw new Error(joinResult.error || 'The server did not register this call participant.');
+        throw new CallMediaSetupError(stage,
+          new Error(joinResult.error || 'The server did not register this call participant.'), joinResponse.status);
       }
     } catch (error) { throw error; }
     this.mediaReady = true;
@@ -178,7 +189,7 @@ class NanivioAgoraClient {
       audio?.stop(); audio?.close(); video?.stop(); video?.close();
       if (generation === this.mediaGeneration) await this.leaveChannel();
       else await client?.leave().catch(() => {});
-      throw error instanceof Error ? error : new Error('Unable to connect microphone or camera.');
+      throw error instanceof CallMediaSetupError ? error : new CallMediaSetupError(stage, error);
     }
   }
 

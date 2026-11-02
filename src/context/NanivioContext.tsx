@@ -48,7 +48,7 @@ import {
 } from '../data/mockData';
 import { lookupNanivioUser, normalizeNanivioNumber } from '../utils/userLookup';
 import { agoraClient, AgoraTelemetryStats } from '../lib/agoraClient';
-import { callMediaErrorMessage } from '../lib/callMediaErrors';
+import { callMediaErrorMessage, callMediaFailureDetails, finishAnsweredCall } from '../lib/callMediaErrors';
 import { streamClient, StreamClientState } from '../lib/streamClient';
 import { linkedPrivateConversation, privateConversationChannel, publishPrivateMessage, restoredPrivateMessage } from '../lib/privateChat';
 import { durableChatMedia } from '../lib/chatAttachments';
@@ -1071,10 +1071,11 @@ export const NanivioProvider: React.FC<{ children: React.ReactNode }> = ({ child
       playCallConnectedTone();
     } catch (error) {
       if (currentAccountIdRef.current !== currentUser.id) return;
+      console.warn('[Nanivio call] Media setup failed', callMediaFailureDetails(error));
       setActiveCall(prev => prev?.id === callId ? { ...prev, status: 'ended',
         mediaError: callMediaErrorMessage(error, type) } : prev);
       realtimeClient.endCall(callId, channel, currentUser.id, remoteId);
-      throw new Error('Call media connection failed.');
+      throw error;
     }
   }, [currentUser.id, currentUser.name]);
   const callTimerRef = useRef<NodeJS.Timeout | null>(null);
@@ -1943,7 +1944,9 @@ export const NanivioProvider: React.FC<{ children: React.ReactNode }> = ({ child
     );
 
     // Mark connected, and initiate local billing, only after real media publication.
-    connectCallMedia(session.id, incomingCall.channelName, incomingCall.callType, caller.id).then(() => startBillingSession({
+    void finishAnsweredCall(
+      () => connectCallMedia(session.id, incomingCall.channelName, incomingCall.callType, caller.id),
+      () => startBillingSession({
       sessionId: session.id,
       serviceType: session.isPaidServiceCall ? 'EXPERT_SERVICE' : 'COMMUNICATION',
       usageType: 'CALL_MINUTE',
@@ -1952,9 +1955,9 @@ export const NanivioProvider: React.FC<{ children: React.ReactNode }> = ({ child
       providerId: caller.id,
       sourceLang: (currentUser.myLanguage || 'en') as any,
       targetLang: (caller.myLanguage || 'en') as any,
-    })).catch((error) => {
+    }), () => {
       setActiveCall(previous=>previous?.id===session.id
-        ? {...previous,mediaError:error instanceof Error?error.message:'Call billing could not start. Translation is unavailable.'}
+        ? {...previous,mediaError:'Call billing could not start. Langpretation is unavailable.'}
         : previous);
     });
 

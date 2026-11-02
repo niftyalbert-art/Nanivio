@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { callMediaErrorMessage } from '../src/lib/callMediaErrors';
+import { callMediaErrorMessage, callMediaFailureDetails, CallMediaSetupError, finishAnsweredCall } from '../src/lib/callMediaErrors';
 import { build } from 'esbuild';
 import { createRequire } from 'node:module';
 import { readFileSync } from 'node:fs';
@@ -148,7 +148,12 @@ for (const failure of ['token', 'camera', 'publish', 'register'] as const) {
     const original = globalThis.fetch; t.after(() => { globalThis.fetch = original; });
     const events = fixture(failure); const client = await loadClient();
     const states: string[] = []; client.subscribeTelemetry((stats: any) => states.push(stats.connectionState));
-    await assert.rejects(client.joinChannel('private-call', 'user', 'User', 'video'));
+    await assert.rejects(client.joinChannel('private-call', 'user', 'User', 'video'), (error: any) => {
+      assert.equal(error.name, 'CallMediaSetupError');
+      assert.equal(error.stage, failure === 'register' ? 'registration' : failure);
+      assert.equal(error.httpStatus, failure === 'token' || failure === 'register' ? 503 : undefined);
+      return true;
+    });
     assert.equal(client.getStats().connectionState, 'DISCONNECTED');
     assert.equal(client.getLocalStream(), null);
     if (failure !== 'token') assert.ok(events.includes('audio:close'));
@@ -268,6 +273,45 @@ test('device errors identify local camera failure separately from permission and
   assert.match(callMediaErrorMessage(new Error('NotAllowedError'), 'audio'), /Access to your microphone was denied/);
   assert.match(callMediaErrorMessage(new Error('NotFoundError'), 'video'), /No available/);
   assert.match(callMediaErrorMessage(new Error('NETWORK_TIMEOUT'), 'video'), /Check your connection/);
+});
+
+test('answer flow preserves the actual media error and does not start billing after failed media', async () => {
+  let displayed = '';
+  let billed = false;
+  const error = new CallMediaSetupError('camera', { code: 'NOT_READABLE' });
+  await finishAnsweredCall(async () => {
+    displayed = callMediaErrorMessage(error, 'video');
+    throw error;
+  }, async () => { billed = true; }, () => { displayed = 'Billing error'; });
+  assert.match(displayed, /camera or microphone could not start/);
+  assert.equal(billed, false);
+});
+
+test('answer flow only shows billing failure after successful media, and successful billing is unchanged', async () => {
+  const events: string[] = [];
+  await finishAnsweredCall(async () => { events.push('media'); },
+    async () => { events.push('billing'); throw new Error('private billing details'); },
+    () => { events.push('billing-failure'); });
+  assert.deepEqual(events, ['media', 'billing', 'billing-failure']);
+  events.length = 0;
+  await finishAnsweredCall(async () => { events.push('media'); },
+    async () => { events.push('billing'); },
+    () => { events.push('billing-failure'); });
+  assert.deepEqual(events, ['media', 'billing']);
+});
+
+test('call errors distinguish authorization, service configuration, devices and network without exposing original details', () => {
+  assert.match(callMediaErrorMessage(new CallMediaSetupError('token', new Error('private'), 401), 'audio'), /Sign in again/);
+  assert.match(callMediaErrorMessage(new CallMediaSetupError('token', new Error('private'), 403), 'video'), /could not be authorized/);
+  assert.match(callMediaErrorMessage(new CallMediaSetupError('join', { code: 'INVALID_TOKEN' }), 'audio'), /contact Nanivio support/);
+  assert.match(callMediaErrorMessage(new CallMediaSetupError('microphone', { name: 'NotAllowedError' }), 'audio'), /Allow access/);
+  assert.match(callMediaErrorMessage(new CallMediaSetupError('join', { code: 'CAN_NOT_GET_GATEWAY_SERVER' }), 'video'), /VPN or firewall/);
+  assert.match(callMediaErrorMessage(new CallMediaSetupError('registration', new Error('private'), 503), 'video'), /server could not finish/);
+  const failure = new CallMediaSetupError('join', { code: 'INVALID_TOKEN', message: 'private credential' });
+  assert.deepEqual(callMediaFailureDetails(failure), { stage: 'join', code: 'INVALID_TOKEN' });
+  assert.doesNotMatch(JSON.stringify(callMediaFailureDetails(failure)), /private credential/);
+  assert.equal(callMediaFailureDetails({ code: 'private-credential' }).code, 'UNCLASSIFIED');
+  assert.doesNotMatch(callMediaErrorMessage(failure, 'audio'), /INVALID_TOKEN|private credential/);
 });
 
 test('call display components never acquire a second camera', () => {

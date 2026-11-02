@@ -158,3 +158,13 @@ can attribute the reference's nonzero amplitude to the received translation.
 **How to apply:** Count and measure the receiving playout sources separately from
 synthetic input. Report fixture authorization, real-provider use and signed-in
 production-account verification as separate evidence boundaries.
+
+Verify received audio and video independently in call-media checks.
+
+**Why:** Successful channel admission and bidirectional audio do not establish
+video delivery. A synthetic camera must emit changing frames after capture starts;
+a silent canvas can make the fixture itself look like a video-service failure.
+
+**How to apply:** Check remote tracks and rendered frames, not only join/publication
+success. Keep synthetic-device results separate from physical-device and Render
+account verification.
