@@ -13,6 +13,15 @@ controls grouped under one menu, and a clear Send button. Chat should behave lik
 a real WhatsApp-style dialog, including sending images, videos and documents,
 with “no fakes.”
 
+Use the owner's supplied cyan/blue/purple sculpted N with its holographic globe
+as Nanivio's official logo, not a green substitute or a redrawn approximation.
+
+**Why:** The user identified the supplied artwork as “the app logo not that green one.”
+
+**How to apply:** Keep the official artwork's colours and proportions in app
+branding, browser icons and installed-app icons. The cream/gold page theme does
+not authorize recolouring the logo.
+
 Across the entire app, the user's newer image reference supersedes
 the sharper Bybit treatment: near-black and smoky graphite, pale cream accents, rounded
 dimensional cards, pill selections and circular controls. Keep the generous

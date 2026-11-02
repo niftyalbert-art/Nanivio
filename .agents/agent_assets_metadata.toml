@@ -583,3 +583,17 @@ mtime_ms = 1793591788070
 storage_uri = "gcs://replit-rams-assets-sisko/rams/assets/repl:8a53f482-19ae-49f0-ab16-31b527f92091/ed7d5f8c-0a88-4041-9911-211829aead68/5372fba6-4733-45a3-98d0-06019c4a8bcc"
 storage_version_token = "1793591812349388"
 content_type = "image/jpeg"
+
+[[outputs]]
+id = "VbzV-RdMu_3o0fnvYReo6"
+uri = "file://public/brand/nanivio-emblem.png"
+type = "image"
+title = "Official Nanivio app icon"
+description = "Cropped from your supplied artwork, preserving the complete N, globe and original colours."
+logical_id = "5aae2b3f-6d06-45f1-9b2f-6c2ce822f8ea"
+content_hash = "sha256:66115221f5e21c7e8a80e977ccd4b829e0df0db93b229ac1cbc22c7eb11dd0b8"
+size = 332915
+mtime_ms = 1793594258787
+storage_uri = "gcs://replit-rams-assets-sisko/rams/assets/repl:8a53f482-19ae-49f0-ab16-31b527f92091/5aae2b3f-6d06-45f1-9b2f-6c2ce822f8ea/6966698a-143c-4a35-97b2-a5a74e960e30"
+storage_version_token = "1793594407159820"
+content_type = "image/png"

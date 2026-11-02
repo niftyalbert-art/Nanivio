@@ -11,7 +11,15 @@ export default defineConfig(() => {
       tailwindcss(),
       VitePWA({
         registerType: 'autoUpdate',
-        includeAssets: ['favicon.ico', 'apple-touch-icon.png', 'icon.svg'],
+        includeAssets: [
+          'brand/nanivio-emblem.png',
+          'brand/nanivio-icon-192.png',
+          'brand/nanivio-icon-512.png',
+          'brand/nanivio-maskable-512.png',
+          'brand/nanivio-apple-touch.png',
+          'brand/nanivio-favicon.ico',
+          'brand/nanivio-favicon-32.png',
+        ],
         manifest: {
           id: '/',
           name: 'Nanivio',
@@ -24,19 +32,19 @@ export default defineConfig(() => {
           scope: '/',
           icons: [
             {
-              src: '/pwa-192x192.png',
+              src: '/brand/nanivio-icon-192.png',
               sizes: '192x192',
               type: 'image/png',
               purpose: 'any',
             },
             {
-              src: '/pwa-512x512.png',
+              src: '/brand/nanivio-icon-512.png',
               sizes: '512x512',
               type: 'image/png',
               purpose: 'any',
             },
             {
-              src: '/pwa-maskable-512x512.png',
+              src: '/brand/nanivio-maskable-512.png',
               sizes: '512x512',
               type: 'image/png',
               purpose: 'maskable',
