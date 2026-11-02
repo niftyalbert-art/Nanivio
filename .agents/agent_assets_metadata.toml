@@ -527,3 +527,31 @@ mtime_ms = 1793590716223
 storage_uri = "gcs://replit-rams-assets-sisko/rams/assets/repl:8a53f482-19ae-49f0-ab16-31b527f92091/357b5b01-4c52-4549-8f0f-78ca56581cbe/c95acb6c-0054-499b-ae62-cb18c9d078a1"
 storage_version_token = "1793590778317525"
 content_type = "image/jpeg"
+
+[[outputs]]
+id = "4TttuKq0SbMqEj8zh1mB2"
+uri = "file://generated-artifacts/nanivio-gold-art-mobile.jpg"
+type = "image"
+title = "Gold-art landing — mobile"
+description = "Updated app screenshot with small sentence-case heading, minimal text and gold geometric artwork."
+logical_id = "bee3dcba-3560-4902-a3f9-c159355fd8cc"
+content_hash = "sha256:a28fbab37894d7c0da5560efbf0039610c3adeac30cf1a8661d06015e506cb41"
+size = 32365
+mtime_ms = 1793591343606
+storage_uri = "gcs://replit-rams-assets-sisko/rams/assets/repl:8a53f482-19ae-49f0-ab16-31b527f92091/bee3dcba-3560-4902-a3f9-c159355fd8cc/de74f4b2-8d90-4b3e-8c58-2dd119ad677e"
+storage_version_token = "1793591373804667"
+content_type = "image/jpeg"
+
+[[outputs]]
+id = "yrIBDYnqWrzqq3oytWVzv"
+uri = "file://generated-artifacts/nanivio-gold-art-desktop.jpg"
+type = "image"
+title = "Gold-art landing — desktop"
+description = "Updated desktop screenshot of the reference-inspired black-and-gold landing page."
+logical_id = "4e26a8c3-458a-47fb-bdf8-b288ce66e82b"
+content_hash = "sha256:5ab643b12ad020b32299f390f9b9275702e447150661ab4d1b58c55e0e677df4"
+size = 52408
+mtime_ms = 1793591346494
+storage_uri = "gcs://replit-rams-assets-sisko/rams/assets/repl:8a53f482-19ae-49f0-ab16-31b527f92091/4e26a8c3-458a-47fb-bdf8-b288ce66e82b/722056f8-c615-4b4d-a334-4a2daa1b74ed"
+storage_version_token = "1793591375069160"
+content_type = "image/jpeg"

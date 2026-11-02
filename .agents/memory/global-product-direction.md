@@ -44,10 +44,14 @@ doing most of the work rather than repeated promotional writing or long explanat
 
 **Why:** The user said the landing page had too much writing and supplied its
 chat-card screenshot as the reference for a shorter, artistic communication look.
+They then replaced that direction with a near-black/gold geometric-art reference
+and requested “no big caps within heading.”
 
-**How to apply:** Keep brief headline/supporting copy, the dimensional cream
-actions and illuminated conversation illustration. Do not expand it back into a
-long brochure-style landing page when adding product capabilities.
+**How to apply:** For the public landing page, prioritize the gold geometric
+artwork on near-black, minimal copy and small sentence-case headings instead of
+oversized typography or the previous chat-card hero. This does not replace the
+authenticated app's graphite/cream direction. Do not expand the landing back into
+a long brochure-style page when adding product capabilities.
 
 The user reiterated that the persistent “Direct & Group Chats, Community Channels”
 card must be removed, with those destinations available under one click. The
