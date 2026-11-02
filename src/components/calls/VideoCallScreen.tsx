@@ -266,7 +266,8 @@ export const VideoCallScreen: React.FC<VideoCallScreenProps> = ({ onEndCall }) =
   const durationSeconds = activeCall?.durationSeconds ?? 0;
   const isRemoteSpeaking = !!remoteParticipant && activeCall?.activeSpeakerId === remoteParticipant.id;
   const inCallMessages = activeConversationId ? (messages[activeConversationId] || []) : [];
-  const isMediaConnected = activeCall?.status === 'connected' && !!agoraStats?.hasRemoteMedia;
+  const isMediaConnected = activeCall?.status === 'connected' &&
+    !!(agoraStats?.hasRemoteMedia || agoraStats?.hasRemoteParticipant);
   const callConnectionLabel = (() => {
     switch (activeCall?.status) {
       case 'ringing':
@@ -278,7 +279,7 @@ export const VideoCallScreen: React.FC<VideoCallScreenProps> = ({ onEndCall }) =
       case 'ended':
         return 'Call ended';
       case 'connected':
-        if (agoraStats?.hasRemoteMedia) return 'Connected';
+        if (agoraStats?.hasRemoteMedia || agoraStats?.hasRemoteParticipant) return 'Connected';
         if (agoraStats?.hasLocalMedia) return 'Waiting';
         return 'Waiting';
       default:
@@ -518,12 +519,13 @@ export const VideoCallScreen: React.FC<VideoCallScreenProps> = ({ onEndCall }) =
                 <p className="text-lg font-semibold text-white">
                   {activeCall?.status === 'ringing' || activeCall?.status === 'calling'
                     ? callConnectionLabel
-                    : remoteParticipant
-                    ? 'Waiting for remote media'
+                    : remoteParticipant && activeCall?.status !== 'ended'
+                    ? agoraStats?.hasRemoteParticipant ? 'Connected' : 'Waiting for the other caller'
                     : callConnectionLabel}
                 </p>
-                {agoraStats?.hasLocalMedia && !agoraStats?.hasRemoteMedia && remoteParticipant && (
-                  <p className="mt-1 text-sm text-white/55">Waiting for remote media.</p>
+                {activeCall?.status !== 'ended' && agoraStats?.hasLocalMedia && !agoraStats?.hasRemoteMedia && remoteParticipant && (
+                  <p className="mt-1 text-sm text-white/55">{agoraStats?.hasRemoteParticipant
+                    ? 'Their microphone or camera is off or not shared.' : 'Their device is connecting.'}</p>
                 )}
               </div>
             </div>

@@ -86,7 +86,9 @@ function finishCall(callId: string, endedBy: string, reason?: string) {
   for (const id of call.participants) removeAgoraParticipant(call.channelName, id);
   const recipients = new Set([call.caller.id, ...call.participants]);
   if (call.recipientId) recipients.add(call.recipientId);
-  else if (call.recipientNvId) recipients.add(call.recipientNvId);
+  // Invitations can fall back to the Nanivio number when a saved contact ID is
+  // stale. Cancellation must reach that same destination, not only the old ID.
+  if (call.recipientNvId && !call.recipientId) recipients.add(call.recipientNvId);
   activeCalls.delete(callId);
   for (const recipient of recipients) {
     sendToUser(recipient, {
@@ -628,6 +630,15 @@ export function setupRealtimeServer(httpServer: HttpServer,options?:{authorizeLa
                   timestamp: Date.now(),
                 },
               });
+              if (delivered) {
+                // Retain the authenticated identity actually reached by the
+                // fallback, so accept/end/disconnect all refer to the same user.
+                const targets = clientsByNvId.get(String(recipientNvId))
+                  || clientsByNvId.get(cleanNumber(String(recipientNvId)));
+                const reached = [...(targets || [])].find(target => target.socket.readyState === WebSocket.OPEN);
+                if (reached) callSession.recipientId = reached.userId;
+                else callSession.recipientId = '';
+              }
             }
 
             // Acknowledge call is ringing to caller
@@ -735,7 +746,18 @@ export function setupRealtimeServer(httpServer: HttpServer,options?:{authorizeLa
           case 'call:end': {
             const { callId } = payload || {};
             const callSession = activeCalls.get(String(callId || ''));
-            if (!currentUser || !callSession || !callSession.participants.includes(currentUser.userId)) {
+            // A hang-up may be retried after a lost acknowledgement or socket
+            // reconnect. Acknowledge an already-removed call without touching
+            // another call or exposing any participant data.
+            if (currentUser && typeof callId === 'string' && callId.length > 0 && callId.length <= 128 && !callSession) {
+              socket.send(JSON.stringify({ type: 'call:ended',
+                payload: { callId, endedBy: currentUser.userId, alreadyEnded: true } }));
+              break;
+            }
+            if (!currentUser || !callSession || !(
+              callSession.participants.includes(currentUser.userId) ||
+              (callSession.status === 'ringing' && isCallRecipient(callSession, currentUser))
+            )) {
               socket.send(JSON.stringify({
                 type: 'call:error',
                 payload: { message: 'This account is not a participant in that call.' },

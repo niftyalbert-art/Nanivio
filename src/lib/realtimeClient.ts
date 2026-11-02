@@ -51,6 +51,7 @@ class NanivioRealtimeClient {
   private reconnectTimer: any = null;
   private listeners: Map<string, Set<EventCallback>> = new Map();
   private onlineUsers: RealtimeUser[] = [];
+  private pendingCallEnds = new Map<string, { payload: any; userId: string; expiresAt: number }>();
 
   constructor() {
     if (typeof window !== 'undefined') {
@@ -88,6 +89,10 @@ class NanivioRealtimeClient {
         try {
           const parsed = JSON.parse(event.data);
           const { type, payload } = parsed;
+          if (type === 'call:ended' && payload?.callId) this.pendingCallEnds.delete(payload.callId);
+          // Retry hang-ups only after the socket has authenticated, never via
+          // the generic one-shot 500ms queue that can silently drop them.
+          if (type === 'auth:presence_ack') this.flushPendingCallEnds();
 
           if (type === 'auth:presence_ack' || type === 'presence:update') {
             if (payload?.activeOnlineUsers) {
@@ -153,6 +158,7 @@ class NanivioRealtimeClient {
     role?: string;
     myLanguage?: string;
   }) {
+    if (this.currentUser && this.currentUser.userId !== user.id) this.pendingCallEnds.clear();
     this.currentUser = {
       userId: user.id,
       nvId: user.nvId || '',
@@ -207,12 +213,27 @@ class NanivioRealtimeClient {
   }
 
   public endCall(callId: string, channelName?: string, userId?: string, targetUserId?: string) {
-    this.send('call:end', {
+    const payload = {
       callId,
       channelName,
       userId,
       targetUserId,
-    });
+    };
+    this.pendingCallEnds.set(callId, { payload, userId: this.currentUser?.userId || userId || '',
+      expiresAt: Date.now() + 60_000 });
+    if (this.pendingCallEnds.size > 64) this.pendingCallEnds.delete(this.pendingCallEnds.keys().next().value!);
+    if (this.socket?.readyState === WebSocket.OPEN) this.socket.send(JSON.stringify({ type: 'call:end', payload }));
+    else this.connect();
+  }
+
+  private flushPendingCallEnds() {
+    for (const [id, entry] of this.pendingCallEnds) {
+      if (entry.expiresAt <= Date.now() || entry.userId !== this.currentUser?.userId) {
+        this.pendingCallEnds.delete(id);
+      } else if (this.socket?.readyState === WebSocket.OPEN) {
+        this.socket.send(JSON.stringify({ type: 'call:end', payload: entry.payload }));
+      }
+    }
   }
 
   public sendSpeech(

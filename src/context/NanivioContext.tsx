@@ -49,6 +49,7 @@ import {
 import { lookupNanivioUser, normalizeNanivioNumber } from '../utils/userLookup';
 import { agoraClient, AgoraTelemetryStats } from '../lib/agoraClient';
 import { callMediaErrorMessage, callMediaFailureDetails, finishAnsweredCall } from '../lib/callMediaErrors';
+import { CallLifecycle } from '../lib/callLifecycle';
 import { streamClient, StreamClientState } from '../lib/streamClient';
 import { linkedPrivateConversation, privateConversationChannel, publishPrivateMessage, restoredPrivateMessage } from '../lib/privateChat';
 import { durableChatMedia } from '../lib/chatAttachments';
@@ -1056,21 +1057,27 @@ export const NanivioProvider: React.FC<{ children: React.ReactNode }> = ({ child
   const activeTranslationCall = useRef(activeCall);
   activeTranslationCall.current = activeCall;
   const [incomingCall, setIncomingCall] = useState<IncomingCallEvent | null>(null);
+  const incomingCallRef = useRef(incomingCall);
+  incomingCallRef.current = incomingCall;
+  const callLifecycle = useRef(new CallLifecycle());
   const [onlineUsers, setOnlineUsers] = useState<RealtimeUser[]>([]);
   const [agoraStats, setAgoraStats] = useState<AgoraTelemetryStats>(agoraClient.getStats());
   const mediaControlPendingRef = useRef({ audio: false, video: false });
   const connectCallMedia = useCallback(async (
     callId: string, channel: string, type: 'audio' | 'video', remoteId?: string,
   ) => {
+    if (callLifecycle.current.hasEnded(callId)) return false;
     setActiveCall(prev => prev?.id === callId ? { ...prev, status: 'connecting', mediaError: undefined } : prev);
     try {
       await agoraClient.joinChannel(channel, currentUser.id, currentUser.name, type, remoteId);
-      if (currentAccountIdRef.current !== currentUser.id) return;
+      if (currentAccountIdRef.current !== currentUser.id || callLifecycle.current.hasEnded(callId)) return false;
       setActiveCall(prev => prev?.id === callId
         ? { ...prev, status: 'connected', startedAt: Date.now() } : prev);
       playCallConnectedTone();
+      return true;
     } catch (error) {
-      if (currentAccountIdRef.current !== currentUser.id) return;
+      if (currentAccountIdRef.current !== currentUser.id || callLifecycle.current.hasEnded(callId)) return false;
+      callLifecycle.current.end(callId);
       console.warn('[Nanivio call] Media setup failed', callMediaFailureDetails(error));
       setActiveCall(prev => prev?.id === callId ? { ...prev, status: 'ended',
         mediaError: callMediaErrorMessage(error, type) } : prev);
@@ -1082,6 +1089,23 @@ export const NanivioProvider: React.FC<{ children: React.ReactNode }> = ({ child
   const callConnectTimerRef = useRef<NodeJS.Timeout | null>(null);
   const activeRingtoneRef = useRef<RingtoneHandle | null>(null);
   const incomingRingtoneRef = useRef<RingtoneHandle | null>(null);
+
+  // A locally published track is not proof the other device joined. Do not
+  // leave a call waiting forever if its peer failed during setup.
+  useEffect(() => {
+    if (!activeCall || activeCall.status !== 'connected' ||
+      agoraStats.hasRemoteMedia || agoraStats.hasRemoteParticipant) return;
+    const { id, channelName, participants } = activeCall;
+    const timer = setTimeout(() => {
+      if (activeTranslationCall.current?.id !== id || callLifecycle.current.hasEnded(id)) return;
+      callLifecycle.current.end(id);
+      setActiveCall(previous => previous?.id === id ? { ...previous, status: 'ended',
+        mediaError: 'The other device could not connect to this call. End it and try calling again.' } : previous);
+      realtimeClient.endCall(id, channelName, currentUser.id, participants.find(p => p.id !== currentUser.id)?.id);
+      void agoraClient.leaveChannel();
+    }, 30000);
+    return () => clearTimeout(timer);
+  }, [activeCall?.id, activeCall?.status, agoraStats.hasRemoteMedia, agoraStats.hasRemoteParticipant, currentUser.id]);
 
   // Real-time WebSocket connection, presence tracking & call signaling setup
   useEffect(() => {
@@ -1106,7 +1130,8 @@ export const NanivioProvider: React.FC<{ children: React.ReactNode }> = ({ child
     });
 
     const unsubIncoming = realtimeClient.on('call:incoming', (data: IncomingCallEvent) => {
-      if (!data) return;
+      if (!data || callLifecycle.current.hasEnded(data.callId)) return;
+      incomingCallRef.current = data;
       setIncomingCall(data);
       if (incomingRingtoneRef.current) {
         incomingRingtoneRef.current.stop();
@@ -1118,6 +1143,8 @@ export const NanivioProvider: React.FC<{ children: React.ReactNode }> = ({ child
     });
 
     const unsubAccepted = realtimeClient.on('call:accepted', (data) => {
+      if (!data?.callId || callLifecycle.current.hasEnded(data.callId) ||
+        activeTranslationCall.current?.id !== data.callId) return;
       if (callConnectTimerRef.current) {
         clearTimeout(callConnectTimerRef.current);
         callConnectTimerRef.current = null;
@@ -1135,7 +1162,10 @@ export const NanivioProvider: React.FC<{ children: React.ReactNode }> = ({ child
       connectCallMedia(callId, data.channelName, isVideo ? 'video' : 'audio', data.responder?.id).catch(() => {});
     });
 
-    const unsubDeclined = realtimeClient.on('call:declined', () => {
+    const unsubDeclined = realtimeClient.on('call:declined', (data) => {
+      if (!data?.callId) return;
+      callLifecycle.current.end(data.callId);
+      if (activeTranslationCall.current?.id !== data.callId) return;
       if (callConnectTimerRef.current) {
         clearTimeout(callConnectTimerRef.current);
         callConnectTimerRef.current = null;
@@ -1150,6 +1180,10 @@ export const NanivioProvider: React.FC<{ children: React.ReactNode }> = ({ child
     });
 
     const unsubEnded = realtimeClient.on('call:ended', (data?: any) => {
+      if (!data?.callId) return;
+      callLifecycle.current.end(data.callId);
+      if (activeTranslationCall.current?.id !== data.callId &&
+        incomingCallRef.current?.callId !== data.callId) return;
       if (callConnectTimerRef.current) {
         clearTimeout(callConnectTimerRef.current);
         callConnectTimerRef.current = null;
@@ -1164,7 +1198,9 @@ export const NanivioProvider: React.FC<{ children: React.ReactNode }> = ({ child
       }
       playCallEndedTone();
       agoraClient.leaveChannel();
-      setActiveCall(prev => prev?.mediaError ? prev : null);
+      setActiveCall(prev => prev?.id === data.callId
+        ? (prev.mediaError ? { ...prev, status: 'ended' } : null) : prev);
+      if (incomingCallRef.current?.callId === data.callId) incomingCallRef.current = null;
       setIncomingCall((currIncoming) => {
         if (currIncoming && currIncoming.callId === data?.callId) {
           const logItem: CallLogRecord = {
@@ -1194,6 +1230,24 @@ export const NanivioProvider: React.FC<{ children: React.ReactNode }> = ({ child
           timestamp: Date.now(),
         });
       }
+    });
+
+    const unsubConnectionLost = realtimeClient.on('connection:lost', () => {
+      const call = activeTranslationCall.current;
+      const invitation = incomingCallRef.current;
+      if (!call && !invitation) return;
+      const id = call?.id || invitation!.callId;
+      callLifecycle.current.end(id);
+      realtimeClient.endCall(id, call?.channelName || invitation?.channelName, currentUser.id);
+      activeRingtoneRef.current?.stop(); activeRingtoneRef.current = null;
+      incomingRingtoneRef.current?.stop(); incomingRingtoneRef.current = null;
+      if (callConnectTimerRef.current) clearTimeout(callConnectTimerRef.current);
+      callConnectTimerRef.current = null;
+      incomingCallRef.current = null;
+      setIncomingCall(null);
+      setActiveCall(previous => previous?.id === id ? { ...previous, status: 'ended',
+        mediaError: 'The call connection was lost. Please end this call and try again.' } : previous);
+      void agoraClient.leaveChannel();
     });
 
     const unsubSpeechTranscript = realtimeClient.on('call:speech_transcript', (data) => {
@@ -1289,6 +1343,7 @@ export const NanivioProvider: React.FC<{ children: React.ReactNode }> = ({ child
       unsubAccepted();
       unsubDeclined();
       unsubEnded();
+      unsubConnectionLost();
       unsubSpeechTranscript();
       unsubChat();
     };
@@ -1991,6 +2046,9 @@ export const NanivioProvider: React.FC<{ children: React.ReactNode }> = ({ child
   };
 
   const endCall = () => {
+    if (activeCall) callLifecycle.current.end(activeCall.id);
+    if (incomingCall) callLifecycle.current.end(incomingCall.callId);
+    incomingCallRef.current = null;
     if (activeRingtoneRef.current) {
       activeRingtoneRef.current.stop();
       activeRingtoneRef.current = null;
@@ -2008,8 +2066,9 @@ export const NanivioProvider: React.FC<{ children: React.ReactNode }> = ({ child
       callTimerRef.current = null;
     }
     playCallEndedTone();
-    agoraClient.restoreOriginalAudioTrack();
-    agoraClient.leaveChannel();
+    // Leave owns track cleanup. Restoring/publishing audio concurrently with
+    // leave can revive media after the user has already hung up.
+    void agoraClient.leaveChannel();
 
     if (activeCall) {
       NanivioTranslatorEngine.getInstance().removeCallSession(activeCall.id);

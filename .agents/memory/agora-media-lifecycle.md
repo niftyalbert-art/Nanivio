@@ -35,3 +35,14 @@ startup failure; it does not establish an Agora credential or credit failure.
 **How to apply:** Test answering while camera acquisition is pending, not only
 after a completed preview. Distinguish device-busy errors from permission,
 token, and network failures; do not promise a provider switch will fix capture.
+
+Use the identity actually reached by an invitation for the rest of its lifecycle.
+
+**Why:** A saved contact ID can be stale while its Nanivio number still reaches
+the correct signed-in user. Sending cancellation only to the stale ID leaves
+the recipient ringing even though the caller has ended the call.
+
+**How to apply:** Test call initiation by both account ID and number fallback,
+then acceptance, cancellation, reconnect and disconnect using authenticated
+identities. Scope terminal events to their call ID so delayed events cannot
+revive an old call or stop a newer one.

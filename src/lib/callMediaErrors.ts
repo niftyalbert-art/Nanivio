@@ -62,6 +62,6 @@ export async function finishAnsweredCall(
   startBilling: () => Promise<unknown>,
   billingFailed: () => void,
 ) {
-  try { await connect(); } catch { return; }
+  try { if (await connect() === false) return; } catch { return; }
   try { await startBilling(); } catch { billingFailed(); }
 }

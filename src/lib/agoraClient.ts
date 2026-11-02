@@ -35,6 +35,7 @@ export interface AgoraTelemetryStats {
   isVideoOff: boolean;
   hasLocalMedia: boolean;
   hasRemoteMedia: boolean;
+  hasRemoteParticipant?: boolean;
 }
 type StreamCallback = (stream: MediaStream | null) => void;
 
@@ -196,6 +197,9 @@ class NanivioAgoraClient {
   private registerClientEvents() {
     if (!this.client) return;
     const client = this.client;
+    client.on('user-joined', () => {
+      if (this.client === client) this.notifyStats();
+    });
     client.on('user-published', async (user, mediaType) => {
       if (this.client !== client) return;
       await client.subscribe(user, mediaType);
@@ -441,7 +445,8 @@ class NanivioAgoraClient {
       audioCodec: this.localAudio ? 'Opus' : '', videoCodec: this.localVideo ? 'VP8' : '',
       videoResolution: settings?.width && settings.height ? `${settings.width}×${settings.height}` : '',
       fps: video?.sendFrameRate || 0, isAudioMuted:this.isAudioMuted, isVideoOff:this.isVideoOff,
-      hasLocalMedia:!!this.localStream, hasRemoteMedia:!!this.remoteStream };
+      hasLocalMedia:!!this.localStream, hasRemoteMedia:!!this.remoteStream,
+      hasRemoteParticipant:!!this.client?.remoteUsers.length };
   }
   private notifyStats(){ const s=this.getStats(); this.listeners.forEach(cb=>cb(s)); }
   private startStatsTelemetry(){ if(this.statsInterval) clearInterval(this.statsInterval); this.statsInterval=setInterval(()=>this.notifyStats(),2000); }
