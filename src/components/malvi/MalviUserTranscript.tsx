@@ -1,10 +1,11 @@
 import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
 
 /** Keep live recognition readable without putting a large panel over the face. */
-export function MalviUserTranscript({ text, speaker = 'user', compact = false, label }: {
+export function MalviUserTranscript({ text, speaker = 'user', compact = false, contained = false, label }: {
   text: string;
   speaker?: 'user' | 'malvi';
   compact?: boolean;
+  contained?: boolean;
   label?: string;
 }) {
   const [expanded, setExpanded] = useState(false);
@@ -32,14 +33,14 @@ export function MalviUserTranscript({ text, speaker = 'user', compact = false, l
   }, []);
 
   return (
-    <section className="w-full min-w-0 max-w-xl shrink-0 rounded-xl border border-white/15 bg-[#10201f]/95 px-3 py-2 text-[#e3ebe5]">
-      <div className="mb-1 flex items-center justify-between gap-3">
+    <section className={`w-full min-w-0 max-w-xl rounded-xl border border-white/15 bg-[#10201f]/95 px-3 text-[#e3ebe5] ${contained ? 'flex h-full min-h-0 flex-col overflow-hidden py-1.5' : 'shrink-0 py-2'}`}>
+      <div className="mb-1 flex shrink-0 items-center justify-between gap-3">
         <span className="text-xs font-semibold text-[#c9e2cf]">{label ?? (speaker === 'user' ? 'You said' : 'Malvi')}</span>
         <button
           type="button"
           aria-expanded={expanded}
           aria-controls={transcriptId}
-          className="min-h-9 shrink-0 px-2 text-xs underline underline-offset-4 focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#d6e7da]"
+          className={`${contained ? 'min-h-6' : 'min-h-9'} shrink-0 px-2 text-xs underline underline-offset-4 focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#d6e7da]`}
           onClick={() => { followLatest.current = true; setExpanded(value => !value); }}
         >
           {expanded ? 'Show less' : 'Expand transcript'}
@@ -64,7 +65,7 @@ export function MalviUserTranscript({ text, speaker = 'user', compact = false, l
           }
           followLatest.current = box.scrollHeight - box.scrollTop - box.clientHeight < 24;
         }}
-        className={`${compact ? (expanded ? 'max-h-[20dvh]' : 'max-h-[9dvh]') : (expanded ? 'max-h-[40dvh]' : 'max-h-[18dvh]')} min-h-6 overflow-y-auto overscroll-contain whitespace-pre-wrap break-words text-left text-sm leading-6 [overflow-wrap:anywhere] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#d6e7da]`}
+        className={`${compact ? (expanded ? 'max-h-[20dvh]' : 'max-h-[9dvh]') : (expanded ? 'max-h-[40dvh]' : 'max-h-[18dvh]')} ${contained ? 'flex-1' : ''} min-h-6 overflow-y-auto overscroll-contain whitespace-pre-wrap break-words text-left text-sm leading-6 [overflow-wrap:anywhere] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#d6e7da]`}
       >
         {text}
       </div>

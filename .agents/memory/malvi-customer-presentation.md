@@ -23,12 +23,19 @@ and offer returning users continuation or a new topic without repeating introduc
 
 Mobile conversation subtitles must remain visible independently of optional call
 controls, including both the user's recognized speech and Malvi's reply.
+Subtitles must not cover Malvi's face on phones, tablets or computers.
 
 **Why:** The owner repeatedly reported hidden subtitles on mobile after an
 isolated transcript test passed; a readable component alone did not establish
 that the full overlay kept it on screen.
+The owner also repeatedly reported that readable subtitles were covering her face.
+A transcript rectangle can be inside the viewport while a smaller ancestor
+clips its text; viewport bounds alone are not a visibility check.
 
 **How to apply:** Verify the complete overlay with long text, expanded optional
 panels, small portrait screens and landscape. Check screen-resize auto-follow
 as well as intentional scrolling back through earlier text. Do not substitute
 desktop or standalone transcript checks for the mobile overlay.
+Reserve separate media and transcript/control regions; verify their actual
+non-overlap and ancestor clipping, not only whether the subtitle text fits
+inside the viewport.

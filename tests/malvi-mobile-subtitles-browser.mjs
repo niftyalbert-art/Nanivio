@@ -93,11 +93,27 @@ if (preview) {
           const c=document.querySelector('[aria-label="Live session controls"]').getBoundingClientRect();
           return v.right<=s.left+1 && v.right<=c.left+1;
         })()`), true, 'tablet and desktop captions/controls never cover the avatar stage');
+      } else {
+        assert.equal(await page.evaluate(`(()=>{
+          const v=document.querySelector('[aria-label="Malvi live video"]').getBoundingClientRect();
+          const s=document.querySelector('[aria-label="Conversation subtitles"]').getBoundingClientRect();
+          const c=document.querySelector('[aria-label="Live session controls"]').getBoundingClientRect();
+          return v.height>0 && v.bottom<=s.top+1 && v.bottom<=c.top+1;
+        })()`),true,'mobile captions and controls occupy space below the avatar, never over its face');
       }
       await page.wait("[document.getElementById('malvi-spoken-transcript'),document.getElementById('malvi-user-transcript')].every(el=>el.scrollHeight-el.clientHeight-el.scrollTop<3)");
       const check = async () => {
         const result = await page.evaluate(`(()=>{
-          const visible=el=>{const r=el.getBoundingClientRect();return r.top>=0&&r.bottom<=innerHeight+1&&r.left>=0&&r.right<=innerWidth+1&&r.height>=24;};
+          const visible=el=>{
+            const r=el.getBoundingClientRect();
+            if(!(r.top>=0&&r.bottom<=innerHeight+1&&r.left>=0&&r.right<=innerWidth+1&&r.height>=24))return false;
+            for(let parent=el.parentElement;parent;parent=parent.parentElement){
+              const s=getComputedStyle(parent),p=parent.getBoundingClientRect();
+              if(['hidden','auto','scroll','clip'].includes(s.overflowY)&&(r.top<p.top-1||r.bottom>p.bottom+1))return false;
+              if(['hidden','auto','scroll','clip'].includes(s.overflowX)&&(r.left<p.left-1||r.right>p.right+1))return false;
+            }
+            return true;
+          };
           const texts=[document.getElementById('malvi-spoken-transcript'),document.getElementById('malvi-user-transcript')];
           const controls=document.querySelector('[aria-label="Live session controls"]');
           const close=document.querySelector('[aria-label="End session and close"]');
@@ -106,7 +122,8 @@ if (preview) {
             latestVisible:texts.every(el=>el.scrollHeight-el.clientHeight-el.scrollTop<3),
             noHorizontalOverflow:texts.every(el=>el.scrollWidth<=el.clientWidth)&&document.documentElement.scrollWidth<=innerWidth,
             closeVisible:visible(close),micVisible:visible(mic),
-            controlsScrollable:controls.scrollHeight>controls.clientHeight,
+            controlsScrollableOrFits:controls.clientHeight>0 && controls.getBoundingClientRect().bottom<=innerHeight+1 &&
+              (controls.scrollHeight<=controls.clientHeight+1 || ['auto','scroll'].includes(getComputedStyle(controls).overflowY)),
             dialogFits:document.querySelector('[role="dialog"]').getBoundingClientRect().height<=innerHeight+1};
         })()`);
         assert.ok(result.bothVisible && result.noHorizontalOverflow && result.closeVisible && result.dialogFits,
@@ -114,7 +131,7 @@ if (preview) {
         return result;
       };
       const initial = await check();
-      assert.ok(initial.latestVisible && initial.micVisible && initial.controlsScrollable,
+      assert.ok(initial.latestVisible && initial.micVisible && initial.controlsScrollableOrFits,
         `${width}x${height} initial: ${JSON.stringify(initial)}`);
       // Auxiliary details must scroll in their own panel, not move captions away.
       await page.evaluate("document.querySelector('[aria-label=\"Live session controls\"] details').open=true;true");

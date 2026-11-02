@@ -20,6 +20,7 @@ import { BrowserMicCapture, browserMicStreamId } from '../../lib/nanivioMic/Brow
 import { NANIVIO_MIC_EVENTS } from '../../shared/nanivioMicProtocol';
 import { parseMalviAssets, type MalviAssetResult } from '../../shared/malviInputTypes';
 import { MalviSessionClock } from '../../lib/malviSessionClock';
+import { startMalviAvatarPresence } from '../../lib/malviAvatarPresence';
 import { malviAllowanceIsUsedUp, openMalviSubscriptionPlans } from '../../lib/malviSubscriptionNavigation';
 
 type Phase = 'idle' | 'connecting' | 'connected' | 'error';
@@ -105,6 +106,7 @@ export const MalviLiveAssistantProvider: React.FC<{ children: React.ReactNode }>
   const startupAudio = useRef<any[]>([]);
   const receiveBrainAudio = useRef<((payload: any) => void) | null>(null);
   const sdk = useRef<LiveAvatarSession | null>(null);
+  const stopAvatarPresence = useRef<(() => void) | null>(null);
   const sessionId = useRef<string | null>(null);
   const micEngine = useRef<NanivioMicEngine | null>(null);
   const stopWake = useRef<(() => void) | null>(null);
@@ -129,6 +131,7 @@ export const MalviLiveAssistantProvider: React.FC<{ children: React.ReactNode }>
 
   const cleanup = useCallback(async () => {
     const live = sdk.current, id = sessionId.current;
+    stopAvatarPresence.current?.(); stopAvatarPresence.current=null;
     stopMicrophone();
     captions.current?.cancel();
     avatarPlayout.current?.close(); avatarPlayout.current = null;
@@ -484,6 +487,16 @@ export const MalviLiveAssistantProvider: React.FC<{ children: React.ReactNode }>
       // User audio belongs to our backend, not the provider-managed voice chat.
       await live.voiceChat.stop();
       if (run !== generation.current) { await live.stop(); return; }
+      // Provider presence is separate from conversation activity. In LITE mode
+      // user speech goes to our brain, not to the renderer's voice chat.
+      stopAvatarPresence.current?.();
+      stopAvatarPresence.current=startMalviAvatarPresence({
+        isAuthorized:()=>mounted.current && run===generation.current &&
+          sdk.current===live && sessionId.current===info.id &&
+          (sessionClock.current.secondsRemaining()??0)>0,
+        keepAlive:()=>live.keepAlive(),
+        onFailure:()=>console.warn('[Malvi] Avatar connection check failed; retrying within the existing session.'),
+      });
       avatarStartup.current?.started();
       busy.current = false;
     } catch (err) {

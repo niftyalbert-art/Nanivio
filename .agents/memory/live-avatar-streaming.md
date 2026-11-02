@@ -36,3 +36,13 @@ of provider credits or account identity.
 overrides. Verify computed transparency and actual screen presentation alongside
 frame readiness; a valid stream, nonzero video dimensions, or an uncropped
 bounding rectangle alone cannot detect video concealed by another layer.
+
+Inspect the SDK's actual package exports before treating sibling source files
+as runtime behavior.
+
+**Why:** The installed package's per-class JavaScript did not await a keep-alive
+request, but its exported ESM and CJS bundles did. Inspecting the unused file
+alone would falsely establish an unhandled-rejection bug.
+
+**How to apply:** Resolve the loaded entry point and inspect that implementation
+before proposing SDK workarounds or private-field patches.

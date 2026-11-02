@@ -300,28 +300,6 @@ export const MalviLiveOverlay: React.FC<MalviLiveOverlayProps> = ({
 
   return createPortal(
     <div className="nv-theme-dark fixed inset-0 z-[100] isolate flex h-[100dvh] min-h-0 items-center justify-center overflow-hidden bg-[#071311] text-[#f1f3eb]">
-      {!voiceOnly && <video
-        ref={onVideoElement}
-        autoPlay
-        playsInline
-        aria-label="Malvi live video"
-        className="absolute inset-0 h-full w-full object-contain object-center md:w-[calc(100%_-_22rem)]"
-      />}
-
-      {!voiceOnly && (phase === 'connecting' || phase === 'error') && (
-        <div className="absolute inset-0 -z-0 overflow-hidden bg-[#172e2d]">
-          <img
-            src={MALVI_PROFILE}
-            alt={phase === 'connecting' ? 'Malvi portrait preview while connecting' : 'Malvi portrait preview'}
-            className="absolute inset-0 h-full w-full object-contain object-center opacity-75 md:w-[calc(100%_-_22rem)]"
-          />
-          <div className="absolute inset-0 bg-gradient-to-b from-[#10201f]/45 via-[#10201f]/15 to-[#081614]/80" />
-        </div>
-      )}
-
-      {!voiceOnly && <div aria-hidden="true" className="pointer-events-none absolute inset-y-0 right-0 hidden w-[22rem] border-l border-white/10 bg-[#071311] md:block" />}
-      <div aria-hidden="true" className="malvi-live-media-shade pointer-events-none absolute inset-0" />
-
       <div
         ref={dialogRef}
         role="dialog"
@@ -364,16 +342,38 @@ export const MalviLiveOverlay: React.FC<MalviLiveOverlayProps> = ({
           </div>
         </header>
 
-        <div aria-hidden="true" className="min-h-0 flex-1" />
+        <main className={`grid min-h-0 flex-1 grid-cols-1 ${voiceOnly ? '' : 'md:grid-cols-[minmax(0,1fr)_22rem]'}`}>
+          <section aria-label={voiceOnly ? 'Voice conversation' : 'Malvi video'} className="relative min-h-[30dvh] min-w-0 overflow-hidden bg-[#10201f] md:min-h-0">
+            {!voiceOnly && <video
+              ref={onVideoElement}
+              autoPlay
+              playsInline
+              aria-label="Malvi live video"
+              className="absolute inset-0 h-full w-full object-contain object-center"
+            />}
+            {!voiceOnly && <div aria-hidden="true" className="malvi-live-media-shade pointer-events-none absolute inset-0" />}
 
-        {phase === 'connected' && (caption?.trim() || userTranscript?.trim()) && (
-          <div aria-label="Conversation subtitles" className={`flex max-h-[48dvh] w-full shrink-0 flex-col items-center gap-2 overflow-y-auto overscroll-contain px-4 pt-2 sm:px-7 ${!voiceOnly ? 'md:ml-auto md:w-[22rem] md:px-4' : ''}`}>
-            {caption?.trim() && <MalviUserTranscript text={caption} speaker="malvi" compact label={`${speaking ? 'Malvi is speaking' : 'Malvi'}${approximateCaptions ? ' · Approximate captions' : ''}`} />}
-            {userTranscript?.trim() && <MalviUserTranscript text={userTranscript} compact />}
-          </div>
-        )}
+            {!voiceOnly && (phase === 'connecting' || phase === 'error') && (
+              <div className="absolute inset-0 overflow-hidden bg-[#172e2d]">
+                <img
+                  src={MALVI_PROFILE}
+                  alt={phase === 'connecting' ? 'Malvi portrait preview while connecting' : 'Malvi portrait preview'}
+                  className="absolute inset-0 h-full w-full object-contain object-center opacity-75"
+                />
+                <div className="absolute inset-0 bg-gradient-to-b from-[#10201f]/45 via-[#10201f]/15 to-[#081614]/80" />
+              </div>
+            )}
+          </section>
 
-        <footer aria-label="Live session controls" className={`flex ${onSubscribe ? 'max-h-[70dvh]' : 'max-h-[30dvh]'} min-h-0 shrink-0 flex-col items-center gap-2 overflow-y-auto overscroll-contain px-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-2 sm:gap-3 sm:px-7 sm:pb-[max(1.75rem,env(safe-area-inset-bottom))] [&>*]:shrink-0 ${!voiceOnly ? 'md:ml-auto md:w-[22rem] md:px-4' : ''}`}>
+          <aside className={`flex min-h-0 min-w-0 flex-col overflow-hidden ${voiceOnly ? '' : 'border-t border-white/10 bg-[#071311]/95 md:border-l md:border-t-0'} max-h-[52dvh] md:max-h-none`}>
+            {phase === 'connected' && (caption?.trim() || userTranscript?.trim()) && (
+              <div aria-label="Conversation subtitles" className={`grid w-full shrink-0 auto-rows-fr grid-cols-1 gap-2 px-4 pt-2 sm:px-7 md:px-4 ${caption?.trim() && userTranscript?.trim() ? 'h-[32dvh] md:h-[38dvh]' : 'h-[20dvh] md:h-[24dvh]'}`}>
+                {caption?.trim() && <MalviUserTranscript text={caption} speaker="malvi" compact contained label={`${speaking ? 'Malvi is speaking' : 'Malvi'}${approximateCaptions ? ' · Approximate captions' : ''}`} />}
+                {userTranscript?.trim() && <MalviUserTranscript text={userTranscript} compact contained />}
+              </div>
+            )}
+
+            <footer aria-label="Live session controls" className="flex max-h-[32dvh] min-h-0 shrink flex-col items-center gap-2 overflow-y-auto overscroll-contain px-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-2 sm:gap-3 sm:px-7 sm:pb-[max(1.75rem,env(safe-area-inset-bottom))] [&>*]:shrink-0 md:max-h-full md:flex-1 md:px-4">
           {phase === 'connected' && (
             <div className="flex min-h-7 items-center justify-center gap-2.5 text-[11px] text-[#e0e8e2]/90" aria-label={`Microphone status: ${listeningCopy}`}>
               <span aria-hidden="true" className="flex h-4 items-center gap-[3px]">
@@ -587,7 +587,9 @@ export const MalviLiveOverlay: React.FC<MalviLiveOverlayProps> = ({
               </div>
             )}
           </details>
-        </footer>
+            </footer>
+          </aside>
+        </main>
       </div>
     </div>,
     document.body,
