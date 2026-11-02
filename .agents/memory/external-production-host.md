@@ -20,6 +20,15 @@ matches the live Render service's `SUPABASE_URL`, after privately comparing them
 This confirmation does not identify the target of workspace credentials or grant
 permission to change production accounts.
 
+Do not interpret a workspace Paystack “reference not found” result as a failed
+live payment without matching the account and key mode to Render.
+
+**Why:** The owner confirmed Render's credentials are live, while a workspace
+read-only check used a test-mode key. Those checks cannot verify the same transactions.
+
+**How to apply:** Keep each host's payment configuration separate; do not replace
+Render's live credentials to resolve a workspace-only verification mismatch.
+
 Keep Malvi’s ElevenLabs transport separate between hosts: use the connected
 integration in the Replit development preview and a direct server-side key on Render.
 
