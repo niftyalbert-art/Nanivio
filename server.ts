@@ -49,6 +49,8 @@ import { billingEngine } from "./src/server/billingEngine.ts";
 import { requireBillingAdmin, billingAdminActor, canRefund, ownsBillingRecord, ownsProviderEarnings, ownsBusinessBilling } from "./src/server/billingAccess.ts";
 import { createMalviCostRouter } from "./src/server/malviCostCalculator.ts";
 import { createMalviPlanRouter, malviCatalogService } from "./src/server/malviPlanCatalog.ts";
+import { createBusinessRouter, createBusinessService } from "./src/server/assistant/businessRooms.ts";
+import { requireMalviCapability } from "./src/server/assistant/planAccess.ts";
 import { createMalviRuntimeRouter } from "./src/server/malviRuntimeLimits.ts";
 import { getPersistentInvoice } from "./src/server/normalizedBillingRepository.ts";
 import { authDb } from "./src/server/authDb.ts";
@@ -1530,13 +1532,17 @@ app.get("/api/langpretation/azure-speech-token", requireAuthenticatedUser, async
 
 app.post("/api/agora/token", requireAuthenticatedUser, (req, res) => {
   try {
-    const { channelName, expireTimeSeconds = 3600, role: requestedRole = "publisher" } = req.body;
+    const { channelName: requestedChannel, expireTimeSeconds = 3600, role: requestedRole = "publisher" } = req.body;
 
-    if (typeof channelName !== 'string' || !channelName.trim() || channelName.length > 128) {
+    if (typeof requestedChannel !== 'string' || !requestedChannel.trim() || requestedChannel.length > 128) {
       return res.status(400).json({ error: "channelName is required" });
     }
+    const channelName = requestedChannel.trim();
     const authUser = (req as any).authUser;
     const userId = authenticatedUserId(req);
+    if (channelName.startsWith('nanivio_business_')) {
+      return res.status(403).json({ error: 'Join Business meetings through the authorized workspace.' });
+    }
     if (channelName.startsWith('nanivio_call_') && !canJoinAgoraCall(userId, String(authUser?.nvId || ''), channelName)) {
       return res.status(403).json({ error: "You are not a connected participant in this call." });
     }
@@ -2379,122 +2385,48 @@ app.post("/api/billing/langpretation/record-usage", requireAuthenticatedUser, as
 // D. Malvi Video Usage Tracking
 app.post("/api/malvi/record-video-usage", requireAuthenticatedUser, async (req,res)=>{try{if(!normalizedBillingEnabled())return res.status(503).json({success:false,error:'Persistent billing database is required.'});if(Number(req.body?.seconds||0)<=0)return res.json({success:true,creditsConsumed:0});const result=await recordMalviUsagePersistent(authenticatedUserId(req),Number(req.body?.seconds||0),{sessionId:req.body?.sessionId,sourceLang:req.body?.sourceLang,targetLang:req.body?.targetLang,provider:req.body?.provider||'gemini'});res.json(result);}catch(error:any){res.status(400).json({success:false,error:error.message});}});
 
-// E. Malvi Business Real-Time Team Collaboration AI
-app.post("/api/malvi/business/collaborate", requireAuthenticatedUser, async (req, res) => {
-  try {
-    const {
-      sessionId = `biz_session_${Date.now()}`,
-      topic = "Business Strategy & Innovation",
-      objective = "Collaborative Idea Clarification & Action Planning",
-      participants = [],
-      ideas = [],
-      newIdea,
-      history = [],
-    } = req.body;
+// Business membership and token issuance are checked server-side. Generic
+// token issuance cannot bypass the private room admission boundary.
+const malviBusinessService = createBusinessService();
+app.use('/api/malvi/business/rooms', requireAuthenticatedUser, (_req, res, next) => {
+  if (!adminFeatureSwitches.malviAiAssistantEnabled) return res.status(403).json({ success: false, error: 'Malvi is disabled by the administrator.' });
+  next();
+}, createBusinessRouter(malviBusinessService));
 
-    if (!normalizedBillingEnabled()) return res.status(503).json({success:false,error:"Persistent Malvi Business entitlement is required."});
-    const businessSubscription = await getPersistentMalviSubscription(authenticatedUserId(req));
-    if (!businessSubscription || businessSubscription.tier !== "malvi_business" || businessSubscription.status !== "ACTIVE") {
-      return res.status(403).json({success:false,error:"Malvi Business subscription is required for team collaboration."});
+app.post('/api/malvi/in-call', requireAuthenticatedUser, async (req, res) => {
+  res.setHeader('Cache-Control', 'no-store');
+  try {
+    if (!adminFeatureSwitches.malviAiAssistantEnabled) return res.status(403).json({ success: false, error: 'Malvi is disabled by the administrator.' });
+    const user = authenticatedUserId(req), { channelName, question } = req.body ?? {};
+    await requireMalviCapability(user, 'memory');
+    if (typeof channelName !== 'string' || !channelName.startsWith('nanivio_call_')
+      || !canJoinAgoraCall(user, String((req as any).authUser?.nvId || ''), channelName)) {
+      return res.status(403).json({ success: false, error: 'Join an active call before asking Malvi for in-call assistance.' });
+    }
+    if (typeof question !== 'string' || !question.trim() || question.length > 4000) {
+      return res.status(400).json({ success: false, error: 'Enter a question of up to 4,000 characters.' });
     }
     const ai = getAI();
-    let analysisText = "";
-    let actionItems: Array<{ id: string; task: string; owner: string; status: "pending" | "completed" }> = [];
-    let contributionType: 'analysis' | 'suggestion' | 'clarification' | 'action_items' | 'summary' = 'analysis';
-
-    if (!ai) {
-      return res.status(503).json({ success: false, error: "Malvi AI is not configured. Set GEMINI_API_KEY before enabling Malvi production chat." });
-    }
-    {
-      try {
-        const teamIdeasContext = ideas.map((i: any) => `â€¢ ${i.author}: "${i.text}"`).join("\n");
-        const prompt = `You are Malvi Business, an elite AI participant and strategy co-pilot joining an online collaborative business session with a live company/team.
-Topic: ${topic}
-Objective: ${objective}
-Participating Team Members: ${participants.map((p: any) => p.name).join(", ") || "Business Team"}
-Recent Team Ideas:
-${teamIdeasContext || "No prior ideas submitted yet."}
-Latest Team Input: "${newIdea || "Team requesting strategic briefing and next steps."}"
-
-Provide an insightful, constructive, professional contribution that helps the team move forward.
-Format your response in clean markdown with:
-1. **Critical Analysis & Clarification** (1-2 sharp observations or questions to stress-test the idea)
-2. **Strategic Recommendations** (Feasibility, AfCFTA trade corridor opportunities, cost/tech considerations)
-3. **Action Items & Owners** (2-3 concise assignable next steps with proposed team owner)
-4. **Feasibility Score**: [e.g. 88%]`;
-
-        const response = await ai.models.generateContent({
-          model: "gemini-3.8-flash",
-          contents: prompt,
-        });
-
-        analysisText = response.text || "";
-        contributionType = newIdea?.toLowerCase().includes("summary") ? 'summary' : 'analysis';
-
-        // Extract action items
-        actionItems = [
-          {
-            id: `act_${Date.now()}_1`,
-            task: `Draft operational specification for ${topic}`,
-            owner: participants[0]?.name || "Team Lead",
-            status: "pending",
-          },
-          {
-            id: `act_${Date.now()}_2`,
-            task: "Conduct regulatory & trade corridor compliance check",
-            owner: participants[1]?.name || "Legal / Finance",
-            status: "pending",
-          },
-        ];
-      } catch (geminiErr: any) {
-        console.error("Malvi Business AI generation failed:", geminiErr);
-        return res.status(502).json({ success: false, error: "Malvi Business AI provider failed. No simulated response was generated." });
-      }
-    }
-
-    if (!analysisText) {
-      return res.status(502).json({ success: false, error: "Malvi Business AI returned no content." });
-    }
-    /* disabled legacy simulated response: if (!analysisText) {
-      analysisText = `### Malvi Business Strategic Review: ${topic}
-**Core Assessment**:
-The initiative presents clear market viability with strong synergy across digital and cross-border trade corridors.
-
-**Key Clarification Questions for the Team**:
-1. What is the target customer acquisition cost within the first 90 days?
-2. Which regulatory frameworks (e.g. AfCFTA, local telecommunications or payment licenses) apply?
-3. How will customer onboarding latency be minimized?
-
-**Recommended Next Steps**:
-- Synthesize unit economics and margin contribution per transaction.
-- Pilot an interactive prototype with select commercial partners.`;
-
-      actionItems = [
-        {
-          id: `act_${Date.now()}_1`,
-          task: `Prepare 90-day pilot milestones for ${topic}`,
-          owner: participants[0]?.name || "Team Lead",
-          status: "pending",
-        },
-      ];
-    } */
-
-    const contribution = {
-      id: `contrib_${Date.now()}`,
-      type: contributionType,
-      content: analysisText,
-      timestamp: Date.now(),
-    };
-
-    res.json({
-      success: true,
-      contribution,
-      actionItems,
-      timestamp: Date.now(),
+    if (!ai) return res.status(503).json({ success: false, error: 'Malvi assistance is not configured.' });
+    const { claimMalviRequest } = await import('./src/server/assistant/liveUsage.ts');
+    await claimMalviRequest(user, 'analysis');
+    const response = await ai.models.generateContent({
+      model: process.env.MALVI_BUSINESS_MODEL || 'gemini-2.5-flash',
+      contents: question,
+      config: { httpOptions: { timeout: 20000 }, maxOutputTokens: 1000,
+        systemInstruction: `${MALVI_IDENTITY_PROMPT}\nHelp the user during an active Nanivio call using only the question or quoted discussion they explicitly shared. You are not listening to the other caller or recording the call. Never claim otherwise. Provide concise, useful clarification, translation, drafting or decision assistance in the user's language. Do not invent meeting outcomes or promise to execute unconnected actions.` },
     });
-  } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    if (!response.text?.trim()) return res.status(502).json({ success: false, error: 'Malvi returned no answer. Try again.' });
+    res.json({ success: true, answer: response.text.trim() });
+  } catch (error: any) {
+    res.status(typeof error?.status === 'number' ? error.status : 503).json({ success: false,
+      error: typeof error?.status === 'number' ? error.message : 'In-call assistance could not complete. No substitute answer was generated.' });
   }
+});
+
+// Compatibility endpoint for old clients; shared work now requires a real room.
+app.post('/api/malvi/business/collaborate', requireAuthenticatedUser, async (_req, res) => {
+  res.status(409).json({ success: false, error: 'Open a shared Malvi Business workspace to save ideas, summaries and assigned tasks.' });
 });
 
 app.post("/api/paystack/webhook", async (req, res) => {

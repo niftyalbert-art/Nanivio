@@ -11,6 +11,7 @@ import {
 } from '../../lib/malviPlanCatalog';
 import { loadMalviPlanCatalog, saveMalviPlanCatalog } from '../../lib/malviPlanClient';
 import { AdminMalviRuntimeLimits } from './AdminMalviRuntimeLimits';
+import { MALVI_CAPABILITIES, MALVI_CAPABILITY_LABELS, type MalviCapability } from '../../lib/malviCapabilities';
 
 const panel = 'rounded-2xl border border-slate-800 bg-[#0c1424]';
 const inputClass = 'w-full min-w-0 rounded-xl border border-slate-700 bg-[#080e18] px-3 py-2.5 text-sm text-slate-100 outline-none transition focus:border-amber-400 focus:ring-2 focus:ring-amber-400/20 disabled:cursor-not-allowed disabled:opacity-60';
@@ -366,10 +367,21 @@ export const AdminMalviPlanManager: React.FC = () => {
                     </div>
                     <div className="grid min-w-0 gap-3 sm:grid-cols-3">
                       <Toggle id={`${plan.id}-avatar`} label="Interactive avatar included" checked={plan.avatarInteractive} disabled={planDisabled || isVoice} onChange={(value) => {
-                        setPlans((current) => current.map((item) => item.tier === tier ? { ...item, avatarInteractive: value, videoInteractionMinutesLimit: value ? item.videoInteractionMinutesLimit : 0 } : item));
+                        setPlans((current) => current.map((item) => item.tier === tier ? { ...item, avatarInteractive: value, videoInteractionMinutesLimit: value ? item.videoInteractionMinutesLimit : 0,
+                          capabilities: [...(item.capabilities ?? MALVI_CAPABILITIES[item.tier]).filter(c => c !== 'avatar'), ...(value ? ['avatar' as const] : [])] } : item));
                         setInputError('');
                       }} description={isVoice ? 'Voice remains avatar-free.' : undefined} />
-                      <Toggle id={`${plan.id}-business`} label="Business collaboration" checked={plan.businessCollaboration} disabled={planDisabled || isVoice} onChange={(value) => updatePlan(tier, 'businessCollaboration', value)} description={isVoice ? 'Voice remains business-free.' : undefined} />
+                      <Toggle id={`${plan.id}-business`} label="Business collaboration" checked={plan.businessCollaboration} disabled={planDisabled || isVoice} onChange={(value) => {
+                        setPlans(current => current.map(item => item.tier === tier ? { ...item, businessCollaboration: value,
+                          capabilities: [...(item.capabilities ?? MALVI_CAPABILITIES[item.tier]).filter(c => c !== 'business'), ...(value ? ['business' as const] : [])] } : item));
+                      }} description={isVoice ? 'Voice remains business-free.' : undefined} />
+                      {(['memory', 'research', 'multimodal'] as MalviCapability[]).map(capability => (
+                        <div key={capability}><Toggle id={`${plan.id}-${capability}`} label={MALVI_CAPABILITY_LABELS[capability]}
+                          checked={(plan.capabilities ?? MALVI_CAPABILITIES[plan.tier]).includes(capability)}
+                          disabled={planDisabled || isVoice}
+                          onChange={value => setPlans(current => current.map(item => item.tier === tier ? { ...item,
+                            capabilities: [...(item.capabilities ?? MALVI_CAPABILITIES[item.tier]).filter(c => c !== capability), ...(value ? [capability] : [])] } : item))} /></div>
+                      ))}
                       <Toggle id={`${plan.id}-popular`} label="Mark as popular" checked={Boolean(plan.isPopular)} disabled={planDisabled} onChange={(value) => updatePlan(tier, 'isPopular', value)} />
                     </div>
                     <div className="grid min-w-0 gap-4 sm:grid-cols-[minmax(0,1fr)_minmax(0,2fr)]">

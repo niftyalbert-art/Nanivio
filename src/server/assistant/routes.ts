@@ -15,6 +15,7 @@ import { claimResearch, researchPublicWeb } from './webResearch.ts';
 import { analyzeAccountInput, validateMultimodalInput } from './multimodalInput.ts';
 import { researchPublicMedia } from './mediaResearch.ts';
 import { claimMalviRequest } from './liveUsage.ts';
+import { requireMalviCapability } from './planAccess.ts';
 
 type Auth = (req: Request, res: Response, next: NextFunction) => unknown;
 export function registerAssistantRoutes(app: Express, auth: Auth, enabled: () => boolean, startSweeper = true,
@@ -51,6 +52,7 @@ export function registerAssistantRoutes(app: Express, auth: Auth, enabled: () =>
   }));
   app.put('/api/assistant/memory', auth, run(async (req, res) => {
     if (typeof req.body?.enabled !== 'boolean') throw new AssistantError(400, 'INVALID_CONSENT', 'Choose whether Malvi may save your conversation transcripts.');
+    if (req.body.enabled) await requireMalviCapability(userId(req), 'memory');
     const state = await setConversationMemory(userId(req), req.body.enabled);
     const cleanup = state.enabled || await malviLiveBrainController.revokeMemory(userId(req));
     res.json({ success: true, enabled: state.enabled,
@@ -64,6 +66,7 @@ export function registerAssistantRoutes(app: Express, auth: Auth, enabled: () =>
   }));
   app.post('/api/assistant/session/:id/vision', auth, run(async (req, res) => {
     if (!enabled()) throw new AssistantError(403, 'MALVI_DISABLED', 'Malvi is currently disabled.');
+    await requireMalviCapability(userId(req), 'multimodal');
     await liveAvatarService.owned(userId(req), validId(req));
     const image = validateVisionInput(req.body);
     await claimMalviRequest(userId(req), 'analysis', Buffer.byteLength(image.data, 'base64'));
@@ -72,12 +75,14 @@ export function registerAssistantRoutes(app: Express, auth: Auth, enabled: () =>
   }));
   app.post('/api/assistant/research', auth, run(async (req, res) => {
     if (!enabled()) throw new AssistantError(403, 'MALVI_DISABLED', 'Malvi is currently disabled.');
+    await requireMalviCapability(userId(req), 'research');
     claimResearch(userId(req));
     await claimMalviRequest(userId(req), 'research');
     res.json({ success: true, ...await researchPublicWeb(req.body) });
   }));
   app.post('/api/assistant/input', auth, run(async (req, res) => {
     if (!enabled()) throw new AssistantError(403, 'MALVI_DISABLED', 'Malvi is currently disabled.');
+    await requireMalviCapability(userId(req), 'multimodal');
     claimResearch(userId(req));
     validateMultimodalInput(req.body);
     await claimMalviRequest(userId(req), 'analysis', Math.min(8388608, Buffer.byteLength(typeof req.body?.attachment?.data === 'string' ? req.body.attachment.data : '', 'base64')));
@@ -85,6 +90,7 @@ export function registerAssistantRoutes(app: Express, auth: Auth, enabled: () =>
   }));
   app.post('/api/assistant/media/research', auth, run(async (req, res) => {
     if (!enabled()) throw new AssistantError(403, 'MALVI_DISABLED', 'Malvi is currently disabled.');
+    await requireMalviCapability(userId(req), 'research');
     claimResearch(userId(req));
     await claimMalviRequest(userId(req), 'research');
     res.json(await researchPublicMedia(req.body));
@@ -147,6 +153,7 @@ export function registerAssistantRoutes(app: Express, auth: Auth, enabled: () =>
   }));
   app.post('/api/assistant/voice', auth, run(async (req, res) => {
     if (!enabled()) throw new AssistantError(403, 'MALVI_DISABLED', 'Malvi is currently disabled.');
+    await requireMalviCapability(userId(req), 'voice');
     const provider = await selectedVoice(req);
     if (!getLiveBrainProviderConfig().configured || !malviVoiceSetup(process.env, provider).configured) {
       throw new AssistantError(503, 'VOICE_SETUP_REQUIRED', 'Malvi voice setup is incomplete. Contact the administrator.');
@@ -159,6 +166,7 @@ export function registerAssistantRoutes(app: Express, auth: Auth, enabled: () =>
   }));
   app.post('/api/assistant/session', auth, run(async (req, res) => {
     if (!enabled()) throw new AssistantError(403, 'MALVI_DISABLED', 'Malvi is currently disabled by the administrator.');
+    await requireMalviCapability(userId(req), 'avatar');
     const provider = await selectedVoice(req);
     const setup = liveAvatarSetup(provider);
     if (!setup.configured) throw new AssistantError(503, 'LIVEAVATAR_SETUP_REQUIRED', `LiveAvatar setup is required: ${setup.missing.join(', ')}. Use your provisioned Malvi custom avatar, not a sample avatar.`);

@@ -5,6 +5,7 @@ import { createReferenceToolRunner } from './referenceTools.ts';
 import { MEDIA_TOOL, researchPublicMedia } from './mediaResearch.ts';
 import { MAPS_TOOL, prepareDrivingRoute } from './mapTools.ts';
 import { claimMalviRequest } from './liveUsage.ts';
+import { requireMalviCapability } from './planAccess.ts';
 
 export function createConversationTools(owner: string, notify: (payload: Record<string, unknown>) => void, closed: () => boolean) {
   const reference = createReferenceToolRunner(notify, closed);
@@ -20,12 +21,13 @@ export function createConversationTools(owner: string, notify: (payload: Record<
     }
     if (name === MEMORY_TOOL_NAME) {
       try {
+        await requireMalviCapability(owner, 'memory');
         const state = await readConversationMemory(owner, memoryQuery((args as any)?.query));
         return { enabled: state.enabled, context: conversationMemoryContext(state), found: state.messages.length };
       } catch { return { error: 'Saved account history is unavailable. Do not claim to remember it.' }; }
     }
     if (![WEB_TOOL_NAME, MEDIA_TOOL.name].includes(name || '')) {
-      try { await claimMalviRequest(owner, 'research'); }
+      try { await requireMalviCapability(owner, 'research'); await claimMalviRequest(owner, 'research'); }
       catch { return { error: 'Research is unavailable or its account safety limit has been reached. Do not invent research results.' }; }
       return reference(name, args);
     }
@@ -34,6 +36,7 @@ export function createConversationTools(owner: string, notify: (payload: Record<
     notify({ status: 'searching', results: [], unavailable: [] });
     try {
       claimResearch(owner);
+      await requireMalviCapability(owner, 'research');
       await claimMalviRequest(owner, 'research');
       if (name === MEDIA_TOOL.name) {
         const result = await researchPublicMedia(args);

@@ -29,6 +29,8 @@ import { agoraClient } from '../../lib/agoraClient';
 import { supportsPalabraPair } from '../../shared/palabraLanguages';
 import { LiveCallTranslation } from '../../services/liveCallTranslation';
 import { waitForCallTranslation } from '../../services/callTranslationReadiness';
+import { subscriptionHasCapability } from '../../lib/malviCapabilities';
+import { InCallMalvi } from './InCallMalvi';
 
 interface VideoCallScreenProps {
   onEndCall: () => void;
@@ -45,6 +47,7 @@ export const VideoCallScreen: React.FC<VideoCallScreenProps> = ({ onEndCall }) =
     myLanguage,
     setMyLanguage,
     currentUser,
+    malviSubscription,
     sendMessage,
     inCallNotice,
     dismissInCallNotice,
@@ -81,8 +84,16 @@ export const VideoCallScreen: React.FC<VideoCallScreenProps> = ({ onEndCall }) =
   const [videoChatError, setVideoChatError] = useState<string | null>(null);
   const [showCallMore, setShowCallMore] = useState(false);
   const [dismissedMediaError, setDismissedMediaError] = useState<string | null>(null);
+  const [inCallMalviExpanded, setInCallMalviExpanded] = useState(false);
   const callMoreRef = useRef<HTMLDivElement | null>(null);
   const languagePickerRef = useRef<HTMLDivElement | null>(null);
+  const canAskMalvi = activeCall?.status === 'connected' && !!activeCall.channelName &&
+    subscriptionHasCapability(malviSubscription, 'memory');
+  const showInCallMalvi = canAskMalvi && inCallMalviExpanded;
+
+  useEffect(() => {
+    setInCallMalviExpanded(false);
+  }, [activeCall?.id, activeCall?.status, canAskMalvi]);
 
   // Subtitle translations state - clean without hardcoded strings; activated on real voice signal
   const [currentSpokenSubtitle, setCurrentSpokenSubtitle] = useState<string>('');
@@ -430,6 +441,15 @@ export const VideoCallScreen: React.FC<VideoCallScreenProps> = ({ onEndCall }) =
               </div>
             )}
           </div>
+          {canAskMalvi && activeCall && <InCallMalvi
+            callId={activeCall.id}
+            channelName={activeCall.channelName!}
+            expanded={showInCallMalvi}
+            onExpandedChange={setInCallMalviExpanded}
+            className={showInCallMalvi
+              ? `fixed z-[60] left-3 right-3 bottom-24 h-[min(180px,30dvh)] lg:left-auto lg:right-4 ${showMediaError || inCallNotice ? 'lg:top-[120px]' : 'lg:top-[72px]'} lg:bottom-24 lg:h-auto lg:w-[320px]`
+              : 'relative z-30'}
+          />}
         </div>
 
         {showMediaError && activeCall?.mediaError && (
@@ -489,7 +509,8 @@ export const VideoCallScreen: React.FC<VideoCallScreenProps> = ({ onEndCall }) =
         {/* ============================================================= */}
         {/* 2. MAIN IMMERSIVE VIDEO STAGE */}
         {/* ============================================================= */}
-        <div className="relative flex-1 min-h-0 w-full overflow-hidden flex flex-col justify-end">
+        <div className="relative flex-1 min-h-0 w-full overflow-hidden">
+          <div className={`absolute inset-0 ${showInCallMalvi ? 'lg:right-[348px] max-lg:bottom-[270px]' : ''}`}>
           {activeCall?.status === 'ended' ? (
             <div role="status" className="absolute inset-0 flex items-center justify-center bg-[#18211c] px-8 text-center">
               <div>
@@ -530,11 +551,12 @@ export const VideoCallScreen: React.FC<VideoCallScreenProps> = ({ onEndCall }) =
               </div>
             </div>
           )}
+          </div>
 
           {/* ============================================================= */}
           {/* 3. FLOATING IN-CALL ACTION CONTROLS */}
           {/* ============================================================= */}
-          <div className="absolute bottom-2.5 inset-x-0 z-20 px-3 flex flex-col items-center pointer-events-auto">
+          <div className={`absolute bottom-2.5 inset-x-0 ${showInCallMalvi ? 'lg:right-[348px]' : ''} z-20 px-3 flex flex-col items-center pointer-events-auto`}>
             <div className="flex items-center justify-center gap-1 sm:gap-4 w-full max-w-[520px] px-1 sm:px-3 py-2 rounded-2xl bg-[#111814]/95 border border-white/20 shadow-[0_8px_32px_rgba(0,0,0,0.55)]">
               
               {/* Button 1: Speaker */}

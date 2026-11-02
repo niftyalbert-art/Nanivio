@@ -763,6 +763,7 @@ export interface MalviSubscriptionPlan {
   aiInteractionCapabilities: string;
   avatarInteractive: boolean;
   businessCollaboration: boolean;
+  capabilities?: import('../lib/malviCapabilities').MalviCapability[];
   features: string[];
   unavailableFeatures?: string[];
   isPopular?: boolean;
@@ -773,6 +774,7 @@ export interface UserMalviSubscriptionState {
   userId: string;
   planId: string;
   tier: MalviSubscriptionTier;
+  purchasedCapabilities?: import('../lib/malviCapabilities').MalviCapability[] | null;
   planName: string;
   billingCycle: 'MONTHLY' | 'ANNUAL';
   status: 'ACTIVE' | 'TRIAL' | 'EXPIRED' | 'CANCELLED';

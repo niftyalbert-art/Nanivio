@@ -206,6 +206,8 @@ export async function getPersistentMalviSubscription(userId:string){
     currentPeriodEnd:data.current_period_end?new Date(data.current_period_end).getTime():Date.now(),
     nextBillingAt:data.next_billing_at?new Date(data.next_billing_at).getTime():Date.now(),
     pricePaid:Number(data.price_paid||0), currency:data.currency,
+    purchasedCapabilities: Array.isArray(data.capabilities)
+      ? data.capabilities.filter((v: unknown): v is string => typeof v === 'string') : null,
     videoMinutesAllowed:Number(data.video_minutes_allowed||0), videoMinutesUsed:Number(data.video_minutes_used||0),
     videoMinutesRemaining:Math.max(0,Number(data.video_minutes_allowed||0)-Number(data.video_minutes_used||0)),
     voiceMinutesAllowed:Number(data.voice_minutes_allowed||0), voiceMinutesUsed:Number(data.voice_minutes_used||0),

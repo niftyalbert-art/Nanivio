@@ -16,6 +16,7 @@ import { GeminiNativeVoice } from './geminiNativeVoice.ts';
 import { MALVI_GEMINI_VOICE, malviGeminiVoiceDirection } from './geminiVoiceStyle.ts';
 import { appendConversationMemory, conversationMemoryContext, readConversationMemory, MEMORY_TOOL, type MemoryState } from './conversationMemory.ts';
 import { createConversationTools } from './conversationTools.ts';
+import { requireMalviCapability } from './planAccess.ts';
 import { WEB_TOOL } from './webResearch.ts';
 import { MEDIA_TOOL } from './mediaResearch.ts';
 import { MAPS_TOOL } from './mapTools.ts';
@@ -575,7 +576,7 @@ export const malviLiveBrainController = {
       if (current) throw new Error('This live session already has an active brain connection.');
       let memory: MemoryState | undefined;
       const knowledge = getNanivioAppKnowledge();
-      try { memory = await readConversationMemory(userId); }
+      try { await requireMalviCapability(userId, 'memory'); memory = await readConversationMemory(userId); }
       catch {
         send(socket, 'malvi:brain_memory', { sessionId, status: 'unavailable', message: 'Saved account memory is unavailable. This session can continue without it.' });
       }

@@ -1,4 +1,5 @@
 import type { MalviSubscriptionPlan, MalviSubscriptionTier } from '../types/billing';
+import { MALVI_CAPABILITIES, type MalviCapability } from './malviCapabilities';
 
 export type MalviPlanStatus = 'DRAFT' | 'PUBLISHED' | 'ARCHIVED';
 export type MalviCatalogPlan = Omit<MalviSubscriptionPlan, 'priceMonthlyGHS' | 'priceAnnualGHS' | 'isActive' | 'catalogVersion' | 'currencyConversion'> & {
@@ -35,7 +36,8 @@ const bad = (message: string): never => { throw new MalviCatalogError(400, 'PLAN
 /** USD prices are authoritative. GHS is derived server-side, never a second editable price. */
 export function initialMalviCatalog(legacy: MalviSubscriptionPlan[]): MalviCatalogSnapshot {
   const plans: MalviCatalogPlan[] = legacy.map(({ priceMonthlyGHS, priceAnnualGHS, isActive, catalogVersion, currencyConversion, ...plan }) => ({
-    ...plan, features: [...plan.features], unavailableFeatures: [...(plan.unavailableFeatures ?? [])],
+    ...plan, capabilities: [...(plan.capabilities ?? MALVI_CAPABILITIES[plan.tier])],
+    features: [...plan.features], unavailableFeatures: [...(plan.unavailableFeatures ?? [])],
     status: 'PUBLISHED', voiceInteractionMinutesLimit: plan.voiceInteractionMinutesLimit ?? plan.videoInteractionMinutesLimit,
   }));
   plans.splice(1, 0, {
@@ -44,7 +46,8 @@ export function initialMalviCatalog(legacy: MalviSubscriptionPlan[]): MalviCatal
     priceMonthlyUSD: 0, priceAnnualUSD: 0, videoInteractionMinutesLimit: 0, voiceInteractionMinutesLimit: 0,
     voiceCapabilities: 'Voice conversations with Malvi', langpretationCapabilities: 'Set the included translation features',
     aiInteractionCapabilities: 'Set the included assistance features', avatarInteractive: false, businessCollaboration: false,
-    features: ['Voice conversations with Malvi'], unavailableFeatures: ['Live video avatar'], status: 'DRAFT',
+    capabilities: ['conversation', 'voice'],
+    features: ['Voice conversations with Malvi', 'Text questions and translation assistance'], unavailableFeatures: ['Live video avatar'], status: 'DRAFT',
   });
   return { version: 0, plans, savedAt: null, savedBy: null, reason: null };
 }
@@ -56,7 +59,7 @@ export function validateMalviPlans(input: unknown): MalviCatalogPlan[] {
     'id','tier','name','tagline','description','priceMonthlyUSD','priceAnnualUSD',
     'videoInteractionMinutesLimit','voiceInteractionMinutesLimit','voiceCapabilities',
     'langpretationCapabilities','aiInteractionCapabilities','avatarInteractive',
-    'businessCollaboration','features','unavailableFeatures','isPopular','status',
+    'businessCollaboration','features','unavailableFeatures','isPopular','status','capabilities',
   ]);
   const text = (value: unknown, label: string, max: number) => {
     if (typeof value !== 'string' || !value.trim() || value.length > max) bad(`${label} is required (maximum ${max} characters).`);
@@ -83,6 +86,11 @@ export function validateMalviPlans(input: unknown): MalviCatalogPlan[] {
       if (!Number.isInteger(p[key]) || p[key] < 0 || p[key] > 1000000) bad('Minute allowances must be whole numbers from 0 to 1,000,000.');
     }
     for (const key of ['avatarInteractive','businessCollaboration']) if (typeof p[key] !== 'boolean') bad('Capability flags must be true or false.');
+    const capabilities: MalviCapability[] = p.capabilities ?? [...MALVI_CAPABILITIES[p.tier as MalviSubscriptionTier]];
+    const known = new Set(Object.values(MALVI_CAPABILITIES).flat());
+    if (!Array.isArray(capabilities) || capabilities.some(c => !known.has(c)) || new Set(capabilities).size !== capabilities.length) bad('Choose known, unique Malvi capabilities.');
+    if (capabilities.includes('avatar') !== p.avatarInteractive || capabilities.includes('business') !== p.businessCollaboration) bad('Avatar and Business capabilities must agree with their included flags.');
+    if (p.tier === 'malvi_voice' && capabilities.some(c => !['conversation', 'voice'].includes(c))) bad('Voice must remain voice-only with text assistance.');
     if (p.isPopular !== undefined && typeof p.isPopular !== 'boolean') bad('Popular must be true or false.');
     if (!p.avatarInteractive && p.videoInteractionMinutesLimit !== 0) bad('A plan without an avatar must have zero video minutes.');
     if (p.tier === 'free' && (p.status !== 'PUBLISHED' || p.priceMonthlyUSD !== 0 || p.priceAnnualUSD !== 0)) bad('Keep the Free plan published with zero prices.');
@@ -91,7 +99,7 @@ export function validateMalviPlans(input: unknown): MalviCatalogPlan[] {
     if (p.status === 'PUBLISHED' && p.tier === 'malvi_voice' && p.voiceInteractionMinutesLimit <= 0) bad('Set a positive Voice allowance before publishing.');
     if (p.status === 'PUBLISHED' && p.tier === 'malvi_voice' && !MALVI_VOICE_PLAN_PUBLISHABLE) bad('Voice is a draft only: voice-only session delivery and usage enforcement must be completed before it can be sold.');
     return {
-      ...p, name: text(p.name, 'Plan name', 80), tagline: text(p.tagline, 'Tagline', 160),
+      ...p, capabilities, name: text(p.name, 'Plan name', 80), tagline: text(p.tagline, 'Tagline', 160),
       description: text(p.description, 'Description', 1500),
       voiceCapabilities: text(p.voiceCapabilities, 'Voice description', 300),
       langpretationCapabilities: text(p.langpretationCapabilities, 'Translation description', 300),

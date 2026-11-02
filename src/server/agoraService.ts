@@ -13,6 +13,8 @@ export interface AgoraTokenOptions {
   uid: string | number;
   role?: 'publisher' | 'subscriber';
   expireTimeSeconds?: number;
+  /** Server-owned short leases, never passed through from public request data. */
+  minimumExpireSeconds?: number;
 }
 
 export interface AgoraChannelSession {
@@ -57,7 +59,7 @@ export function generateAgoraRtcToken(options: AgoraTokenOptions): {
   const channelName = options.channelName;
   const uid = options.uid;
   const agoraUid = normalizeAgoraUid(uid);
-  const expireDuration = Math.min(Math.max(options.expireTimeSeconds || 3600, 300), 86400);
+  const expireDuration = Math.min(Math.max(options.expireTimeSeconds || 3600, options.minimumExpireSeconds ?? 300), 86400);
   const privilegeExpiredTs = Math.floor(Date.now() / 1000) + expireDuration;
 
   if (!appId || !appCertificate) {

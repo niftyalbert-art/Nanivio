@@ -5,6 +5,18 @@ description: Product direction for grouping Malvi capabilities into billing plan
 Malvi features should be grouped and listed in billing plans, progressing from
 voice-only access to the most advanced capabilities.
 
+Every advertised plan benefit must correspond to a working capability, not
+only pricing-card text. Distinguish implemented workflows from production
+verification and from still-missing functionality.
+
+**Why:** The owner explicitly requested implementing the unavailable benefits
+promised by each plan and making sure those promises work.
+
+**How to apply:** Preserve purchased terms when changing the catalogue. Do not
+call transcript translation simultaneous group speech, a single-user workspace
+a shared meeting, or requested AI contributions an autonomous meeting attendee.
+Do not certify universal sub-second timing or perfect recall from unit tests.
+
 **Why:** The user requested that “Malvi features should be group and listed for
 billing plans right from voice only down to this very advanced” and asked for
 suggestions for additional features.
