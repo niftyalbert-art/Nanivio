@@ -8,6 +8,8 @@ import ts from 'typescript';
 import { quotePaystackOrder, validateVerifiedOrder } from '../src/server/paystackOrders.ts';
 import { assertLivePaystackPayment, paystackLiveConfigurationError } from '../src/server/paystackPaymentSafety.ts';
 import {verifyPaystackTransaction,paystackVerificationDiagnostic} from '../src/server/paystackVerification.ts';
+import {createPaystackReconciler} from '../src/server/paystackReconciliation.ts';
+import {PAYSTACK_PURPOSES} from '../src/server/paystackOrders.ts';
 
 // Execute the actual production handlers with a stubbed gateway and isolated stores.
 // No real provider credential, network payment, or customer account is used.
@@ -28,7 +30,7 @@ const fulfill = ast.statements.find(node => ts.isFunctionDeclaration(node) && no
 
 function system() {
   const orders = new Map<string, any>(), payments = new Map<string, any>(), provider = new Map<string, any>();
-  const deliveries: any[] = [];
+  const deliveries: any[] = [], fulfilled = new Set<string>();
   let failNextDelivery = false;
   const plan = { id:'premium', tier:'premium', name:'Premium', isActive:true,
     priceMonthlyGHS:145, priceMonthlyUSD:9.99, priceAnnualGHS:1450, priceAnnualUSD:99,
@@ -56,7 +58,7 @@ function system() {
     pendingPaystackOrders:new Map(),
     savePaystackOrder:async(ref: string,_user: string,order: any)=>orders.set(ref,order),
     getPaystackOrder:async(ref: string)=>orders.get(ref),
-    markPaystackOrderFulfilled:async()=>{},
+    markPaystackOrderFulfilled:async(reference: string)=>{ fulfilled.add(reference); },
     getPersistentPayment:async(_provider: string,ref: string)=>payments.get(ref),
     activatePaystackSubscriptionPersistent:async(p: any)=>p.preflight?{ success:true, ready:true }:deliver(p),
     purchaseCommunicationMinutesPersistent:deliver,
@@ -94,9 +96,185 @@ function system() {
     await handler(req,res);
     return res;
   }
-  return { context, plan, orders, deliveries, provider, initialize, verify, webhook, malviWallet, call,
+  return { context, plan, orders, deliveries, fulfilled, provider, initialize, verify, webhook, malviWallet, call,
     failOnce:()=>{ failNextDelivery=true; } };
 }
+
+function checkout(purpose: typeof PAYSTACK_PURPOSES[number], currency = 'GHS', billingCycle = 'MONTHLY') {
+  return { purpose, currency, billingCycle,
+    ...(purpose === 'COMMUNICATION_TOPUP' ? { amount: 20 } :
+      purpose === 'COMMUNICATION_MINUTES' ? { packageId: 'pack' } : { planTier: 'premium' }) };
+}
+
+for (const purpose of PAYSTACK_PURPOSES) {
+  test(`${purpose}: card and Mobile Money pending/cancelled payments never grant value; verified retries grant once`, async () => {
+    for (const channel of ['card', 'mobile_money']) {
+      const s = system();
+      const init = await s.call(s.initialize, { authId: 'owner', body: checkout(purpose) });
+      assert.equal(init.code, 200, JSON.stringify(init.body));
+      const reference = init.body.reference;
+      for (const status of ['pending', 'ongoing', 'failed', 'abandoned', 'reversed']) {
+        Object.assign(s.provider.get(reference), { channel, status });
+        assert.equal((await s.call(s.verify, { authId: 'owner', params: { reference } })).code, 409);
+        assert.equal(s.deliveries.length, 0);
+      }
+      s.provider.get(reference).status = 'success';
+      s.failOnce();
+      const pending = await s.call(s.verify, { authId: 'owner', params: { reference } });
+      assert.equal(pending.body.code, 'PAYMENT_ACTIVATION_PENDING');
+      assert.equal(pending.body.verified, true);
+      s.context.pendingPaystackOrders.clear(); // buyer closes checkout / server restarts
+      const recovered = await s.call(s.verify, { authId: 'owner', params: { reference } });
+      assert.equal(recovered.body.success, true);
+      assert.equal((await s.call(s.verify, { authId: 'owner', params: { reference } })).body.alreadyFulfilled, true);
+      assert.equal(s.deliveries.length, 1);
+      assert.ok(s.fulfilled.has(reference));
+    }
+  });
+}
+
+test('paid minute-package snapshot survives package deletion without changing purchased minutes or validity', async () => {
+  const s = system();
+  const init = await s.call(s.initialize, { authId: 'owner', body: checkout('COMMUNICATION_MINUTES') });
+  s.context.billingDb.communicationMinutePackages = [];
+  const result = await s.call(s.verify, { authId: 'owner', params: { reference: init.body.reference } });
+  assert.equal(result.body.success, true, JSON.stringify(result.body));
+  assert.equal(s.deliveries[0].minutes, 60);
+  assert.equal(s.deliveries[0].validityDays, 30);
+  assert.equal(s.deliveries[0].price, 55);
+});
+
+test('retry repairs the durable order marker after ledger credit committed, without another delivery', async () => {
+  for (const purpose of PAYSTACK_PURPOSES) {
+    const s = system(), mark = s.context.markPaystackOrderFulfilled;
+    let unavailable = true;
+    s.context.markPaystackOrderFulfilled = async (reference: string) => {
+      if (unavailable) throw new Error('Fixture order-status update unavailable');
+      await mark(reference);
+    };
+    const init = await s.call(s.initialize, { authId: 'owner', body: checkout(purpose) });
+    const reference = init.body.reference;
+    assert.equal((await s.call(s.verify, { authId: 'owner', params: { reference } })).body.code, 'PAYMENT_ACTIVATION_PENDING');
+    assert.equal(s.deliveries.length, 1);
+    assert.equal(s.fulfilled.has(reference), false);
+    unavailable = false;
+    assert.equal((await s.call(s.verify, { authId: 'owner', params: { reference } })).body.alreadyFulfilled, true);
+    assert.equal(s.deliveries.length, 1);
+    assert.ok(s.fulfilled.has(reference));
+    assert.equal(s.context.pendingPaystackOrders.has(reference), false);
+  }
+});
+
+test('all billing routes commit usable benefits in PostgreSQL, roll back failed delivery and recover without double credit', async t => {
+  const pg = new PGlite();
+  try {
+    await pg.exec('CREATE ROLE anon; CREATE ROLE authenticated; CREATE ROLE service_role; CREATE TABLE nanivio_users(id TEXT PRIMARY KEY);');
+    for (const migration of ['002_billing_normalized_ledger', '005_malvi_credit_and_usage', '007_communication_plan_entitlements',
+      '008_paystack_paid_subscriptions', '009_billing_malvi_expression_fix', '012_malvi_plan_catalog', '013_malvi_live_allowances',
+      '014_paystack_malvi_activation', '020_malvi_business_rooms']) {
+      await pg.exec(readFileSync(`migrations/${migration}.sql`, 'utf8').replace('CREATE EXTENSION IF NOT EXISTS pgcrypto;', ''));
+    }
+    await pg.exec('UPDATE nanivio_malvi_runtime_policy SET live_minutes_monthly=10000;');
+    let index = 0;
+    const rpc = async (name: string, payload: any) => (await pg.query<{result:any}>(
+      `SELECT ${name}($1::jsonb) AS result`, [JSON.stringify(payload)])).rows[0].result;
+    const command = async (name: string, payload: any) => (await pg.query<{result:any}>(
+      'SELECT nanivio_billing_command($1,$2::jsonb) AS result', [name, JSON.stringify(payload)])).rows[0].result;
+    for (const purpose of PAYSTACK_PURPOSES) for (const channel of ['card', 'mobile_money']) for (const currency of ['GHS', 'USD']) {
+      for (const cycle of purpose.includes('SUBSCRIPTION') ? ['MONTHLY', 'ANNUAL'] : ['MONTHLY']) {
+        await t.test(`${purpose} / ${channel} / ${currency} / ${cycle}`, async () => {
+          const user = `audit_user_${++index}`, s = system();
+          await pg.query('INSERT INTO nanivio_users(id) VALUES($1)', [user]);
+          s.context.activatePaystackSubscriptionPersistent = (p: any) => rpc('nanivio_activate_paystack_subscription', p);
+          s.context.activateMalviSubscriptionPersistent = (p: any) => rpc('nanivio_activate_paystack_malvi', p);
+          s.context.purchaseCommunicationMinutesPersistent = (p: any) => command('COMMUNICATION_MINUTES_PURCHASE', p);
+          s.context.paystackTopUpPersistent = (p: any) => command('PAYSTACK_TOPUP', p);
+          s.context.getPersistentPayment = async (_provider: string, reference: string) =>
+            (await pg.query('SELECT * FROM nanivio_payments WHERE provider_reference=$1', [reference])).rows[0];
+          const body = { ...checkout(purpose, currency, cycle), ...(purpose === 'COMMUNICATION_TOPUP' ? { amount: 100 } : {}) };
+          const init = await s.call(s.initialize, { authId: user, body });
+          assert.equal(init.code, 200, JSON.stringify(init.body));
+          const reference = init.body.reference;
+          Object.assign(s.provider.get(reference), { channel });
+          const event = { event: 'charge.success', data: s.provider.get(reference) };
+          const rawBody = Buffer.from(JSON.stringify(event));
+          const signature = crypto.createHmac('sha512', 'sk_live_fixture_only').update(rawBody).digest('hex');
+          const notification = () => s.call(s.webhook, { body: event, rawBody, headers: { 'x-paystack-signature': signature } });
+          const count = async (table: string) => Number((await pg.query<any>(
+            `SELECT count(*) AS n FROM ${table} WHERE user_id=$1`, [user])).rows[0].n);
+          // Force a downstream payment insert failure in an isolated database.
+          // No payment, wallet credit or subscription may survive the rollback.
+          await pg.exec(`ALTER TABLE nanivio_payments ADD CONSTRAINT audit_delivery_failure CHECK (provider_reference <> '${reference}') NOT VALID;`);
+          const failed = await notification();
+          assert.equal(failed.code, 500, JSON.stringify(failed.body));
+          assert.equal(await count('nanivio_payments'), 0);
+          assert.equal(await count('nanivio_wallet_ledger'), 0);
+          assert.equal(await count('nanivio_subscriptions'), 0);
+          assert.equal(await count('nanivio_malvi_subscriptions'), 0);
+          await pg.exec('ALTER TABLE nanivio_payments DROP CONSTRAINT audit_delivery_failure;');
+          s.context.pendingPaystackOrders.clear();
+          const recovery = createPaystackReconciler({
+            list: async () => [...s.orders].map(([ref, order]) => ({ ...order, reference: ref })),
+            verify: async ref => s.provider.get(ref),
+            fulfil: async (order, transaction) => { await s.context.fulfillPaystackOrder({
+              reference: order.reference, userId: order.userId, verifiedAmount: transaction.amount / 100,
+              verifiedCurrency: transaction.currency, order }); },
+            checked: async () => {}, report: (_ref, error) => { throw error; },
+          });
+          await recovery(); // no browser callback or webhook retry required
+          assert.ok(s.fulfilled.has(reference));
+          assert.equal(await count('nanivio_payments'), 1);
+          if (purpose !== 'COMMUNICATION_TOPUP') assert.equal(await count('nanivio_invoices'), 1);
+          if (purpose === 'COMMUNICATION_TOPUP') {
+            const wallet = (await pg.query<any>("SELECT available FROM nanivio_wallets WHERE user_id=$1 AND currency=$2 AND account_type='COMMUNICATION'", [user, currency])).rows[0];
+            assert.equal(Number(wallet.available), 100);
+            const price = currency === 'GHS' ? 55 : 3.99;
+            await command('COMMUNICATION_MINUTES_FROM_WALLET', {
+              userId: user, currency, minutes: 60, price, validityDays: 30,
+              referenceId: `wallet_${reference}`, transactionId: `wallet_tx_${reference}`,
+              subscriptionId: `wallet_minutes_${reference}`, paymentMethod: 'NANIVIO_CREDIT',
+            });
+            const spent = (await pg.query<any>("SELECT available FROM nanivio_wallets WHERE user_id=$1 AND currency=$2 AND account_type='COMMUNICATION'", [user, currency])).rows[0];
+            assert.equal(Number(spent.available), 100-price, 'the deposited funds must actually buy a minute package');
+          } else if (purpose === 'MALVI_SUBSCRIPTION') {
+            const term = (await pg.query<any>('SELECT * FROM nanivio_malvi_subscriptions WHERE user_id=$1', [user])).rows[0];
+            assert.equal(Number(term.voice_minutes_allowed), 30);
+            assert.equal(Number(term.video_minutes_allowed), 30);
+            assert.equal(term.auto_renew, false);
+            assert.equal((new Date(term.current_period_end).getTime()-new Date(term.current_period_start).getTime())/86400000, cycle === 'ANNUAL' ? 365 : 30);
+            await pg.query("SELECT nanivio_reserve_malvi_live($1,$2,'voice',60)", [user, `audit_lease_${index}`]);
+          } else {
+            const quota = (await pg.query<any>('SELECT sum(langpretation_minutes_remaining) AS n FROM nanivio_subscriptions WHERE user_id=$1', [user])).rows[0];
+            assert.equal(Number(quota.n), purpose === 'COMMUNICATION_MINUTES' ? 60 : 200);
+            if (purpose === 'SUBSCRIPTION') {
+              const term = (await pg.query<any>("SELECT * FROM nanivio_subscriptions WHERE user_id=$1 AND tier='premium'", [user])).rows[0];
+              assert.equal(term.auto_renew, false);
+              assert.equal(term.currency, currency);
+              assert.equal((new Date(term.current_period_end).getTime()-new Date(term.current_period_start).getTime())/86400000, cycle === 'ANNUAL' ? 365 : 30);
+            }
+            await rpc('nanivio_langpretation_usage', { userId: user, minutes: 1, audioSeconds: 60, eventId: `audit_usage_${index}` });
+            const consumed = (await pg.query<any>('SELECT sum(langpretation_minutes_remaining) AS n FROM nanivio_subscriptions WHERE user_id=$1', [user])).rows[0];
+            assert.equal(Number(consumed.n), purpose === 'COMMUNICATION_MINUTES' ? 59 : 199);
+          }
+          const before = JSON.stringify((await pg.query<any>(`SELECT
+            (SELECT sum(available) FROM nanivio_wallets WHERE user_id=$1) AS wallet,
+            (SELECT sum(langpretation_minutes_remaining) FROM nanivio_subscriptions WHERE user_id=$1) AS communication,
+            (SELECT sum(credit_balance) FROM malvi_credit_accounts WHERE user_id=$1) AS malvi`, [user])).rows);
+          // Race signed webhook delivery and authenticated browser verification.
+          const repeated = await Promise.all([notification(), notification(), s.call(s.verify, { authId: user, params: { reference } })]);
+          assert.ok(repeated.every(r => r.code === 200), JSON.stringify(repeated.map(r => r.body)));
+          assert.equal(await count('nanivio_payments'), 1);
+          const after = JSON.stringify((await pg.query<any>(`SELECT
+            (SELECT sum(available) FROM nanivio_wallets WHERE user_id=$1) AS wallet,
+            (SELECT sum(langpretation_minutes_remaining) FROM nanivio_subscriptions WHERE user_id=$1) AS communication,
+            (SELECT sum(credit_balance) FROM malvi_credit_accounts WHERE user_id=$1) AS malvi`, [user])).rows);
+          assert.equal(after, before, 'retries must not refill consumed balances or allowances');
+          assert.equal((await s.call(s.verify, { authId: 'different_account', params: { reference } })).code, 403);
+        });
+      }
+    }
+  } finally { await pg.close(); }
+});
 
 test('Malvi fulfilment honours purchased voice/video/name/price snapshots after catalogue edits or outages', async () => {
   const s = system();

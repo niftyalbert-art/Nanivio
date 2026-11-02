@@ -43,7 +43,7 @@ import { billingDb } from "./src/server/billingDb.ts";
 import { purchaseCommunicationMinutesFromWalletPersistent, activateMalviSubscriptionFromWalletPersistent } from "./src/server/normalizedBillingRepository.ts";
 import { normalizedBillingEnabled, transferFintechToCommunication as persistentFintechToCommunication, transferPeerToPeer as persistentPeerToPeer, selectCommunicationPlanPersistent, purchaseCommunicationMinutesPersistent, activateMalviSubscriptionPersistent, recordLangpretationUsagePersistent, paystackTopUpPersistent, getPersistentPayment, getPersistentSubscription, getPersistentTransactions, getPersistentInvoices, getPersistentWallets, getPersistentCreditAccount, getPersistentUsageMeter, getPersistentMalviSubscription, getMalviCreditAccount, ensureMalviEntitlement, recordMalviUsagePersistent } from "./src/server/normalizedBillingRepository.ts";
 import { hydrateBillingDatabase, flushBillingDatabase, closeBillingPersistence, savePaystackOrder, getPaystackOrder, markPaystackOrderFulfilled, isPersistentBillingConfigured, markBillingDatabaseDirty } from "./src/server/billingPersistence.ts";
-import { listPendingMalviPayments, markPaystackOrderChecked } from "./src/server/billingPersistence.ts";
+import { listPendingPaystackOrders, markPaystackOrderChecked } from "./src/server/billingPersistence.ts";
 import { createPaystackReconciler, startPaystackReconciliation } from "./src/server/paystackReconciliation.ts";
 import { billingEngine } from "./src/server/billingEngine.ts";
 import { requireBillingAdmin, billingAdminActor, canRefund, ownsBillingRecord, ownsProviderEarnings, ownsBusinessBilling } from "./src/server/billingAccess.ts";
@@ -2108,25 +2108,32 @@ async function fulfillPaystackOrder({
   const existingPayment = await getPersistentPayment('paystack', reference);
   if (existingPayment && authoritativeOrder.purpose !== 'MALVI_SUBSCRIPTION') {
     if (existingPayment.user_id !== userId) throw new Error("Payment belongs to another account.");
+    await markPaystackOrderFulfilled(reference);
+    pendingPaystackOrders.delete(reference);
     return { success:true, verified:true, alreadyFulfilled:true, reference, amount:verifiedAmount, currency:verifiedCurrency, message:'Paystack transaction was already fulfilled. No duplicate Nanivio value was delivered.' };
   }
   const purpose = authoritativeOrder.purpose || "COMMUNICATION_TOPUP";
 
   // 1. Communication Minutes Package Activation
   if (purpose === "COMMUNICATION_MINUTES") {
-    const minutes = authoritativeOrder.product?.minutes ?? authoritativeOrder.minutes;
+    const product = authoritativeOrder.product;
+    const minutes = product?.minutes ?? authoritativeOrder.minutes;
     const packageId = authoritativeOrder.packageId;
-    const pkg = billingDb.communicationMinutePackages.find((p) => p.id === packageId);
-    if (!pkg || !Number.isFinite(minutes) || minutes <= 0) throw new Error("The paid minute package is not available.");
-    if (!authoritativeOrder.product
-      && (minutes !== pkg.minutes || verifiedAmount !== (verifiedCurrency === 'USD' ? pkg.priceUSD : pkg.priceGHS))) {
+    const pkg = product ? undefined : billingDb.communicationMinutePackages.find((p) => p.id === packageId);
+    if (!Number.isFinite(minutes) || minutes <= 0 || (product && product.id !== packageId)) {
+      throw new Error("The saved paid minute package is invalid. No allowance was changed.");
+    }
+    if (!product
+      && (!pkg || minutes !== pkg.minutes || verifiedAmount !== (verifiedCurrency === 'USD' ? pkg.priceUSD : pkg.priceGHS))) {
       throw new Error("Legacy minute order does not match the configured package.");
     }
+    const validityDays = product?.validityDays ?? pkg?.validityDays ?? 30;
+    if (!Number.isSafeInteger(validityDays) || validityDays <= 0) throw new Error("The saved minute validity is invalid.");
     const result = normalizedBillingEnabled()
       ? await purchaseCommunicationMinutesPersistent({
           userId, minutes, price: verifiedAmount, currency: verifiedCurrency, paymentMethod: "Paystack Payment Gateway",
           referenceId: reference, transactionId: `tx_min_${reference}`, subscriptionId: `minutes_${userId}_${reference}`,
-          validityDays: authoritativeOrder.product?.validityDays ?? pkg.validityDays ?? 30,
+          validityDays,
           items: [{ description: `Nanivio Communication Minutes Pack (+${minutes} Mins)`, quantity: minutes, unit: "minute", unitPrice: verifiedAmount / minutes, subtotal: verifiedAmount, total: verifiedAmount }],
         })
       : billingDb.addCommunicationMinutes({ userId, packageId, minutes, pricePaid: verifiedAmount, currency: verifiedCurrency, paymentMethod: "Paystack Payment Gateway", referenceId: reference });
@@ -3790,14 +3797,14 @@ async function startServer() {
   }
   await hydrateBillingDatabase(billingDb);
   startPaystackReconciliation(createPaystackReconciler({
-    list:listPendingMalviPayments,
+    list:listPendingPaystackOrders,
     checked:markPaystackOrderChecked,
     verify:reference=>verifyPaystackTransaction(reference,process.env.PAYSTACK_SECRET_KEY,{timeoutMs:10000}),
     fulfil:async(order,transaction)=>{
       await fulfillPaystackOrder({reference:order.reference,userId:order.userId,
         verifiedAmount:transaction.amount/100,verifiedCurrency:transaction.currency.toUpperCase(),order});
     },
-    report:(reference,error)=>console.warn('Pending Malvi payment could not be activated; check payment and billing setup.',
+    report:(reference,error)=>console.warn('Pending Paystack purchase could not be activated; check payment and billing setup.',
       {reference,error:error instanceof Error?error.message:'Unknown reconciliation error',...paystackVerificationDiagnostic(error)}),
   }),process.env.RENDER==='true'||process.argv[1]?.endsWith('/dist/server.cjs')?'production':process.env.NODE_ENV,process.env.PAYSTACK_SECRET_KEY);
 

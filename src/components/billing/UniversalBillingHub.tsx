@@ -491,6 +491,8 @@ export const UniversalBillingHub: React.FC = () => {
         {/* ========================================================================= */}
         {/* SUBTAB 1: OVERVIEW & WALLET */}
         {/* ========================================================================= */}
+        {activeSubTab !== 'malvi' && <div className="mb-5"><PaystackPaymentRecovery onRecovered={refreshBilling}/></div>}
+
         {activeSubTab === 'overview' && (
           <div className="space-y-6">
             {/* Quick Financial Operations Bar */}

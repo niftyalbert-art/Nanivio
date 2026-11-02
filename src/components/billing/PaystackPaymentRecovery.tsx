@@ -33,7 +33,7 @@ export function PaystackPaymentRecovery({ onRecovered }: { onRecovered: () => vo
   return (
     <details className="rounded-xl border border-slate-700 p-4 text-sm">
       <summary className="cursor-pointer font-semibold">Already paid? Recover your purchase</summary>
-      <p className="mt-3 text-slate-400">If payment completed but your minutes are missing, enter the Paystack reference. This checks the original payment without charging again.</p>
+      <p className="mt-3 text-slate-400">If payment completed but your plan, minutes or wallet credit are missing, enter the Paystack reference. This checks the original payment without charging again.</p>
       <form onSubmit={recover} className="mt-3 flex flex-wrap gap-2">
         <label className="min-w-0 flex-1 basis-56">
           <span className="block text-xs text-slate-400">Paystack transaction reference</span>

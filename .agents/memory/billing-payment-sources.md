@@ -32,3 +32,15 @@ credited or that a user could start the purchased service.
 invoice, repeat notification after consumption, old-trial cleanup and the next
 live reservation together. Keep a missed-webhook recovery path, but do not call
 the Render issue fixed before its database migration and deployed flow are checked.
+
+A verified purchase must honor its server-captured checkout terms even if an
+administrator later removes or reprices that product.
+
+**Why:** Payment completion and administration are asynchronous. Removing a
+minute package after checkout must not leave an already-paying customer with
+no deliverable benefit, nor silently substitute the current package's terms.
+
+**How to apply:** Use the original trusted purchase snapshot for quantities,
+prices and validity. Consult the current catalogue only for legacy orders that
+have no snapshot, with explicit matching checks; never trust client metadata as
+the replacement source of purchased rights.

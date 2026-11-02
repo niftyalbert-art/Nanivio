@@ -1,4 +1,5 @@
 import { assertLivePaystackPayment, paystackLiveConfigurationError } from './paystackPaymentSafety.ts';
+import { PAYSTACK_PURPOSES } from './paystackOrders.ts';
 
 type Order = { reference:string; userId:string; purpose:string; amount:number; currency:string };
 
@@ -20,7 +21,7 @@ export function createPaystackReconciler(deps:{
       const orders=await deps.list();
       for(const order of orders){
         try {
-          if(order.purpose!=='MALVI_SUBSCRIPTION')continue;
+          if(!PAYSTACK_PURPOSES.includes(order.purpose as typeof PAYSTACK_PURPOSES[number]))continue;
           const transaction=await deps.verify(order.reference);
           if(transaction?.status!=='success')continue;
           assertLivePaystackPayment(transaction);

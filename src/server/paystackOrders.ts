@@ -1,3 +1,5 @@
+export const PAYSTACK_PURPOSES = ['COMMUNICATION_TOPUP', 'COMMUNICATION_MINUTES', 'SUBSCRIPTION', 'MALVI_SUBSCRIPTION'] as const;
+
 type PricedPlan = {
   id: string; tier: string; name: string; isActive?: boolean;
   priceMonthlyGHS: number; priceMonthlyUSD: number;

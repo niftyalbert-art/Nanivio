@@ -138,14 +138,14 @@ export async function markPaystackOrderFulfilled(reference: string): Promise<voi
   if (error) throw new Error(`Unable to mark Paystack order fulfilled: ${error.message}`);
 }
 
-export async function listPendingMalviPayments() {
+export async function listPendingPaystackOrders() {
   const {data,error}=await getDb().from('nanivio_paystack_orders')
     .select('reference,user_id,payload').eq('status','PENDING')
-    .eq('payload->>purpose','MALVI_SUBSCRIPTION')
+    .in('payload->>purpose',['COMMUNICATION_TOPUP','COMMUNICATION_MINUTES','SUBSCRIPTION','MALVI_SUBSCRIPTION'])
     .gte('created_at',new Date(Date.now()-30*86400000).toISOString())
     .lt('updated_at',new Date(Date.now()-15000).toISOString())
     .order('updated_at',{ascending:true}).limit(10);
-  if(error)throw new Error('Unable to load pending Malvi payments');
+  if(error)throw new Error('Unable to load pending Paystack purchases');
   return (data||[]).map(row=>({...row.payload,reference:row.reference,userId:row.user_id}));
 }
 
