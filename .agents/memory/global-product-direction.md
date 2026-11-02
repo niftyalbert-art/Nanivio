@@ -46,10 +46,13 @@ doing most of the work rather than repeated promotional writing or long explanat
 chat-card screenshot as the reference for a shorter, artistic communication look.
 They then replaced that direction with a near-black/gold geometric-art reference
 and requested “no big caps within heading.”
+They clarified that only the style INSIDE the reference phone should be used,
+not an entire phone device image or mockup on the landing page.
 
 **How to apply:** For the public landing page, prioritize the gold geometric
 artwork on near-black, minimal copy and small sentence-case headings instead of
-oversized typography or the previous chat-card hero. This does not replace the
+oversized typography or the previous chat-card hero. Place the artwork directly
+on the page, without a handset frame, bezel or notch. This does not replace the
 authenticated app's graphite/cream direction. Do not expand the landing back into
 a long brochure-style page when adding product capabilities.
 

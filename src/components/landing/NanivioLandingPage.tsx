@@ -112,21 +112,16 @@ export function NanivioLandingPage({ onSignIn, onGetStarted }: NanivioLandingPag
         </div>
 
         <div className="nl-hero-art" aria-label="Nanivio connected in every direction">
-          <div className="nl-device">
-            <div className="nl-device-camera" />
-            <div className="nl-device-screen">
-              <div className="nl-device-brand">
-                <NanivioLogo size="sm" compact />
-                <span>Nanivio</span>
-              </div>
-              <div className="nl-art-stage">
-                <div className="nl-stage-light" />
-                <LuminousNetwork />
-                <span className="nl-stage-reflection" />
-              </div>
-              <div className="nl-device-caption">A world, connected</div>
-            </div>
+          <div className="nl-art-brand" aria-label="Nanivio">
+            <NanivioLogo size="sm" compact />
+            <span>Nanivio</span>
           </div>
+          <div className="nl-art-stage">
+            <div className="nl-stage-light" />
+            <LuminousNetwork />
+            <span className="nl-stage-reflection" />
+          </div>
+          <p className="nl-art-caption">A world, connected</p>
           <div className="nl-art-index" aria-hidden="true"><span>01</span><i /> Ghana to everywhere</div>
           <a className="nl-scroll-cue" href="#experience" aria-label="Explore the Nanivio experience">
             <span>Keep exploring</span><ArrowDown size={13} />

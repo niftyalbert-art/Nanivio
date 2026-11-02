@@ -555,3 +555,31 @@ mtime_ms = 1793591346494
 storage_uri = "gcs://replit-rams-assets-sisko/rams/assets/repl:8a53f482-19ae-49f0-ab16-31b527f92091/4e26a8c3-458a-47fb-bdf8-b288ce66e82b/722056f8-c615-4b4d-a334-4a2daa1b74ed"
 storage_version_token = "1793591375069160"
 content_type = "image/jpeg"
+
+[[outputs]]
+id = "Xhe4eF4Rp1Ka8YOqZ46hH"
+uri = "file://generated-artifacts/nanivio-screen-style-mobile.jpg"
+type = "image"
+title = "Mobile landing — no phone frame"
+description = "Gold artwork directly on the landing page, using the reference screen’s styling only."
+logical_id = "6b54af0d-9de4-4c6b-81ee-4d183105e030"
+content_hash = "sha256:d5641bf6d1a6fca93e693b656f0abb98c56f11a8392cdfcd801b1d30c119900e"
+size = 32516
+mtime_ms = 1793591785032
+storage_uri = "gcs://replit-rams-assets-sisko/rams/assets/repl:8a53f482-19ae-49f0-ab16-31b527f92091/6b54af0d-9de4-4c6b-81ee-4d183105e030/323c58ec-da8e-4c7f-b831-7b3b65829334"
+storage_version_token = "1793591810822461"
+content_type = "image/jpeg"
+
+[[outputs]]
+id = "MG_QEYCmKDzKwf0_Ynkuk"
+uri = "file://generated-artifacts/nanivio-screen-style-desktop.jpg"
+type = "image"
+title = "Desktop landing — no phone frame"
+description = "The corrected dark-and-gold landing page with minimal text and no device mockup."
+logical_id = "ed7d5f8c-0a88-4041-9911-211829aead68"
+content_hash = "sha256:0854a75c9becce84b94268c93032ac82d27f8d9d43698c4235788ddae8dfc2d7"
+size = 54353
+mtime_ms = 1793591788070
+storage_uri = "gcs://replit-rams-assets-sisko/rams/assets/repl:8a53f482-19ae-49f0-ab16-31b527f92091/ed7d5f8c-0a88-4041-9911-211829aead68/5372fba6-4733-45a3-98d0-06019c4a8bcc"
+storage_version_token = "1793591812349388"
+content_type = "image/jpeg"

@@ -58,10 +58,10 @@
 
 .nl-hero {
   display: grid;
-  grid-template-columns: .78fr 1.22fr;
+  grid-template-columns: .9fr 1.1fr;
   align-items: center;
   width: min(100% - 88px, 1260px);
-  min-height: min(720px, calc(100dvh - 78px));
+  min-height: min(570px, calc(100dvh - 78px));
   margin: 0 auto;
 }
 .nl-hero-copy { position: relative; z-index: 2; padding: 40px 0 60px; animation: nl-arrive .8s both; }
@@ -82,30 +82,21 @@
 .nl-scroll-link:hover { color: var(--nl-gold-pale); }
 .nl-scroll-link svg { color: var(--nl-gold); }
 
-.nl-hero-art { position: relative; display: grid; min-width: 0; min-height: 610px; place-items: center; isolation: isolate; }
-.nl-device {
-  position: relative; display: flex; width: clamp(245px, 23vw, 315px); height: clamp(480px, 48vw, 582px);
-  padding: 7px; border: 1px solid rgba(211, 197, 162, .54); border-radius: 43px;
-  background: linear-gradient(120deg, #43413b, #111212 13%, #252522 52%, #080909 92%);
-  box-shadow: 0 0 0 2px rgba(0,0,0,.8), 0 26px 70px rgba(0,0,0,.62), 0 0 70px rgba(195, 154, 76, .09);
-  transform: rotate(1.2deg); animation: nl-device-in .9s .12s both;
+.nl-hero-art {
+  position: relative; display: grid; grid-template-rows: auto minmax(0, 1fr) auto;
+  min-width: 0; min-height: 490px; place-items: center; isolation: isolate;
+  padding: 22px 20px 42px;
 }
-.nl-device::before { position: absolute; inset: 1px; border: 1px solid rgba(255,255,255,.08); border-radius: 41px; content: ""; pointer-events: none; }
-.nl-device-camera { position: absolute; z-index: 2; top: 8px; left: 50%; width: 81px; height: 18px; border-radius: 0 0 12px 12px; background: #060707; transform: translateX(-50%); }
-.nl-device-camera::after { position: absolute; top: 6px; right: 12px; width: 5px; height: 5px; border-radius: 50%; background: #17191a; content: ""; }
-.nl-device-screen {
-  position: relative; display: flex; flex: 1; flex-direction: column; overflow: hidden; border: 1px solid rgba(196, 179, 137, .13);
-  border-radius: 36px; background:
-    radial-gradient(ellipse at 51% 49%, rgba(143, 111, 54, .14), transparent 55%),
-    radial-gradient(ellipse at 50% 100%, rgba(164, 127, 58, .08), transparent 35%),
-    linear-gradient(180deg, #121416 0%, #101111 58%, #131312 100%);
+.nl-hero-art::before {
+  position: absolute; z-index: -1; top: 50%; left: 50%; width: min(82%, 530px); aspect-ratio: 1;
+  border-radius: 50%; background: radial-gradient(circle, rgba(177, 139, 65, .12), rgba(138, 103, 47, .045) 39%, transparent 72%);
+  content: ""; transform: translate(-50%, -50%);
 }
-.nl-device-screen::after { position: absolute; inset: 0; border-radius: inherit; background: linear-gradient(112deg, rgba(255,255,255,.055), transparent 21%, transparent 80%, rgba(255,255,255,.025)); content: ""; pointer-events: none; }
-.nl-device-brand { position: relative; z-index: 1; display: flex; align-items: center; justify-content: center; gap: 7px; margin-top: 46px; color: #d9c58e; font: 500 11px/1 "Manrope", sans-serif; letter-spacing: .1em; }
-.nl-device-brand .nl-logo { color: #d9c58e; }
-.nl-art-stage { position: relative; display: grid; flex: 1; min-height: 0; place-items: center; margin: -3px -20px 0; }
-.nl-stage-light { position: absolute; top: 46%; left: 50%; width: 63%; aspect-ratio: 1; border-radius: 50%; background: radial-gradient(circle, rgba(203, 164, 83, .105), rgba(185, 146, 69, .035) 42%, transparent 73%); transform: translate(-50%, -50%); }
-.nl-network { position: relative; z-index: 1; width: 100%; max-width: 440px; overflow: visible; filter: drop-shadow(0 0 11px rgba(207, 165, 81, .17)); }
+.nl-art-brand { display: flex; align-items: center; justify-content: center; gap: 8px; color: #d9c58e; font: 500 11px/1 "Manrope", sans-serif; letter-spacing: .12em; }
+.nl-art-brand .nl-logo { color: #d9c58e; }
+.nl-art-stage { position: relative; display: grid; width: min(100%, 520px); min-height: 0; place-items: center; }
+.nl-stage-light { position: absolute; top: 47%; left: 50%; width: 70%; aspect-ratio: 1; border-radius: 50%; background: radial-gradient(circle, rgba(203, 164, 83, .14), rgba(185, 146, 69, .045) 42%, transparent 73%); transform: translate(-50%, -50%); }
+.nl-network { position: relative; z-index: 1; display: block; width: 100%; max-width: 470px; overflow: visible; filter: drop-shadow(0 0 13px rgba(207, 165, 81, .2)); }
 .nl-network-lines line, .nl-network-lines path, .nl-network-reflection line { fill: none; stroke: url(#nl-gold-line); stroke-width: 1.1; vector-effect: non-scaling-stroke; }
 .nl-network-lines line:nth-child(3n) { stroke-width: .72; opacity: .68; }
 .nl-network-lines .nl-orbit { opacity: .35; stroke-width: .8; }
@@ -114,8 +105,8 @@
 .nl-network-reflection line { stroke: #dfbc70; stroke-width: 1.2; }
 .nl-node-aura { fill: url(#nl-node-glow); opacity: .75; }
 .nl-node { fill: #f8eac3; stroke: #ceaa5f; stroke-width: .7; filter: drop-shadow(0 0 4px rgba(250, 222, 154, .9)); }
-.nl-stage-reflection { position: absolute; bottom: 11%; left: 18%; width: 64%; height: 14%; border-radius: 50%; background: radial-gradient(ellipse, rgba(205, 164, 83, .15), transparent 68%); filter: blur(9px); }
-.nl-device-caption { position: relative; z-index: 1; margin: 0 0 29px; color: #827d70; text-align: center; font: 9px/1 "Space Mono", monospace; letter-spacing: .07em; }
+.nl-stage-reflection { position: absolute; bottom: 8%; left: 15%; width: 70%; height: 17%; border-radius: 50%; background: radial-gradient(ellipse, rgba(205, 164, 83, .18), transparent 68%); filter: blur(12px); }
+.nl-art-caption { z-index: 1; margin: 0; color: #827d70; text-align: center; font: 9px/1 "Space Mono", monospace; letter-spacing: .08em; }
 .nl-art-index { position: absolute; right: 0; bottom: 16%; display: flex; align-items: center; gap: 11px; color: #8c877b; font: 8px/1 "Space Mono", monospace; }
 .nl-art-index span { color: var(--nl-gold); }
 .nl-art-index i { display: block; width: 29px; height: 1px; background: rgba(211, 182, 111, .55); }
@@ -142,17 +133,13 @@
 .nl-footer-signin { gap: 5px; min-height: 36px; font-size: 10px; }
 
 @keyframes nl-arrive { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
-@keyframes nl-device-in { from { opacity: 0; transform: translateY(15px) rotate(1.2deg); } to { opacity: 1; transform: translateY(0) rotate(1.2deg); } }
-
 @media (min-width: 1500px) {
-  .nl-hero { min-height: min(790px, calc(100dvh - 78px)); }
-  .nl-device { width: 326px; height: 605px; }
+  .nl-hero { min-height: min(610px, calc(100dvh - 78px)); }
 }
 @media (max-width: 900px) {
   .nl-header, .nl-hero, .nl-experience, .nl-footer { width: calc(100% - 52px); }
   .nl-hero { grid-template-columns: .8fr 1.2fr; }
-  .nl-hero-art { min-height: 560px; }
-  .nl-device { width: clamp(230px, 29vw, 280px); height: clamp(460px, 57vw, 535px); }
+  .nl-hero-art { min-height: 460px; padding-inline: 4px; }
   .nl-art-index { right: -7px; }
   .nl-experience { grid-template-columns: .82fr 1.5fr; gap: 20px; padding: 18px 0; }
   .nl-feature-line { grid-column: 2; justify-content: flex-start; flex-wrap: wrap; gap: 10px 14px; }
@@ -173,14 +160,10 @@
   .nl-hero-lede { max-width: 290px; margin-top: 11px; font-size: 12px; }
   .nl-hero-actions { gap: 22px; margin-top: 19px; }
   .nl-button { min-height: 43px; }
-  .nl-hero-art { min-height: 478px; margin-top: 10px; }
-  .nl-device { width: 237px; height: 455px; padding: 6px; border-radius: 37px; }
-  .nl-device-screen { border-radius: 31px; }
-  .nl-device-camera { top: 7px; width: 73px; height: 16px; }
-  .nl-device-brand { margin-top: 38px; font-size: 10px; }
-  .nl-art-stage { margin-inline: -22px; }
+  .nl-hero-art { min-height: 350px; margin-top: 12px; padding: 10px 0 35px; }
+  .nl-art-stage { width: min(100%, 420px); }
   .nl-network { width: 100%; }
-  .nl-device-caption { margin-bottom: 23px; font-size: 8px; }
+  .nl-art-caption { font-size: 8px; }
   .nl-art-index { right: 0; bottom: 7%; font-size: 7px; }
   .nl-scroll-cue { bottom: 4px; left: 0; font-size: 7px; }
   .nl-experience { display: block; width: calc(100% - 36px); margin-top: 0; padding: 18px 0 17px; }
@@ -193,8 +176,7 @@
   .nl-footer-note { display: none; }
 }
 @media (max-width: 360px) {
-  .nl-hero-art { min-height: 440px; }
-  .nl-device { width: 218px; height: 425px; }
+  .nl-hero-art { min-height: 320px; }
   .nl-art-index { right: -4px; }
   .nl-feature-line { gap: 8px; }
 }

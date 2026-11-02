@@ -22,6 +22,8 @@ try {
     assert.ok(await page.evaluate("parseFloat(getComputedStyle(document.querySelector('.nanivio-art-landing h1')).fontSize) <= 40"), `${width}: heading is not oversized`);
     assert.equal(await page.evaluate("getComputedStyle(document.querySelector('.nanivio-art-landing h1')).textTransform !== 'uppercase'"), true, 'heading is not all caps');
     assert.equal(await page.evaluate("document.querySelectorAll('.nl-message').length"), 0, 'sample chat replaced by geometric artwork');
+    assert.equal(await page.evaluate("document.querySelectorAll('.nl-device, .nl-device-screen, .nl-device-camera').length"), 0, 'reference screen styling is used without a phone mockup');
+    assert.equal(await page.evaluate("Boolean(document.querySelector('.nl-hero-art svg[role=\"img\"]'))"), true, 'gold artwork is displayed directly on the landing page');
   }
   await page.command('Emulation.setDeviceMetricsOverride', { width: 390, height: 844, deviceScaleFactor: 1, mobile: true });
   await page.evaluate("document.querySelector('.nl-menu-toggle').click()");
