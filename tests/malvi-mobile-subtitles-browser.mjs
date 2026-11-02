@@ -18,6 +18,8 @@ const bundle = await build({
     function Fixture(){
       const [caption,setCaption]=useState('Malvi reply. '.repeat(100)+'LATEST REPLY');
       const [text,setText]=useState('User speech. '.repeat(100)+'LATEST SPEECH');
+      const [speaking,setSpeaking]=useState(true);
+      const [input,setInput]=useState({state:'listening',level:0.2});
       const [allowance,setAllowance]=useState(Number(new URLSearchParams(location.search).get('low')||180));
       const [usageUnavailable,setUsageUnavailable]=useState(false);
       const exhausted=new URLSearchParams(location.search).has('exhausted');
@@ -31,6 +33,8 @@ const bundle = await build({
       },[]);
       window.updateCaption=setCaption;
       window.updateTranscript=setText;
+      window.updateSpeaking=setSpeaking;
+      window.updateInput=(state,level)=>setInput({state,level});
       window.updateAllowance=setAllowance;
       window.usageUnavailable=value=>{setAllowance(null);setUsageUnavailable(value);};
       window.changePhase=setPhase;
@@ -52,11 +56,11 @@ const bundle = await build({
           setActiveTab:activeTab=>setNavigation(n=>({...n,activeTab}))
         }):undefined}
         onInterrupt={noop} onPlayAudio={noop} audioBlocked
-        caption={caption} userTranscript={text} brainReady microphoneOn
+         caption={caption} userTranscript={text} speaking={speaking} inputState={input.state} inputLevel={input.level} brainReady microphoneOn
         languageCode={new URLSearchParams(location.search).get('language') || 'en'}
         microphoneError="Please check microphone access." brainProvider="gemini"
         onToggleMicrophone={noop} references={[]} referenceStatus="idle"
-        unavailableSources={[]} speaking memoryNotice="Conversation history available." />;
+         unavailableSources={[]} memoryNotice="Conversation history available." />;
     }
     createRoot(document.getElementById('root')).render(<Fixture/>);
   ` },
@@ -78,12 +82,13 @@ if (preview) {
   console.log('Isolated mobile overlay fixture listening on 5199');
 } else {
   const browser = await launchBrowser();
+  let tabletContainedVideoGeometry = null;
   try {
     for (const [width, height] of [[320,568], [360,640], [390,844], [412,915], [640,360], [667,375], [844,390], [768,1024], [1024,768], [1440,900], [1920,1080]]) {
       console.log(`Checking full overlay at ${width}x${height}`);
       const page = await browser.page(`http://127.0.0.1:${server.address().port}`);
       await page.command('Emulation.setDeviceMetricsOverride', { width, height, deviceScaleFactor: 1, mobile: width < 900 });
-      await page.wait("!!document.querySelector('[aria-label=\"Live subtitles\"]')");
+      await page.wait("!!document.getElementById('malvi-spoken-transcript')");
       assert.equal(await page.evaluate("getComputedStyle(document.querySelector('[aria-label=\"Malvi live video\"]')).objectFit"), 'contain',
         `${width}x${height}: the entire live portrait fits without face cropping`);
       const mediaShade = await page.evaluate(`(()=>{
@@ -145,6 +150,64 @@ if (preview) {
       const initial = await check();
       assert.ok(initial.latestVisible && initial.micVisible && initial.controlsScrollableOrFits,
         `${width}x${height} initial: ${JSON.stringify(initial)}`);
+       const geometry = async () => page.evaluate(`(()=>{
+         const rect=element=>{
+           const r=element.getBoundingClientRect();
+           return {x:r.x,y:r.y,width:r.width,height:r.height,right:r.right,bottom:r.bottom};
+         };
+         return {
+           media:rect(document.querySelector('[aria-label="Malvi video"]')),
+           video:rect(document.querySelector('[aria-label="Malvi live video"]')),
+           subtitles:rect(document.querySelector('[aria-label="Conversation subtitles"]'))
+         };
+       })()`);
+       const baselineGeometry = await geometry();
+       if (width === 768) {
+         // The connected Nanivio avatar stream is portrait. The browser fixture
+         // deliberately has no provider media, so project that 9:16 content
+         // into the measured stage using the same object-fit:contain constraint.
+         const portraitAspect = 9 / 16;
+         const currentStage = baselineGeometry.media;
+         const fitPortrait = (stageWidth, stageHeight) => ({
+           width: Math.min(stageWidth, stageHeight * portraitAspect),
+           height: Math.min(stageHeight, stageWidth / portraitAspect),
+         });
+         const currentContained = fitPortrait(currentStage.width, currentStage.height);
+         const old22remContained = fitPortrait(width - 22 * 16, currentStage.height);
+         assert.ok(currentContained.width > old22remContained.width && currentContained.height > old22remContained.height,
+           `768x1024: actual contained portrait bounds must exceed the old 22rem panel: ${JSON.stringify({currentContained,old22remContained,portraitAspect,stage:currentStage})}`);
+         tabletContainedVideoGeometry = {currentContained,old22remContained,portraitAspect};
+       }
+       const assertStableGeometry = async label => {
+         const current = await geometry();
+         for (const region of ['media','video','subtitles']) {
+           for (const dimension of ['x','y','width','height','right','bottom']) {
+             assert.ok(Math.abs(current[region][dimension]-baselineGeometry[region][dimension])<=1,
+               `${width}x${height} ${label}: ${region}.${dimension} shifted: ${JSON.stringify({before:baselineGeometry[region],after:current[region]})}`);
+           }
+         }
+       };
+       await page.evaluate("window.updateCaption('');window.updateTranscript('');true");
+       await page.wait("!document.getElementById('malvi-spoken-transcript')&&!document.getElementById('malvi-user-transcript')");
+       assert.ok(await page.evaluate("!!document.querySelector('[aria-label=\"Conversation subtitles\"]')"),
+         `${width}x${height}: the subtitle region remains reserved while empty`);
+       await assertStableGeometry('empty captions');
+       await page.evaluate("window.updateCaption('Malvi, one caption');true");
+       await page.wait("!!document.getElementById('malvi-spoken-transcript')");
+       await assertStableGeometry('Malvi-only caption');
+       await page.evaluate("window.updateCaption('');window.updateTranscript('User, one caption');true");
+       await page.wait("!!document.getElementById('malvi-user-transcript')&&!document.getElementById('malvi-spoken-transcript')");
+       await assertStableGeometry('user-only caption');
+       await page.evaluate("window.updateCaption('Malvi reply');true");
+       await page.wait("!!document.getElementById('malvi-spoken-transcript')");
+       await assertStableGeometry('both captions');
+       await page.evaluate("window.updateCaption('Streaming reply '.repeat(60));window.updateTranscript('Streaming speech '.repeat(60));window.updateSpeaking(false);window.updateInput('hearing',0.91);true");
+       await page.wait("document.getElementById('malvi-spoken-transcript').textContent.includes('Streaming reply')");
+       await assertStableGeometry('streaming captions and meter/speaker update');
+       await page.evaluate("window.updateSpeaking(true);window.updateInput('processing',0.16);true");
+       await assertStableGeometry('listening state update');
+       await page.evaluate("window.updateCaption('Malvi reply. '.repeat(100)+'LATEST REPLY');window.updateTranscript('User speech. '.repeat(100)+'LATEST SPEECH');true");
+       await page.wait("document.getElementById('malvi-user-transcript').textContent.endsWith('LATEST SPEECH')");
       // Auxiliary details must scroll in their own panel, not move captions away.
       assert.equal(await page.evaluate("document.querySelector('[aria-label=\"Malvi time remaining\"]').textContent.trim()"), '03:00');
       for (const [seconds, role, copy] of [[60,'status','One minute or less'], [30,'alert','30 seconds or less']]) {
@@ -177,10 +240,11 @@ if (preview) {
       assert.ok((await check()).latestVisible);
       // Caption absence should not suppress the user's recognition, or vice versa.
       await page.evaluate("window.updateCaption('');true");
-      await page.wait("!document.querySelector('[aria-label=\"Live subtitles\"]')");
+       await page.wait("!document.getElementById('malvi-spoken-transcript')");
+       assert.ok(await page.evaluate("!!document.querySelector('[aria-label=\"Conversation subtitles\"]')"));
       assert.ok(await page.evaluate("document.getElementById('malvi-user-transcript').getBoundingClientRect().bottom<=innerHeight"));
       await page.evaluate("window.updateCaption('Malvi response');window.updateTranscript('');true");
-      await page.wait("!document.getElementById('malvi-user-transcript')");
+       await page.wait("!!document.getElementById('malvi-spoken-transcript')&&!document.getElementById('malvi-user-transcript')");
       assert.ok(await page.evaluate("document.getElementById('malvi-spoken-transcript').getBoundingClientRect().bottom<=innerHeight"));
       await page.evaluate("window.changePhase('connecting');true");
       await page.wait("!document.querySelector('[aria-label=\"Conversation subtitles\"]')");
@@ -236,7 +300,7 @@ if (preview) {
         await browser.closePage?.(page);
       }
     }
-    console.log(JSON.stringify({passed:true,viewports:11,localizedViewports:6,allowanceWarnings:true,voiceAndAvatarBillingShortcut:true,fullOverlay:true,uncroppedPortrait:true,transparentMediaShade:true,paidProviderRequests:0}));
+    console.log(JSON.stringify({passed:true,viewports:11,localizedViewports:6,allowanceWarnings:true,voiceAndAvatarBillingShortcut:true,fullOverlay:true,uncroppedPortrait:true,transparentMediaShade:true,tabletContainedVideoGeometry,paidProviderRequests:0}));
   } finally {
     await browser.close();
     await new Promise(resolve => server.close(resolve));

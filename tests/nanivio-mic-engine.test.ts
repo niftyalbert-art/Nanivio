@@ -5,6 +5,7 @@ import vm from 'node:vm';
 import { NanivioMicEngine, type NanivioMicCapture, type NanivioMicSnapshot } from '../src/lib/nanivioMic/NanivioMicEngine.ts';
 import { encodeNanivioMicFrame, NANIVIO_MIC_EVENTS as E, type NanivioMicStatus } from '../src/shared/nanivioMicProtocol.ts';
 import { browserMicStreamId } from '../src/lib/nanivioMic/BrowserMicCapture.ts';
+import { MalviUserTurnTranscript } from '../src/lib/malviUserTurnTranscript.ts';
 
 const sessionId = '11111111-1111-4111-8111-111111111111';
 const streamId = '22222222-2222-4222-8222-222222222222';
@@ -148,4 +149,54 @@ test('owned processor normalizes 16, 44.1 and 48 kHz into exact PCM16 frames', (
     assert.equal(new DataView(frames[0]).getInt16(0, true), 8192);
     assert.equal(processor.samples.length, 0, 'Do not lose fractional resampling phase between render blocks');
   }
+});
+test('quieter speech gets stable hearing feedback without suppressing any input frames',async()=>{
+  let now=0;
+  const f=fixture({now:()=>now});
+  await f.engine.start();f.emit({state:'ready'});
+  const quiet=new ArrayBuffer(6400),view=new DataView(quiet);
+  for(let i=0;i<quiet.byteLength;i+=2)view.setInt16(i,350,true);
+  f.frame(quiet);
+  f.emit({state:'receiving',lastSequence:1});
+  assert.equal(f.snapshots.at(-1)?.state,'hearing');
+  now=200;f.frame();
+  assert.equal(f.snapshots.at(-1)?.state,'hearing','A short pause must not flicker back to listening');
+  now=800;f.frame();
+  assert.equal(f.snapshots.at(-1)?.state,'processing');
+  assert.equal(f.counts().speechStarts,1);
+  assert.equal(f.counts().speechEnds,1);
+  assert.equal(f.sent.filter(event=>event.type===E.audio).length,3,'Quiet and silent input still reach the provider');
+  f.engine.stop();
+});
+test('a right-channel microphone is not discarded when a device supplies stereo',()=>{
+  const source=readFileSync(new URL('../public/audio/nanivio-mic-processor.js',import.meta.url),'utf8');
+  for(const sampleRate of [16000,44100,48000]){
+    const frames:ArrayBuffer[]=[];
+    let Processor:any;
+    vm.runInNewContext(source,{
+      sampleRate,AudioWorkletProcessor:class{port={postMessage:(frame:ArrayBuffer)=>frames.push(frame)};},
+      registerProcessor(_name:string,ctor:any){Processor=ctor;},
+    });
+    const processor=new Processor();
+    for(let i=0;i<sampleRate;i+=128){
+      const count=Math.min(128,sampleRate-i);
+      processor.process([[new Float32Array(count),new Float32Array(count).fill(0.5)]]);
+    }
+    assert.equal(frames.length,5);
+    assert.equal(new DataView(frames[0]).getInt16(0,true),8192,'Both channels must contribute to mono speech');
+  }
+});
+test('recognized user text survives local volume changes and changes atomically on a new conversation turn',()=>{
+  const buffer=new MalviUserTurnTranscript();
+  assert.equal(buffer.append('Please explain '),'Please explain ');
+  assert.equal(buffer.append('the monthly plan.'),'Please explain the monthly plan.');
+  buffer.assistantReply();
+  assert.equal(buffer.append('And the annual '),'And the annual ');
+  assert.equal(buffer.append('plan?'),'And the annual plan?');
+  buffer.reset();
+  assert.equal(buffer.append('New account.'),'New account.');
+  assert.equal(Array.from(buffer.append('😀'.repeat(1300))).length,1200);
+  assert.equal(buffer.append('!').endsWith('😀!'),true);
+  const ui=readFileSync(new URL('../src/components/malvi/MalviLiveAssistant.tsx',import.meta.url),'utf8');
+  assert.doesNotMatch(ui,/onSpeechStart:[^\n]*(?:setUserTranscript|userText)/,'Noise and short pauses must not erase provider transcripts');
 });

@@ -17,6 +17,7 @@ import { MalviAvatarStartup } from '../../lib/malviAvatarStartup';
 import MalviWakeControls from './MalviWakeControls';
 import { NanivioMicEngine } from '../../lib/nanivioMic/NanivioMicEngine';
 import { BrowserMicCapture, browserMicStreamId } from '../../lib/nanivioMic/BrowserMicCapture';
+import { MalviUserTurnTranscript } from '../../lib/malviUserTurnTranscript';
 import { NANIVIO_MIC_EVENTS } from '../../shared/nanivioMicProtocol';
 import { parseMalviAssets, type MalviAssetResult } from '../../shared/malviInputTypes';
 import { MalviSessionClock } from '../../lib/malviSessionClock';
@@ -71,11 +72,12 @@ export const MalviLiveAssistantProvider: React.FC<{ children: React.ReactNode }>
   const [microphoneOn, setMicrophoneOn] = useState(false);
   const [microphoneError, setMicrophoneError] = useState('');
   const [inputLevel, setInputLevel] = useState(0);
+  const [hearingSpeech, setHearingSpeech] = useState(false);
   const [processing, setProcessing] = useState(false);
   const [speaking, setSpeaking] = useState(false);
   const [userTranscript, setUserTranscript] = useState('');
   const [micReceiving, setMicReceiving] = useState(false);
-  const userText = useRef('');
+  const userText = useRef(new MalviUserTurnTranscript());
   const captions = useRef<MalviCaptionPlayer | null>(null);
   if (!captions.current) captions.current = new MalviCaptionPlayer((text, playing) => {
     setCaption(text); setSpeaking(playing);
@@ -125,7 +127,7 @@ export const MalviLiveAssistantProvider: React.FC<{ children: React.ReactNode }>
     const engine = micEngine.current; micEngine.current = null;
     engine?.stop();
     setMicrophoneOn(false);
-    setInputLevel(0); setMicReceiving(false);
+    setInputLevel(0); setMicReceiving(false); setHearingSpeech(false);
   }, []);
   const disarmWake = useCallback(() => {
     wakeController.current?.abort(); wakeController.current = null;
@@ -140,7 +142,7 @@ export const MalviLiveAssistantProvider: React.FC<{ children: React.ReactNode }>
     stopMicrophone();
     captions.current?.cancel();
     avatarPlayout.current?.close(); avatarPlayout.current = null;
-    setProcessing(false); setUserTranscript(''); userText.current = '';
+    setProcessing(false); setUserTranscript(''); userText.current.reset();
     videoGate.current?.cancel(); videoGate.current = null;
     avatarStartup.current?.cancel(); avatarStartup.current = null;
     playback.current?.close(); playback.current = null; pendingAudio.current = null;
@@ -287,9 +289,9 @@ export const MalviLiveAssistantProvider: React.FC<{ children: React.ReactNode }>
     const offCaption = realtimeClient.on('malvi:brain_caption', (payload) => {
       if (!isCurrent(payload) || (payload.language && payload.language !== languageRef.current) || typeof payload.text !== 'string') return;
       if (payload.role === 'user') {
-        userText.current = (userText.current + payload.text).slice(-300);
-        setUserTranscript(userText.current);
+        setUserTranscript(userText.current.append(payload.text));
       } else if (payload.role === 'assistant') {
+        userText.current.assistantReply();
         // Brain tokens arrive before TTS; only playback may expose their text.
         setProcessing(true);
       }
@@ -337,7 +339,7 @@ export const MalviLiveAssistantProvider: React.FC<{ children: React.ReactNode }>
       if (!isCurrent(payload) || typeof payload.language !== 'string') return;
       setActiveLanguage(payload.language);
       setBrainReady(true);
-      setCaption(''); setUserTranscript(''); userText.current = '';
+      setCaption(''); setUserTranscript(''); userText.current.reset();
     });
     const offLanguageError = realtimeClient.on('malvi:brain_language_error', payload => {
       if (isCurrent(payload)) fail(typeof payload.message === 'string' ? payload.message : 'The selected language could not be applied. Start a new conversation.');
@@ -391,9 +393,10 @@ export const MalviLiveAssistantProvider: React.FC<{ children: React.ReactNode }>
         setMicrophoneOn(snapshot.captureActive);
         setMicReceiving(snapshot.serverReceiving);
         setInputLevel(snapshot.level);
+        setHearingSpeech(snapshot.state === 'hearing');
         if (snapshot.error) { setMicrophoneError(snapshot.error); micEngine.current = null; }
       },
-      onSpeechStart: () => { userText.current = ''; setUserTranscript(''); setProcessing(false); },
+      onSpeechStart: () => { setProcessing(false); },
       onSpeechEnd: () => setProcessing(true),
     });
     micEngine.current = engine;
@@ -744,7 +747,7 @@ export const MalviLiveAssistantProvider: React.FC<{ children: React.ReactNode }>
         brainReady={brainReady}
         microphoneOn={microphoneOn}
         inputLevel={inputLevel}
-        inputState={!microphoneOn ? 'off' : !micReceiving ? 'connecting' : inputLevel > 0.075 ? 'hearing' : processing ? 'processing' : 'listening'}
+        inputState={!microphoneOn ? 'off' : !micReceiving ? 'connecting' : hearingSpeech ? 'hearing' : processing ? 'processing' : 'listening'}
         speaking={speaking}
         userTranscript={userTranscript}
         microphoneError={microphoneError}

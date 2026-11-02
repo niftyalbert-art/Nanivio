@@ -42,10 +42,13 @@ export class BrowserMicCapture implements NanivioMicCapture {
       });
       if (this.stopped) { stream.getTracks().forEach(track => track.stop()); return; }
       this.stream = stream;
-      await context.audioWorklet.addModule('/audio/nanivio-mic-processor.js?v=1');
+      await context.audioWorklet.addModule('/audio/nanivio-mic-processor.js?v=2');
       if (this.stopped) return;
       const source = this.source = context.createMediaStreamSource(stream);
-      const processor = this.processor = new AudioWorkletNode(context, 'nanivio-mic-processor');
+      const processor = this.processor = new AudioWorkletNode(context, 'nanivio-mic-processor', {
+        channelCount: 1, channelCountMode: 'explicit',
+        channelInterpretation: 'speakers', outputChannelCount: [1],
+      });
       const silent = this.silent = context.createGain();
       silent.gain.value = 0;
       processor.port.onmessage = event => {

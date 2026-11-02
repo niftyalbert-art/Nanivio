@@ -2,9 +2,18 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { getLiveBrainProviderConfig } from '../src/server/assistant/brainProviderConfig.ts';
 import { liveAvatarSetup } from '../src/server/assistant/liveAvatarService.ts';
-import { hasSpeech, resamplePcm16kTo24k } from '../src/server/assistant/liveBrain.ts';
+import { hasSpeech, resamplePcm16kTo24k, MALVI_INPUT_ACTIVITY } from '../src/server/assistant/liveBrain.ts';
 import { malviOpeningBoundary } from '../src/server/assistant/malviResponsePacing.ts';
 import { MALVI_INTRODUCTION, malviGreetingInstruction } from '../src/server/assistant/malviSystemPrompt.ts';
+
+test('input detection accepts short answers and preserves natural mid-sentence pauses',()=>{
+  assert.equal(MALVI_INPUT_ACTIVITY.disabled,false);
+  assert.equal(MALVI_INPUT_ACTIVITY.startOfSpeechSensitivity,'START_SENSITIVITY_HIGH');
+  assert.equal(MALVI_INPUT_ACTIVITY.endOfSpeechSensitivity,'END_SENSITIVITY_LOW');
+  assert.ok(MALVI_INPUT_ACTIVITY.prefixPaddingMs>=0 && MALVI_INPUT_ACTIVITY.prefixPaddingMs<=40,
+    'This SDK field is minimum detected speech duration, not buffered audio before speech');
+  assert.ok(MALVI_INPUT_ACTIVITY.silenceDurationMs>=600 && MALVI_INPUT_ACTIVITY.silenceDurationMs<=800);
+});
 
 test('Malvi introduces herself warmly without an unsolicited not-human disclaimer', () => {
   assert.match(MALVI_INTRODUCTION, /AI companion at Nanivio/);

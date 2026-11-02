@@ -16,3 +16,14 @@ Check actual frame production, encoding, transport, stop/late-message handling,
 and provider input contracts separately. Capture and meter activity do not prove
 that a live provider understood the speech; reserve that claim for a real,
 authorized recognition test on the intended device.
+
+Check the installed provider SDK's definitions before transferring speech
+detection settings from another engine or interpreting a field by its name.
+
+**Why:** A field named `prefixPaddingMs` can mean the minimum detected speech
+duration rather than a conventional pre-speech look-behind buffer. Increasing
+it on the wrong assumption can suppress short answers.
+
+**How to apply:** Check start detection and end-of-turn silence independently.
+Keep brief replies recognizable while tolerating natural pauses, and distinguish
+recorded-clip cloud recognition from physical-device microphone verification.

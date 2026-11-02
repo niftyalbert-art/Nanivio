@@ -1,12 +1,13 @@
 import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
 
 /** Keep live recognition readable without putting a large panel over the face. */
-export function MalviUserTranscript({ text, speaker = 'user', compact = false, contained = false, label }: {
+export function MalviUserTranscript({ text, speaker = 'user', compact = false, contained = false, label, ariaLabel }: {
   text: string;
   speaker?: 'user' | 'malvi';
   compact?: boolean;
   contained?: boolean;
   label?: string;
+  ariaLabel?: string;
 }) {
   const [expanded, setExpanded] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -40,17 +41,18 @@ export function MalviUserTranscript({ text, speaker = 'user', compact = false, c
           type="button"
           aria-expanded={expanded}
           aria-controls={transcriptId}
+          aria-label={expanded ? 'Show less transcript' : 'Expand transcript'}
           className={`${contained ? 'min-h-6' : 'min-h-9'} shrink-0 px-2 text-xs underline underline-offset-4 focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#d6e7da]`}
           onClick={() => { followLatest.current = true; setExpanded(value => !value); }}
         >
-          {expanded ? 'Show less' : 'Expand transcript'}
+          {expanded ? 'Show less' : contained ? 'Expand' : 'Expand transcript'}
         </button>
       </div>
       <div
         id={transcriptId}
         ref={scrollRef}
         role="region"
-        aria-label={speaker === 'user' ? 'Your recognized speech' : 'Live subtitles'}
+        aria-label={ariaLabel ?? (speaker === 'user' ? 'Your recognized speech' : 'Live subtitles')}
         aria-live="polite"
         aria-relevant="text"
         tabIndex={0}

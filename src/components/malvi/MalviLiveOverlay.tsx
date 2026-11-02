@@ -359,7 +359,9 @@ export const MalviLiveOverlay: React.FC<MalviLiveOverlayProps> = ({
           </div>
         )}
 
-        <main className={`grid min-h-0 flex-1 grid-cols-1 grid-rows-[minmax(0,1fr)_auto] sm:grid-rows-1 ${voiceOnly ? '' : 'sm:grid-cols-[minmax(0,1fr)_22rem]'}`}>
+        <main className={`grid min-h-0 flex-1 grid-cols-1 ${voiceOnly
+          ? 'grid-rows-[minmax(0,1fr)_auto] min-[640px]:grid-rows-[minmax(0,1fr)_auto]'
+          : 'grid-rows-[minmax(0,1fr)_auto] min-[640px]:grid-rows-1 min-[640px]:grid-cols-[minmax(0,1fr)_clamp(15rem,26vw,21rem)]'}`}>
           <section aria-label={voiceOnly ? 'Voice conversation' : 'Malvi video'} className="relative min-h-0 min-w-0 overflow-hidden bg-[#10201f]">
             {!voiceOnly && <video
               ref={onVideoElement}
@@ -382,17 +384,23 @@ export const MalviLiveOverlay: React.FC<MalviLiveOverlayProps> = ({
             )}
           </section>
 
-          <aside className={`flex min-h-0 min-w-0 flex-col overflow-hidden ${voiceOnly ? '' : 'border-t border-white/10 bg-[#071311]/95 sm:border-l sm:border-t-0'} max-h-[52dvh] sm:max-h-none`}>
-            {phase === 'connected' && (caption?.trim() || userTranscript?.trim()) && (
-              <div aria-label="Conversation subtitles" className={`grid w-full shrink-0 auto-rows-fr grid-cols-1 gap-2 px-4 pt-2 ${caption?.trim() && userTranscript?.trim() ? 'h-[32dvh] min-h-[148px] sm:h-[38dvh]' : 'h-[20dvh] min-h-[74px] sm:h-[24dvh]'}`}>
-                {caption?.trim() && <MalviUserTranscript text={caption} speaker="malvi" compact contained label={`${speaking ? 'Malvi is speaking' : 'Malvi'}${approximateCaptions ? ' · Approximate captions' : ''}`} />}
-                {userTranscript?.trim() && <MalviUserTranscript text={userTranscript} compact contained />}
+          <aside className={`flex min-h-0 min-w-0 flex-col overflow-hidden ${voiceOnly
+            ? 'border-t border-white/10 bg-[#071311]/95'
+            : 'border-t border-white/10 bg-[#071311]/95 min-[640px]:border-l min-[640px]:border-t-0'} max-h-[52dvh] ${voiceOnly ? 'sm:max-h-none' : 'min-[640px]:max-h-none'}`}>
+            {phase === 'connected' && (
+              <div aria-label="Conversation subtitles" className="grid h-[18dvh] min-h-[136px] max-h-[156px] w-full shrink-0 grid-cols-1 grid-rows-2 gap-1.5 px-4 pt-2 min-[900px]:h-[20dvh] min-[900px]:max-h-[180px] [@media(max-height:480px)]:h-[34dvh] [@media(max-height:480px)]:min-h-[130px] [@media(max-height:480px)]:max-h-[142px]">
+                <div className="min-h-0">
+                  {caption?.trim() && <MalviUserTranscript text={caption} speaker="malvi" compact contained label={`Malvi${approximateCaptions ? ' · approximate' : ''}`} ariaLabel={`Malvi live subtitles${speaking ? ', Malvi speaking' : ''}${approximateCaptions ? ', approximate captions' : ''}`} />}
+                </div>
+                <div className="min-h-0">
+                  {userTranscript?.trim() && <MalviUserTranscript text={userTranscript} compact contained />}
+                </div>
               </div>
             )}
 
-            <footer aria-label="Live session controls" className="flex max-h-[32dvh] min-h-0 shrink flex-col items-center gap-2 overflow-y-auto overscroll-contain px-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-2 sm:gap-3 sm:pb-[max(1.75rem,env(safe-area-inset-bottom))] [&>*]:shrink-0 sm:max-h-full sm:flex-1 [@media(max-height:480px)]:gap-1 [@media(max-height:480px)]:pt-0">
+        <footer aria-label="Live session controls" className="flex max-h-[32dvh] min-h-0 shrink flex-col items-center gap-1 overflow-y-auto overscroll-contain px-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-1.5 sm:gap-3 sm:pb-[max(1.75rem,env(safe-area-inset-bottom))] [&>*]:shrink-0 sm:max-h-full sm:flex-1 [@media(max-height:480px)]:gap-0 [@media(max-height:480px)]:pt-0">
           {phase === 'connected' && (
-            <div className="flex min-h-7 items-center justify-center gap-2.5 text-[11px] text-[#e0e8e2]/90" aria-label={`Microphone status: ${listeningCopy}`}>
+            <div className="flex min-h-5 items-center justify-center gap-2.5 text-[11px] text-[#e0e8e2]/90 [@media(max-height:480px)]:min-h-5" aria-label={`Microphone status: ${listeningCopy}`}>
               <span aria-hidden="true" className="flex h-4 items-center gap-[3px]">
                 {meterBars.map((threshold, index) => (
                   <span
@@ -405,17 +413,18 @@ export const MalviLiveOverlay: React.FC<MalviLiveOverlayProps> = ({
               <span role="status" aria-live="polite">{listeningCopy}</span>
             </div>
           )}
-          <button
-            type="button"
-            onClick={onToggleMicrophone}
-            disabled={!brainReady || phase !== 'connected'}
-            aria-pressed={microphoneOn}
-            className="inline-flex min-h-12 items-center gap-2 rounded-full bg-[#d6e6d9] px-5 text-sm font-semibold text-[#18352f] transition-colors hover:bg-[#e3eee3] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white disabled:cursor-not-allowed disabled:opacity-55"
-          >
-            {microphoneOn ? <MicOff size={18} /> : <Mic size={18} />}
-            {microphoneOn ? 'Turn microphone off' : brainReady ? 'Start talking' : 'Connecting Malvi’s brain…'}
-          </button>
-          <div className="flex flex-wrap items-center justify-center gap-2">
+          <div role="group" aria-label="Conversation controls" className="flex w-full flex-wrap items-center justify-center gap-1.5">
+            <button
+              type="button"
+              onClick={onToggleMicrophone}
+              disabled={!brainReady || phase !== 'connected'}
+              aria-pressed={microphoneOn}
+              className="inline-flex min-h-11 items-center gap-2 rounded-full bg-[#d6e6d9] px-4 text-sm font-semibold text-[#18352f] transition-colors hover:bg-[#e3eee3] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white disabled:cursor-not-allowed disabled:opacity-55"
+            >
+              {microphoneOn ? <MicOff size={18} /> : <Mic size={18} />}
+              {microphoneOn ? 'Turn microphone off' : brainReady ? 'Start talking' : 'Connecting Malvi’s brain…'}
+            </button>
+            <div className="flex flex-wrap items-center justify-center gap-1.5">
             <div className="flex items-center gap-2 rounded-full border border-white/15 bg-[#10201f]/65 px-3.5 py-2.5 text-xs text-[#f1f3eb] backdrop-blur-md sm:hidden">
               <span className="text-[#c0d1c8]/75">Idle session</span>
               <span className="font-mono tabular-nums">{formatTime(secondsRemaining)}</span>
@@ -424,7 +433,7 @@ export const MalviLiveOverlay: React.FC<MalviLiveOverlayProps> = ({
               <button
                 type="button"
                 onClick={handleEnableAudio}
-                className="inline-flex min-h-11 items-center gap-2 rounded-full bg-[#d6e6d9] px-4 text-xs font-semibold text-[#18352f] transition-colors hover:bg-[#e3eee3] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white"
+                className="inline-flex min-h-10 items-center gap-2 rounded-full bg-[#d6e6d9] px-3 text-xs font-semibold text-[#18352f] transition-colors hover:bg-[#e3eee3] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white"
               >
                 <AudioLines size={16} />
                 Enable sound
@@ -434,16 +443,16 @@ export const MalviLiveOverlay: React.FC<MalviLiveOverlayProps> = ({
               <button
                 type="button"
                 onClick={onInterrupt}
-                className="inline-flex min-h-11 items-center gap-2 rounded-full border border-white/25 bg-[#10201f]/70 px-4 text-xs font-medium text-white backdrop-blur-md transition-colors hover:bg-[#1d3834]/90 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#d6e7da]"
+                className="inline-flex min-h-10 items-center gap-2 rounded-full border border-white/25 bg-[#10201f]/70 px-3 text-xs font-medium text-white backdrop-blur-md transition-colors hover:bg-[#1d3834]/90 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#d6e7da]"
               >
                 <MicOff size={15} />
                 Interrupt
               </button>
             )}
-          </div>
+            </div>
           {phase === 'connected' && (
             <details className="w-full max-w-lg overflow-hidden rounded-xl border border-[#b89a5a]/25 bg-[#10201f]/80 text-left text-[11px] text-[#e0e8e2]/85 backdrop-blur-md">
-              <summary className="flex min-h-10 cursor-pointer items-center gap-2 px-3 py-2 font-medium text-[#e3d09a] underline-offset-4 focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#d6e7da]">
+              <summary className="flex min-h-8 cursor-pointer items-center gap-2 px-3 py-1.5 font-medium text-[#e3d09a] underline-offset-4 focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#d6e7da] sm:min-h-10 sm:py-2">
                 <Camera size={14} /> Share a still view · optional
               </summary>
               <div className="max-h-[34dvh] space-y-3 overflow-y-auto border-t border-white/10 px-3 py-3">
@@ -503,6 +512,7 @@ export const MalviLiveOverlay: React.FC<MalviLiveOverlayProps> = ({
               </div>
             </details>
           )}
+          </div>
           {(phase === 'connecting' || phase === 'error' || microphoneError) && (
             <div
               role="region"
@@ -554,9 +564,10 @@ export const MalviLiveOverlay: React.FC<MalviLiveOverlayProps> = ({
             </details>
           )}
           {memoryNotice && phase === 'connected' && (
-            <p role="status" className="max-h-16 w-full max-w-lg overflow-y-auto rounded-lg border border-[#b89a5a]/25 bg-[#10201f]/75 px-3 py-2 text-center text-[10px] leading-relaxed text-[#e4d3a8] backdrop-blur-md">
-              {memoryNotice}
-            </p>
+            <details className="w-full max-w-lg rounded-lg border border-[#b89a5a]/25 bg-[#10201f]/75 text-left text-[10px] leading-relaxed text-[#e4d3a8] backdrop-blur-md">
+              <summary className="cursor-pointer px-3 py-1.5 underline underline-offset-4">Conversation memory information</summary>
+              <p role="status" className="max-h-16 overflow-y-auto border-t border-white/10 px-3 py-2">{memoryNotice}</p>
+            </details>
           )}
           <details className="max-w-lg rounded-xl bg-[#10201f]/60 px-3 py-2 text-center text-[11px] leading-relaxed text-[#e0e8e2]/80 backdrop-blur-md">
             <summary className="cursor-pointer underline underline-offset-4">Audio &amp; sources</summary>

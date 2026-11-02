@@ -95,6 +95,16 @@ function base64Buffer(value: unknown) {
   return bytes.length > 0 ? bytes : null;
 }
 
+export const MALVI_INPUT_ACTIVITY = Object.freeze({
+  disabled: false,
+  startOfSpeechSensitivity: StartSensitivity.START_SENSITIVITY_HIGH,
+  endOfSpeechSensitivity: EndSensitivity.END_SENSITIVITY_LOW,
+  // Despite its name, the SDK defines this as minimum detected speech
+  // duration, not a look-behind buffer. Keep short answers recognizable.
+  prefixPaddingMs: 20,
+  silenceDurationMs: 650,
+});
+
 function hasSpeech(pcm: Buffer) {
   const count = Math.floor(pcm.length / 2);
   if (!count) return false;
@@ -261,13 +271,7 @@ async function connectGemini(
       inputAudioTranscription: {},
       outputAudioTranscription: {},
       realtimeInputConfig: {
-        automaticActivityDetection: {
-          disabled: false,
-          startOfSpeechSensitivity: StartSensitivity.START_SENSITIVITY_HIGH,
-          endOfSpeechSensitivity: EndSensitivity.END_SENSITIVITY_HIGH,
-          prefixPaddingMs: 40,
-          silenceDurationMs: 250,
-        },
+        automaticActivityDetection: MALVI_INPUT_ACTIVITY,
       },
       tools: [{ functionDeclarations: [{
         name: REFERENCE_TOOL_NAME, description: REFERENCE_TOOL_DESCRIPTION, parametersJsonSchema: REFERENCE_TOOL_PARAMETERS,

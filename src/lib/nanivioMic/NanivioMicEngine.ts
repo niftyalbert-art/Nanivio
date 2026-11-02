@@ -90,7 +90,9 @@ export class NanivioMicEngine {
       this.deadline('capture', this.options.captureTimeoutMs ?? 4000, 'No microphone audio is arriving. Check microphone access and tap Start talking to retry.');
       this.level = nanivioMicLevel(pcm);
       const now = this.options.now?.() ?? Date.now();
-      if (this.level > 0.075) {
+      // Level is RMS multiplied by five. Match the cloud's 0.009 RMS
+      // speech floor so quieter words still receive listening feedback.
+      if (this.level > 0.045) {
         if (!this.speaking) this.options.onSpeechStart?.();
         this.speaking = true; this.processing = false; this.lastSpeech = now;
       } else if (this.speaking && now - this.lastSpeech > 700) {

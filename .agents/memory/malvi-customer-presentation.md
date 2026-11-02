@@ -60,3 +60,15 @@ desktop or standalone transcript checks for the mobile overlay.
 Reserve separate media and transcript/control regions; verify their actual
 non-overlap and ancestor clipping, not only whether the subtitle text fits
 inside the viewport.
+
+Keep Malvi's avatar and conversation layout steady throughout live speech.
+The owner reported a small avatar and the whole image/chat appearing to vibrate.
+
+**Why:** Resizing the media region as captions appear, disappear or change
+speaker makes the entire conversation seem unstable. A wider media region can
+still make a contained portrait smaller if its available height is reduced.
+
+**How to apply:** Check empty, single-speaker and both-speaker captions, streaming
+updates and microphone indicators without changing media geometry. Compare the
+actual contained portrait footprint across tablet breakpoints, not stage width
+alone; preserve the full face and separate subtitle area.
