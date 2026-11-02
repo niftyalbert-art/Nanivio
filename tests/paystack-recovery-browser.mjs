@@ -16,7 +16,10 @@ const built = await build({
       const ok=window.outcome==='success';
       return {ok,status:ok?200:503,json:async()=>ok
         ?{success:true,verified:true,reference:'NV-PSTK-fixture'}
-        :{success:false,verified:true,code:'PAYMENT_ACTIVATION_PENDING',
+        :window.outcome==='unavailable'
+          ?{success:false,verified:false,code:'PAYMENT_VERIFICATION_UNAVAILABLE',
+            error:'We could not confirm your payment right now. Do not pay again. Keep this reference and use Verify & recover.'}
+          :{success:false,verified:true,code:'PAYMENT_ACTIVATION_PENDING',
           error:'Paystack confirmed your payment, but activation is pending. Do not pay again.'}};
     };
     createRoot(document.getElementById('root')).render(
@@ -53,13 +56,17 @@ if(process.argv.includes('--preview')) {
       await page.wait('!!document.querySelector("[role=alert]")');
       assert.match(await page.evaluate('document.body.innerText'),/Do not pay again/);
       assert.equal(await page.evaluate('window.recovered'),0);
+      await page.evaluate(`window.outcome='unavailable';document.querySelector('form').requestSubmit();true`);
+      await page.wait('document.body.innerText.includes("We could not confirm your payment")');
+      assert.equal(await page.evaluate('window.recovered'),0);
+      assert.match(await page.evaluate('document.body.innerText'),/Do not pay again/);
       await page.evaluate(`window.outcome='success';document.querySelector('form').requestSubmit();true`);
       await page.wait('!!document.querySelector("[role=status]")');
       assert.equal(await page.evaluate('window.recovered'),1);
       assert.equal(await page.evaluate('window.calls.every(url=>url.includes("/api/paystack/verify/NV-PSTK-fixture"))'),true);
       assert.equal(await page.evaluate('document.documentElement.scrollWidth<=innerWidth'),true);
     }
-    console.log(JSON.stringify({passed:true,viewports:2,paidPending:true,recovery:true,newCharges:0}));
+    console.log(JSON.stringify({passed:true,viewports:2,paidPending:true,verificationUnavailable:true,recovery:true,newCharges:0}));
   } finally {
     await browser.close();
     await new Promise(resolve=>server.close(resolve));

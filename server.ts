@@ -58,6 +58,7 @@ import { uploadStreamAttachment } from "./src/server/streamService.ts";
 import { audioCallingEnabled, featureSettingsHandler, videoCallingEnabled } from "./src/server/featureSettings.ts";
 import { quotePaystackOrder, validateVerifiedOrder } from "./src/server/paystackOrders.ts";
 import { assertLivePaystackPayment, paystackLiveConfigurationError } from "./src/server/paystackPaymentSafety.ts";
+import { verifyPaystackTransaction, paystackVerificationDiagnostic } from "./src/server/paystackVerification.ts";
 import { buildLangpretationReadiness } from "./src/shared/langpretationReadiness.ts";
 import { supportsPalabraPair } from "./src/shared/palabraLanguages.ts";
 import { palabraConfigured, PalabraError, parsePalabraWav, translatePalabraAudio } from "./src/server/palabraSpeech.ts";
@@ -2227,32 +2228,32 @@ app.get("/api/paystack/verify/:reference", requireAuthenticatedUser, async (req,
     let paystackMetadata: any = {};
 
     if (paystackSecretKey) {
+      let transaction:any;
       try {
-        const response = await fetch(`https://api.paystack.co/transaction/verify/${encodeURIComponent(reference)}`, {
-          method: "GET",
-          signal: AbortSignal.timeout(15_000),
-          headers: {
-            Authorization: `Bearer ${paystackSecretKey}`,
-          },
-        });
-        const data = await response.json();
-        if (response.ok && data.status && data.data?.status === "success") {
-          try { assertLivePaystackPayment(data.data); }
-          catch (error: any) { return res.status(400).json({ success: false, error: error.message }); }
-          isSuccess = true;
-          verifiedAmount = data.data.amount / 100;
-          verifiedCurrency = (data.data.currency || "GHS").toUpperCase();
-          paystackMetadata = data.data.metadata || {};
-          paymentConfirmed = true;
-        } else {
-          return res.status(400).json({
-            success: false,
-            error: data.message || "Paystack transaction verification failed: Transaction not marked as successful.",
-          });
-        }
+        transaction=await verifyPaystackTransaction(reference,paystackSecretKey);
       } catch (e: any) {
-        return res.status(500).json({ success: false, error: `Paystack API unreachable: ${e.message}` });
+        console.warn("Paystack payment verification unavailable",{reference,...paystackVerificationDiagnostic(e)});
+        return res.status(503).json({
+          success:false,verified:false,code:"PAYMENT_VERIFICATION_UNAVAILABLE",reference,
+          error:"We could not confirm your payment right now. Do not pay again. Keep this reference and use Verify & recover to check the original payment.",
+        });
       }
+      if(transaction.status!=="success") {
+        const terminal=['failed','abandoned','reversed'].includes(transaction.status);
+        return res.status(409).json({
+          success:false,verified:false,code:terminal?"PAYMENT_NOT_COMPLETED":"PAYMENT_PENDING",reference,
+          error:terminal
+            ? "Paystack has not confirmed a successful payment for this purchase. No purchase was activated. Check the original transaction before paying again."
+            : "Your payment is not confirmed yet. Do not pay again. Keep your reference and check the original payment again shortly.",
+        });
+      }
+      try { assertLivePaystackPayment(transaction); }
+      catch (error: any) { return res.status(400).json({ success: false, error: error.message }); }
+      isSuccess=true;
+      verifiedAmount=transaction.amount/100;
+      verifiedCurrency=transaction.currency.toUpperCase();
+      paystackMetadata=transaction.metadata||{};
+      paymentConfirmed=true;
     }
 
     if (isSuccess) {
@@ -3842,21 +3843,13 @@ async function startServer() {
   startPaystackReconciliation(createPaystackReconciler({
     list:listPendingMalviPayments,
     checked:markPaystackOrderChecked,
-    verify:async(reference)=>{
-      const response=await fetch(`https://api.paystack.co/transaction/verify/${encodeURIComponent(reference)}`,{
-        headers:{Authorization:`Bearer ${process.env.PAYSTACK_SECRET_KEY}`},
-        signal:AbortSignal.timeout(10000),
-      });
-      const result=await response.json();
-      if(!response.ok||!result.status)throw new Error('Live Paystack verification unavailable');
-      return result.data;
-    },
+    verify:reference=>verifyPaystackTransaction(reference,process.env.PAYSTACK_SECRET_KEY,{timeoutMs:10000}),
     fulfil:async(order,transaction)=>{
       await fulfillPaystackOrder({reference:order.reference,userId:order.userId,
         verifiedAmount:transaction.amount/100,verifiedCurrency:transaction.currency.toUpperCase(),order});
     },
     report:(reference,error)=>console.warn('Pending Malvi payment could not be activated; check payment and billing setup.',
-      {reference,error:error instanceof Error?error.message:'Unknown reconciliation error'}),
+      {reference,error:error instanceof Error?error.message:'Unknown reconciliation error',...paystackVerificationDiagnostic(error)}),
   }),process.env.RENDER==='true'||process.argv[1]?.endsWith('/dist/server.cjs')?'production':process.env.NODE_ENV,process.env.PAYSTACK_SECRET_KEY);
 
   const httpServer = http.createServer(app);

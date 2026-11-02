@@ -7,6 +7,7 @@ import { PGlite } from '@electric-sql/pglite';
 import ts from 'typescript';
 import { quotePaystackOrder, validateVerifiedOrder } from '../src/server/paystackOrders.ts';
 import { assertLivePaystackPayment, paystackLiveConfigurationError } from '../src/server/paystackPaymentSafety.ts';
+import {verifyPaystackTransaction,paystackVerificationDiagnostic} from '../src/server/paystackVerification.ts';
 
 // Execute the actual production handlers with a stubbed gateway and isolated stores.
 // No real provider credential, network payment, or customer account is used.
@@ -72,9 +73,11 @@ function system() {
           reference:request.reference,
         } }) };
       }
-      return { ok:true, json:async()=>({ status:true, data:provider.get(decodeURIComponent(url.split('/').at(-1)!)) }) };
+      return Response.json({ status:true, data:provider.get(decodeURIComponent(url.split('/').at(-1)!)) });
     },
   };
+  context.verifyPaystackTransaction=(reference:string,key:string)=>verifyPaystackTransaction(reference,key,{fetcher:context.fetch});
+  context.paystackVerificationDiagnostic=paystackVerificationDiagnostic;
   const sandbox = vm.createContext(context);
   const compile = (text: string) => {
     vm.runInContext(ts.transpile(`globalThis.result = ${text}`, { target:ts.ScriptTarget.ES2022 }), sandbox);
@@ -116,6 +119,38 @@ test('Malvi fulfilment honours purchased voice/video/name/price snapshots after 
   assert.equal(s.deliveries[0].voiceMinutesAllowed,80);
   assert.equal(s.deliveries[0].videoMinutesAllowed,10);
   assert.equal(s.deliveries[0].metadata.catalogVersion,1);
+});
+
+test('provider verification failures preserve the purchase and return a safe recoverable response',async()=>{
+  for(const status of [401,403,400,404,429,503]){
+    const s=system();
+    const init=await s.call(s.initialize,{authId:'owner',body:{purpose:'MALVI_SUBSCRIPTION',planTier:'premium',amount:145}});
+    const reference=init.body.reference;
+    s.context.fetch=async()=>Response.json({status:false,message:'private@example.test sk_live_private'},{status});
+    const result=await s.call(s.verify,{authId:'owner',params:{reference}});
+    assert.equal(result.code,503);
+    assert.equal(result.body.code,'PAYMENT_VERIFICATION_UNAVAILABLE');
+    assert.equal(result.body.verified,false);
+    assert.match(result.body.error,/Do not pay again/);
+    assert.doesNotMatch(JSON.stringify(result.body),/private@example|sk_live_private/);
+    assert.equal(s.deliveries.length,0);
+    assert.equal(s.orders.has(reference),true);
+  }
+});
+
+test('pending and failed payments are not confused with provider outages or successful verification',async()=>{
+  const s=system();
+  const init=await s.call(s.initialize,{authId:'owner',body:{purpose:'MALVI_SUBSCRIPTION',planTier:'premium',amount:145}});
+  const reference=init.body.reference;
+  for(const status of ['pending','ongoing','failed','abandoned','reversed']){
+    s.provider.get(reference).status=status;
+    const result=await s.call(s.verify,{authId:'owner',params:{reference}});
+    assert.equal(result.code,409);
+    assert.equal(result.body.code,['failed','abandoned','reversed'].includes(status)?'PAYMENT_NOT_COMPLETED':'PAYMENT_PENDING');
+    assert.equal(result.body.verified,false);
+    assert.doesNotMatch(result.body.error,/Verification successful/);
+    assert.equal(s.deliveries.length,0);
+  }
 });
 
 test('paid Malvi activation failure is explicit and recoverable after a server restart', async () => {
@@ -283,7 +318,7 @@ test('missing credentials and unpaid gateway statuses cannot deliver value',asyn
   const init=await s.call(s.initialize,{ authId:'owner', body:{ amount:20 } });
   const reference=init.body.reference;
   s.provider.get(reference).status='pending';
-  assert.equal((await s.call(s.verify,{ authId:'owner', params:{ reference } })).code,400);
+  assert.equal((await s.call(s.verify,{ authId:'owner', params:{ reference } })).code,409);
   assert.equal(s.deliveries.length,0);
 });
 
@@ -342,7 +377,7 @@ test('card and mobile money pending authorizations do not activate Malvi; comple
     } });
     const reference = init.body.reference;
     Object.assign(s.provider.get(reference), { channel, status:'pending' });
-    assert.equal((await s.call(s.verify, { authId:'owner', params:{ reference } })).code, 400);
+    assert.equal((await s.call(s.verify, { authId:'owner', params:{ reference } })).code, 409);
     assert.equal(s.deliveries.length, 0);
     s.provider.get(reference).status = 'success';
     assert.equal((await s.call(s.verify, { authId:'owner', params:{ reference } })).body.verified, true);

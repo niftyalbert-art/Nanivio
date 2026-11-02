@@ -99,28 +99,38 @@ export const PaystackTopUpModal: React.FC<PaystackTopUpModalProps> = ({
   // Background auto-polling for payment completion once user opens Paystack checkout
   React.useEffect(() => {
     let interval: any;
+    let stopped=false,checking=false;
     if (paymentStep === 'CHECKOUT' && hasOpenedCheckout && paystackData?.reference) {
       interval = setInterval(async () => {
+        if(stopped||checking)return;
+        checking=true;
         try {
           const verifyRes = await billingClient.verifyPaystack(
             paystackData.reference
           );
+          if(stopped)return;
           if (verifyRes && verifyRes.success) {
+            stopped=true;
             clearInterval(interval);
             setVerificationResult(verifyRes);
             setPaymentStep('SUCCESS');
             onSuccess();
           }
         } catch (error: any) {
-          if (error.code === 'PAYMENT_ACTIVATION_PENDING') {
+          if(stopped)return;
+          if (['PAYMENT_ACTIVATION_PENDING','PAYMENT_VERIFICATION_UNAVAILABLE','PAYMENT_NOT_COMPLETED'].includes(error.code)) {
+            stopped=true;
             clearInterval(interval);
             setErrorMessage(error.message);
             setHasOpenedCheckout(false);
           }
+        } finally {
+          checking=false;
         }
       }, 3500);
     }
     return () => {
+      stopped=true;
       if (interval) clearInterval(interval);
     };
   }, [paymentStep, hasOpenedCheckout, paystackData?.reference, amount, onSuccess]);
