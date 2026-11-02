@@ -40,3 +40,14 @@ the parent; a cache-busted read confirmed the new head and exact comparison.
 **How to apply:** Before retrying a write, verify the reference with a unique
 query parameter and `Cache-Control: no-cache`, then compare the intended commit
 and changed paths. Do not create duplicate commits or force-push on this evidence.
+
+A native push can update GitHub successfully but exit with an error when the
+workspace protection blocks updating the local remote-tracking reference.
+
+**Why:** The remote accepted the new branch head while the local tracking-lock
+write was rejected. Treating that exit status as a failed transfer would retry
+an operation that already succeeded.
+
+**How to apply:** Read the remote branch with `git ls-remote` before retrying.
+Distinguish remote acceptance from a protected local metadata write; preserve
+the approved branch and use only non-forced updates.
