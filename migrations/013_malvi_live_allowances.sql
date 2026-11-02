@@ -137,7 +137,8 @@ BEGIN
     PERFORM nanivio_finish_malvi_live(l.lease_id,false,true);
   END IF;
   SELECT * INTO s FROM nanivio_malvi_subscriptions WHERE user_id=p_user
-    ORDER BY updated_at DESC,subscription_id DESC LIMIT 1 FOR UPDATE;
+    ORDER BY CASE WHEN status IN ('ACTIVE','TRIAL') AND current_period_start<=t AND current_period_end>t THEN 0 ELSE 1 END,
+      current_period_start DESC,subscription_id DESC LIMIT 1 FOR UPDATE;
   IF NOT FOUND OR s.status NOT IN ('ACTIVE','TRIAL') OR s.current_period_start>t OR s.current_period_end<=t
     THEN RAISE EXCEPTION 'MALVI_PLAN_REQUIRED'; END IF;
   IF p_mode='avatar' AND s.tier='malvi_voice' THEN RAISE EXCEPTION 'MALVI_AVATAR_NOT_INCLUDED'; END IF;

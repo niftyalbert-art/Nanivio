@@ -198,8 +198,8 @@ test('live translation clones existing call capture and cannot stop the call mic
 test('browser streams fixed PCM chunks before silence, stops on mute and discards stale callbacks',async()=>{
   const f=clientFixture(),start=f.service.start('en','fr',true);await flush();
   const request=f.sent.find(p=>p.event==='langpretation:start');
-  assert.equal(request.payload.voiceConsent,true);assert.equal(f.contexts.length,2);
-  const processor=f.contexts[1].processor,process=processor.onaudioprocess;
+  assert.equal(request.payload.voiceConsent,true);assert.equal(f.contexts.length,1,'capture shares the gesture-unlocked playback context');
+  const processor=f.contexts[0].processor,process=processor.onaudioprocess;
   const event={inputBuffer:{getChannelData:()=>new Float32Array(4096).fill(0.2)}};
   process(event);assert.ok(!f.sent.some(p=>p.event==='langpretation:audio'),'no audio before running acknowledgement');
   f.emit('langpretation:ready',{callId:'call-one',streamId:request.payload.streamId});assert.equal(await start,true);
@@ -209,6 +209,35 @@ test('browser streams fixed PCM chunks before silence, stops on mute and discard
   assert.equal(audio[0].payload.sequence,0);assert.equal(audio[1].payload.sequence,1);
   f.service.stop();process(event);assert.equal(f.sent.filter(p=>p.event==='langpretation:audio').length,2);
   assert.ok(f.tracks.every(t=>t.stopped));f.service.dispose();
+});
+
+test('a late-mounted receiver gets another readiness notice without opening another paid stream',async()=>{
+  const f=serverFixture(),p=f.peer();
+  await f.gateway.start(p,'speaker-A',f.input());
+  const ws=f.sockets[0];ws.emit('open');
+  f.message(ws,'task_status',{command:'set_task',task_status:'running'});
+  assert.equal(f.events.filter(e=>e.event==='langpretation:remote_start').length,1);
+  f.advance(3000);f.tick();
+  assert.equal(f.events.filter(e=>e.event==='langpretation:remote_start').length,2);
+  assert.equal(f.sockets.length,1);
+  f.gateway.acknowledgeReceiver('call-one','speaker-A','stream-one-123','listener-B');
+  assert.ok(p.sent.some((e:any)=>e.event==='langpretation:ready'));
+  f.advance(1000);f.tick();
+  assert.equal(f.events.filter(e=>e.event==='langpretation:remote_start').length,2);
+  f.gateway.stop(p);
+});
+
+test('blocked autoplay gives a visible instruction and can be unlocked by a later gesture',async()=>{
+  const f=clientFixture();
+  await f.service.unlock();
+  const ctx=f.contexts[0];
+  ctx.state='suspended';ctx.resume=()=>new Promise(()=>{});
+  await assert.rejects(f.service.unlock(),/Enable translated audio/);
+  assert.ok(!f.sent.some(p=>p.event==='langpretation:start'),'no paid stream starts while playback is blocked');
+  ctx.state='running';ctx.resume=async()=>{};
+  await f.service.unlock();
+  assert.equal(f.contexts.length,1);
+  f.service.dispose();
 });
 
 test('receiver schedules successive PCM chunks immediately and isolates call, stream and sequence',async()=>{

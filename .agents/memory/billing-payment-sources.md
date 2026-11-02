@@ -20,3 +20,15 @@ payments is safer than letting sandbox success change real account entitlements.
 separate sandbox ledger exists. Enforce live mode on both verification and
 webhook paths, including Mobile Money. Do not revoke existing customer benefits
 without reviewing their payment evidence and obtaining approval.
+
+Malvi payment acceptance must be tested through spendable credit and an actual
+live allowance reservation, not just a payment-success response or subscription row.
+
+**Why:** The owner repeatedly reported confirmed payments with no usable minutes.
+Recovery UI and gateway-only tests did not establish that the selected term was
+credited or that a user could start the purchased service.
+
+**How to apply:** Exercise signed notification, transactional purchase/credit,
+invoice, repeat notification after consumption, old-trial cleanup and the next
+live reservation together. Keep a missed-webhook recovery path, but do not call
+the Render issue fixed before its database migration and deployed flow are checked.

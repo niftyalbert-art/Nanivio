@@ -138,6 +138,23 @@ export async function markPaystackOrderFulfilled(reference: string): Promise<voi
   if (error) throw new Error(`Unable to mark Paystack order fulfilled: ${error.message}`);
 }
 
+export async function listPendingMalviPayments() {
+  const {data,error}=await getDb().from('nanivio_paystack_orders')
+    .select('reference,user_id,payload').eq('status','PENDING')
+    .eq('payload->>purpose','MALVI_SUBSCRIPTION')
+    .gte('created_at',new Date(Date.now()-30*86400000).toISOString())
+    .lt('updated_at',new Date(Date.now()-15000).toISOString())
+    .order('updated_at',{ascending:true}).limit(10);
+  if(error)throw new Error('Unable to load pending Malvi payments');
+  return (data||[]).map(row=>({...row.payload,reference:row.reference,userId:row.user_id}));
+}
+
+export async function markPaystackOrderChecked(reference:string){
+  const {error}=await getDb().from('nanivio_paystack_orders')
+    .update({updated_at:new Date().toISOString()}).eq('reference',reference).eq('status','PENDING');
+  if(error)throw new Error('Unable to record payment check');
+}
+
 export async function claimPaystackWebhook(eventId: string, eventType: string, payload: any): Promise<boolean> {
   const { data, error } = await getDb().from('nanivio_paystack_events').insert({
     provider: 'paystack', event_id: eventId, event_type: eventType, payload, processed_at: new Date().toISOString(),

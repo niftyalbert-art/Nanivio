@@ -122,3 +122,13 @@ accurate synchronization solely to SDK speaking events or apply a global delay
 from a headless recording without reproducing the target browser's mismatch.
 The user's reported voice-before-lips mismatch was on Android Chrome; a desktop
 browser replay does not verify that phone's decoder, audio output, or live stream.
+
+Exclude injected reference playback from translated-output measurements.
+
+**Why:** A two-browser speech fixture plays its reference into a microphone
+destination as well as scheduling translated audio. Measuring every buffer source
+can attribute the reference's nonzero amplitude to the received translation.
+
+**How to apply:** Count and measure the receiving playout sources separately from
+synthetic input. Report fixture authorization, real-provider use and signed-in
+production-account verification as separate evidence boundaries.

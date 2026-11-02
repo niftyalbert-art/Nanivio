@@ -57,6 +57,12 @@ export class PalabraLiveGateway {
     let checking=false,checkedAt=Date.now();
     session.timer=setInterval(()=>{
       if(session.closed)return;
+      // The peer's WebSocket can be connected before its call UI subscribes.
+      // Repeat only the readiness notice on this SAME paid stream, never open
+      // another provider session or send microphone data before the peer ACK.
+      if(session.upstreamReady&&!session.ready) {
+        this.remote(session,'langpretation:remote_start',{voiceConsent:session.voiceConsent});
+      }
       if(Date.now()-session.started>10*60000)return fail('Translation session ended. Tap Listen to start again.');
       if(session.ready&&Date.now()-session.lastFrame>4000)return fail('Microphone audio stopped. Tap Listen to reconnect.');
       if(Date.now()-session.lastActivity>60000)return fail('Translation paused after a minute without speech.');
@@ -86,8 +92,7 @@ export class PalabraLiveGateway {
       if(type==='error')return fail('Nanivio live translation is unavailable. Please try again later.');
       if(type==='task_status'&&data?.command==='set_task'&&data.task_status==='running'&&!session.upstreamReady){
         session.upstreamReady=true;
-        if(!this.remote(session,'langpretation:remote_start',{voiceConsent:input.voiceConsent}))
-          fail('The other participant is not connected.');
+        this.remote(session,'langpretation:remote_start',{voiceConsent:input.voiceConsent});
       }
       if(type==='output_audio_data'&&session.ready){
         if(typeof data?.language!=='string'||data.language.split('-')[0]!==input.targetLang

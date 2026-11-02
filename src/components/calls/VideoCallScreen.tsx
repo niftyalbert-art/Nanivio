@@ -168,6 +168,8 @@ export const VideoCallScreen: React.FC<VideoCallScreenProps> = ({ onEndCall }) =
 
   async function startTranslation() {
     if(translationStarting.current)return;
+    // When invoked by a tap, prime audio before awaiting HTTP readiness.
+    void liveTranslation.current?.unlock().catch(error=>setSpeechStatus(error.message));
     const generation=translationGeneration.current;
     const current=()=>generation===translationGeneration.current;
     translationStarting.current=true;
@@ -378,6 +380,16 @@ export const VideoCallScreen: React.FC<VideoCallScreenProps> = ({ onEndCall }) =
             <NanivioLogo size="sm" showTagline={false} />
           </div>
 
+          {activeCall?.langpretationEnabled && (
+            <button type="button" className="min-h-10 rounded-full border border-white/20 px-3 py-2 text-xs font-semibold text-white"
+              onClick={()=>{
+                void liveTranslation.current?.unlock().then(()=>{
+                  setIsSpeakerOn(true);
+                  if(!isListeningToSpeech&&!isStartingTranslation)void startTranslation();
+                  else setSpeechStatus('Translated audio enabled.');
+                }).catch(error=>setSpeechStatus(error.message));
+              }}>Enable translated audio</button>
+          )}
           {/* Secondary call view actions are kept together under More. */}
           <div className="relative" ref={callMoreRef}>
             <button

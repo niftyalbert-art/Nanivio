@@ -1416,6 +1416,20 @@ export const NanivioProvider: React.FC<{ children: React.ReactNode }> = ({ child
     refreshBilling();
   }, [refreshBilling]);
 
+  useEffect(()=>{
+    if(activeTab!=='billing')return;
+    // A webhook can activate the purchase while checkout is in another tab.
+    const refresh=()=>{if(document.visibilityState==='visible')void refreshBilling();};
+    const timer=setInterval(refresh,15000);
+    window.addEventListener('focus',refresh);
+    document.addEventListener('visibilitychange',refresh);
+    return ()=>{
+      clearInterval(timer);
+      window.removeEventListener('focus',refresh);
+      document.removeEventListener('visibilitychange',refresh);
+    };
+  },[activeTab,refreshBilling]);
+
   const previewBillingCharge = useCallback(async (req: BillingPreviewRequest): Promise<BillingPreviewResponse> => {
     return await billingClient.previewCharge(req);
   }, []);

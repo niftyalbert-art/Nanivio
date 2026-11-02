@@ -43,6 +43,8 @@ import { billingDb } from "./src/server/billingDb.ts";
 import { purchaseCommunicationMinutesFromWalletPersistent, activateMalviSubscriptionFromWalletPersistent } from "./src/server/normalizedBillingRepository.ts";
 import { normalizedBillingEnabled, transferFintechToCommunication as persistentFintechToCommunication, transferPeerToPeer as persistentPeerToPeer, selectCommunicationPlanPersistent, purchaseCommunicationMinutesPersistent, activateMalviSubscriptionPersistent, recordLangpretationUsagePersistent, paystackTopUpPersistent, getPersistentPayment, getPersistentSubscription, getPersistentTransactions, getPersistentInvoices, getPersistentWallets, getPersistentCreditAccount, getPersistentUsageMeter, getPersistentMalviSubscription, getMalviCreditAccount, ensureMalviEntitlement, recordMalviUsagePersistent } from "./src/server/normalizedBillingRepository.ts";
 import { hydrateBillingDatabase, flushBillingDatabase, closeBillingPersistence, savePaystackOrder, getPaystackOrder, markPaystackOrderFulfilled, isPersistentBillingConfigured, markBillingDatabaseDirty } from "./src/server/billingPersistence.ts";
+import { listPendingMalviPayments, markPaystackOrderChecked } from "./src/server/billingPersistence.ts";
+import { createPaystackReconciler, startPaystackReconciliation } from "./src/server/paystackReconciliation.ts";
 import { billingEngine } from "./src/server/billingEngine.ts";
 import { requireBillingAdmin, billingAdminActor, canRefund, ownsBillingRecord, ownsProviderEarnings, ownsBusinessBilling } from "./src/server/billingAccess.ts";
 import { createMalviCostRouter } from "./src/server/malviCostCalculator.ts";
@@ -2008,6 +2010,13 @@ app.post("/api/paystack/initialize", requireAuthenticatedUser, async (req, res) 
       try { await activatePaystackSubscriptionPersistent({ preflight:true }); }
       catch { return res.status(503).json({ success:false, error:"Paid subscription billing setup is incomplete. An administrator must apply the paid-subscription database migration before accepting payment." }); }
     }
+    if (purpose === 'MALVI_SUBSCRIPTION') {
+      try { await activateMalviSubscriptionPersistent({ preflight:true }); }
+      catch(error) {
+        console.error('Malvi checkout preflight failed. Apply billing migration 014.',error instanceof Error?error.message:'Unknown billing setup error');
+        return res.status(503).json({ success:false, error:"Malvi paid billing setup is incomplete. An administrator must finish the billing database setup before accepting payment. No payment was started." });
+      }
+    }
     const ref = `NV-PSTK-${Date.now()}-${crypto.randomBytes(6).toString("hex").toUpperCase()}`;
     const amountInSubunits = Math.round(amount * 100);
 
@@ -2084,7 +2093,7 @@ async function fulfillPaystackOrder({
   validateVerifiedOrder(authoritativeOrder, userId, verifiedAmount, verifiedCurrency);
   if (!normalizedBillingEnabled()) throw new Error("Persistent billing database is required.");
   const existingPayment = await getPersistentPayment('paystack', reference);
-  if (existingPayment) {
+  if (existingPayment && authoritativeOrder.purpose !== 'MALVI_SUBSCRIPTION') {
     if (existingPayment.user_id !== userId) throw new Error("Payment belongs to another account.");
     return { success:true, verified:true, alreadyFulfilled:true, reference, amount:verifiedAmount, currency:verifiedCurrency, message:'Paystack transaction was already fulfilled. No duplicate Nanivio value was delivered.' };
   }
@@ -2164,12 +2173,15 @@ async function fulfillPaystackOrder({
       success: true,
       verified: true,
       type: "MALVI_SUBSCRIPTION",
+      alreadyFulfilled: result.alreadyFulfilled === true,
       reference,
       amount: verifiedAmount,
       currency: verifiedCurrency,
       subscription: result.subscription,
       invoice: result.invoice,
-      message: `Paystack payment confirmed. Malvi ${result.subscription.planName} activated with ${result.subscription.videoMinutesAllowed} video companion minutes!`,
+      message: result.alreadyFulfilled
+        ? "Your original Malvi payment was already activated. Its usage and purchased term have been preserved."
+        : `Paystack payment confirmed. Malvi ${result.subscription.planName} activated with ${result.subscription.voiceMinutesAllowed} voice minutes and ${result.subscription.videoMinutesAllowed} live avatar minutes for the purchased term.`,
     };
   }
 
@@ -3827,6 +3839,25 @@ async function startServer() {
     throw new Error("SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY are required. Nanivio will not start with in-memory financial state.");
   }
   await hydrateBillingDatabase(billingDb);
+  startPaystackReconciliation(createPaystackReconciler({
+    list:listPendingMalviPayments,
+    checked:markPaystackOrderChecked,
+    verify:async(reference)=>{
+      const response=await fetch(`https://api.paystack.co/transaction/verify/${encodeURIComponent(reference)}`,{
+        headers:{Authorization:`Bearer ${process.env.PAYSTACK_SECRET_KEY}`},
+        signal:AbortSignal.timeout(10000),
+      });
+      const result=await response.json();
+      if(!response.ok||!result.status)throw new Error('Live Paystack verification unavailable');
+      return result.data;
+    },
+    fulfil:async(order,transaction)=>{
+      await fulfillPaystackOrder({reference:order.reference,userId:order.userId,
+        verifiedAmount:transaction.amount/100,verifiedCurrency:transaction.currency.toUpperCase(),order});
+    },
+    report:(reference,error)=>console.warn('Pending Malvi payment could not be activated; check payment and billing setup.',
+      {reference,error:error instanceof Error?error.message:'Unknown reconciliation error'}),
+  }),process.env.RENDER==='true'||process.argv[1]?.endsWith('/dist/server.cjs')?'production':process.env.NODE_ENV,process.env.PAYSTACK_SECRET_KEY);
 
   const httpServer = http.createServer(app);
 

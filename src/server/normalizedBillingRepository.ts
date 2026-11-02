@@ -154,7 +154,10 @@ export async function purchaseCommunicationMinutesFromWalletPersistent(payload: 
 }
 
 export async function activateMalviSubscriptionPersistent(payload: Record<string, unknown>) {
-  return billingCommand('MALVI_SUBSCRIPTION', payload);
+  const { data, error } = await db().rpc('nanivio_activate_paystack_malvi', { payload });
+  if (error) throw new Error(`Malvi paid activation failed: ${error.message}`);
+  if (!data?.success) throw new Error(data?.error || 'Malvi paid activation failed.');
+  return data;
 }
 
 export async function activateMalviSubscriptionFromWalletPersistent(payload: Record<string, unknown>) {
@@ -183,8 +186,18 @@ export async function getPersistentUsageMeter(userId:string){
   if(error) return {minutesUsed:0,recent:[]}; const rows=data||[]; return {minutesUsed:Number((rows.reduce((n:any,r:any)=>n+Number(r.audio_seconds||0),0)/60).toFixed(2)),recent:rows};
 }
 export async function getPersistentMalviSubscription(userId:string){
-  const {data,error}=await db().from('nanivio_malvi_subscriptions').select('*').eq('user_id',userId).order('updated_at',{ascending:false}).limit(1).maybeSingle();
-  if(error)throw new Error(`Unable to load Malvi subscription: ${error.message}`);
+  const database=db(),now=new Date().toISOString();
+  const current=await database.from('nanivio_malvi_subscriptions').select('*').eq('user_id',userId)
+    .in('status',['ACTIVE','TRIAL']).lte('current_period_start',now).gt('current_period_end',now)
+    .order('current_period_start',{ascending:false}).order('created_at',{ascending:false}).limit(1).maybeSingle();
+  if(current.error)throw new Error(`Unable to load Malvi subscription: ${current.error.message}`);
+  let data=current.data;
+  if(!data){
+    const latest=await database.from('nanivio_malvi_subscriptions').select('*').eq('user_id',userId)
+      .order('current_period_start',{ascending:false}).order('created_at',{ascending:false}).limit(1).maybeSingle();
+    if(latest.error)throw new Error(`Unable to load Malvi subscription: ${latest.error.message}`);
+    data=latest.data;
+  }
   if(!data) return null;
   return {
     id:data.subscription_id, userId:data.user_id, planId:data.plan_id, tier:data.tier, planName:data.plan_name,

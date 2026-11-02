@@ -26,9 +26,16 @@ export class TranslationPcmPlayer {
       this.context=new C();this.gain=this.context!.createGain();this.gain.connect(this.context!.destination);
       this.gain.gain.value=this.muted?0:1;
     }
-    await this.context!.resume();
+    let timer:ReturnType<typeof setTimeout>|undefined;
+    try {
+      await Promise.race([
+        this.context!.resume(),
+        new Promise<never>((_,reject)=>{timer=setTimeout(()=>reject(new Error('Tap Enable translated audio to start Langpretation.')),1200);}),
+      ]);
+    } finally { if(timer)clearTimeout(timer); }
     if(this.context!.state!=='running')throw new Error('Tap Speaker to enable translated audio.');
   }
+  captureContext(){if(!this.context||this.context.state!=='running')throw new Error('Enable translated audio first.');return this.context;}
   begin(streamId:string){this.clear();this.streamId=streamId;this.sequence=0;}
   push(p:{streamId:string;sequence:number;data:string}){
     if(p.streamId!==this.streamId)return;
@@ -87,18 +94,16 @@ export class LiveCallTranslation {
     }));
     this.off.push(transport.on('langpretation:remote_start',p=>{
       if(p.callId!==callId||p.speakerId===userId)return;
-      this.remoteStreamId=p.streamId;this.remoteSpeakerId=p.speakerId;this.player.begin(p.streamId);
+      if(this.remoteStreamId!==p.streamId)this.player.begin(p.streamId);
+      this.remoteStreamId=p.streamId;this.remoteSpeakerId=p.speakerId;
       this.remoteVoiceConsent=p.voiceConsent===true;
-      void this.player.unlock().then(()=>{
+      // Readiness is not proof of audible translated media. Keep original call
+      // audio available until an actual translated PCM packet can be played.
+      void this.unlock().catch(error=>{
         if(this.remoteStreamId!==p.streamId)return;
-        if(!this.transport.send('langpretation:receiver_ready',{callId,streamId:p.streamId,speakerId:p.speakerId}))
-          throw new Error('Call connection is not ready.');
-        // Ready is not proof of audible translated media. Keep original call
-        // audio available until an actual translated PCM packet can be played.
-      }).catch(error=>{
-        if(this.remoteStreamId!==p.streamId)return;
-        this.transport.send('langpretation:playback_error',{callId,speakerId:p.speakerId});
-        this.remoteStreamId='';callbacks.remoteActive(false);callbacks.error(error.message);
+        // Autoplay permission can be granted by the listener's next tap. Keep
+        // the pending handshake and original call audio; no microphone is sent.
+        callbacks.remoteActive(false);callbacks.error(error.message);
       });
     }));
     this.off.push(transport.on('langpretation:audio_out',p=>{
@@ -122,7 +127,12 @@ export class LiveCallTranslation {
       callbacks.error('Call connection lost. Reconnect before restarting translation.');
     }));
   }
-  unlock(){return this.player.unlock();}
+  async unlock(){
+    await this.player.unlock();
+    if(this.remoteStreamId&&!this.transport.send('langpretation:receiver_ready',{
+      callId:this.callId,streamId:this.remoteStreamId,speakerId:this.remoteSpeakerId,
+    }))throw new Error('Call connection is not ready.');
+  }
   setMuted(muted:boolean){this.player.setMuted(muted);}
 
   async start(sourceLang:string,targetLang:string,voiceConsent:boolean,inputStream?:MediaStream|null){
@@ -138,8 +148,10 @@ export class LiveCallTranslation {
       this.capture=stream;
       await this.unlock();
       if(generation!==this.generation)return false;
-      const C=window.AudioContext||(window as any).webkitAudioContext;
-      const ctx=new C();this.context=ctx;await ctx.resume();
+      // A second AudioContext created after network/permission awaits may be
+      // suspended even though playback was unlocked by a tap. Reuse that
+      // running context for capture; it is owned by the call, not an utterance.
+      const ctx=this.player.captureContext();this.context=ctx;
       if(generation!==this.generation)return false;
       if(ctx.state!=='running')throw new Error('Microphone audio could not start.');
       this.streamId=crypto.randomUUID();
@@ -186,7 +198,7 @@ export class LiveCallTranslation {
     if(this.processor)this.processor.onaudioprocess=null;
     this.source?.disconnect();this.processor?.disconnect();this.silence?.disconnect();
     this.capture?.getTracks().forEach(t=>t.stop());this.capture=null;
-    void this.context?.close().catch(()=>{});this.context=null;
+    this.context=null;
     this.processor=null;this.source=null;this.silence=null;
   }
   dispose(){this.stop();for(const off of this.off)off();this.off=[];this.player.dispose();}
