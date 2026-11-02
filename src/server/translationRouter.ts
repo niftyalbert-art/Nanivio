@@ -15,7 +15,7 @@ export async function translateWithProductionProviders(text: string, source: str
     if(signal?.aborted)return null;
     const result = hop.provider === 'khaya' ? await callKhayaEngine(output, hop.source, hop.target,signal)
       : hop.provider === 'sunbird' ? await callSunbirdEngine(output, hop.source, hop.target,signal)
-      : await translateGeminiText(output, hop.source, hop.target).catch(() => {
+      : await translateGeminiText(output, hop.source, hop.target,signal).catch(() => {
         console.warn('[Nanivio translation] gemini request-failed');
         return null;
       });

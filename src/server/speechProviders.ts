@@ -69,7 +69,7 @@ export async function transcribeProviderAudio(audio:Buffer,language:string,conte
   if(!speechConfigured(language,'asr',provider))throw new SpeechProviderError(503,'Nanivio speech recognition is not configured for this language.');
   if(provider==='gemini'){
     if(!wavDurationSeconds(audio))throw new SpeechProviderError(400,'A valid PCM WAV recording is required.');
-    try { return {...await transcribeGeminiAudio(audio,language,contentType),durationSeconds:wavDurationSeconds(audio)}; }
+    try { return {...await transcribeGeminiAudio(audio,language,contentType,options.signal),durationSeconds:wavDurationSeconds(audio)}; }
     catch(error){if(error instanceof LangpretationGeminiError)throw new SpeechProviderError(error.status,error.message,error.diagnostic);throw error;}
   }
   let url:URL,headers:Record<string,string>,body:any;
@@ -101,7 +101,7 @@ export async function synthesizeProviderAudio(text:string,language:string,option
   let url:URL,headers:Record<string,string>,body:string;
   if(provider==='gemini'){
     try{
-      const audio=await synthesizeGeminiAudio(text,language),durationSeconds=wavDurationSeconds(audio);
+      const audio=await synthesizeGeminiAudio(text,language,options.signal),durationSeconds=wavDurationSeconds(audio);
       if(!durationSeconds)throw new SpeechProviderError(502,'Speech provider returned an invalid WAV recording.');
       return {audioBase64:audio.toString('base64'),contentType:'audio/wav',provider:'gemini-tts',durationSeconds};
     }catch(error){if(error instanceof LangpretationGeminiError)throw new SpeechProviderError(error.status,error.message,error.diagnostic);throw error;}

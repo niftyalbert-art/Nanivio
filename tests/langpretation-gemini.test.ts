@@ -10,12 +10,13 @@ const [speechBundle, translationBundle] = await Promise.all([
   'src/server/speechProviders.ts', 'src/server/translationRouter.ts',
 ].map(entry => build({ entryPoints: [entry], bundle: true, write: false, platform: 'node', format: 'cjs', logLevel: 'silent' })));
 
-function fixture(bundle: typeof speechBundle, reply: (request: any) => Response, configured = true) {
+function fixture(bundle: typeof speechBundle, reply: (request: any) => Response | Promise<Response>, configured = true,
+  env:Record<string,string> = {}, signals:Pick<typeof AbortSignal,'any'|'timeout'> = AbortSignal) {
   const requests: any[] = [];
   const warnings: any[] = [];
   const context = vm.createContext({
-    module: { exports: {} }, Buffer, AbortSignal, Response, URL, FormData, Blob,
-    process: { env: configured ? { GEMINI_API_KEY: 'fixture-only' } : {} },
+    module: { exports: {} }, Buffer, AbortSignal:signals, Response, URL, FormData, Blob,
+    process: { env: configured ? { GEMINI_API_KEY: 'fixture-only', ...env } : {} },
     console: { warn(...args: unknown[]) { warnings.push(args); } },
     fetch: async (url: string, options: any) => {
       const request = { url, ...options, json: JSON.parse(options.body) };
@@ -178,4 +179,87 @@ test('a stalled error body cannot indefinitely delay safe diagnostics', async ()
     assert.equal(cancelled, true);
     assert.equal(f.requests.length, 1);
   } finally { clearTimeout(keepAlive); }
+});
+
+test('translation and recognition use supported low thinking without changing speech generation', async () => {
+  for (const bundle of [translationBundle,speechBundle]) {
+    const f=fixture(bundle,()=>textResult('Bonjour.'));
+    if(bundle===translationBundle)await f.api.translateWithProductionProviders('Hello.','en','fr');
+    else await f.api.transcribeProviderAudio(wav(),'en');
+    const config=f.requests[0].json.generationConfig;
+    assert.equal(config.thinkingConfig.thinkingLevel,'low');
+    assert.equal(config.thinkingConfig.thinkingBudget,undefined);
+    assert.equal(config.temperature,undefined);
+    assert.equal(config.responseMimeType,'application/json');
+    assert.equal(config.maxOutputTokens,4096);
+  }
+  const tts=fixture(speechBundle,()=>audioResult());
+  await tts.api.synthesizeProviderAudio('Bonjour.','fr');
+  assert.equal(tts.requests[0].json.generationConfig.thinkingConfig,undefined);
+  assert.deepEqual(tts.requests[0].json.generationConfig.responseModalities,['AUDIO']);
+});
+
+test('configured 2.5 Flash keeps its distinct budget contract; unrelated overrides are not guessed', async () => {
+  for(const model of ['gemini-2.5-flash','gemini-2.5-flash-lite','gemini-2.5-pro','gemini-flash-latest']){
+    const f=fixture(translationBundle,()=>textResult('Bonjour.'),true,{LANGPRETATION_GEMINI_MODEL:model});
+    await f.api.translateWithProductionProviders('Hello.','en','fr');
+    const config=f.requests[0].json.generationConfig;
+    if(model.includes('2.5-flash')){
+      assert.equal(config.thinkingConfig.thinkingBudget,0);
+      assert.equal(config.thinkingConfig.thinkingLevel,undefined);
+    }else assert.equal(config.thinkingConfig,undefined);
+  }
+});
+
+test('caller cancellation reaches Gemini recognition and synthesis without retrying', {timeout:1500}, async () => {
+  for(const operation of ['recognition','synthesis']){
+    const controller=new AbortController();
+    const f=fixture(speechBundle,request=>new Promise<Response>((_resolve,reject)=>{
+      request.signal.addEventListener('abort',()=>reject(request.signal.reason),{once:true});
+    }));
+    const pending=operation==='recognition'
+      ? f.api.transcribeProviderAudio(wav(),'en','audio/wav',{signal:controller.signal})
+      : f.api.synthesizeProviderAudio('Hello.','en',{signal:controller.signal});
+    controller.abort();
+    await assert.rejects(()=>pending,(error:any)=>{
+      assert.equal(error.status,499);
+      assert.equal(error.diagnostic.failure,'cancelled');
+      assert.doesNotMatch(JSON.stringify(error),/fixture-only/);
+      return true;
+    });
+    assert.equal(f.requests.length,1);
+    assert.equal(f.requests[0].signal.aborted,true);
+  }
+});
+
+test('translation router forwards in-flight cancellation and does not retry another provider', {timeout:1500}, async () => {
+  const controller=new AbortController();
+  const f=fixture(translationBundle,request=>new Promise<Response>((_resolve,reject)=>{
+    request.signal.addEventListener('abort',()=>reject(request.signal.reason),{once:true});
+  }));
+  const pending=f.api.translateWithProductionProviders('Hello.','en','fr',controller.signal);
+  controller.abort();
+  assert.equal(await pending,null);
+  assert.equal(f.requests.length,1);
+  assert.equal(f.requests[0].signal.aborted,true);
+});
+
+test('a stalled successful response is closed at the same deadline and reports a timeout', {timeout:1500}, async () => {
+  let cancelled=false;
+  const signals={any:AbortSignal.any,timeout:(ms:number)=>AbortSignal.timeout(ms===20_000?20:ms)};
+  const f=fixture(speechBundle,()=>new Response(new ReadableStream({
+    start(controller){controller.enqueue(new TextEncoder().encode('{"candidates":'));},
+    cancel(){cancelled=true;},
+  })),true,{},signals);
+  const keepAlive=setTimeout(()=>{},1000);
+  try{
+    await assert.rejects(()=>f.api.transcribeProviderAudio(wav(),'en'),(error:any)=>{
+      assert.equal(error.status,504);
+      assert.equal(error.diagnostic.failure,'timeout');
+      assert.doesNotMatch(JSON.stringify(error),/fixture-only/);
+      return true;
+    });
+    assert.equal(cancelled,true);
+    assert.equal(f.requests.length,1);
+  }finally{clearTimeout(keepAlive);}
 });

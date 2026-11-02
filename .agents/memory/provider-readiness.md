@@ -45,6 +45,20 @@ bounded probe before recommending a switch. Keep model-list results separate
 from inference results, and do not assert retirement, invalid credentials or a
 working alternative based on catalogue presence or absence alone.
 
+Do not use a smaller output-token cap as a substitute for controlling a thinking
+model's reasoning effort when optimizing Langpretation latency.
+
+**Why:** Google's GenerateContent thinking guide explains that output limits can
+cut generation off during reasoning, leaving empty or truncated output while
+still charging for reasoning tokens. Thinking controls also differ by model;
+a familiar setting from another model can be rejected rather than speed it up.
+
+**How to apply:** Consult the exact model's documented thinking settings, retain
+enough output capacity for a complete translation, and verify latency with an
+approved real request. Keep this optimization separate from Malvi's brain and
+speech-generation settings; configuration and fixture success do not prove that
+a live timeout is resolved.
+
 The user expects translation audits to cover the full 18 × 18 language design,
 not only Twi and Luganda.
 
