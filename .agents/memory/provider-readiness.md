@@ -45,6 +45,18 @@ bounded probe before recommending a switch. Keep model-list results separate
 from inference results, and do not assert retirement, invalid credentials or a
 working alternative based on catalogue presence or absence alone.
 
+Stop billable model comparisons when a small approved comparison has not
+identified a working alternative; investigate the actual deployment next.
+
+**Why:** Repeated inference timeouts and occasional service-unavailable
+responses across models did not establish whether the owner's deployed
+application had the same failure. More model probes consume credits without
+necessarily distinguishing service availability from deployment differences.
+
+**How to apply:** Keep workspace results separate from Render evidence. Obtain
+redacted logs for actual deployed requests before further paid experiments,
+changing credentials, or recommending another model as a working replacement.
+
 Do not use a smaller output-token cap as a substitute for controlling a thinking
 model's reasoning effort when optimizing Langpretation latency.
 
