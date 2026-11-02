@@ -1,6 +1,7 @@
 import type { Express, Request, Response, NextFunction } from 'express';
 import { AssistantError, getAssistantStore } from './redisStore.ts';
 import { liveAvatarService, liveAvatarSetup, malviVideoQuality } from './liveAvatarService.ts';
+import { readMalviLiveAllowance } from './liveAllowance.ts';
 import { selectMalviWelcome } from '../../shared/malviIdentity.ts';
 import { getLiveBrainProviderConfig } from './brainProviderConfig.ts';
 import { malviLiveBrainController } from './liveBrain.ts';
@@ -177,6 +178,13 @@ export function registerAssistantRoutes(app: Express, auth: Auth, enabled: () =>
     const record = await liveAvatarService.owned(userId(req), validId(req));
     // A visibility/resume check is read-only and must never renew idle time.
     res.json({ success:true,idleDeadline:record.deadline,hardDeadline:record.hardDeadline,serverNow:Date.now() });
+  }));
+  app.get('/api/assistant/session/:id/allowance', auth, run(async (req, res) => {
+    const user = userId(req), id = validId(req);
+    const record = await liveAvatarService.owned(user, id);
+    res.json({ success: true, ...await readMalviLiveAllowance(
+      user, id, record.mode === 'LITE' ? 'avatar' : 'voice', record.hardDeadline,
+    ) });
   }));
   app.post('/api/assistant/session/:id/welcome', auth, run(async (req, res) => {
     const session = await liveAvatarService.owned(userId(req), validId(req));

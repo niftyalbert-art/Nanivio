@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { MalviAllowanceNotice } from './MalviAllowanceNotice';
 import { createPortal } from 'react-dom';
 import { AlertCircle, AudioLines, Camera, ImagePlus, LoaderCircle, Mic, MicOff, Square, Upload, X } from 'lucide-react';
 import { MALVI_PROFILE } from '../../lib/malviIdentity';
@@ -16,6 +17,9 @@ export interface MalviLiveOverlayProps {
   phase: 'connecting' | 'connected' | 'error';
   error: string | null;
   secondsRemaining: number;
+  allowanceSecondsRemaining?: number | null;
+  allowanceUnavailable?: boolean;
+  onOpenBilling?: () => void;
   onClose: () => void;
   onRetry?: () => void;
   onSubscribe?: () => void;
@@ -60,6 +64,9 @@ export const MalviLiveOverlay: React.FC<MalviLiveOverlayProps> = ({
   phase,
   error,
   secondsRemaining,
+  allowanceSecondsRemaining = null,
+  allowanceUnavailable = false,
+  onOpenBilling,
   onClose,
   onRetry,
   onSubscribe,
@@ -309,7 +316,7 @@ export const MalviLiveOverlay: React.FC<MalviLiveOverlayProps> = ({
         tabIndex={-1}
         className="relative z-10 flex h-full min-h-0 w-full flex-col outline-none"
       >
-        <header className="flex shrink-0 items-start justify-between gap-3 px-4 pt-[max(1rem,env(safe-area-inset-top))] sm:gap-4 sm:px-7 sm:pt-[max(1.75rem,env(safe-area-inset-top))]">
+        <header className="flex shrink-0 items-start justify-between gap-3 px-4 pt-[max(1rem,env(safe-area-inset-top))] sm:gap-4 sm:px-7 sm:pt-[max(1.75rem,env(safe-area-inset-top))] [@media(max-height:480px)]:pt-[max(0.25rem,env(safe-area-inset-top))]">
           <div className="flex items-center gap-3 rounded-2xl border border-white/15 bg-[#10201f]/65 px-3.5 py-2.5 backdrop-blur-md sm:px-4">
             <span className="grid h-10 w-10 place-items-center rounded-full border border-[#bad5c7]/35 bg-[#28453d] text-sm font-semibold text-[#e2eee4]">
               M
@@ -341,9 +348,15 @@ export const MalviLiveOverlay: React.FC<MalviLiveOverlayProps> = ({
             </button>
           </div>
         </header>
+        {(phase === 'connecting' || phase === 'connected') && onOpenBilling && (
+          <div className="shrink-0 px-4 pt-2 sm:px-7">
+            <MalviAllowanceNotice remainingSeconds={allowanceSecondsRemaining}
+              unavailable={allowanceUnavailable} onViewPlans={onOpenBilling} />
+          </div>
+        )}
 
-        <main className={`grid min-h-0 flex-1 grid-cols-1 ${voiceOnly ? '' : 'md:grid-cols-[minmax(0,1fr)_22rem]'}`}>
-          <section aria-label={voiceOnly ? 'Voice conversation' : 'Malvi video'} className="relative min-h-[30dvh] min-w-0 overflow-hidden bg-[#10201f] md:min-h-0">
+        <main className={`grid min-h-0 flex-1 grid-cols-1 grid-rows-[minmax(0,1fr)_auto] sm:grid-rows-1 ${voiceOnly ? '' : 'sm:grid-cols-[minmax(0,1fr)_22rem]'}`}>
+          <section aria-label={voiceOnly ? 'Voice conversation' : 'Malvi video'} className="relative min-h-0 min-w-0 overflow-hidden bg-[#10201f]">
             {!voiceOnly && <video
               ref={onVideoElement}
               autoPlay
@@ -365,15 +378,15 @@ export const MalviLiveOverlay: React.FC<MalviLiveOverlayProps> = ({
             )}
           </section>
 
-          <aside className={`flex min-h-0 min-w-0 flex-col overflow-hidden ${voiceOnly ? '' : 'border-t border-white/10 bg-[#071311]/95 md:border-l md:border-t-0'} max-h-[52dvh] md:max-h-none`}>
+          <aside className={`flex min-h-0 min-w-0 flex-col overflow-hidden ${voiceOnly ? '' : 'border-t border-white/10 bg-[#071311]/95 sm:border-l sm:border-t-0'} max-h-[52dvh] sm:max-h-none`}>
             {phase === 'connected' && (caption?.trim() || userTranscript?.trim()) && (
-              <div aria-label="Conversation subtitles" className={`grid w-full shrink-0 auto-rows-fr grid-cols-1 gap-2 px-4 pt-2 sm:px-7 md:px-4 ${caption?.trim() && userTranscript?.trim() ? 'h-[32dvh] md:h-[38dvh]' : 'h-[20dvh] md:h-[24dvh]'}`}>
+              <div aria-label="Conversation subtitles" className={`grid w-full shrink-0 auto-rows-fr grid-cols-1 gap-2 px-4 pt-2 ${caption?.trim() && userTranscript?.trim() ? 'h-[32dvh] min-h-[148px] sm:h-[38dvh]' : 'h-[20dvh] min-h-[74px] sm:h-[24dvh]'}`}>
                 {caption?.trim() && <MalviUserTranscript text={caption} speaker="malvi" compact contained label={`${speaking ? 'Malvi is speaking' : 'Malvi'}${approximateCaptions ? ' · Approximate captions' : ''}`} />}
                 {userTranscript?.trim() && <MalviUserTranscript text={userTranscript} compact contained />}
               </div>
             )}
 
-            <footer aria-label="Live session controls" className="flex max-h-[32dvh] min-h-0 shrink flex-col items-center gap-2 overflow-y-auto overscroll-contain px-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-2 sm:gap-3 sm:px-7 sm:pb-[max(1.75rem,env(safe-area-inset-bottom))] [&>*]:shrink-0 md:max-h-full md:flex-1 md:px-4">
+            <footer aria-label="Live session controls" className="flex max-h-[32dvh] min-h-0 shrink flex-col items-center gap-2 overflow-y-auto overscroll-contain px-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-2 sm:gap-3 sm:pb-[max(1.75rem,env(safe-area-inset-bottom))] [&>*]:shrink-0 sm:max-h-full sm:flex-1 [@media(max-height:480px)]:gap-1 [@media(max-height:480px)]:pt-0">
           {phase === 'connected' && (
             <div className="flex min-h-7 items-center justify-center gap-2.5 text-[11px] text-[#e0e8e2]/90" aria-label={`Microphone status: ${listeningCopy}`}>
               <span aria-hidden="true" className="flex h-4 items-center gap-[3px]">

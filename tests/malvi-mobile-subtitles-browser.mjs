@@ -18,6 +18,8 @@ const bundle = await build({
     function Fixture(){
       const [caption,setCaption]=useState('Malvi reply. '.repeat(100)+'LATEST REPLY');
       const [text,setText]=useState('User speech. '.repeat(100)+'LATEST SPEECH');
+      const [allowance,setAllowance]=useState(Number(new URLSearchParams(location.search).get('low')||180));
+      const [usageUnavailable,setUsageUnavailable]=useState(false);
       const exhausted=new URLSearchParams(location.search).has('exhausted');
       const [phase,setPhase]=useState(exhausted?'error':'connected');
       const [error,setError]=useState(exhausted?'Your Malvi allowance is used up. Open Billing to review your plan.':null);
@@ -29,12 +31,21 @@ const bundle = await build({
       },[]);
       window.updateCaption=setCaption;
       window.updateTranscript=setText;
+      window.updateAllowance=setAllowance;
+      window.usageUnavailable=value=>{setAllowance(null);setUsageUnavailable(value);};
       window.changePhase=setPhase;
       window.showExhaustion=()=>{setError('Your Malvi allowance is used up. Open Billing to review your plan.');setPhase('error');};
       window.showProviderFailure=()=>{setError('Speech provider quota_exceeded.');setPhase('error');};
       if(navigation.activeTab==='billing')return <main><h1>Malvi billing destination</h1><pre id="billing-navigation">{JSON.stringify(navigation)}</pre></main>;
       return <MalviLiveOverlay videoRef={videoRef} onVideoElement={attachVideo}
+        voiceOnly={new URLSearchParams(location.search).has('voice')}
         phase={phase} error={error} secondsRemaining={50} onClose={noop} onRetry={noop}
+        allowanceSecondsRemaining={allowance} allowanceUnavailable={usageUnavailable}
+        onOpenBilling={()=>openMalviSubscriptionPlans({
+          close:()=>setNavigation(n=>({...n,closed:true})),
+          setPendingBillingAction:pending=>setNavigation(n=>({...n,pending})),
+          setActiveTab:activeTab=>setNavigation(n=>({...n,activeTab}))
+        })}
         onSubscribe={malviAllowanceIsUsedUp(error)?()=>openMalviSubscriptionPlans({
           close:()=>setNavigation(n=>({...n,closed:true})),
           setPendingBillingAction:pending=>setNavigation(n=>({...n,pending})),
@@ -67,7 +78,7 @@ if (preview) {
 } else {
   const browser = await launchBrowser();
   try {
-    for (const [width, height] of [[320,568], [360,640], [390,844], [412,915], [844,390], [768,1024], [1024,768], [1440,900], [1920,1080]]) {
+    for (const [width, height] of [[320,568], [360,640], [390,844], [412,915], [640,360], [667,375], [844,390], [768,1024], [1024,768], [1440,900], [1920,1080]]) {
       console.log(`Checking full overlay at ${width}x${height}`);
       const page = await browser.page(`http://127.0.0.1:${server.address().port}`);
       await page.command('Emulation.setDeviceMetricsOverride', { width, height, deviceScaleFactor: 1, mobile: width < 900 });
@@ -86,7 +97,7 @@ if (preview) {
         `${width}x${height}: preserve the translucent media shading rather than replacing it with a flat surface`);
       await page.evaluate(`document.querySelector('[aria-label="Malvi live video"]').poster='/portrait.jpg';true`);
       await page.evaluate('document.fonts.ready.then(()=>true)');
-      if (width >= 768) {
+      if (width >= 640) {
         assert.equal(await page.evaluate(`(()=>{
           const v=document.querySelector('[aria-label="Malvi live video"]').getBoundingClientRect();
           const s=document.querySelector('[aria-label="Conversation subtitles"]').getBoundingClientRect();
@@ -134,6 +145,27 @@ if (preview) {
       assert.ok(initial.latestVisible && initial.micVisible && initial.controlsScrollableOrFits,
         `${width}x${height} initial: ${JSON.stringify(initial)}`);
       // Auxiliary details must scroll in their own panel, not move captions away.
+      assert.equal(await page.evaluate("document.querySelector('[aria-label=\"Malvi time remaining\"]').textContent.trim()"), '03:00');
+      for (const [seconds, role, copy] of [[60,'status','One minute or less'], [30,'alert','30 seconds or less']]) {
+        await page.evaluate(`window.updateAllowance(${seconds});true`);
+        await page.wait(`!!document.querySelector('[data-testid="malvi-allowance-notice"] [role="${role}"]')`);
+        const warning = await page.evaluate(`(()=>{
+          const panel=document.querySelector('[data-testid="malvi-allowance-notice"]');
+          const p=panel.getBoundingClientRect(),v=document.querySelector('[aria-label="Malvi live video"]').getBoundingClientRect();
+          const button=panel.querySelector('button'),b=button.getBoundingClientRect();
+          return {text:panel.textContent,clearOfVideo:p.bottom<=v.top+1,visible:b.top>=0&&b.bottom<=innerHeight&&b.left>=0&&b.right<=innerWidth};
+        })()`);
+        assert.ok(warning.text.includes(copy) && warning.clearOfVideo && warning.visible,
+          `${width}x${height} warning: ${JSON.stringify(warning)}`);
+        assert.ok((await check()).micVisible, `${width}x${height}: low-time warning must not hide the microphone`);
+      }
+      await page.evaluate('window.updateAllowance(61);true');
+      await page.wait("!document.querySelector('[data-testid=\"malvi-allowance-notice\"] button')");
+      await page.evaluate('window.usageUnavailable(true);true');
+      await page.wait("document.querySelector('[data-testid=\"malvi-allowance-notice\"]').textContent.includes('Remaining time unavailable')");
+      assert.ok(!(await page.evaluate("document.querySelector('[data-testid=\"malvi-allowance-notice\"]').textContent")).includes('00:00'));
+      await page.evaluate('window.usageUnavailable(false);window.updateAllowance(180);true');
+      await page.wait("document.querySelector('[aria-label=\"Malvi time remaining\"]').textContent.trim()==='03:00'");
       await page.evaluate("document.querySelector('[aria-label=\"Live session controls\"] details').open=true;true");
       await check();
       await page.evaluate("document.querySelector('[aria-label=\"Live session controls\"]').scrollTop=10000;true");
@@ -174,7 +206,17 @@ if (preview) {
       assert.equal(await page.evaluate("!!document.querySelector('[role=\"dialog\"]')"), false,
         'the live overlay closes so the billing section is accessible');
     }
-    console.log(JSON.stringify({ passed: true, viewports: 9, fullOverlay: true, uncroppedPortrait: true, transparentMediaShade: true, paidProviderRequests: 0 }));
+    for (const voice of [false,true]) {
+      const page=await browser.page(`http://127.0.0.1:${server.address().port}/?low=30${voice?'&voice=1':''}`);
+      await page.command('Emulation.setDeviceMetricsOverride', {width:390,height:844,deviceScaleFactor:1,mobile:true});
+      await page.wait("!!document.querySelector('[data-testid=\"malvi-allowance-notice\"] button')");
+      await page.evaluate("document.querySelector('[data-testid=\"malvi-allowance-notice\"] button').click();true");
+      await page.wait("!!document.querySelector('#billing-navigation')");
+      assert.deepEqual(await page.evaluate("JSON.parse(document.querySelector('#billing-navigation').textContent)"),
+        {activeTab:'billing',pending:{subTab:'malvi',purpose:'MALVI_SUBSCRIPTION'},closed:true});
+      assert.equal(await page.evaluate("!!document.querySelector('[role=\"dialog\"]')"),false);
+    }
+    console.log(JSON.stringify({ passed: true, viewports: 11, allowanceWarnings: true, voiceAndAvatarBillingShortcut: true, fullOverlay: true, uncroppedPortrait: true, transparentMediaShade: true, paidProviderRequests: 0 }));
   } finally {
     await browser.close();
     await new Promise(resolve => server.close(resolve));

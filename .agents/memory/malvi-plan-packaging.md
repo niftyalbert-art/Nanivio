@@ -14,6 +14,14 @@ Distinguish implemented capabilities from future suggestions. The user approved
 adding a separate Voice plan while preserving existing plans and purchased
 benefits. Prices and allowances still require a provider-cost and quota basis.
 
+Warn users before their Malvi time runs out, not only after exhaustion.
+
+**Why:** The owner reported that minutes were ending without any advance prompt.
+
+**How to apply:** Keep account-allowance warnings separate from inactivity and
+per-session limits. Preserve a clear route to Malvi billing without suggesting
+that buying minutes fixes an unrelated connection or provider failure.
+
 Before pricing, determine all Malvi source usages and quotas.
 
 **Why:** The user corrected the request for guessed plan prices: “First you

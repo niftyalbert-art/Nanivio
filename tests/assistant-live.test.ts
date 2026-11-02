@@ -216,7 +216,7 @@ test('all assistant HTTP endpoints require authentication', async () => {
   await new Promise<void>(resolve => server.once('listening', resolve));
   try {
     const base = `http://127.0.0.1:${(server.address() as net.AddressInfo).port}/api/assistant`;
-    for (const [method, path] of [['GET', '/status'], ['POST', '/admin/voice'], ['POST', '/diagnostics'], ['POST', '/voice-session'], ['POST', '/session'], ['POST', '/session/fixture/activity'], ['POST', '/session/fixture/welcome'], ['POST', '/session/fixture/end']]) {
+    for (const [method, path] of [['GET', '/status'], ['GET', '/session/fixture/allowance'], ['POST', '/admin/voice'], ['POST', '/diagnostics'], ['POST', '/voice-session'], ['POST', '/session'], ['POST', '/session/fixture/activity'], ['POST', '/session/fixture/welcome'], ['POST', '/session/fixture/end']]) {
       assert.equal((await fetch(base + path, { method })).status, 401);
     }
   } finally { await new Promise<void>(resolve => server.close(() => resolve())); }

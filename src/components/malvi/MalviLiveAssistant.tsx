@@ -20,6 +20,7 @@ import { BrowserMicCapture, browserMicStreamId } from '../../lib/nanivioMic/Brow
 import { NANIVIO_MIC_EVENTS } from '../../shared/nanivioMicProtocol';
 import { parseMalviAssets, type MalviAssetResult } from '../../shared/malviInputTypes';
 import { MalviSessionClock } from '../../lib/malviSessionClock';
+import { MalviAllowanceClock } from '../../lib/malviAllowanceClock';
 import { startMalviAvatarPresence } from '../../lib/malviAvatarPresence';
 import { malviAllowanceIsUsedUp, openMalviSubscriptionPlans } from '../../lib/malviSubscriptionNavigation';
 
@@ -63,6 +64,8 @@ export const MalviLiveAssistantProvider: React.FC<{ children: React.ReactNode }>
   const [error, setError] = useState<string | null>(null);
   const [caption, setCaption] = useState('');
   const [secondsRemaining, setSecondsRemaining] = useState(60);
+  const [allowanceSecondsRemaining, setAllowanceSecondsRemaining] = useState<number | null>(null);
+  const [allowanceUnavailable, setAllowanceUnavailable] = useState(false);
   const [audioBlocked, setAudioBlocked] = useState(false);
   const [brainReady, setBrainReady] = useState(false);
   const [microphoneOn, setMicrophoneOn] = useState(false);
@@ -114,6 +117,7 @@ export const MalviLiveAssistantProvider: React.FC<{ children: React.ReactNode }>
   const generation = useRef(0);
   const deadline = useRef(0);
   const sessionClock = useRef(new MalviSessionClock());
+  const allowanceClock = useRef(new MalviAllowanceClock());
   const busy = useRef(false);
   const cleanupBarrier = useRef<Promise<unknown>>(Promise.resolve());
   const mounted = useRef(true);
@@ -132,6 +136,7 @@ export const MalviLiveAssistantProvider: React.FC<{ children: React.ReactNode }>
   const cleanup = useCallback(async () => {
     const live = sdk.current, id = sessionId.current;
     stopAvatarPresence.current?.(); stopAvatarPresence.current=null;
+    allowanceClock.current.reset(); setAllowanceSecondsRemaining(null); setAllowanceUnavailable(false);
     stopMicrophone();
     captions.current?.cancel();
     avatarPlayout.current?.close(); avatarPlayout.current = null;
@@ -610,16 +615,49 @@ export const MalviLiveAssistantProvider: React.FC<{ children: React.ReactNode }>
   }, [disarmWake]);
 
   useEffect(() => {
+    if (phase !== 'connected') return;
+    const id = sessionId.current, run = generation.current;
+    if (!id) return;
+    let disposed = false, pending = false;
+    const current = () => !disposed && mounted.current && sessionId.current === id && generation.current === run;
+    const refreshAllowance = async () => {
+      if (!current() || pending || document.visibilityState !== 'visible') return;
+      pending = true;
+      try {
+        const data = await assistantRequest(`/session/${id}/allowance`);
+        if (current()) {
+          if (!allowanceClock.current.update(data)) throw new Error('Invalid remaining-time snapshot.');
+          setAllowanceSecondsRemaining(allowanceClock.current.secondsRemaining());
+          setAllowanceUnavailable(false);
+        }
+      } catch {
+        if (current()) {
+          allowanceClock.current.reset(); setAllowanceSecondsRemaining(null); setAllowanceUnavailable(true);
+        }
+      } finally { pending = false; }
+    };
+    void refreshAllowance();
+    const timer = setInterval(() => { void refreshAllowance(); }, 30_000);
+    const visible = () => { void refreshAllowance(); };
+    document.addEventListener('visibilitychange', visible);
+    return () => { disposed = true; clearInterval(timer); document.removeEventListener('visibilitychange', visible); };
+  }, [phase]);
+  useEffect(() => {
     if (phase !== 'connecting' && phase !== 'connected') return;
     const timer = setInterval(() => {
       if (!deadline.current) return;
       const seconds = sessionClock.current.secondsRemaining();
       if (seconds === null) return;
       setSecondsRemaining(seconds);
-      if (!seconds) { setNotice('Live conversation ended after inactivity or reaching its session limit.'); close(); }
+      const remaining = allowanceClock.current.secondsRemaining();
+      setAllowanceSecondsRemaining(remaining);
+      if (!seconds) {
+        if (remaining === 0) { fail('Your Malvi allowance is used up. Open Billing to review your plan.'); return; }
+        setNotice('Live conversation ended after inactivity or reaching its session limit.'); close();
+      }
     }, 250);
     return () => clearInterval(timer);
-  }, [phase, close]);
+  }, [phase, close, fail]);
   useEffect(() => {
     const leave = () => { disarmWake(); generation.current++; void cleanup(); };
     window.addEventListener('pagehide', leave);
@@ -658,6 +696,8 @@ export const MalviLiveAssistantProvider: React.FC<{ children: React.ReactNode }>
       memoryNotice={memoryFeedback}
       assets={liveAssets}
         videoRef={videoRef} onVideoElement={attachVideo} phase={phase} error={error} secondsRemaining={secondsRemaining}
+        allowanceSecondsRemaining={allowanceSecondsRemaining} allowanceUnavailable={allowanceUnavailable}
+        onOpenBilling={() => openMalviSubscriptionPlans({ close, setPendingBillingAction, setActiveTab })}
         onClose={close} onInterrupt={interrupt} audioBlocked={audioBlocked} caption={caption}
         onSubscribe={malviAllowanceIsUsedUp(error) ? () => openMalviSubscriptionPlans({
           close, setPendingBillingAction, setActiveTab,
