@@ -61,6 +61,31 @@ test('catalogue capability flags are structured, validated and separate from fea
   spoofed[0].capabilities = ['admin' as any];
   assert.throws(() => validateMalviPlans(spoofed), /known/);
 });
+test('owner-controlled meeting language and co-pilot consent cannot be changed by another member', async () => {
+  const f = fixture(), room = await f.service.create('alice', 'Alice', 'Meeting', 'Decide together');
+  const invitation = await f.service.invite('alice', room.id);
+  await f.service.join('bob', 'Bob', invitation.code);
+  await assert.rejects(f.service.command('bob', room.id, { type: 'copilot', enabled: true }), /owner/);
+  await assert.rejects(f.service.command('alice', room.id, { type: 'meetingLanguage', language: 'unsupported' }), /supported/);
+  const selected = await f.service.command('alice', room.id, { type: 'meetingLanguage', language: 'fr' });
+  assert.equal(selected.meetingLanguage, 'fr');
+  await f.service.command('alice', room.id, { type: 'meeting', open: true });
+  await assert.rejects(f.service.command('alice', room.id, { type: 'meetingLanguage', language: 'en' }), /Close/);
+});
+test('automatic co-pilot only answers new addressed, consented transcripts in an enabled live meeting', async () => {
+  const f = fixture(), room = await f.service.create('alice', 'Alice', 'Meeting', 'Decide together');
+  const source = randomUUID();
+  await f.service.command('alice', room.id, { type: 'message', id: source, kind: 'transcript', text: 'Malvi, explain our next step.' });
+  await assert.rejects(f.service.assist('alice', room.id, 'analysis', source), /consented/);
+  await f.service.command('alice', room.id, { type: 'meeting', open: true });
+  await f.service.command('alice', room.id, { type: 'copilot', enabled: true });
+  const answer = await f.service.assist('alice', room.id, 'analysis', source);
+  assert.equal(answer.copilotThrough, source);
+  assert.equal(answer.copilotPending, null);
+  assert.equal(answer.messages.filter(m => m.kind === 'assistant').length, 1);
+  await assert.rejects(f.service.assist('alice', room.id, 'analysis', source), /consented/);
+  assert.equal(f.stats().modelCalls, 1);
+});
 test('shared room creation persists identity and rejects non-entitled callers', async () => {
   const f = fixture();
   const room = await f.service.create('alice', 'Alice', 'Project', 'Decide next steps');
@@ -162,7 +187,7 @@ test('authenticated HTTP workflow requires member and open meeting before issuin
       appId: 'fixture', token: 'fixture', channelName: 'fixture', uid: 1, agoraUid: 1, expiresAt: Date.now() + 60000, isMock: false }; },
     async lease(): Promise<any> { return {}; }, async confirm() {}, async finish(_id: string, value?: boolean) { cancel = value; },
     async transcribe() { return 'A consented transcript.'; }, async translate() { return { text: 'Bonjour' }; },
-    async speak() { return { audioBase64: '', mimeType: 'audio/wav', excerpt: false }; },
+    async speak() { return { audioBase64: '', mimeType: 'audio/wav', excerpt: false, nextOffset: null }; },
   };
   const app = express(); app.use(express.json());
   app.use((req: any, _res, next) => { if (req.header('x-fixture-user')) req.authUser = { id: req.header('x-fixture-user'), name: 'Fixture' }; next(); });

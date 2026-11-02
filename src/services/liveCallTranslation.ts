@@ -19,6 +19,13 @@ export class TranslationPcmPlayer {
   private streamId='';
   private sources=new Set<AudioBufferSourceNode>();
   private muted=false;
+  private ownsContext=true;
+  constructor(sharedContext?:AudioContext) {
+    if (sharedContext) {
+      this.context=sharedContext; this.ownsContext=false;
+      this.gain=sharedContext.createGain(); this.gain.connect(sharedContext.destination);
+    }
+  }
   async unlock(){
     if(!this.context){
       const C=window.AudioContext||(window as any).webkitAudioContext;
@@ -36,7 +43,8 @@ export class TranslationPcmPlayer {
     if(this.context!.state!=='running')throw new Error('Tap Speaker to enable translated audio.');
   }
   captureContext(){if(!this.context||this.context.state!=='running')throw new Error('Enable translated audio first.');return this.context;}
-  begin(streamId:string){this.clear();this.streamId=streamId;this.sequence=0;}
+  isPlaying(){return !!this.context && this.next > this.context.currentTime;}
+  begin(streamId:string,firstSequence=0){this.clear();this.streamId=streamId;this.sequence=firstSequence;}
   push(p:{streamId:string;sequence:number;data:string}){
     if(p.streamId!==this.streamId)return;
     if(p.sequence!==this.sequence++||typeof p.data!=='string'||p.data.length>512000)
@@ -63,7 +71,7 @@ export class TranslationPcmPlayer {
     this.sources.clear();this.next=0;
   }
   end(){this.clear();this.streamId='';}
-  dispose(){this.end();void this.context?.close().catch(()=>{});this.context=null;this.gain=null;}
+  dispose(){this.end();this.gain?.disconnect();if(this.ownsContext)void this.context?.close().catch(()=>{});this.context=null;this.gain=null;}
 }
 
 export class LiveCallTranslation {

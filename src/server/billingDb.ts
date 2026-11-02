@@ -967,7 +967,7 @@ export class BillingDatabase {
           'Advanced conversational intelligence with rich, context-aware memory',
           'Personalized conversations adapting to your dialect & communication preferences',
           '300 monthly interactive video companion minutes',
-          'Priority neural response routing with sub-second latency',
+          'Priority processing for queued Malvi requests',
           'Advanced productivity & daily concierge assistance',
         ],
         unavailableFeatures: [

@@ -1,8 +1,12 @@
 import React, { useEffect, useRef, useState } from 'react';
 import AgoraRTC from 'agora-rtc-sdk-ng';
-import { Camera, Headphones, LoaderCircle, Mic, MicOff, Radio, Video, VideoOff } from 'lucide-react';
+import { Camera, Headphones, Languages, LoaderCircle, Mic, MicOff, Radio, Video, VideoOff, Volume2, VolumeX } from 'lucide-react';
 import { malviBusinessClient } from '../../lib/malviBusinessClient';
 import type { BusinessRoom } from '../../types/malviBusiness';
+import { BusinessLiveTranslation } from '../../services/businessLiveTranslation';
+import { BusinessAvatarPublisher } from './BusinessAvatarPublisher';
+import { PALABRA_LANGUAGES } from '../../shared/palabraLanguages';
+import { SUPPORTED_LANGUAGES } from '../../types';
 
 type RoomMutation = (label: string, action: (id: string) => Promise<{ room: BusinessRoom }>) => Promise<void>;
 interface Props {
@@ -17,8 +21,29 @@ interface RemoteTrack {
   videoTrack?: any;
   audioTrack?: any;
 }
+interface LiveTranscript {
+  id: string;
+  speakerId: string;
+  text: string;
+  translated: boolean;
+  final: boolean;
+  at: number;
+}
+
+function languageName(code: string) {
+  return SUPPORTED_LANGUAGES.find(language => language.code === code)?.name ?? code.toUpperCase();
+}
+
+function roomLanguage(room: BusinessRoom) {
+  if (typeof room.meetingLanguage === 'string' && PALABRA_LANGUAGES.includes(room.meetingLanguage as typeof PALABRA_LANGUAGES[number])) {
+    return room.meetingLanguage;
+  }
+  return 'en';
+}
+
 export const BusinessMeeting: React.FC<Props> = ({ room, currentUserId, currentUserLanguage, onCommand, onRoomUpdated }) => {
   const owner = room.ownerId === currentUserId;
+  const copilotEnabled = room.copilotEnabled === true;
   const [withCamera, setWithCamera] = useState(false);
   const [micConsent, setMicConsent] = useState(false);
   const [connecting, setConnecting] = useState(false);
@@ -32,19 +57,112 @@ export const BusinessMeeting: React.FC<Props> = ({ room, currentUserId, currentU
   const [visibleTranslations, setVisibleTranslations] = useState<Record<string, boolean>>({});
   const [translating, setTranslating] = useState<string | null>(null);
   const [reading, setReading] = useState(false);
+  const [avatarPublishing, setAvatarPublishing] = useState(false);
+  const [translationState, setTranslationState] = useState<'off' | 'listening' | 'speaking'>('off');
+  const [listenActivated, setListenActivated] = useState(false);
+  const [micTranslationActive, setMicTranslationActive] = useState(false);
+  const [micTranslationPending, setMicTranslationPending] = useState(false);
+  const [sourceLanguage, setSourceLanguage] = useState(() =>
+    PALABRA_LANGUAGES.includes(currentUserLanguage as typeof PALABRA_LANGUAGES[number]) ? currentUserLanguage : 'en');
+  const [voiceConsent, setVoiceConsent] = useState(false);
+  const [translationError, setTranslationError] = useState('');
+  const [liveTranscripts, setLiveTranscripts] = useState<LiveTranscript[]>([]);
+  const [languageSaving, setLanguageSaving] = useState(false);
+  const [copilotSaving, setCopilotSaving] = useState(false);
   const playback = useRef<HTMLAudioElement | null>(null);
+  useEffect(() => { if (avatarPublishing) playback.current?.pause(); }, [avatarPublishing]);
   useEffect(() => {
     setReading(false);
     return () => { playback.current?.pause(); playback.current = null; };
   }, [room.id, connected]);
   const activeRoomId = useRef(room.id);
   activeRoomId.current = room.id;
+  const translationTarget = roomLanguage(room);
   const session = useRef<{ client: any; roomId: string; epoch: number; mic: any; camera: any; handlers: Array<[string, (...args: any[]) => void]> } | null>(null);
   const lease = useRef<{ roomId: string; leaseId: string; endsAt: number; confirmed: boolean; ended: boolean } | null>(null);
   const transcriptWorker = useRef<{ active: boolean; stream: MediaStream; recorder: any; timer: number | null; controller: AbortController | null; epoch: number } | null>(null);
   const epoch = useRef(0);
+  const liveTranslation = useRef<{ service: BusinessLiveTranslation; roomId: string; userId: string; targetLanguage: string; generation: number } | null>(null);
+  const liveTranslationGeneration = useRef(0);
+  const liveTranscriptSequence = useRef(0);
+  const remoteAudioTracks = useRef(new Map<number, any>());
+  const translatedRemoteUids = useRef(new Set<number>());
   const videoContainers = useRef(new Map<string, HTMLDivElement>());
   const localVideoContainer = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    if (!PALABRA_LANGUAGES.includes(currentUserLanguage as typeof PALABRA_LANGUAGES[number])) return;
+    setSourceLanguage(currentUserLanguage);
+  }, [currentUserLanguage]);
+
+  const restoreRemoteAudio = () => {
+    translatedRemoteUids.current.forEach(uid => {
+      try { remoteAudioTracks.current.get(uid)?.setVolume(100); } catch { /* Track may already have left the room. */ }
+    });
+    translatedRemoteUids.current.clear();
+  };
+
+  const stopLiveTranslation = (clearTranscript = false) => {
+    liveTranslationGeneration.current += 1;
+    const active = liveTranslation.current;
+    liveTranslation.current = null;
+    try { active?.service.stopSpeaking(); } catch { /* The service may already have stopped. */ }
+    try { active?.service.dispose(); } catch { /* Keep RTC cleanup independent of translation cleanup. */ }
+    restoreRemoteAudio();
+    setTranslationState('off');
+    setListenActivated(false);
+    setMicTranslationActive(false);
+    setMicTranslationPending(false);
+    if (clearTranscript) setLiveTranscripts([]);
+  };
+
+  const getLiveTranslation = () => {
+    const existing = liveTranslation.current;
+    if (existing && existing.roomId === room.id && existing.userId === currentUserId && existing.targetLanguage === translationTarget) return existing;
+    stopLiveTranslation();
+    const generation = ++liveTranslationGeneration.current;
+    const service = new BusinessLiveTranslation({
+      roomId: room.id,
+      userId: currentUserId,
+      targetLanguage: translationTarget,
+      onRemote: (rtcUid, active) => {
+        if (liveTranslationGeneration.current !== generation || activeRoomId.current !== room.id) return;
+        const track = remoteAudioTracks.current.get(rtcUid);
+        if (active) {
+          if (!translatedRemoteUids.current.has(rtcUid)) {
+            translatedRemoteUids.current.add(rtcUid);
+            try { track?.setVolume(0); } catch { /* Translation remains available if RTC volume control fails. */ }
+          }
+        } else {
+          if (translatedRemoteUids.current.delete(rtcUid)) {
+            try { track?.setVolume(100); } catch { /* Track may already have left the room. */ }
+          }
+        }
+      },
+      onTranscript: transcript => {
+        if (liveTranslationGeneration.current !== generation || activeRoomId.current !== room.id) return;
+        setLiveTranscripts(previous => {
+          const latest = previous[previous.length - 1];
+          const next = { ...transcript, id: `${Date.now()}-${++liveTranscriptSequence.current}`, at: Date.now() } satisfies LiveTranscript;
+          if (latest && !latest.final && latest.speakerId === next.speakerId && latest.translated === next.translated) {
+            return [...previous.slice(0, -1), { ...latest, ...next }];
+          }
+          return [...previous, next].slice(-20);
+        });
+      },
+      onError: message => {
+        if (liveTranslationGeneration.current !== generation || activeRoomId.current !== room.id) return;
+        setTranslationError(message);
+        stopLiveTranslation();
+      },
+      onState: state => {
+        if (liveTranslationGeneration.current === generation && activeRoomId.current === room.id) setTranslationState(state);
+      },
+    });
+    const session = { service, roomId: room.id, userId: currentUserId, targetLanguage: translationTarget, generation };
+    liveTranslation.current = session;
+    return session;
+  };
 
   const stopTranscriptCapture = () => {
     const worker = transcriptWorker.current;
@@ -59,6 +177,7 @@ export const BusinessMeeting: React.FC<Props> = ({ room, currentUserId, currentU
   };
 
   const dispose = async () => {
+    stopLiveTranslation(true);
     stopTranscriptCapture();
     const active = session.current;
     session.current = null;
@@ -165,6 +284,15 @@ export const BusinessMeeting: React.FC<Props> = ({ room, currentUserId, currentU
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [connected, room.id, room.meetingOpen]);
 
+  useEffect(() => {
+    const active = liveTranslation.current;
+    if (active && (active.roomId !== room.id || active.userId !== currentUserId || active.targetLanguage !== translationTarget)) {
+      stopLiveTranslation(true);
+    }
+    // An active live translation belongs to one room, participant and target.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [room.id, translationTarget, currentUserId]);
+
   const joinMeeting = async () => {
     if (!room.meetingOpen || connecting || connected) return;
     const roomId = room.id;
@@ -194,10 +322,10 @@ export const BusinessMeeting: React.FC<Props> = ({ room, currentUserId, currentU
         handlers.push([event, handler]);
       };
       addHandler('user-published', async (user: any, mediaType: 'audio' | 'video') => {
-        if (epoch.current !== currentEpoch) return;
+        if (epoch.current !== currentEpoch || activeRoomId.current !== roomId) return;
         try {
           await client.subscribe(user, mediaType);
-          if (epoch.current !== currentEpoch) return;
+          if (epoch.current !== currentEpoch || activeRoomId.current !== roomId) return;
           setRemoteTracks(previous => {
             const remaining = previous.filter(item => item.uid !== user.uid);
             return [...remaining, {
@@ -206,21 +334,38 @@ export const BusinessMeeting: React.FC<Props> = ({ room, currentUserId, currentU
               videoTrack: user.videoTrack ?? (mediaType === 'video' ? user.videoTrack : undefined),
             }];
           });
-          if (mediaType === 'audio') user.audioTrack?.play();
+          if (mediaType === 'audio') {
+            const uid = Number(user.uid);
+            remoteAudioTracks.current.set(uid, user.audioTrack);
+            if (translatedRemoteUids.current.has(uid)) user.audioTrack?.setVolume(0);
+            user.audioTrack?.play();
+          }
         } catch (err) {
           if (epoch.current === currentEpoch) setError(err instanceof Error ? err.message : 'Could not subscribe to a participant track.');
         }
       });
       addHandler('user-unpublished', (user: any, mediaType: 'audio' | 'video') => {
+        if (epoch.current !== currentEpoch || activeRoomId.current !== roomId) return;
+        if (mediaType === 'audio') {
+          const uid = Number(user.uid);
+          try { remoteAudioTracks.current.get(uid)?.setVolume(100); } catch { /* Track may already have left. */ }
+          remoteAudioTracks.current.delete(uid);
+          translatedRemoteUids.current.delete(uid);
+        }
         setRemoteTracks(previous => previous.map(item => item.uid !== user.uid ? item : {
           ...item, ...(mediaType === 'video' ? { videoTrack: undefined } : { audioTrack: undefined }),
         }).filter(item => item.videoTrack || item.audioTrack));
       });
       addHandler('user-left', (user: any) => {
+        if (epoch.current !== currentEpoch || activeRoomId.current !== roomId) return;
+        const uid = Number(user.uid);
+        try { remoteAudioTracks.current.get(uid)?.setVolume(100); } catch { /* Track may already have left. */ }
+        remoteAudioTracks.current.delete(uid);
+        translatedRemoteUids.current.delete(uid);
         setRemoteTracks(previous => previous.filter(item => item.uid !== user.uid));
       });
       addHandler('connection-state-change', (state: string) => {
-        if (state === 'DISCONNECTED' && epoch.current === currentEpoch) {
+        if (state === 'DISCONNECTED' && epoch.current === currentEpoch && activeRoomId.current === roomId) {
           setConnected(false);
           setError('The meeting connection ended. You can try joining again while the meeting is open.');
           void dispose();
@@ -292,9 +437,77 @@ export const BusinessMeeting: React.FC<Props> = ({ room, currentUserId, currentU
     try {
       await active.mic.setEnabled(!nextMuted);
       setMuted(nextMuted);
-      if (nextMuted) stopTranscriptCapture();
+      if (nextMuted) {
+        stopTranscriptCapture();
+        stopLiveTranslation();
+      }
     }
     catch (err) { setError(err instanceof Error ? err.message : 'Microphone setting could not be changed.'); }
+  };
+
+  const listenForTranslations = async () => {
+    if (!connected || !room.meetingOpen) return;
+    setTranslationError('');
+    const active = getLiveTranslation();
+    try {
+      await active.service.listen();
+      if (liveTranslation.current === active && activeRoomId.current === active.roomId) setListenActivated(true);
+    } catch (err) {
+      if (liveTranslation.current === active && activeRoomId.current === active.roomId) {
+        setTranslationError(err instanceof Error ? err.message : 'Live translations could not start.');
+        stopLiveTranslation();
+      }
+    }
+  };
+
+  const translateMyMicrophone = async () => {
+    const active = liveTranslation.current;
+    const mediaSession = session.current;
+    if (!connected || !room.meetingOpen || !active || !listenActivated || !mediaSession?.mic) return;
+    if (sourceLanguage === translationTarget) return;
+    setTranslationError('');
+    setMicTranslationPending(true);
+    try {
+      const track = mediaSession.mic.getMediaStreamTrack();
+      const started = await active.service.start(track, sourceLanguage, voiceConsent);
+      if (liveTranslation.current !== active || activeRoomId.current !== active.roomId || epoch.current !== mediaSession.epoch) return;
+      if (!started) {
+        setTranslationError('Your microphone was not connected to translation. The live meeting continues normally.');
+        stopLiveTranslation();
+        return;
+      }
+      setMicTranslationActive(true);
+    } catch (err) {
+      if (liveTranslation.current === active && activeRoomId.current === active.roomId) {
+        setTranslationError(err instanceof Error ? err.message : 'Your microphone could not be sent for translation. The live meeting continues normally.');
+        stopLiveTranslation();
+      }
+    } finally {
+      setMicTranslationPending(false);
+    }
+  };
+
+  const stopMyMicrophoneTranslation = () => {
+    try { liveTranslation.current?.service.stopSpeaking(); } catch { /* The media session remains available. */ }
+    setMicTranslationActive(false);
+    if (listenActivated) setTranslationState('listening');
+  };
+
+  const saveMeetingLanguage = (language: string) => {
+    if (!owner || room.meetingOpen || !PALABRA_LANGUAGES.includes(language as typeof PALABRA_LANGUAGES[number])) return;
+    setLanguageSaving(true);
+    void onCommand('meeting language', id =>
+      malviBusinessClient.command(id, { type: 'meetingLanguage', language })
+    ).finally(() => setLanguageSaving(false));
+  };
+
+  const toggleCopilot = () => {
+    if (!owner) return;
+    const enabled = !room.copilotEnabled;
+    setCopilotSaving(true);
+    void onCommand('meeting copilot', id =>
+      malviBusinessClient.command(id, { type: 'copilot', enabled })
+    ).finally(() => setCopilotSaving(false));
   };
 
   const startTranscriptCapture = () => {
@@ -447,13 +660,64 @@ export const BusinessMeeting: React.FC<Props> = ({ room, currentUserId, currentU
             <span><strong className="font-semibold text-[#414540]">Share my microphone transcript with this room</strong><span className="block text-[11px] text-[#777971]">Audio is sent in independent 15-second segments for transcription. Turn this off to stop capture and uploads.</span></span>
           </label>}
           {error && <p role="alert" className="rounded-lg border border-[#d7a49b] bg-[#f8e9e4] px-3 py-2 text-xs leading-5 text-[#803f35]">{error}</p>}
+          {room.copilotError && <p role="alert" className="text-xs text-[#803f35]">{room.copilotError}</p>}
           {(remoteTracks.length > 0 || session.current?.camera) && <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
             {session.current?.camera && <div className="relative aspect-video overflow-hidden rounded-lg bg-[#262c29]"><div className="h-full w-full" ref={node=>{localVideoContainer.current=node;}}/><span className="absolute bottom-2 left-2 rounded-md bg-[#202622]/75 px-2 py-1 text-[10px] text-[#f5f3ec]">You</span></div>}
-            {remoteTracks.map(remote=><div key={String(remote.uid)} className="relative aspect-video overflow-hidden rounded-lg bg-[#262c29]"><div className="h-full w-full" ref={node=>{const key=String(remote.uid); if(node) videoContainers.current.set(key,node); else videoContainers.current.delete(key);}}/><span className="absolute bottom-2 left-2 rounded-md bg-[#202622]/75 px-2 py-1 text-[10px] text-[#f5f3ec]">Participant {String(remote.uid)}</span></div>)}
+            {remoteTracks.map(remote=><div key={String(remote.uid)} className="relative aspect-video overflow-hidden rounded-lg bg-[#262c29]"><div className="h-full w-full" ref={node=>{const key=String(remote.uid); if(node) videoContainers.current.set(key,node); else videoContainers.current.delete(key);}}/><span className="absolute bottom-2 left-2 rounded-md bg-[#202622]/75 px-2 py-1 text-[10px] text-[#f5f3ec]">{Number(remote.uid) === room.copilotRtcUid ? 'Malvi · Co-pilot' : `Participant ${String(remote.uid)}`}</span></div>)}
           </div>}
         </div> : <div className="flex items-start gap-2 text-xs leading-5 text-[#777971]"><Radio size={14} className="mt-0.5 shrink-0"/>The room owner can open a meeting for members. An open room meeting does not mean your device is connected.</div>}
+        <div className="mt-4 space-y-3 border-t border-[#dedbd3] pt-4">
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+            <label className="block text-xs font-medium text-[#555a54]">
+              <span className="mb-1 flex items-center gap-1.5"><Languages size={14}/> Common translation language</span>
+              {owner && !room.meetingOpen ? <select value={translationTarget} disabled={languageSaving} onChange={event=>saveMeetingLanguage(event.target.value)} className="min-h-9 rounded-lg border border-[#d9d5cc] bg-[#fffdf8] px-2.5 text-xs text-[#424541] disabled:opacity-50">
+                {PALABRA_LANGUAGES.map(code=><option key={code} value={code}>{languageName(code)}</option>)}
+              </select> : <span className="inline-block rounded-lg bg-[#eeece4] px-2.5 py-2 text-xs font-semibold">{languageName(translationTarget)}</span>}
+            </label>
+            {owner && <div className="flex items-center gap-2">
+              <div className="min-w-0"><p className="text-xs font-semibold text-[#454943]">Transcript copilot</p><p className="max-w-sm text-[10px] leading-4 text-[#7a7d75]">Only transcripts a member explicitly shares to this room are sent to Malvi; no live audio is included.</p></div>
+              <button type="button" aria-pressed={copilotEnabled} disabled={copilotSaving} onClick={toggleCopilot} className={`relative h-6 w-11 shrink-0 rounded-full transition ${copilotEnabled?'bg-[#55766a]':'bg-[#c9c6bd]'} disabled:opacity-50`} aria-label={`${copilotEnabled?'Disable':'Enable'} transcript copilot`}>
+                <span className={`absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition-transform ${copilotEnabled?'translate-x-[22px]':'translate-x-0.5'}`}/>
+              </button>
+            </div>}
+          </div>
+          <p className="text-[10px] text-[#85867f]">One owner-selected language is shared by listeners; this is not per-listener language fan-out.</p>
+          {room.meetingOpen && connected && <div className="rounded-xl border border-[#d8d4ca] bg-[#fffdf8] p-3">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div><h4 className="text-xs font-semibold text-[#414540]">Live translated speech</h4><p className="mt-0.5 text-[10px] text-[#777971]">Shared listening language: {languageName(translationTarget)}</p></div>
+              <span className={`rounded-full px-2 py-1 text-[10px] font-semibold ${translationState==='off'?'bg-[#eeece4] text-[#777971]':'bg-[#e4ece4] text-[#48675a]'}`}>{translationState==='off'?'Off':translationState==='speaking'?'Translating your mic':'Listening'}</span>
+            </div>
+            <div className="mt-3 flex flex-wrap items-center gap-2">
+              <button type="button" onClick={()=>listenActivated?stopLiveTranslation():void listenForTranslations()} className="inline-flex min-h-9 items-center gap-2 rounded-lg bg-[#344f49] px-3 text-xs font-semibold text-[#fffdf7] hover:bg-[#263e39]">
+                {listenActivated?<VolumeX size={14}/>:<Volume2 size={14}/>}
+                {listenActivated?'Stop translations':'Listen to translations'}
+              </button>
+              <label className="flex items-center gap-2 text-[11px] text-[#666a64]">My source language
+                <select value={sourceLanguage} disabled={micTranslationActive || micTranslationPending} onChange={event=>setSourceLanguage(event.target.value)} className="min-h-9 rounded-lg border border-[#d9d5cc] bg-[#fffdf8] px-2 text-xs text-[#424541] disabled:opacity-50">
+                  {PALABRA_LANGUAGES.map(code=><option key={code} value={code}>{languageName(code)}</option>)}
+                </select>
+              </label>
+            </div>
+            {sourceLanguage===translationTarget ? <p className="mt-2 text-[10px] leading-4 text-[#777971]">Your source matches the common language. Listen is available; your microphone will not be sent for translation.</p> : <div className="mt-2 flex flex-wrap items-center gap-3">
+              <label className="flex cursor-pointer items-center gap-2 text-[10px] leading-4 text-[#666a64]"><input type="checkbox" checked={voiceConsent} disabled={micTranslationActive || micTranslationPending} onChange={event=>setVoiceConsent(event.target.checked)} className="accent-[#48675a]"/>Allow my original voice to be retained in translated speech</label>
+              {micTranslationActive ? <button type="button" onClick={stopMyMicrophoneTranslation} className="min-h-8 rounded-lg border border-[#d8d4ca] px-2.5 text-[11px] font-semibold hover:bg-[#eeece4]">Stop my mic translation</button> : <button type="button" onClick={()=>void translateMyMicrophone()} disabled={!listenActivated || micTranslationPending} className="inline-flex min-h-8 items-center gap-1.5 rounded-lg border border-[#b8c9bd] bg-[#e8eee6] px-2.5 text-[11px] font-semibold text-[#48675a] hover:bg-[#dce7da] disabled:opacity-45">{micTranslationPending&&<LoaderCircle size={13} className="animate-spin"/>}Translate my microphone</button>}
+            </div>}
+            <p className="mt-2 text-[10px] leading-4 text-[#85867f]">Tap Listen first. Sending your own mic is a separate action and reuses the meeting mic; translation failure does not stop the meeting.</p>
+            {translationError && <p role="alert" className="mt-2 rounded-lg border border-[#d7a49b] bg-[#f8e9e4] px-2.5 py-2 text-xs leading-5 text-[#803f35]">{translationError}</p>}
+          </div>}
+          {room.meetingOpen && connected && <div className="rounded-xl border border-[#dedbd3] bg-[#fffdf8] p-3">
+            <div className="flex items-center justify-between gap-2"><h4 className="text-xs font-semibold text-[#414540]">Live transcripts</h4><span className="text-[10px] text-[#85867f]">Last 20 only · not saved to the room</span></div>
+            {liveTranscripts.length ? <div className="mt-2 max-h-36 space-y-2 overflow-y-auto">
+              {liveTranscripts.map(item=><article key={item.id} className="rounded-lg bg-[#f1efe8] px-2.5 py-2">
+                <div className="flex flex-wrap items-center justify-between gap-1 text-[10px] text-[#777971]"><span>{room.members.find(member=>member.id===item.speakerId)?.name ?? `Participant ${item.speakerId}`}</span><span>{item.translated?'Translated':'Original'} · {item.final?'Final':'Live'}</span></div>
+                <p className="mt-1 whitespace-pre-wrap text-xs leading-5 text-[#484b47]">{item.text}</p>
+              </article>)}
+            </div> : <p className="mt-2 text-[11px] text-[#85867f]">Transcripts appear here only while listening is active.</p>}
+          </div>}
+        </div>
       </div>
-      {connected && room.messages.some(message => message.kind === 'assistant') && <div className="border-t border-[#dedbd3] px-4 py-3">
+      {connected && owner && room.copilotEnabled && lease.current && <div className="px-4 pb-3"><BusinessAvatarPublisher room={room} leaseId={lease.current.leaseId} onRunningChange={setAvatarPublishing}/></div>}
+      {connected && !avatarPublishing && room.messages.some(message => message.kind === 'assistant') && <div className="border-t border-[#dedbd3] px-4 py-3">
         <button disabled={reading} className="text-xs font-semibold underline disabled:opacity-50" onClick={async () => {
           const current = lease.current, generation = epoch.current;
           const message = room.messages.filter(m => m.kind === 'assistant').at(-1);

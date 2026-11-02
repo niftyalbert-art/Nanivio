@@ -27,6 +27,12 @@ export const malviBusinessClient = {
     request<{ room: BusinessRoom; text: string }>(`/${encodeURIComponent(id)}/transcribe`, body, signal),
   translate: (id: string, body: { messageId: string; targetLanguage: string }) =>
     request<{ text: string }>(`/${encodeURIComponent(id)}/translate`, body),
-  speak: (id: string, body: { messageId: string; language: string; leaseId: string }) =>
-    request<{ audioBase64: string; mimeType: string; excerpt: boolean }>(`/${encodeURIComponent(id)}/speak`, body),
+  speak: (id: string, body: { messageId: string; language: string; leaseId: string; offset?: number }) =>
+    request<{ audioBase64: string; mimeType: string; excerpt: boolean; nextOffset?: number | null }>(`/${encodeURIComponent(id)}/speak`, body),
+  avatar: (id: string, leaseId: string) => request<{
+    session: { id: string; sessionToken: string; hardDeadline: number };
+    media: { appId: string; token: string; channelName: string; uid: number }; endsAt: number;
+  }>(`/${encodeURIComponent(id)}/avatar`, { leaseId }),
+  avatarActivity: (id: string, sessionId: string) => request(`/${encodeURIComponent(id)}/avatar/activity`, { sessionId }),
+  endAvatar: (id: string, sessionId: string) => request(`/${encodeURIComponent(id)}/avatar/end`, { sessionId }),
 };

@@ -49,6 +49,17 @@ export async function issueBusinessMedia(user: string, room: BusinessRoom, previ
     throw error;
   }
 }
+export async function validateBusinessAvatarAccess(user: string, context: { roomId: string; leaseId: string; endsAt: number }) {
+  const db = getServerSupabase();
+  if (!db || context.endsAt <= Date.now()) return unavailable();
+  const { data, error } = await db.from('nanivio_malvi_business_rooms').select('owner_id,member_ids,document')
+    .eq('id', context.roomId).abortSignal(AbortSignal.timeout(5000)).maybeSingle();
+  if (error || !data || data.owner_id !== user || !data.member_ids.includes(user)
+    || !data.document.meetingOpen || !data.document.copilotEnabled) {
+    throw new AssistantError(403, 'BUSINESS_AVATAR_FORBIDDEN', 'The meeting co-pilot is no longer enabled.');
+  }
+  await businessMediaLease(user, data.document, context.leaseId);
+}
 export function validateMeetingAudio(value: unknown) {
   const input = value as { data?: unknown; mimeType?: unknown };
   if (!input || typeof input.data !== 'string' || input.data.length > 1400000 || input.data.length % 4
@@ -131,7 +142,11 @@ export async function speakBusinessResponse(user: string, room: BusinessRoom, bo
   speaking.add(user);
   try {
     await claimMalviRequest(user, 'analysis');
-    const provider = await getManagedMalviVoice(), content = message.text.slice(0, 1200);
+    const offset = body?.offset ?? 0;
+    if (!Number.isInteger(offset) || offset < 0 || offset >= message.text.length) {
+      throw new AssistantError(400, 'BUSINESS_SPEECH_OFFSET', 'Invalid speech continuation.');
+    }
+    const provider = await getManagedMalviVoice(), content = message.text.slice(offset, offset + 1200);
     let pcm: Buffer;
     if (provider === 'elevenlabs') pcm = await synthesizeMalviSpeech(content, language.code, AbortSignal.timeout(20000));
     else {
@@ -154,6 +169,7 @@ export async function speakBusinessResponse(user: string, room: BusinessRoom, bo
       pcm = applyMalviGeminiEffects(Buffer.concat(chunks)).pcm;
     }
     await businessMediaLease(user, room, body?.leaseId);
-    return { audioBase64: pcmWave(pcm).toString('base64'), mimeType: 'audio/wav', excerpt: message.text.length > 1200 };
+    return { audioBase64: pcmWave(pcm).toString('base64'), mimeType: 'audio/wav', excerpt: message.text.length > 1200,
+      nextOffset: offset + content.length < message.text.length ? offset + content.length : null };
   } finally { speaking.delete(user); }
 }

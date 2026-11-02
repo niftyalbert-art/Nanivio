@@ -129,6 +129,11 @@ export class PalabraLiveGateway {
       session.peer.send('langpretation:ready',{callId,streamId,voiceConsent:session.voiceConsent});
     }
   }
+  announce(callId:string) {
+    for (const session of this.sessions.values()) if (session.callId === callId && session.upstreamReady && !session.closed) {
+      this.remote(session, 'langpretation:remote_start', { voiceConsent: session.voiceConsent, sequence: session.outputSequence });
+    }
+  }
 
   private remote(session:Session,event:string,payload:any){
     return this.deps.remote(session.callId,session.userId,event,{

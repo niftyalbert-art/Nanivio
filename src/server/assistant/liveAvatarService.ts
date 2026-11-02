@@ -64,6 +64,7 @@ export function createLiveAvatarService(deps: {
   now: () => number;
   uuid: () => string;
   usage?: LiveUsage;
+  businessAccess?: (user: string, context: { roomId: string; leaseId: string; endsAt: number }) => Promise<void>;
 }) {
   const confirmedAt = new Map<string, number>();
   const confirmationFailures = new Set<string>();
@@ -78,16 +79,28 @@ export function createLiveAvatarService(deps: {
     await store.release(record);
   }
   return {
-    async create(userId: string, languageCode = 'en', mode: 'LITE' | 'VOICE_TEST' | 'VOICE_ONLY' = 'LITE', quality: 'medium' | 'high' = 'high', speechProvider: MalviVoiceProvider = malviVoiceSetup().provider) {
+    async create(userId: string, languageCode = 'en', mode: 'LITE' | 'VOICE_TEST' | 'VOICE_ONLY' = 'LITE', quality: 'medium' | 'high' = 'high', speechProvider: MalviVoiceProvider = malviVoiceSetup().provider,
+      businessContext?: { roomId: string; leaseId: string; endsAt: number }) {
       const language = getMalviLanguage(languageCode);
+      if (businessContext) {
+        if (!deps.businessAccess || mode !== 'LITE' || !Number.isFinite(businessContext.endsAt) || businessContext.endsAt <= deps.now()) {
+          throw new AssistantError(403, 'BUSINESS_AVATAR_FORBIDDEN', 'An active authorized Business meeting is required.');
+        }
+        await deps.businessAccess(userId, businessContext);
+      }
       const store = await deps.store();
       const now = deps.now();
       const record: AssistantSessionRecord = {
         id: deps.uuid(), owner: ownerKey(userId), language: language.code, mode, speechProvider, deadline: now + IDLE_MS, hardDeadline: now + MAX_SESSION_MS,
       };
+      if (businessContext) {
+        record.businessContext = businessContext;
+        record.hardDeadline = Math.min(record.hardDeadline, businessContext.endsAt);
+        record.deadline = Math.min(record.deadline, record.hardDeadline);
+      }
       await store.reserve(record.owner, record.id, now);
       try {
-        if (deps.usage) {
+        if (deps.usage && !businessContext) {
           const seconds = await deps.usage.reserve(userId, record.id, mode === 'LITE' ? 'avatar' : 'voice');
           record.usageReserved = true;
           // Start against the time at which the allowance was requested, not
@@ -140,15 +153,25 @@ export function createLiveAvatarService(deps: {
       const store = await deps.store();
       const record = await store.get(id);
       if (!record || record.owner !== ownerKey(userId)) throw new AssistantError(404, 'SESSION_NOT_FOUND', 'Live session not found.');
+      if (record.businessContext) {
+        if (!deps.businessAccess) throw new AssistantError(403, 'BUSINESS_AVATAR_FORBIDDEN', 'Business meeting access is unavailable.');
+        await deps.businessAccess(userId, record.businessContext);
+      }
       if (record.closing || record.deadline <= deps.now()) throw new AssistantError(410, 'SESSION_EXPIRED', 'The live session ended after inactivity.');
       return record;
     },
     async activity(userId: string, id: string, activeUntil?: number) {
       const now = deps.now();
+      const store = await deps.store();
+      const current = await store.get(id);
+      if (current?.owner === ownerKey(userId) && current.businessContext) {
+        if (!deps.businessAccess) throw new AssistantError(403, 'BUSINESS_AVATAR_FORBIDDEN', 'Business meeting access is unavailable.');
+        await deps.businessAccess(userId, current.businessContext);
+      }
       // Only server-produced audio may supply a playback horizon. HTTP clients
       // cannot submit one, and Redis still enforces ownership/expiry/hard limit.
       const until = Number.isFinite(activeUntil) ? Math.max(now, Math.min(activeUntil!, now + MAX_SESSION_MS)) : now;
-      const record = await (await deps.store()).touch(id, ownerKey(userId), now, until);
+      const record = await store.touch(id, ownerKey(userId), now, until);
       if (!record) throw new AssistantError(410, 'SESSION_EXPIRED', 'Live session is closed or expired.');
       if (confirmationFailures.has(id)) throw new AssistantError(503,'MALVI_BILLING_UNAVAILABLE','Your conversation allowance could not be confirmed. End the conversation and recheck Billing.');
       if (record.usageReserved && now - (confirmedAt.get(id) || 0) >= 5000) {
@@ -185,5 +208,9 @@ export function createLiveAvatarService(deps: {
 }
 
 export const liveAvatarService = createLiveAvatarService({
+  businessAccess: async (user, context) => {
+    const { validateBusinessAvatarAccess } = await import('./businessMedia');
+    await validateBusinessAvatarAccess(user, context);
+  },
   store: getAssistantStore, provider: liveAvatarRequest, now: Date.now, uuid: crypto.randomUUID, usage: liveUsage,
 });

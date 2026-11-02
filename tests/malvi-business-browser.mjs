@@ -17,6 +17,26 @@ let room = baseline(), failed = false, mediaRequests = 0;
 const entry = `
 import React from 'react'; import {createRoot} from 'react-dom/client';
 import {MalviBusinessCollaborationRoom} from './src/components/malvi/MalviBusinessCollaborationRoom';
+import {BusinessLiveTranslation} from './src/services/businessLiveTranslation';
+window.__groupProbe=async()=>{
+ const callbacks=new Map(),sent=[],remote=[],errors=[];
+ const emit=(event,p)=>[...(callbacks.get(event)||[])].forEach(fn=>fn(p));
+ const transport={on:(event,fn)=>{const list=callbacks.get(event)||new Set();list.add(fn);callbacks.set(event,list);return()=>list.delete(fn);},
+  send:(event,p)=>{sent.push(event);if(event==='langpretation:business_listen')emit('langpretation:business_ready',{callId:p.callId,targetLanguage:'en'});return true;}};
+ const id='business:11111111-1111-4111-8111-111111111111';
+ const service=new BusinessLiveTranslation({roomId:id.slice(9),userId:'fixture-owner',targetLanguage:'en',
+ onRemote:(uid,active)=>remote.push([uid,active]),onError:e=>errors.push(e),onState:()=>{},onTranscript:()=>{}},transport);
+ await service.listen();
+ for(const [speaker,uid] of [['first',101],['second',102]]){
+  emit('langpretation:remote_start',{callId:id,speakerId:speaker,speakerRtcUid:uid,streamId:speaker,sequence:0});
+  emit('langpretation:audio_out',{callId:id,speakerId:speaker,streamId:speaker,sequence:0,data:btoa(String.fromCharCode(0,0,0,0))});
+ }
+ emit('langpretation:audio_out',{callId:id,speakerId:'first',streamId:'first',sequence:2,data:btoa(String.fromCharCode(0,0))});
+ emit('langpretation:remote_stop',{callId:id,speakerId:'second',streamId:'second'});
+ service.dispose();
+ return {remote,errors:errors.length,acknowledgements:sent.filter(e=>e==='langpretation:receiver_ready').length,
+  unsubscribed:sent.includes('langpretation:business_leave'),listeners:[...callbacks.values()].reduce((n,s)=>n+s.size,0)};
+};
 localStorage.setItem('nanivio_auth_token','isolated-fixture-token');
 createRoot(document.getElementById('root')).render(<MalviBusinessCollaborationRoom/>);`;
 const bundle = await build({
@@ -79,6 +99,15 @@ try {
     assert.equal(room.messages.length, before, 'Failure must not insert a canned success response.');
   }
   assert.equal(mediaRequests, 0);
+  const playbackPage = await browser.page(base);
+  await playbackPage.wait('typeof window.__groupProbe==="function"');
+  const playback = await playbackPage.command('Runtime.evaluate', { expression: 'window.__groupProbe()', awaitPromise: true, returnByValue: true, userGesture: true });
+  assert.equal(playback.exceptionDetails, undefined);
+  const result = playback.result.value;
+  assert.equal(result.acknowledgements, 2);
+  assert.ok(result.remote.some(([uid,active])=>uid===101&&active) && result.remote.some(([uid,active])=>uid===102&&active));
+  assert.ok(result.remote.some(([uid,active])=>uid===101&&!active) && result.remote.some(([uid,active])=>uid===102&&!active));
+  assert.equal(result.errors, 1); assert.equal(result.listeners, 0); assert.equal(result.unsubscribed, true);
   console.log(JSON.stringify({ passed: true, actualWorkspaceComponent: true, viewports: 2, persistedFixtureMessage: true, summary: true, noCannedFallback: true, providerRequests: 0 }));
 } finally {
   await browser.close(); await new Promise(resolve => server.close(resolve));

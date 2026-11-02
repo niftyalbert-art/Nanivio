@@ -99,3 +99,28 @@ appeared after its three minutes were consumed.
 **How to apply:** Preserve the allowance-exhaustion subscription flow. This
 confirmation covers the tested account, not every entitlement or payment path;
 allowances remain administrator-configurable rather than hardcoded.
+
+## Shared meeting cost and consent boundaries
+
+A shared meeting avatar must use one verified host conference reservation,
+not reserve or refund another full allowance for every participant viewing it.
+Stopping only the avatar must not refund the host's still-running conference.
+
+**Why:** The same host is already funding the live meeting; double reservation
+would reduce purchased usage twice, while refunding the conference on bot exit
+would create unbilled meeting time.
+
+**How to apply:** Tie shared renderers to the original verified meeting term.
+Recheck owner consent and that term; clean up renderers without settling an
+unrelated reservation. Keep paid avatar invitation separate from consent to
+transcribe a member's microphone.
+
+Group speech initially uses one common listening language and one stream per
+speaker, rather than creating a separate paid stream for every recipient.
+
+**Why:** Per-recipient fan-out multiplies upstream concurrency and costs; an
+18-language selector alone does not prove service support, quality or budget.
+
+**How to apply:** Any future individualized group-listening design must review
+provider concurrency and funded usage before increasing fan-out. Describe
+limited provider probes as probes, not full language-matrix certification.

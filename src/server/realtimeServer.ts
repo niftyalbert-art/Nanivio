@@ -25,9 +25,16 @@ import { malviLiveBrainController } from './assistant/liveBrain.ts';
 import { createNanivioMicGateway } from './assistant/nanivioMicGateway.ts';
 const nanivioMicGateway = createNanivioMicGateway(malviLiveBrainController);
 import { PalabraLiveGateway, type LangpretationAuthorizer } from './palabraLiveStream.ts';
+import { BusinessTranslationAudience, type BusinessTranslationAuthorization } from './businessTranslationAudience';
+import { normalizeAgoraUid } from './agoraService';
 import { PalabraError } from './palabraSpeech.ts';
 import { participantLanguage } from '../shared/participantLanguage.ts';
 let langpretationGateway:PalabraLiveGateway|null=null;
+let closeBusinessAudience: ((callId: string) => void) | null = null;
+export function endBusinessTranslation(roomId: string) {
+  const callId = `business:${roomId}`;
+  langpretationGateway?.endCall(callId); closeBusinessAudience?.(callId);
+}
 
 export interface ConnectedUser {
   socket: WebSocket;
@@ -321,10 +328,24 @@ export async function broadcastStreamReaction(channelId: string, message: Stream
   });
 }
 
-export function setupRealtimeServer(httpServer: HttpServer,options?:{authorizeLangpretation:LangpretationAuthorizer}) {
+export function setupRealtimeServer(httpServer: HttpServer,options?:{
+  authorizeLangpretation:LangpretationAuthorizer; authorizeBusinessTranslation?:BusinessTranslationAuthorization
+}) {
+  const businessAudience = new BusinessTranslationAudience(options?.authorizeBusinessTranslation
+    || (async () => { throw new Error('Business live Langpretation is unavailable.'); }), normalizeAgoraUid);
+  closeBusinessAudience = id => businessAudience.closeRoom(id);
   langpretationGateway=new PalabraLiveGateway({
-    authorize:options?.authorizeLangpretation||(async()=>{throw new Error('Translation authorization unavailable.');}),
+    authorize: async (user, callId, source, target) => {
+      if (callId.startsWith('business:')) {
+        if (!options?.authorizeBusinessTranslation) throw new Error('Business live Langpretation is unavailable.');
+        await options.authorizeBusinessTranslation(user, callId, source, target);
+      } else {
+        if (!options?.authorizeLangpretation) throw new Error('Translation authorization unavailable.');
+        await options.authorizeLangpretation(user, callId, source, target);
+      }
+    },
     remote:(callId,speakerId,event,payload)=>{
+      if (callId.startsWith('business:')) return businessAudience.remote(callId, speakerId, event, payload);
       const call=activeCalls.get(callId);
       if(!call||call.status!=='connected'||!call.participants.includes(speakerId))return false;
       let sent=false;
@@ -379,6 +400,19 @@ export function setupRealtimeServer(httpServer: HttpServer,options?:{authorizeLa
         }
 
         switch (type) {
+          case 'langpretation:business_listen': {
+            try {
+              const targetLanguage = await businessAudience.subscribe(translationPeer, currentUser!.userId, payload?.callId);
+              translationPeer.send('langpretation:business_ready', { callId: payload.callId, targetLanguage });
+              langpretationGateway?.announce(payload.callId);
+            } catch {
+              businessAudience.remove(translationPeer);
+              translationPeer.send('langpretation:business_error', { callId: payload?.callId, message: 'Meeting listening could not be authorized. Check your meeting access and remaining allowance.' });
+            }
+            break;
+          }
+          case 'langpretation:business_leave':
+            businessAudience.remove(translationPeer); langpretationGateway?.stop(translationPeer); break;
           case 'langpretation:start': {
             try { await langpretationGateway!.start(translationPeer,currentUser!.userId,payload); }
             catch(error){translationPeer.send('langpretation:stopped',{
@@ -392,11 +426,13 @@ export function setupRealtimeServer(httpServer: HttpServer,options?:{authorizeLa
           case 'langpretation:stop':
             langpretationGateway?.stopStream(translationPeer,payload?.streamId);break;
           case 'langpretation:receiver_ready':
-            if(canTranslateLiveCall(currentUser!.userId,payload?.callId))
+            if(canTranslateLiveCall(currentUser!.userId,payload?.callId)
+              || businessAudience.allowed(translationPeer,currentUser!.userId,payload?.callId))
               langpretationGateway?.acknowledgeReceiver(payload.callId,payload.speakerId,payload.streamId,currentUser!.userId);
             break;
           case 'langpretation:playback_error':
-            if(canTranslateLiveCall(currentUser!.userId,payload?.callId))
+            if(canTranslateLiveCall(currentUser!.userId,payload?.callId)
+              || businessAudience.allowed(translationPeer,currentUser!.userId,payload?.callId))
               langpretationGateway?.stopSpeaker(payload.callId,payload.speakerId);
             break;
           // -------------------------------------------------------------
@@ -955,6 +991,7 @@ export function setupRealtimeServer(httpServer: HttpServer,options?:{authorizeLa
     });
 
     socket.on('close', () => {
+      businessAudience.remove(translationPeer);
       translationPeer.closed=true;langpretationGateway?.stop(translationPeer);
       clearInterval(pingInterval);
       allSockets.delete(socket);

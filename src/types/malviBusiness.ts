@@ -7,6 +7,10 @@ export interface BusinessRoom {
   members: BusinessMember[]; messages: BusinessMessage[]; actions: BusinessAction[];
   knowledge: BusinessKnowledge[]; summary: string; summaryThrough: string | null;
   meetingOpen: boolean; updatedAt: string;
+  meetingLanguage?: string; copilotEnabled?: boolean; copilotThrough?: string;
+  copilotRtcUid?: number;
+  copilotError?: string | null;
+  copilotPending?: { sourceId: string; token: string; expiresAt: number } | null;
 }
 export type BusinessCommand =
   | { type: 'message'; id: string; text: string; kind: 'idea' | 'transcript' }
@@ -14,4 +18,6 @@ export type BusinessCommand =
   | { type: 'complete'; id: string; completed: boolean }
   | { type: 'knowledge'; id: string; title: string; text: string }
   | { type: 'removeKnowledge'; id: string }
-  | { type: 'meeting'; open: boolean };
+  | { type: 'meeting'; open: boolean }
+  | { type: 'meetingLanguage'; language: string }
+  | { type: 'copilot'; enabled: boolean };

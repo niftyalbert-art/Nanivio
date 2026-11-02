@@ -51,6 +51,7 @@ redis.call('ZREM', KEYS[3], ARGV[1])
 return 1`;
 
 export interface AssistantSessionRecord {
+  businessContext?: { roomId: string; leaseId: string; endsAt: number };
   id: string;
   owner: string;
   language?: string;
