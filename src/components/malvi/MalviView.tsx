@@ -284,6 +284,7 @@ const MalviAccountWorkspace: React.FC<{ ownerId: string | null }> = ({ ownerId }
   const [handsFreeMode, setHandsFreeMode] = useState(false);
   const [speechRate, setSpeechRate] = useState<number>(1.0);
   const [isProcessing, setIsProcessing] = useState(false);
+  const [failedMessage, setFailedMessage] = useState<{text:string;mode:'voice'|'text';id:string} | null>(null);
   const [wakePhraseActive, setWakePhraseActive] = useState(false);
   const [currentlySpeakingText, setCurrentlySpeakingText] = useState<string | null>(null);
   const [immersiveMode, setImmersiveMode] = useState(false);
@@ -570,6 +571,7 @@ const MalviAccountWorkspace: React.FC<{ ownerId: string | null }> = ({ ownerId }
     if (!isCurrentOwner() || !text || isProcessing) return;
 
     stopSpeaking();
+    setFailedMessage(null);
     setInputText('');
     setInterimTranscript('');
 
@@ -668,21 +670,11 @@ const MalviAccountWorkspace: React.FC<{ ownerId: string | null }> = ({ ownerId }
         throw new Error(data.error || 'Failed to get response');
       }
     } catch (error: any) {
-      console.warn('Malvi chat error:', error);
-      const fallbackReply: MalviChatMessage = {
-        id: `malvi_err_${Date.now()}`,
-        sender: 'malvi',
-        text:
-          "I'm right here with you. I can assist you directly with Langpretation, cross-border transfers, finding doctors, or smart calls across Nanivio.",
-        timestamp: Date.now(),
-        emotion: 'calm',
-        suggestedActions: ['Turn on Langpretation', 'Browse Online Doctors', 'Check Communication Balance'],
-      };
-      setMessages((prev) => [...prev, fallbackReply]);
+      if (!isCurrentOwner() || error?.name === 'AbortError') return;
+      // A failed request is not an assistant answer and must never be spoken
+      // or written to conversation history as a fabricated response.
+      setFailedMessage({text,mode,id:userMessage.id});
       setAvatarState('idle');
-      if (voiceSpeechEnabled) {
-        speakText(fallbackReply.text);
-      }
     } finally {
       setIsProcessing(false);
     }
@@ -1332,13 +1324,27 @@ const MalviAccountWorkspace: React.FC<{ ownerId: string | null }> = ({ ownerId }
               </div>
             )}
 
+            {failedMessage && (
+              <div role="alert" className="rounded-xl border border-amber-200/30 bg-amber-100/5 p-3 text-sm text-amber-100">
+                <p>Malvi couldn’t answer this message. Your message is still available to retry.</p>
+                <button type="button" disabled={isProcessing}
+                  className="mt-2 min-h-10 rounded-lg border border-amber-200/40 px-3 font-medium disabled:opacity-50"
+                  onClick={() => {
+                    if (!isCurrentOwner()) return;
+                    setMessages(previous=>previous.filter(message=>message.id!==failedMessage.id));
+                    setInputText(failedMessage.text);setFailedMessage(null);
+                  }}>
+                  Restore message to retry
+                </button>
+              </div>
+            )}
             {/* Live Thinking / Generating Bubble */}
             {isProcessing && (
               <div className="flex gap-3 items-center">
                 <MalviAvatar size="sm" state="thinking" showBadge={false} />
                 <div className="p-3.5 rounded-2xl rounded-tl-sm bg-slate-900 border border-slate-800 flex items-center gap-2 text-xs text-slate-300">
                   <span className="w-2 h-2 rounded-full bg-cyan-400 animate-pulse" />
-                  <span>Malvi is reasoning &amp; drafting vocal response...</span>
+                  <span>Malvi is thinking…</span>
                 </div>
               </div>
             )}

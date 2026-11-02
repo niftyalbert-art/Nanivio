@@ -161,21 +161,18 @@ export const ActiveCallModal: React.FC = () => {
             />
             {/* Ambient gradients for text legibility */}
             <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/40 to-black/80 pointer-events-none" />
-            <div className="absolute inset-0 backdrop-blur-[1px] pointer-events-none" />
           </div>
         )}
 
         {/* Top Telecom Status Header */}
         <div className="relative z-10 flex items-center justify-between max-w-2xl mx-auto w-full">
           <div className="flex items-center gap-2">
-            <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-ping" />
-            <span className="text-xs font-mono font-bold text-slate-200 tracking-wider uppercase drop-shadow-md">
-              Nanivio Telecom Edge
-            </span>
+            <span className="h-2 w-2 rounded-full bg-emerald-400" />
+            <span className="text-xs font-mono font-bold uppercase tracking-wider text-slate-200">Nanivio</span>
           </div>
           <div className="flex items-center gap-2">
-            <span className="px-3 py-1 rounded-full bg-slate-900/80 border border-emerald-500/40 text-emerald-300 text-xs font-mono backdrop-blur-md shadow-lg">
-              {isVideo ? '● LIVE CAMERA PREVIEW' : 'HD AUDIO VOICE'}
+            <span className="px-3 py-1 rounded-full bg-slate-900/80 border border-emerald-500/40 text-emerald-300 text-xs font-mono shadow-lg">
+              {isVideo ? 'Video call' : 'Voice call'}
             </span>
           </div>
         </div>
@@ -185,9 +182,9 @@ export const ActiveCallModal: React.FC = () => {
           {/* Pulsating Avatar Container with Concentric Radar Wave Rings */}
           <div className="relative flex items-center justify-center">
             {/* Outer Ring 1 */}
-            <div className="absolute w-48 h-48 sm:w-56 sm:h-56 rounded-full bg-emerald-500/20 border border-emerald-500/30 animate-ping duration-1000" />
+            <div className="absolute w-48 h-48 sm:w-56 sm:h-56 rounded-full border border-emerald-500/30" />
             {/* Outer Ring 2 */}
-            <div className="absolute w-36 h-36 sm:w-44 sm:h-44 rounded-full bg-cyan-500/20 border border-cyan-500/40 animate-pulse duration-700" />
+            <div className="absolute w-36 h-36 sm:w-44 sm:h-44 rounded-full border border-cyan-500/40" />
 
             {/* Main Center Avatar / Monogram Shield */}
             <div className="relative w-28 h-28 sm:w-32 sm:h-32 rounded-full bg-slate-950/90 border-4 border-emerald-400 shadow-[0_0_50px_rgba(16,185,129,0.5)] flex items-center justify-center overflow-hidden z-10 backdrop-blur-md">
@@ -206,41 +203,27 @@ export const ActiveCallModal: React.FC = () => {
             </div>
 
             {/* Small Floating Ringing Badge */}
-            <div className="absolute bottom-0 right-1 z-20 w-8 h-8 rounded-full bg-emerald-500 border-2 border-slate-950 flex items-center justify-center shadow-lg animate-bounce">
+            <div className="absolute bottom-0 right-1 z-20 w-8 h-8 rounded-full bg-emerald-500 border-2 border-slate-950 flex items-center justify-center shadow-lg">
               <Phone className="w-4 h-4 fill-slate-950 text-slate-950" />
             </div>
           </div>
 
           {/* Caller / Recipient Name & NV ID */}
-          <div className="space-y-2 max-w-sm mx-auto backdrop-blur-sm bg-black/40 p-4 rounded-2xl border border-white/10 shadow-2xl">
-            <div className="text-[11px] font-mono uppercase tracking-widest text-emerald-400 font-bold flex items-center justify-center gap-1.5">
-              <Sparkles className="w-3.5 h-3.5" />
-              <span>Calling Recipient</span>
-            </div>
+          <div className="space-y-2 max-w-sm mx-auto bg-black/40 p-4 rounded-2xl border border-white/10 shadow-2xl">
             <h1 className="text-2xl sm:text-3xl font-black text-white tracking-tight drop-shadow-md">
               {isGroup ? 'Multilateral Group Call' : otherParticipant.name}
             </h1>
-            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-slate-900/90 border border-slate-700/80 text-xs font-mono text-slate-200 shadow-md">
+            {otherParticipant.nvId && <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-slate-900/90 border border-slate-700/80 text-xs font-mono text-slate-200 shadow-md">
               <span className="text-emerald-400 font-bold">NV-ID:</span>
-              <span>{otherParticipant.nvId || '0486XXXXXX'}</span>
+              <span>{otherParticipant.nvId}</span>
               <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
-            </div>
+            </div>}
           </div>
 
           {/* Ringing Sound Wave Visualizer & Status */}
           <div className="space-y-2">
-            <div className="flex items-center justify-center gap-1.5 h-6">
-              {[25, 60, 95, 45, 80, 100, 70, 50, 85, 30].map((h, i) => (
-                <div
-                  key={i}
-                  style={{ height: `${h}%` }}
-                  className="w-1.5 rounded-full bg-gradient-to-t from-emerald-400 to-teal-300 animate-pulse shadow-sm"
-                />
-              ))}
-            </div>
             <div className="text-xs text-slate-200 font-mono flex flex-col items-center justify-center gap-1 drop-shadow-md">
-              <span className="text-emerald-300 font-bold animate-pulse text-sm">Ringing...</span>
-              <span className="text-slate-400 text-[11px]">Waiting for recipient to answer • Secure End-to-End Signaling</span>
+              <span className="text-emerald-300 font-bold text-sm">Ringing</span>
             </div>
           </div>
         </div>
@@ -316,6 +299,7 @@ export const ActiveCallModal: React.FC = () => {
               id="btn-caller-toggle-mute"
               type="button"
               onClick={toggleCallMute}
+              aria-label={activeCall.isMuted ? 'Unmute microphone' : 'Mute microphone'}
               className={`w-12 h-12 sm:w-14 sm:h-14 rounded-full flex items-center justify-center border transition-all cursor-pointer shadow-lg active:scale-95 ${
                 activeCall.isMuted
                   ? 'bg-rose-500/20 border-rose-500 text-rose-400'
@@ -336,6 +320,7 @@ export const ActiveCallModal: React.FC = () => {
               id="btn-caller-toggle-keys"
               type="button"
               onClick={() => setShowCallerKeypad((prev) => !prev)}
+              aria-label={showCallerKeypad ? 'Close keypad' : 'Open keypad'}
               className={`w-12 h-12 sm:w-14 sm:h-14 rounded-full flex items-center justify-center border transition-all cursor-pointer shadow-lg active:scale-95 ${
                 showCallerKeypad
                   ? 'bg-emerald-500 text-slate-950 border-emerald-400 shadow-emerald-500/30 font-bold'
@@ -354,6 +339,7 @@ export const ActiveCallModal: React.FC = () => {
               id="btn-cancel-ringing-call"
               type="button"
               onClick={endCall}
+              aria-label="End call"
               className="w-16 h-16 sm:w-18 sm:h-18 rounded-full bg-gradient-to-tr from-rose-600 to-rose-500 hover:from-rose-500 hover:to-rose-400 active:scale-95 text-white flex items-center justify-center shadow-2xl shadow-rose-600/60 transition-all hover:scale-105 cursor-pointer border-2 border-rose-400/40"
               title="Cancel / End Call"
             >
@@ -368,6 +354,7 @@ export const ActiveCallModal: React.FC = () => {
               id="btn-caller-toggle-speaker"
               type="button"
               onClick={() => setIsSpeakerOn((prev) => !prev)}
+              aria-label={isSpeakerOn ? 'Mute speaker' : 'Unmute speaker'}
               className={`w-12 h-12 sm:w-14 sm:h-14 rounded-full flex items-center justify-center border transition-all cursor-pointer shadow-lg active:scale-95 ${
                 isSpeakerOn
                   ? 'bg-cyan-500/20 border-cyan-400 text-cyan-300'
@@ -387,6 +374,7 @@ export const ActiveCallModal: React.FC = () => {
                 id="btn-caller-toggle-camera"
                 type="button"
                 onClick={toggleCallVideo}
+                aria-label={activeCall.isVideoOff ? 'Turn camera on' : 'Turn camera off'}
                 className={`w-12 h-12 sm:w-14 sm:h-14 rounded-full flex items-center justify-center border transition-all cursor-pointer shadow-lg active:scale-95 ${
                   activeCall.isVideoOff
                     ? 'bg-rose-500/20 border-rose-500 text-rose-400'
@@ -592,9 +580,7 @@ export const ActiveCallModal: React.FC = () => {
         {isGroup && (
           <div className="w-full max-w-5xl max-h-[70vh] overflow-y-auto">
             <div className="mb-3 flex items-center justify-between px-2">
-              <div className="text-xs text-slate-400">
-                Group Langpretation Fan-Out Active · Output routed per participant language
-              </div>
+              <div className="text-xs text-slate-400">Group call</div>
               <span className="px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300 text-[10px] font-mono">
                 {activeCall.participants.length} Participants
               </span>
@@ -712,6 +698,7 @@ export const ActiveCallModal: React.FC = () => {
             <button
               id="call-btn-video"
               onClick={toggleCallVideo}
+              aria-label={activeCall.host.isCameraOff ? 'Turn camera on' : 'Turn camera off'}
               className={`w-13 h-13 sm:w-14 sm:h-14 rounded-full flex items-center justify-center transition-all shadow-md cursor-pointer ${
                 activeCall.host.isCameraOff || !isVideo
                   ? 'bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700'
@@ -729,6 +716,7 @@ export const ActiveCallModal: React.FC = () => {
             <button
               id="call-btn-langpretation"
               onClick={toggleCallLangpretation}
+              aria-label={activeCall.langpretationEnabled ? 'Turn Langpretation off' : 'Turn Langpretation on'}
               className={`px-4 h-13 sm:h-14 rounded-full flex items-center gap-2 font-bold text-xs transition-all shadow-md cursor-pointer ${
                 activeCall.langpretationEnabled
                   ? 'bg-emerald-500 hover:bg-emerald-400 text-slate-950 shadow-lg shadow-emerald-500/40'
@@ -753,6 +741,7 @@ export const ActiveCallModal: React.FC = () => {
             <button
               id="call-btn-chat"
               onClick={() => setShowInCallChat(!showInCallChat)}
+              aria-label={showInCallChat ? 'Close in-call chat' : 'Open in-call chat'}
               className={`w-13 h-13 sm:w-14 sm:h-14 rounded-full flex items-center justify-center transition-all shadow-md cursor-pointer ${
                 showInCallChat
                   ? 'bg-indigo-600 text-white shadow-indigo-600/30 border border-indigo-400'
@@ -770,6 +759,7 @@ export const ActiveCallModal: React.FC = () => {
             <button
               id="call-btn-mute"
               onClick={toggleCallMute}
+              aria-label={activeCall.host.isMuted ? 'Unmute microphone' : 'Mute microphone'}
               className={`w-13 h-13 sm:w-14 sm:h-14 rounded-full flex items-center justify-center transition-all shadow-md cursor-pointer ${
                 activeCall.host.isMuted
                   ? 'bg-rose-500/20 text-rose-400 border border-rose-500/40'
@@ -789,6 +779,7 @@ export const ActiveCallModal: React.FC = () => {
             <button
               id="call-btn-end"
               onClick={endCall}
+              aria-label="End call"
               className="w-13 h-13 sm:w-14 sm:h-14 rounded-full bg-rose-600 hover:bg-rose-500 active:scale-95 text-white flex items-center justify-center shadow-lg shadow-rose-600/40 transition-all hover:scale-105 cursor-pointer"
               title="End call"
             >

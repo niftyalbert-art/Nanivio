@@ -270,7 +270,7 @@ export const VideoCallScreen: React.FC<VideoCallScreenProps> = ({ onEndCall }) =
   const callConnectionLabel = (() => {
     switch (activeCall?.status) {
       case 'ringing':
-        return 'Ringing';
+        return 'Calling';
       case 'calling':
         return 'Calling';
       case 'connecting':
@@ -278,11 +278,11 @@ export const VideoCallScreen: React.FC<VideoCallScreenProps> = ({ onEndCall }) =
       case 'ended':
         return 'Call ended';
       case 'connected':
-        if (agoraStats?.hasRemoteMedia) return 'Remote media connected';
-        if (agoraStats?.hasLocalMedia) return 'Local media ready · waiting for remote media';
-        return 'Waiting for remote media';
+        if (agoraStats?.hasRemoteMedia) return 'Connected';
+        if (agoraStats?.hasLocalMedia) return 'Waiting';
+        return 'Waiting';
       default:
-        return 'Call status unavailable';
+        return 'Status unavailable';
     }
   })();
   const showMediaError = !!activeCall?.mediaError && activeCall.mediaError !== dismissedMediaError;
@@ -655,19 +655,22 @@ export const VideoCallScreen: React.FC<VideoCallScreenProps> = ({ onEndCall }) =
                 </div>
 
                 {remoteLang&&supportsPalabraPair(hostLang.code,remoteLang.code)&&(
-                  <div className="order-last basis-full border-t border-white/10 pt-2 space-y-1 text-[10px] text-slate-200">
-                    <label className="flex min-h-10 items-center gap-2 cursor-pointer">
-                      <input type="checkbox" checked={preserveMyVoice} onChange={e=>setPreserveMyVoice(e.target.checked)}
-                        className="h-4 w-4 accent-amber-400" />
-                      <span>I allow my voice to be used for this call’s translation.</span>
-                    </label>
-                    <p className="text-slate-400">Experimental voice preservation adapts after about 10–20 seconds of speech. First words may use a standard voice.</p>
-                    <button type="button" className="min-h-9 underline text-amber-200" onClick={()=>{
-                      void liveTranslation.current?.unlock().then(()=>{setIsSpeakerOn(true);setSpeechStatus('Translated audio enabled.');})
-                        .catch(error=>setSpeechStatus(error.message));
-                    }}>Enable translated audio</button>
-                    {remoteVoiceAdapting&&<p>The other speaker requested voice preservation. Voice matching has not yet been verified.</p>}
-                  </div>
+                  <details className="order-last basis-full border-t border-white/10 pt-1 text-[10px] text-slate-200">
+                    <summary className="min-h-9 cursor-pointer py-2 font-semibold text-white/75">Voice options &amp; consent</summary>
+                    <div className="space-y-1 pb-2">
+                      <label className="flex min-h-10 items-center gap-2 cursor-pointer">
+                        <input type="checkbox" checked={preserveMyVoice} onChange={e=>setPreserveMyVoice(e.target.checked)}
+                          className="h-4 w-4 accent-amber-400" />
+                        <span>I allow my voice to be used for this call’s translation.</span>
+                      </label>
+                      <p className="text-slate-400">Voice matching is experimental; initial speech may use a standard voice.</p>
+                      <button type="button" className="min-h-9 underline text-amber-200" onClick={()=>{
+                        void liveTranslation.current?.unlock().then(()=>{setIsSpeakerOn(true);setSpeechStatus('Translated audio enabled.');})
+                          .catch(error=>setSpeechStatus(error.message));
+                      }}>Enable translated audio</button>
+                      {remoteVoiceAdapting&&<p>The other speaker requested voice preservation. Voice matching is not verified.</p>}
+                    </div>
+                  </details>
                 )}
 
                 {/* Center: Language Pair Pill with dropdown */}

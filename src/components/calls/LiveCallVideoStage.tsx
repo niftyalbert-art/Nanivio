@@ -1,21 +1,9 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import {
-  Camera,
   CameraOff,
-  Mic,
   MicOff,
   RotateCw,
-  Maximize2,
-  Minimize2,
-  Volume2,
-  Radio,
-  Wifi,
-  ShieldCheck,
-  Sparkles,
   RefreshCw,
-  Activity,
-  Lock,
-  Move,
   GripHorizontal,
 } from 'lucide-react';
 import type { Participant } from '../../types';
@@ -378,7 +366,7 @@ export const LiveCallVideoStage: React.FC<LiveCallVideoStageProps> = ({
             </div>
           </div>
           <p className="text-xs font-semibold text-white">{localParticipant.name}</p>
-          <span className="text-[10px] text-slate-400 mt-0.5">Camera Muted · Privacy Shield Active</span>
+          <span className="text-[10px] text-slate-400 mt-0.5">Camera off</span>
         </div>
       );
     }
@@ -420,7 +408,7 @@ export const LiveCallVideoStage: React.FC<LiveCallVideoStageProps> = ({
             <div className="flex h-24 w-24 items-center justify-center rounded-full border border-white/15 bg-slate-800 text-3xl font-semibold text-white">
               {remoteParticipant.initials || remoteParticipant.name?.slice(0, 2).toUpperCase()}
             </div>
-            <p className="text-sm text-slate-300">{audioOnly ? (remoteStream ? 'Audio call' : 'Waiting for remote audio…') : remoteStream ? 'Remote camera is off' : 'Waiting for remote media…'}</p>
+            <p className="text-sm text-slate-300">{audioOnly ? (remoteStream ? 'Audio call' : 'Waiting for audio') : remoteStream ? 'Camera off' : 'Waiting for media'}</p>
           </div>
         )}
 
@@ -431,10 +419,6 @@ export const LiveCallVideoStage: React.FC<LiveCallVideoStageProps> = ({
             <span className="font-medium text-slate-200">{audioOnly ? 'Audio call' : hasRemoteVideoTrack ? 'Remote video' : 'Camera off'}</span>
           </div>
 
-          <div className="hidden sm:flex items-center gap-1 px-2 py-1 rounded-full bg-black/40 backdrop-blur-md border border-white/10 text-[10px] text-slate-300">
-            <Wifi className="w-3 h-3 text-slate-300" />
-            <span>{remoteStream ? 'Media received' : 'Waiting'}</span>
-          </div>
         </div>
 
         {/* Remote Participant Label */}
@@ -456,9 +440,6 @@ export const LiveCallVideoStage: React.FC<LiveCallVideoStageProps> = ({
                     Speaking
                   </span>
                 )}
-              </span>
-              <span className="text-[10px] font-mono text-emerald-400">
-                {remoteParticipant.nvId ? `NV-ID: ${remoteParticipant.nvId}` : ''}
               </span>
             </div>
           </div>
@@ -513,10 +494,7 @@ export const LiveCallVideoStage: React.FC<LiveCallVideoStageProps> = ({
 
         {/* Drag Handle Top Bar Indicator */}
         <div className="absolute top-1.5 inset-x-0 flex items-center justify-center pointer-events-none z-20 opacity-80 group-hover:opacity-100 transition-opacity">
-          <div className="px-2 py-0.5 rounded-full bg-black/60 backdrop-blur-md border border-white/20 flex items-center gap-1 text-[9px] font-mono text-emerald-300">
-            <GripHorizontal className="w-3 h-3 text-emerald-400" />
-            <span>DRAG</span>
-          </div>
+            <GripHorizontal className="h-3.5 w-3.5 text-white/75" aria-hidden="true" />
         </div>
 
         {/* Hover/Tap Overlay with Swap & Flip Actions */}
@@ -526,6 +504,7 @@ export const LiveCallVideoStage: React.FC<LiveCallVideoStageProps> = ({
               e.stopPropagation();
               onTogglePiPSwap?.();
             }}
+            aria-label="Swap video positions"
             className="w-8 h-8 rounded-full bg-black/80 border border-white/30 text-white flex items-center justify-center hover:bg-emerald-500 hover:text-slate-950 transition-colors shadow-lg cursor-pointer active:scale-90"
             title="Swap video positions"
           >
@@ -538,6 +517,7 @@ export const LiveCallVideoStage: React.FC<LiveCallVideoStageProps> = ({
               disabled={isSwitchingCamera}
               onPointerDown={(event) => event.stopPropagation()}
               onClick={handleFlipCamera}
+              aria-label="Flip camera"
               className="w-8 h-8 rounded-full bg-black/80 border border-white/30 text-white flex items-center justify-center hover:bg-cyan-500 hover:text-slate-950 transition-colors shadow-lg cursor-pointer active:scale-90"
               title="Flip camera"
             >

@@ -20,7 +20,7 @@ export function validMalviAlignment(value: unknown, durationMs: number): value i
     && (!i || a.character_start_times_seconds[i] >= a.character_start_times_seconds[i - 1]));
 }
 
-export interface MalviCaptionTrack { alignment: MalviAlignment; durationMs: number }
+export interface MalviCaptionTrack { alignment: MalviAlignment; durationMs: number; continuePreviousCaption?: boolean }
 
 /** Gemini Live has no word timestamps. Never describe this pacing as alignment. */
 export function estimatedMalviCaptionTrack(text: unknown, durationMs: number, speechDurationMs = durationMs, allowEmpty = false): MalviCaptionTrack {
@@ -33,7 +33,7 @@ export function estimatedMalviCaptionTrack(text: unknown, durationMs: number, sp
   // reverb. A blank caption is intentional, not fabricated spoken text.
   const characters = Array.from(text || ' ');
   const step = speechDurationMs / characters.length / 1000;
-  return { durationMs, alignment: {
+  return { durationMs, ...(!text.trim() && allowEmpty ? {continuePreviousCaption:true} : {}), alignment: {
     characters,
     character_start_times_seconds: characters.map((_, i) => i * step),
     character_end_times_seconds: characters.map((_, i) => (i + 1) * step),
@@ -56,6 +56,7 @@ export class MalviCaptionPlayer {
   private pending: MalviCaptionTrack[] = [];
   private active: MalviCaptionTrack | null = null;
   private timer: ReturnType<typeof setInterval> | null = null;
+  private lastVisible = '';
   constructor(private update: (text: string, speaking: boolean) => void) {}
   enqueue(track: MalviCaptionTrack) {
     if (!validMalviAlignment(track.alignment, track.durationMs) || this.pending.length >= 64
@@ -72,9 +73,13 @@ export class MalviCaptionPlayer {
     this.stopTimer();
     this.pending.splice(this.pending.indexOf(next), 1);
     this.active = next;
+    if (!next.continuePreviousCaption) this.lastVisible = '';
     const tick = () => {
       const elapsed = clock();
-      this.update(malviCaptionAt(next, elapsed), elapsed !== null && elapsed >= 0 && elapsed < next.durationMs);
+      const speaking = elapsed !== null && elapsed >= 0 && elapsed < next.durationMs;
+      const text = malviCaptionAt(next, elapsed);
+      if (speaking && !next.continuePreviousCaption && text) this.lastVisible = text;
+      this.update(speaking && next.continuePreviousCaption ? this.lastVisible : text, speaking);
     };
     tick();
     this.timer = setInterval(tick, 40);
@@ -83,6 +88,7 @@ export class MalviCaptionPlayer {
     if (track && this.active !== track) return;
     this.stopTimer();
     this.active = null;
+    if (!track) this.lastVisible = '';
     this.update('', false);
   }
   cancel() { this.pending = []; this.finish(); }

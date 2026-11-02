@@ -21,6 +21,27 @@ Greetings should vary naturally rather than recite one fixed script.
 **How to apply:** Keep identity consistent, use the selected conversation language,
 and offer returning users continuation or a new topic without repeating introductions.
 
+Malvi should explain Nanivio's actual features and published billing clearly.
+An unsuccessful chat request must not insert or speak a canned substitute as
+though the configured brain answered the user.
+
+**Why:** The owner requested app-wide feature and billing knowledge and reported
+that the static conversation felt fake and did not respond properly.
+
+**How to apply:** Use authoritative current product information and published
+prices. Do not treat client-supplied conversation context as verified balances
+or payment proof. Preserve an unsuccessful message for an honest retry, rather
+than saving a fabricated answer into the conversation.
+
+Video-call screens should keep faces visible rather than cover the foreground
+with explanatory paragraphs.
+
+**Why:** The owner reported too much writing across the video-calling interface.
+
+**How to apply:** Keep essential controls, captions, consent and actionable
+errors available. Put optional explanations and diagnostics behind disclosure
+controls rather than removing necessary safety information.
+
 Mobile conversation subtitles must remain visible independently of optional call
 controls, including both the user's recognized speech and Malvi's reply.
 Subtitles must not cover Malvi's face on phones, tablets or computers.

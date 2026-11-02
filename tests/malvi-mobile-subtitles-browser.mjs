@@ -53,6 +53,7 @@ const bundle = await build({
         }):undefined}
         onInterrupt={noop} onPlayAudio={noop} audioBlocked
         caption={caption} userTranscript={text} brainReady microphoneOn
+        languageCode={new URLSearchParams(location.search).get('language') || 'en'}
         microphoneError="Please check microphone access." brainProvider="gemini"
         onToggleMicrophone={noop} references={[]} referenceStatus="idle"
         unavailableSources={[]} speaking memoryNotice="Conversation history available." />;
@@ -216,7 +217,26 @@ if (preview) {
         {activeTab:'billing',pending:{subTab:'malvi',purpose:'MALVI_SUBSCRIPTION'},closed:true});
       assert.equal(await page.evaluate("!!document.querySelector('[role=\"dialog\"]')"),false);
     }
-    console.log(JSON.stringify({ passed: true, viewports: 11, allowanceWarnings: true, voiceAndAvatarBillingShortcut: true, fullOverlay: true, uncroppedPortrait: true, transparentMediaShade: true, paidProviderRequests: 0 }));
+    for(const language of ['fr','ak','ar']){
+      for(const [width,height] of [[390,844],[640,360]]){
+        const page=await browser.page(`http://127.0.0.1:${server.address().port}/?low=30&language=${language}`);
+        await page.command('Emulation.setDeviceMetricsOverride',{width,height,deviceScaleFactor:1,mobile:true});
+        await page.wait('!!document.querySelector(\'[data-testid="malvi-allowance-notice"] button\')');
+        const layout=await page.evaluate(`(()=>{
+          const notice=document.querySelector('[data-testid="malvi-allowance-notice"]');
+          const mic=[...document.querySelectorAll('button')].find(b=>b.textContent.includes('Turn microphone off'));
+          const r=mic?.getBoundingClientRect();
+          return {dir:notice.dir,text:notice.textContent,micVisible:!!r&&r.y>=0&&r.bottom<=innerHeight+1,
+            overflow:document.documentElement.scrollWidth>innerWidth};
+        })()`);
+        assert.ok(layout.micVisible,`${language} ${width}x${height}: localized warning must not hide microphone`);
+        assert.equal(layout.overflow,false,`${language}: no horizontal overflow`);
+        assert.doesNotMatch(layout.text,/30 seconds or less|End & view plans/);
+        if(language==='ar')assert.equal(layout.dir,'rtl');
+        await browser.closePage?.(page);
+      }
+    }
+    console.log(JSON.stringify({passed:true,viewports:11,localizedViewports:6,allowanceWarnings:true,voiceAndAvatarBillingShortcut:true,fullOverlay:true,uncroppedPortrait:true,transparentMediaShade:true,paidProviderRequests:0}));
   } finally {
     await browser.close();
     await new Promise(resolve => server.close(resolve));

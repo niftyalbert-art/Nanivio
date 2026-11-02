@@ -15,12 +15,17 @@ adding a separate Voice plan while preserving existing plans and purchased
 benefits. Prices and allowances still require a provider-cost and quota basis.
 
 Warn users before their Malvi time runs out, not only after exhaustion.
+Usage and subscription prompts must use the user's preferred language, not
+force English on users who do not understand it.
 
-**Why:** The owner reported that minutes were ending without any advance prompt.
+**Why:** The owner reported that minutes were ending without any advance prompt
+and explicitly requested understandable, preferred-language usage messages.
 
 **How to apply:** Keep account-allowance warnings separate from inactivity and
 per-session limits. Preserve a clear route to Malvi billing without suggesting
 that buying minutes fixes an unrelated connection or provider failure.
+Localize the prompt and its action labels together, including right-to-left
+presentation where appropriate.
 
 Before pricing, determine all Malvi source usages and quotas.
 

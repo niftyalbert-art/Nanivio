@@ -697,6 +697,7 @@ export const MalviLiveAssistantProvider: React.FC<{ children: React.ReactNode }>
       assets={liveAssets}
         videoRef={videoRef} onVideoElement={attachVideo} phase={phase} error={error} secondsRemaining={secondsRemaining}
         allowanceSecondsRemaining={allowanceSecondsRemaining} allowanceUnavailable={allowanceUnavailable}
+        languageCode={preferredLanguage}
         onOpenBilling={() => openMalviSubscriptionPlans({ close, setPendingBillingAction, setActiveTab })}
         onClose={close} onInterrupt={interrupt} audioBlocked={audioBlocked} caption={caption}
         onSubscribe={malviAllowanceIsUsedUp(error) ? () => openMalviSubscriptionPlans({

@@ -21,6 +21,7 @@ import { MEDIA_TOOL } from './mediaResearch.ts';
 import { MAPS_TOOL } from './mapTools.ts';
 import { VISION_INSTRUCTION } from './visionInput.ts';
 import { AssistantError } from './redisStore.ts';
+import { getNanivioAppKnowledge } from './nanivioAppKnowledge.ts';
 
 type BrainEvent = (type: string, payload: Record<string, unknown>) => void;
 type BrainConnection = {
@@ -54,6 +55,7 @@ type BrainConnection = {
   isFirstTurn: boolean;
   research: ReturnType<typeof createConversationTools>;
   memory: MemoryState;
+  productKnowledge: string;
   memoryUser: string;
   memoryAssistant: string;
   memoryTurn: number;
@@ -252,6 +254,7 @@ async function connectGemini(
     config: {
       responseModalities: [Modality.AUDIO],
       systemInstruction: buildMalviLiveInstructions(connection.language, connection.provider)
+        + '\n\n' + connection.productKnowledge
         + conversationMemoryContext(connection.memory)
         + (connection.speechProvider === 'gemini' ? `\n\n${malviGeminiVoiceDirection(connection.language)}` : ''),
       speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: connection.speechProvider === 'gemini' ? MALVI_GEMINI_VOICE : 'Kore' } } },
@@ -417,13 +420,13 @@ async function connectOpenAI(
       type: 'session.start',
       session: {
         model: provider.model,
-        instructions: `${buildMalviLiveInstructions(connection.language, connection.provider)}${conversationMemoryContext(connection.memory)}\n${malviGreetingInstruction(connection.language, connection.memory.hasPrevious)}`,
+        instructions: `${buildMalviLiveInstructions(connection.language, connection.provider)}\n${connection.productKnowledge}${conversationMemoryContext(connection.memory)}\n${malviGreetingInstruction(connection.language, connection.memory.hasPrevious)}`,
         audio: { format: { type: 'audio/pcm', rate: 24000 }, output: { voice: process.env.MALVI_OPENAI_VOICE || 'marin' } },
         delegation: {
           type: 'responses',
           responses: {
             ...(process.env.MALVI_OPENAI_REASONING_MODEL ? { model: process.env.MALVI_OPENAI_REASONING_MODEL } : {}),
-            instructions: buildMalviLiveInstructions(connection.language, connection.provider) + conversationMemoryContext(connection.memory),
+            instructions: buildMalviLiveInstructions(connection.language, connection.provider) + '\n' + connection.productKnowledge + conversationMemoryContext(connection.memory),
             tools: [{ type: 'function', name: REFERENCE_TOOL_NAME, description: REFERENCE_TOOL_DESCRIPTION, parameters: REFERENCE_TOOL_PARAMETERS, strict: true },
               ...[MEMORY_TOOL, WEB_TOOL, MEDIA_TOOL, MAPS_TOOL].map(tool => ({ type: 'function', name: tool.name, description: tool.description, parameters: tool.parametersJsonSchema, strict: true }))],
             tool_choice: 'auto', parallel_tool_calls: false,
@@ -458,13 +461,14 @@ async function connectOpenAI(
 }
 
 function createConnection(socket: WebSocket, userId: string, sessionId: string, language: string, voiceOnly = false, speechProvider: MalviVoiceProvider = malviVoiceSetup().provider,
-  memory: MemoryState = { enabled: false, generation: 0, messages: [], hasPrevious: false }): BrainConnection {
+  memory: MemoryState = { enabled: false, generation: 0, messages: [], hasPrevious: false }, productKnowledge = ''): BrainConnection {
   const connection: BrainConnection = {
     socket,
     owner: userId,
     sessionId,
     provider: 'gemini',
     language,
+    productKnowledge,
     ready: false,
     changeLanguage: () => {},
     sendAudio: () => {},
@@ -566,15 +570,17 @@ export const malviLiveBrainController = {
       const current = activeBySession.get(sessionId);
       if (current) throw new Error('This live session already has an active brain connection.');
       let memory: MemoryState | undefined;
+      const knowledge = getNanivioAppKnowledge();
       try { memory = await readConversationMemory(userId); }
       catch {
         send(socket, 'malvi:brain_memory', { sessionId, status: 'unavailable', message: 'Saved account memory is unavailable. This session can continue without it.' });
       }
+      const productKnowledge = await knowledge;
       // Memory lookup is asynchronous: recheck after it to prevent duplicate starts.
       if (activeBySession.has(sessionId)) return;
       const fresh = await liveAvatarService.owned(userId, sessionId);
       if (socket.readyState !== socket.OPEN || activeBySession.has(sessionId)) return;
-      const connection = createConnection(socket, userId, sessionId, language.code, fresh.mode === 'VOICE_TEST' || fresh.mode === 'VOICE_ONLY', fresh.speechProvider, memory);
+      const connection = createConnection(socket, userId, sessionId, language.code, fresh.mode === 'VOICE_TEST' || fresh.mode === 'VOICE_ONLY', fresh.speechProvider, memory, productKnowledge);
       if (!activeBySocket.has(socket)) activeBySocket.set(socket, new Map());
       activeBySocket.get(socket)!.set(sessionId, connection);
       activeBySession.set(sessionId, connection);

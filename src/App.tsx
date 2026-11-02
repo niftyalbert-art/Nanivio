@@ -1,6 +1,7 @@
 import React from 'react';
 import { NanivioProvider, useNanivio } from './context/NanivioContext';
 import { NanivioCelebrationVideoEffect } from './components/common/NanivioCelebrationVideoEffect';
+import { prepareNanivioSignature } from './lib/nanivioSignatureMedia';
 import { NanivioAuthScreen } from './components/auth/NanivioAuthScreen';
 import { Navbar } from './components/Navbar';
 import { BottomNavigationBar } from './components/BottomNavigationBar';
@@ -26,12 +27,13 @@ import { ErrorBoundary } from './components/common/ErrorBoundary';
 import { NanivioLandingPage } from './components/landing/NanivioLandingPage';
 
 const MainLayout: React.FC = () => {
-  const { activeTab, incomingCall, acceptIncomingCall, declineIncomingCall } = useNanivio();
+  const { activeTab, incomingCall, acceptIncomingCall, declineIncomingCall, isAdmin } = useNanivio();
+  const adminWorkspace = isAdmin && activeTab === 'admin';
 
   return (
     <MalviLiveAssistantProvider>
     <div className={`nanivio-app nv-theme-dark ${activeTab === 'chat' ? 'chat-app-shell h-[100dvh] max-h-[100dvh]' : 'min-h-[100dvh]'} flex flex-col selection:bg-amber-200 selection:text-slate-900 w-full max-w-full overflow-x-hidden relative`}>
-      <Navbar compact={activeTab==='chat'} />
+      {!adminWorkspace && <Navbar compact={activeTab==='chat'} />}
 
       {/* Real-time Incoming Call Banner Overlay */}
       {incomingCall && (
@@ -43,7 +45,7 @@ const MainLayout: React.FC = () => {
         />
       )}
 
-      <main className={`nanivio-main ${activeTab === 'chat' ? 'chat-main flex min-h-0 flex-1 flex-col overflow-hidden pb-[calc(4.5rem+env(safe-area-inset-bottom))]' : 'flex-1 pb-24 sm:pb-28'} w-full max-w-full overflow-x-hidden`}>
+      <main className={`nanivio-main ${adminWorkspace ? 'flex-1' : activeTab === 'chat' ? 'chat-main flex min-h-0 flex-1 flex-col overflow-hidden pb-[calc(4.5rem+env(safe-area-inset-bottom))]' : 'flex-1 pb-24 sm:pb-28'} w-full max-w-full overflow-x-hidden`}>
         <ErrorBoundary
           key={activeTab}
           fallbackTitle={`Nanivio ${activeTab.charAt(0).toUpperCase() + activeTab.slice(1)} Workspace`}
@@ -63,10 +65,10 @@ const MainLayout: React.FC = () => {
       </main>
 
       {/* Malvi AI Floating Assistant Widget */}
-      <MalviFloatingWidget />
+      {!adminWorkspace && <MalviFloatingWidget />}
 
       {/* Bottom Unified Navigation Bar */}
-      <BottomNavigationBar />
+      {!adminWorkspace && <BottomNavigationBar />}
 
       {/* Global Modals */}
       <ChatToastNotification />
@@ -89,6 +91,9 @@ const AppOrchestrator: React.FC = () => {
   } = useNanivio();
   const [showPublicAuth, setShowPublicAuth] = React.useState(false);
   const isAdminRoute = typeof window !== 'undefined' && window.location.pathname === '/admin';
+  React.useEffect(() => {
+    if (!isAuthenticated && (showPublicAuth || isAdminRoute)) prepareNanivioSignature();
+  }, [isAuthenticated,showPublicAuth,isAdminRoute]);
 
   // The signature belongs only to a successful authentication, never app startup.
   if (isAuthenticated && activeCelebrationEffect?.show) {

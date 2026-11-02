@@ -25,6 +25,7 @@ import {
   MapPin,
   Navigation,
   Globe,
+  Home,
 } from 'lucide-react';
 import { useNanivio } from '../../context/NanivioContext';
 import { AdminFeatureSwitches, AdminPricingEngine } from '../../types';
@@ -38,6 +39,7 @@ import { AdminRideHailingMapsManager } from './AdminRideHailingMapsManager';
 import { AdminFeatureLauncher } from './AdminFeatureLauncher';
 import { AdminLangpretationManager } from './AdminLangpretationManager';
 import { AdminMalviBillingWorkspace } from './AdminMalviBillingWorkspace';
+import { AdminMalviOverview } from './AdminMalviOverview';
 
 export const AdminControlCenter: React.FC = () => {
   const {
@@ -55,6 +57,7 @@ export const AdminControlCenter: React.FC = () => {
     adminBusinessesList,
     adminDriversList,
     adminUsersList,
+    setActiveTab,
   } = useNanivio();
 
   const [adminSubTab, setAdminSubTab] = useState<'launcher' | 'langpretation' | 'rides-maps' | 'users' | 'experts' | 'businesses' | 'drivers' | 'gateways' | 'audit' | 'switches' | 'malvi-billing'>('launcher');
@@ -165,60 +168,35 @@ export const AdminControlCenter: React.FC = () => {
             <ShieldCheck className="w-6 h-6" />
           </div>
           <div>
+              <div className="mb-1 font-mono text-[9px] font-bold uppercase tracking-[.2em] text-amber-400">Nanivio / Operations</div>
             <div className="flex items-center gap-2">
               <h1 className="text-xl font-extrabold text-white">Nanivio Admin &amp; Operations Center</h1>
               <span className="px-2 py-0.5 rounded bg-amber-500/20 text-amber-300 text-[10px] font-bold border border-amber-500/30">
                 Super Admin
               </span>
             </div>
-            <p className="text-xs text-slate-400 mt-0.5">
-              Live feature switches, pricing engine, commission rates, and real-time session telemetry
-            </p>
+            <p className="text-xs text-slate-400 mt-0.5">Operations · identity, billing, access and platform controls</p>
           </div>
         </div>
 
-        <div className="flex items-center gap-2 bg-slate-950/80 px-3.5 py-2 rounded-2xl border border-slate-800 text-xs font-mono">
-          <Server className="w-4 h-4 text-emerald-400" />
-          <span className="text-slate-400">Node Cluster:</span>
-          <span className="text-emerald-400 font-bold">Accra Central (Online)</span>
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="flex items-center gap-2 bg-slate-950/80 px-3.5 py-2 rounded-xl border border-slate-800 text-xs font-mono">
+            <ShieldCheck className="w-4 h-4 text-amber-400" />
+            <span className="text-slate-400">Access scope</span>
+            <span className="text-white font-bold">Administrator</span>
+          </div>
+          <button
+            type="button"
+            onClick={() => setActiveTab('home')}
+            className="inline-flex min-h-10 items-center justify-center gap-2 rounded-xl border border-amber-400/50 bg-amber-400 px-4 py-2 text-xs font-bold text-slate-950 shadow-md shadow-amber-500/15 transition-colors hover:bg-amber-300 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-amber-200"
+          >
+            <Home className="h-4 w-4" aria-hidden="true" />
+            Return to Nanivio
+          </button>
         </div>
       </div>
 
-      {/* Real-time Telemetry Metrics */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-        <div className="bg-[#0c1424] border border-slate-800 rounded-2xl p-4 space-y-1">
-          <div className="text-xs text-slate-400 font-mono uppercase">Active Call Sessions</div>
-          <div className="text-2xl font-extrabold text-white font-mono flex items-center gap-2">
-            <span>{activeCall ? '1 Active' : '0 Active'}</span>
-            <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse" />
-          </div>
-          <div className="text-[10px] text-slate-500">1:1 &amp; Multilateral RTC</div>
-        </div>
-
-        <div className="bg-[#0c1424] border border-slate-800 rounded-2xl p-4 space-y-1">
-          <div className="text-xs text-slate-400 font-mono uppercase">Langpretation Mins (24h)</div>
-          <div className="text-2xl font-extrabold text-emerald-400 font-mono">
-            4,820 <span className="text-xs text-slate-400">mins</span>
-          </div>
-          <div className="text-[10px] text-emerald-500">Multilateral Langpretation Core</div>
-        </div>
-
-        <div className="bg-[#0c1424] border border-slate-800 rounded-2xl p-4 space-y-1">
-          <div className="text-xs text-slate-400 font-mono uppercase">Online Experts</div>
-          <div className="text-2xl font-extrabold text-amber-400 font-mono">
-            18 <span className="text-xs text-slate-400">verified</span>
-          </div>
-          <div className="text-[10px] text-slate-500">MDs, Legal, Interpreters</div>
-        </div>
-
-        <div className="bg-[#0c1424] border border-slate-800 rounded-2xl p-4 space-y-1">
-          <div className="text-xs text-slate-400 font-mono uppercase">Gross Settlement (Today)</div>
-          <div className="text-2xl font-extrabold text-white font-mono">
-            GH₵ 142.5k
-          </div>
-          <div className="text-[10px] text-slate-500">Cross-Border Rails &amp; MoMo</div>
-        </div>
-      </div>
+      <AdminMalviOverview />
 
       {/* ------------------------------------------------------------- */}
       {/* SUB-NAVIGATION TABS */}

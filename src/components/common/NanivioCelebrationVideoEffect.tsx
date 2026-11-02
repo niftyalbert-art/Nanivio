@@ -1,12 +1,9 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Play } from 'lucide-react';
+import { prepareNanivioSignature } from '../../lib/nanivioSignatureMedia';
 
 // Vite serves the existing upload in development and fingerprints it in builds.
 // Do not duplicate the video in public/ or recreate it with canvas effects.
-const welcomeVideoUrl = new URL(
-  '../../../attached_assets/7fa9a39190244f62ad3b118c4449b4fe_1792033302425.mp4',
-  import.meta.url,
-).href;
 
 interface NanivioCelebrationVideoEffectProps {
   mode?: 'signup' | 'signin';
@@ -18,6 +15,7 @@ export const NanivioCelebrationVideoEffect: React.FC<NanivioCelebrationVideoEffe
   onComplete,
 }) => {
   const videoRef = useRef<HTMLVideoElement>(null);
+  const videoHostRef = useRef<HTMLDivElement>(null);
   const onCompleteRef = useRef(onComplete);
   const completedRef = useRef(false);
   const [needsPlay, setNeedsPlay] = useState(false);
@@ -32,16 +30,34 @@ export const NanivioCelebrationVideoEffect: React.FC<NanivioCelebrationVideoEffe
 
   useEffect(() => {
     let active = true;
-    const video = videoRef.current;
+    // Reuse the actual preloaded media element rather than starting a second
+    // download/decode only after authentication has finished.
+    const video = prepareNanivioSignature();
     if (video) {
+      videoRef.current = video;
+      video.className = 'absolute inset-0 h-full w-full object-contain';
+      video.setAttribute('aria-hidden','true');
+      video.disablePictureInPicture = true;
+      video.disableRemotePlayback = true;
+      videoHostRef.current?.appendChild(video);
+      video.currentTime = 0;
+      video.onended = complete;
+      video.onerror = () => setHasError(true);
+      video.onplaying = () => setNeedsPlay(false);
       video.muted = false;
       video.volume = 1;
-      video.play().catch(() => {
+      if (video.error) setHasError(true);
+      else video.play().catch(() => {
         if (active) setNeedsPlay(true);
       });
     }
     return () => {
       active = false;
+      if (video) {
+        video.pause();
+        video.onended = video.onerror = video.onplaying = null;
+        video.remove();
+      }
     };
   }, [complete]);
 
@@ -71,22 +87,7 @@ export const NanivioCelebrationVideoEffect: React.FC<NanivioCelebrationVideoEffe
           {successMessage} The welcome video could not load. Select Continue to enter Nanivio.
         </p>
       ) : (
-        <video
-          ref={videoRef}
-          src={welcomeVideoUrl}
-          autoPlay
-          muted={false}
-          controls={false}
-          disablePictureInPicture
-          disableRemotePlayback
-          playsInline
-          preload="auto"
-          aria-hidden="true"
-          className="absolute inset-0 h-full w-full object-contain"
-          onPlay={() => setNeedsPlay(false)}
-          onEnded={complete}
-          onError={() => setHasError(true)}
-        />
+        <div ref={videoHostRef} data-testid="nanivio-signature-video" className="absolute inset-0" aria-hidden="true" />
       )}
 
       {needsPlay && !hasError && (

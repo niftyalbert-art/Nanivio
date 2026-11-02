@@ -31,7 +31,12 @@ export class GeminiNativeVoice {
   }
 
   /** 400 ms plus the retained 20 ms tail. Still use paired avatar A/V playback. */
-  ready(text: string) { return this.bytes >= 20_160 && Boolean(text.trim()); }
+  ready(text: string) {
+    // Transcription arrives in bursts and can run ahead of PCM. Once the
+    // utterance has started, do not stall its audio awaiting another word.
+    // The first packet still requires text, and finish() retains its bounds.
+    return this.bytes >= 20_160 && (this.emitted || Boolean(text.trim()));
+  }
 
   finish(text: string, final = true) {
     if (final && !this.bytes && !text.trim() && this.emitted) {

@@ -9,6 +9,7 @@ import type { MalviReferenceCitation } from '../../lib/malviLiveClient';
 import { authClient } from '../../lib/authClient';
 import { MalviUserTranscript } from './MalviUserTranscript';
 import { malviPublicCopy } from '../../lib/malviPublicCopy';
+import { getMalviUsageCopy } from '../../lib/malviUsageCopy';
 
 export interface MalviLiveOverlayProps {
   voiceOnly?: boolean;
@@ -19,6 +20,7 @@ export interface MalviLiveOverlayProps {
   secondsRemaining: number;
   allowanceSecondsRemaining?: number | null;
   allowanceUnavailable?: boolean;
+  languageCode?: string | null;
   onOpenBilling?: () => void;
   onClose: () => void;
   onRetry?: () => void;
@@ -66,6 +68,7 @@ export const MalviLiveOverlay: React.FC<MalviLiveOverlayProps> = ({
   secondsRemaining,
   allowanceSecondsRemaining = null,
   allowanceUnavailable = false,
+  languageCode = 'en',
   onOpenBilling,
   onClose,
   onRetry,
@@ -93,6 +96,7 @@ export const MalviLiveOverlay: React.FC<MalviLiveOverlayProps> = ({
   assets,
   speechProvider = 'gemini',
 }) => {
+  const usageCopy = getMalviUsageCopy(languageCode);
   const dialogRef = useRef<HTMLDivElement>(null);
   const closeButtonRef = useRef<HTMLButtonElement>(null);
   const cameraVideoRef = useRef<HTMLVideoElement>(null);
@@ -351,7 +355,7 @@ export const MalviLiveOverlay: React.FC<MalviLiveOverlayProps> = ({
         {(phase === 'connecting' || phase === 'connected') && onOpenBilling && (
           <div className="shrink-0 px-4 pt-2 sm:px-7">
             <MalviAllowanceNotice remainingSeconds={allowanceSecondsRemaining}
-              unavailable={allowanceUnavailable} onViewPlans={onOpenBilling} />
+              unavailable={allowanceUnavailable} onViewPlans={onOpenBilling} languageCode={languageCode} />
           </div>
         )}
 
@@ -519,15 +523,19 @@ export const MalviLiveOverlay: React.FC<MalviLiveOverlayProps> = ({
               )}
               {phase === 'error' && (
                 <div role="alert" className="text-[#f0ded0]">
-                  <p className="flex items-center justify-center gap-2 font-medium">
+                  <p dir={onSubscribe ? usageCopy.direction : undefined} className="flex items-center justify-center gap-2 font-medium">
                     <AlertCircle size={15} className="shrink-0 text-[#e6c4a9]" />
-                    {onSubscribe ? 'Malvi minutes used up' : 'We couldn’t connect just now'}
+                    {onSubscribe ? usageCopy.subscriptionTitle : 'We couldn’t connect just now'}
                   </p>
-                  <p className="mt-1">{malviPublicCopy(error || 'Please close this window and try again.')}</p>
+                  <p dir={onSubscribe ? usageCopy.direction : undefined} className="mt-1">
+                    {onSubscribe ? usageCopy.subscriptionBody : malviPublicCopy(error || 'Please close this window and try again.')}
+                  </p>
                   {onSubscribe ? (
-                    <button type="button" onClick={onSubscribe} aria-label="Subscribe to Malvi"
+                    <button type="button" onClick={onSubscribe}
+                      aria-label={usageCopy.subscribe === 'Subscribe' ? 'Subscribe to Malvi' : usageCopy.subscribe}
+                      dir={usageCopy.direction}
                       className="mt-3 min-h-11 rounded-xl bg-[#e3d09a] px-5 py-2 font-semibold text-[#10201f] transition-colors hover:bg-[#f2e2b8] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#e3d09a]">
-                      Subscribe
+                      {usageCopy.subscribe}
                     </button>
                   ) : onRetry && <button type="button" onClick={onRetry} className="mt-3 rounded-xl border border-[#e3d09a]/60 px-4 py-2 font-semibold text-[#e3d09a]">Start a new conversation</button>}
                 </div>

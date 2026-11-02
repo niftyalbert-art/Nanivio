@@ -20,9 +20,12 @@ import {
   Zap,
   Clock,
   Sparkles,
+  Clock3,
+  X,
 } from 'lucide-react';
 import { useNanivio } from '../../context/NanivioContext';
 import { NanivioUser, AccountRole, AccountStatus, UserDossierResponse } from '../../types/auth';
+import { AdminMalviAdjustment } from './AdminMalviAdjustment';
 
 export const AdminUserDirectory: React.FC = () => {
   const {
@@ -43,6 +46,7 @@ export const AdminUserDirectory: React.FC = () => {
   const [actionReason, setActionReason] = useState('');
   const [actionTargetUser, setActionTargetUser] = useState<NanivioUser | null>(null);
   const [actionType, setActionType] = useState<'SUSPEND' | 'REACTIVATE' | 'DEACTIVATE' | null>(null);
+  const [malviAdjustmentUser, setMalviAdjustmentUser] = useState<NanivioUser | null>(null);
 
   // Admin Subscription & Minutes Granting State
   const [subscriptionTargetUser, setSubscriptionTargetUser] = useState<NanivioUser | null>(null);
@@ -352,6 +356,16 @@ export const AdminUserDirectory: React.FC = () => {
                           <span>Plan &amp; Time</span>
                         </button>
 
+                        <button
+                          type="button"
+                          onClick={() => setMalviAdjustmentUser(user)}
+                          className="px-2.5 py-1 rounded-lg bg-[#30291b] hover:bg-[#3a3220] text-[#f0d184] border border-[#655638] text-[11px] font-semibold transition-colors flex items-center gap-1"
+                          title={`Adjust Malvi voice or avatar minutes for ${user.displayName}`}
+                        >
+                          <Clock3 className="w-3 h-3" />
+                          <span>Malvi minutes</span>
+                        </button>
+
                         {user.status === 'ACTIVE' ? (
                           <button
                             onClick={() => {
@@ -382,9 +396,10 @@ export const AdminUserDirectory: React.FC = () => {
                             setActionType('DEACTIVATE');
                           }}
                           className="px-2 py-1 rounded-lg hover:bg-slate-800 text-slate-500 hover:text-red-400 transition-colors text-[11px]"
-                          title="Deactivate / Delete"
+                          title="Deactivate account"
+                          aria-label={`Deactivate ${user.displayName}`}
                         >
-                          ✕
+                          <X className="w-3.5 h-3.5" />
                         </button>
                       </div>
                     </td>
@@ -819,6 +834,20 @@ export const AdminUserDirectory: React.FC = () => {
             </div>
           </div>
         </div>
+      )}
+      {malviAdjustmentUser && (
+        <AdminMalviAdjustment
+          user={malviAdjustmentUser}
+          onClose={() => setMalviAdjustmentUser(null)}
+          onSuccess={async () => {
+            window.dispatchEvent(new CustomEvent('nanivio:admin-malvi-adjusted'));
+            await loadUsers();
+            if (selectedDossier && selectedDossier.user.id === malviAdjustmentUser.id) {
+              const dossier = await searchDossierByNvId(malviAdjustmentUser.nvId);
+              if (dossier) setSelectedDossier(dossier);
+            }
+          }}
+        />
       )}
     </div>
   );
