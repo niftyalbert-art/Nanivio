@@ -499,3 +499,31 @@ mtime_ms = 1793473460608
 storage_uri = "gcs://replit-rams-assets-sisko/rams/assets/repl:8a53f482-19ae-49f0-ab16-31b527f92091/25b007a4-ca59-4b65-9e2b-b994110d52dc/87599307-5c7a-4e83-9049-cbe1fe26ebd9"
 storage_version_token = "1793473478015467"
 content_type = "audio/wav"
+
+[[outputs]]
+id = "ZpthC6O0e1KS2qqgNmCZh"
+uri = "file://generated-artifacts/nanivio-landing-concise-mobile.jpg"
+type = "image"
+title = "Nanivio landing — mobile review"
+description = "Shorter copy, illuminated chat card and raised cream controls. Actual updated app screenshot."
+logical_id = "88eb0187-e673-4a24-a964-daf7c8c91a47"
+content_hash = "sha256:9c0f8b8a2dc45cc1a0e47a5480cd2ae41f72bf24e3cce2f8439da88b05639ad4"
+size = 41300
+mtime_ms = 1793590712911
+storage_uri = "gcs://replit-rams-assets-sisko/rams/assets/repl:8a53f482-19ae-49f0-ab16-31b527f92091/88eb0187-e673-4a24-a964-daf7c8c91a47/166a4add-26e4-4869-9837-13f151360bc4"
+storage_version_token = "1793590777020726"
+content_type = "image/jpeg"
+
+[[outputs]]
+id = "FB2QnTnu8aEAjV7GHLCeJ"
+uri = "file://generated-artifacts/nanivio-landing-concise-desktop.jpg"
+type = "image"
+title = "Nanivio landing — desktop review"
+description = "Artistic communication layout with compact feature labels. Actual updated app screenshot."
+logical_id = "357b5b01-4c52-4549-8f0f-78ca56581cbe"
+content_hash = "sha256:2b75fc315b5cb1c798cf12103d47d591faedbac8a5ce1400d39cf438baada298"
+size = 71466
+mtime_ms = 1793590716223
+storage_uri = "gcs://replit-rams-assets-sisko/rams/assets/repl:8a53f482-19ae-49f0-ab16-31b527f92091/357b5b01-4c52-4549-8f0f-78ca56581cbe/c95acb6c-0054-499b-ae62-cb18c9d078a1"
+storage_version_token = "1793590778317525"
+content_type = "image/jpeg"

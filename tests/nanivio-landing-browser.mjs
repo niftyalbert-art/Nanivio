@@ -16,14 +16,16 @@ try {
     assert.equal(await page.evaluate(`Array.from(document.querySelectorAll('.nanivio-landing a[href^="#"]'))
       .every(a=>!!document.getElementById(a.hash.slice(1)))`), true, 'every anchor has a destination');
     assert.equal(await page.evaluate("Array.from(document.images).filter(i=>i.complete && i.naturalWidth===0).length"), 0);
+    assert.ok(await page.evaluate(`document.querySelector('.nanivio-landing').innerText.trim().split(/\\s+/).length <= 140`), `${width}: landing stays concise`);
+    assert.ok(await page.evaluate('document.documentElement.scrollHeight <= 1700'), `${width}: no long promotional scroll`);
+    assert.equal(await page.evaluate("document.querySelectorAll('.nl-faq-item').length"), 0, 'long FAQ removed intentionally');
+    assert.equal(await page.evaluate("Boolean(document.querySelector('.nl-illustrative'))"), true, 'sample chat is labeled as illustrative');
   }
   await page.command('Emulation.setDeviceMetricsOverride', { width: 390, height: 844, deviceScaleFactor: 1, mobile: true });
   await page.evaluate("document.querySelector('.nl-menu-toggle').click()");
   assert.equal(await page.evaluate("document.querySelector('.nl-menu-toggle').getAttribute('aria-expanded')"), 'true');
-  await page.evaluate("document.querySelector('.nl-nav a[href=\"#malvi\"]').click()");
+  await page.evaluate("document.querySelector('.nl-nav a[href=\"#experience\"]').click()");
   assert.equal(await page.evaluate("document.querySelector('.nl-menu-toggle').getAttribute('aria-expanded')"), 'false');
-  await page.evaluate("document.querySelectorAll('.nl-faq-item button')[1].click()");
-  assert.equal(await page.evaluate("document.querySelectorAll('.nl-faq-item button')[1].getAttribute('aria-expanded')"), 'true');
   await page.evaluate("document.querySelector('.nl-hero-actions button').click()");
   await page.wait("Boolean(document.querySelector('.nanivio-auth input[type=\"email\"]')) && document.querySelectorAll('.nanivio-auth input[type=\"password\"]').length === 2");
   assert.equal(await page.evaluate("document.querySelectorAll('.nanivio-auth input[type=\"password\"]').length"), 2, 'get started opens signup with password confirmation');
@@ -35,7 +37,7 @@ try {
   await page.command('Page.navigate', { url: origin + '/admin' });
   await page.wait("Boolean(document.querySelector('.nanivio-auth'))");
   assert.equal(await page.evaluate("Boolean(document.querySelector('.nanivio-landing'))"), false, 'admin gateway remains separate');
-  console.log(JSON.stringify({ passed: true, viewports: 4, anchorNavigation: true, mobileMenu: true, faq: true, signup: true, signIn: true, adminGatewayPreserved: true }));
+  console.log(JSON.stringify({ passed: true, viewports: 4, conciseCopy: true, compactPage: true, illustrativeLabel: true, anchorNavigation: true, mobileMenu: true, signup: true, signIn: true, adminGatewayPreserved: true }));
 } finally {
   await browser.close();
 }

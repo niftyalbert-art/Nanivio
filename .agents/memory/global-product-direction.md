@@ -39,6 +39,16 @@ Keep Home product-focused while retaining Nanivio's communication purpose; do no
 invent banking services or account balances to achieve the requested feel.
 Present source-based desktop/mobile reviews; clearly label any sample chat data.
 
+The public landing page should be short and artistic, with communication visuals
+doing most of the work rather than repeated promotional writing or long explanations.
+
+**Why:** The user said the landing page had too much writing and supplied its
+chat-card screenshot as the reference for a shorter, artistic communication look.
+
+**How to apply:** Keep brief headline/supporting copy, the dimensional cream
+actions and illuminated conversation illustration. Do not expand it back into a
+long brochure-style landing page when adding product capabilities.
+
 The user reiterated that the persistent “Direct & Group Chats, Community Channels”
 card must be removed, with those destinations available under one click. The
 conversation and multiline composer must have full usable space, including visible
