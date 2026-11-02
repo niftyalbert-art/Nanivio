@@ -597,3 +597,31 @@ mtime_ms = 1793594258787
 storage_uri = "gcs://replit-rams-assets-sisko/rams/assets/repl:8a53f482-19ae-49f0-ab16-31b527f92091/5aae2b3f-6d06-45f1-9b2f-6c2ce822f8ea/6966698a-143c-4a35-97b2-a5a74e960e30"
 storage_version_token = "1793594407159820"
 content_type = "image/png"
+
+[[outputs]]
+id = "Q4cLdHe_9nrIDK_C03Je6"
+uri = "file://generated-artifacts/chat-langpretation-checks/en-fr.wav"
+type = "audio"
+title = "French voice-note test output"
+description = "Real provider output from the existing 2.56-second English recording. Decodes successfully; language accuracy and speaker similarity have not been approved."
+logical_id = "0273d086-45cd-42e4-8a7c-1343f66aaa07"
+content_hash = "sha256:e71c3b6dac14db3ddb4f4df09e234a45518a766985d7b5a3b92a2ae963c59b9d"
+size = 100584
+mtime_ms = 1793595399693
+storage_uri = "gcs://replit-rams-assets-sisko/rams/assets/repl:8a53f482-19ae-49f0-ab16-31b527f92091/0273d086-45cd-42e4-8a7c-1343f66aaa07/a8b66e69-f566-4c9f-9c62-42c6c863ffea"
+storage_version_token = "1793595539609482"
+content_type = "audio/wav"
+
+[[outputs]]
+id = "bSqLD3AQN8fmw2D1kyVQd"
+uri = "file://generated-artifacts/chat-langpretation-checks/en-ak.wav"
+type = "audio"
+title = "Twi voice-note test output"
+description = "Real provider output from the same short English recording. Decodes successfully; recognition rendered the Nanivio name incorrectly, so accuracy still needs attention."
+logical_id = "3fbaf04b-aa22-4874-9990-bd4718d48d01"
+content_hash = "sha256:ee09cfba2cdae7dd676f31b6664d48e60d4c652467fdd5241b405893608e7d88"
+size = 124986
+mtime_ms = 1793595404021
+storage_uri = "gcs://replit-rams-assets-sisko/rams/assets/repl:8a53f482-19ae-49f0-ab16-31b527f92091/3fbaf04b-aa22-4874-9990-bd4718d48d01/d682ffd0-dbb8-4474-8903-1619efc90cbc"
+storage_version_token = "1793595541140452"
+content_type = "audio/wav"
