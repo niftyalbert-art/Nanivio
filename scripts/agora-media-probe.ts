@@ -8,6 +8,7 @@ import { generateAgoraRtcToken } from '../src/server/agoraService';
 import { launchBrowser } from './live-call-checks/cdp.mjs';
 
 if (!process.argv.includes('--confirm-billable')) throw new Error('Explicit --confirm-billable required');
+const callType = process.argv.includes('--audio') ? 'audio' : 'video';
 const channel = `nv_probe_${randomUUID().replaceAll('-', '')}`;
 const bundle = await build({
   stdin: { resolveDir: process.cwd(), loader: 'js', contents: `
@@ -16,7 +17,7 @@ const bundle = await build({
     window.result={ready:true};
     window.begin=async()=>{
       try {
-        await agoraClient.joinChannel(${JSON.stringify(channel)},'fixture','Probe','video');
+        await agoraClient.joinChannel(${JSON.stringify(channel)},'fixture','Probe',${JSON.stringify(callType)});
         window.result.joined=true;
       } catch(e) {
         window.result.failure=callMediaFailureDetails(e);
@@ -86,10 +87,11 @@ try {
   b=await browser.page(`http://127.0.0.1:${port}/?peer=b`);
   await Promise.all([a.wait('window.result?.ready===true'),b.wait('window.result?.ready===true')]);
   await Promise.all([a,b].map(page=>page.command('Runtime.evaluate',{expression:'void window.begin()',userGesture:true})));
-  await Promise.all([a,b].map(page=>page.wait('!!(window.result.failure||(window.result.joined&&window.result.audio&&window.result.video))',30000).catch(()=>{})));
+  const ready = `!!(window.result.failure||(window.result.joined&&window.result.audio${callType==='video'?'&&window.result.video':''}))`;
+  await Promise.all([a,b].map(page=>page.wait(ready,30000).catch(()=>{})));
   const peers=await Promise.all([a.evaluate('window.result'),b.evaluate('window.result')]);
-  const passed=peers.every(p=>p.joined&&p.audio&&p.video&&!p.failure);
-  console.log(JSON.stringify({passed,peers,syntheticMedia:true,customerAccountChanged:false}));
+  const passed=peers.every(p=>p.joined&&p.audio&&(callType==='audio'||p.video)&&!p.failure);
+  console.log(JSON.stringify({passed,callType,peers,syntheticMedia:true,customerAccountChanged:false}));
   if(!passed)process.exitCode=1;
 } finally {
   await Promise.all([a,b].filter(Boolean).map(page=>page.evaluate('window.finish?.()').catch(()=>{})));
