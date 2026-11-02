@@ -48,6 +48,7 @@ They then replaced that direction with a near-black/gold geometric-art reference
 and requested “no big caps within heading.”
 They clarified that only the style INSIDE the reference phone should be used,
 not an entire phone device image or mockup on the landing page.
+The user approved the corrected screen-only version after the phone frame was removed.
 
 **How to apply:** For the public landing page, prioritize the gold geometric
 artwork on near-black, minimal copy and small sentence-case headings instead of
