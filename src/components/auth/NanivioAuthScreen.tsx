@@ -7,7 +7,6 @@ import {
   Lock,
   Mail,
   ArrowRight,
-  Briefcase,
   Building2,
   AlertCircle,
   Eye,
@@ -22,6 +21,7 @@ import { useNanivio } from '../../context/NanivioContext';
 import { SUPPORTED_LANGUAGES, RideServiceTier } from '../../types';
 import { SupportedLanguageCode } from '../../types';
 import { CountryCallingCodeSelector } from '../common/CountryCallingCodeSelector';
+import { NanivioLogo } from '../common/NanivioLogo';
 import { getAllLanguages } from '../../i18n/languages';
 import { getAuthText } from '../../i18n/authTranslations';
 import { authClient } from '../../lib/authClient';
@@ -448,137 +448,62 @@ const handleAdminSignIn = async (e: React.FormEvent) => {
 
       {/* Header & Nanivio Identity */}
       <div className="auth-brand w-full max-w-xl mx-auto text-center mb-6 z-10 space-y-3">
-        <div className="flex flex-wrap items-center justify-center gap-2">
-          <div className="auth-brand-pill inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-white border border-emerald-100 text-emerald-800 text-xs font-semibold shadow-sm">
-            <span className="auth-status-dot w-2 h-2 rounded-full bg-emerald-600" />
-            <span>Nanivio · Connect across borders</span>
-          </div>
-
-          {/* Global App Interface Language Selector on Auth Screen - Live & Responsive */}
-          <div className="auth-language inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-white border border-[#e1ebe3] text-xs text-slate-700 shadow-sm">
-            <Globe className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
-            <span className="text-[11px] text-slate-400">{authTxt.languageLabel}</span>
-            <select
-              id="select-auth-screen-language"
-              aria-label="Interface Language"
-              value={appLanguage}
-              onChange={(e) => {
-                const newCode = e.target.value;
-                setAppLanguage(newCode);
-                setMyLanguage(newCode as any);
-                setPersonalLang(newCode as any);
-              }}
-              className="auth-language-select bg-transparent text-emerald-800 font-semibold text-xs border-none outline-none cursor-pointer pr-1"
-            >
-              {getAllLanguages()
-                .filter((l) => l.ui)
-                .map((l) => (
-                  <option key={l.code} value={l.code} className="bg-white text-slate-900">
-                    {l.flag} {l.name} ({l.nativeName})
-                  </option>
-                ))}
-            </select>
-          </div>
+        {/* Global App Interface Language Selector */}
+        <div className="auth-language inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-white border border-[#e1ebe3] text-xs text-slate-700 shadow-sm">
+          <Globe className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+          <span className="text-[11px] text-slate-400">{authTxt.languageLabel}</span>
+          <select
+            id="select-auth-screen-language"
+            aria-label="Interface Language"
+            value={appLanguage}
+            onChange={(e) => {
+              const newCode = e.target.value;
+              setAppLanguage(newCode);
+              setMyLanguage(newCode as any);
+              setPersonalLang(newCode as any);
+            }}
+            className="auth-language-select bg-transparent text-emerald-800 font-semibold text-xs border-none outline-none cursor-pointer pr-1"
+          >
+            {getAllLanguages()
+              .filter((l) => l.ui)
+              .map((l) => (
+                <option key={l.code} value={l.code} className="bg-white text-slate-900">
+                  {l.name} ({l.nativeName})
+                </option>
+              ))}
+          </select>
         </div>
 
         <div className="auth-wordmark pt-1 flex justify-center">
-          <svg className="auth-folded-mark" viewBox="0 0 64 48" role="img" aria-label="Nanivio mark">
-            <defs>
-              <linearGradient id="auth-gold-fold" x1="0" y1="0" x2="1" y2="1">
-                <stop offset="0" stopColor="#fff0a6" />
-                <stop offset=".42" stopColor="#e6b94f" />
-                <stop offset=".7" stopColor="#b77a20" />
-                <stop offset="1" stopColor="#f3d675" />
-              </linearGradient>
-            </defs>
-            <path d="M4 41V13C4 3 11 1 18 7L45 28V9L60 1V32C60 43 52 46 44 39L18 19V34Z" fill="url(#auth-gold-fold)" />
-            <path d="M45 9 60 1V32C60 38 57 41 53 41L45 28Z" fill="#a77526" opacity=".6" />
-            <path d="M8 6C11 4 14 4 18 7L45 28C49 32 53 33 58 31C56 37 50 38 44 33L18 13C13 9 10 8 8 10Z" fill="#fff0ad" opacity=".35" />
-          </svg>
-          <span className="auth-wordmark-name">Nanivio</span>
+          <NanivioLogo size="lg" className="auth-official-logo" />
         </div>
-
-        <p className="auth-tagline text-xs text-slate-400 max-w-md mx-auto leading-relaxed">
-          Message, call and share services with people around the world.
-        </p>
       </div>
 
       {/* Main Authentication Card */}
       <div className="auth-panel w-full max-w-xl mx-auto bg-white border border-[#e0ebe2] rounded-[28px] p-5 sm:p-8 shadow-[0_22px_70px_rgba(28,82,50,0.10)] z-10 space-y-6">
         <div className="auth-panel-heading">
-          <span className="auth-overline">{activeTab === 'signin' ? 'Your world, within reach' : 'Join the Nanivio community'}</span>
           <h1>{activeTab === 'signin' ? 'Welcome back' : activeTab === 'admin' ? 'Administrator access' : 'Create your account'}</h1>
           <p>{activeTab === 'signin' ? 'Sign in to continue your conversations.' : 'Connect across languages, borders and services.'}</p>
         </div>
         {/* Navigation Selector for Account Entry Options */}
-        <div className="auth-tabs grid grid-cols-4 gap-1 p-1 bg-slate-950/80 rounded-2xl border border-slate-800 text-[11px] sm:text-xs font-semibold w-full overflow-hidden" role="group" aria-label="Account type">
-          <button
-            id="tab-auth-signin"
-            aria-pressed={activeTab === 'signin'}
-            onClick={() => {
-              setActiveTab('signin');
+        <div className="auth-account-type">
+          <label htmlFor="select-auth-account-type">Account type</label>
+          <select
+            id="select-auth-account-type"
+            value={activeTab}
+            onChange={(e) => {
+              setActiveTab(e.target.value as typeof activeTab);
               clearMessages();
             }}
-            className={`py-2 sm:py-2.5 px-1 rounded-xl transition-all flex flex-col sm:flex-row items-center justify-center gap-1 sm:gap-1.5 ${
-              activeTab === 'signin'
-                ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 shadow-sm font-bold'
-                : 'text-slate-400 hover:text-white'
-            }`}
           >
-            <Lock className="w-3.5 h-3.5 shrink-0" />
-            <span className="truncate">{authTxt.tabSignIn}</span>
-          </button>
-
-          <button
-            id="tab-auth-personal"
-            aria-pressed={activeTab === 'personal'}
-            onClick={() => {
-              setActiveTab('personal');
-              clearMessages();
-            }}
-            className={`py-2 sm:py-2.5 px-1 rounded-xl transition-all flex flex-col sm:flex-row items-center justify-center gap-1 sm:gap-1.5 ${
-              activeTab === 'personal'
-                ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 shadow-sm font-bold'
-                : 'text-slate-400 hover:text-white'
-            }`}
-          >
-            <User className="w-3.5 h-3.5 shrink-0" />
-            <span className="truncate">{authTxt.tabPersonal}</span>
-          </button>
-
-          <button
-            id="tab-auth-expert"
-            aria-pressed={activeTab === 'expert'}
-            onClick={() => {
-              setActiveTab('expert');
-              clearMessages();
-            }}
-            className={`py-2 sm:py-2.5 px-1 rounded-xl transition-all flex flex-col sm:flex-row items-center justify-center gap-1 sm:gap-1.5 ${
-              activeTab === 'expert'
-                ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 shadow-sm font-bold'
-                : 'text-slate-400 hover:text-white'
-            }`}
-          >
-            <Briefcase className="w-3.5 h-3.5 shrink-0" />
-            <span className="truncate">{authTxt.tabExpert}</span>
-          </button>
-
-          <button
-            id="tab-auth-business"
-            aria-pressed={activeTab === 'business'}
-            onClick={() => {
-              setActiveTab('business');
-              clearMessages();
-            }}
-            className={`py-2 sm:py-2.5 px-1 rounded-xl transition-all flex flex-col sm:flex-row items-center justify-center gap-1 sm:gap-1.5 ${
-              activeTab === 'business'
-                ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 shadow-sm font-bold'
-                : 'text-slate-400 hover:text-white'
-            }`}
-          >
-            <Building2 className="w-3.5 h-3.5 shrink-0" />
-            <span className="truncate">{authTxt.tabBusiness}</span>
-          </button>
+            <option value="signin">{authTxt.tabSignIn}</option>
+            <option value="personal">{authTxt.tabPersonal}</option>
+            <option value="expert">{authTxt.tabExpert}</option>
+            <option value="business">{authTxt.tabBusiness}</option>
+            {(activeTab === 'admin' || (typeof window !== 'undefined' && window.location.pathname === '/admin')) && (
+              <option value="admin">Administrator</option>
+            )}
+          </select>
         </div>
 
         {/* Status Alerts */}
@@ -607,6 +532,10 @@ const handleAdminSignIn = async (e: React.FormEvent) => {
                 <input
                   id="input-signin-identifier"
                   type="text"
+                  name="username"
+                  autoComplete="username"
+                  autoCapitalize="none"
+                  spellCheck={false}
                   value={signInIdentifier}
                   onChange={(e) => setSignInIdentifier(e.target.value)}
                   placeholder={authTxt.identifierPlaceholder}
@@ -632,6 +561,7 @@ const handleAdminSignIn = async (e: React.FormEvent) => {
                 <input
                   id="input-signin-password"
                   type={showPassword ? 'text' : 'password'}
+                  autoComplete="current-password"
                   value={signInPassword}
                   onChange={(e) => setSignInPassword(e.target.value)}
                   placeholder={authTxt.passwordPlaceholder}
@@ -703,6 +633,8 @@ const handleAdminSignIn = async (e: React.FormEvent) => {
                 <input
                   id="input-personal-firstname"
                   type="text"
+                  name="given-name"
+                  autoComplete="given-name"
                   value={personalFirst}
                   onChange={(e) => setPersonalFirst(e.target.value)}
                   placeholder={authTxt.firstNamePlaceholder}
@@ -716,6 +648,8 @@ const handleAdminSignIn = async (e: React.FormEvent) => {
                 <input
                   id="input-personal-lastname"
                   type="text"
+                  name="family-name"
+                  autoComplete="family-name"
                   value={personalLast}
                   onChange={(e) => setPersonalLast(e.target.value)}
                   placeholder={authTxt.lastNamePlaceholder}
@@ -730,6 +664,10 @@ const handleAdminSignIn = async (e: React.FormEvent) => {
               <input
                 id="input-personal-email"
                 type="email"
+                name="email"
+                autoComplete="email"
+                autoCapitalize="none"
+                spellCheck={false}
                 value={personalEmail}
                 onChange={(e) => setPersonalEmail(e.target.value)}
                 placeholder={authTxt.emailPlaceholder}
@@ -808,6 +746,7 @@ const handleAdminSignIn = async (e: React.FormEvent) => {
                 <input
                   id="input-personal-password"
                   type="password"
+                  autoComplete="new-password"
                   value={personalPassword}
                   onChange={(e) => setPersonalPassword(e.target.value)}
                   placeholder="At least 8 characters"
@@ -822,6 +761,7 @@ const handleAdminSignIn = async (e: React.FormEvent) => {
                 <input
                   id="input-personal-password-confirm"
                   type="password"
+                  autoComplete="new-password"
                   value={personalConfirmPassword}
                   onChange={(e) => setPersonalConfirmPassword(e.target.value)}
                   placeholder="Repeat password"
@@ -887,6 +827,8 @@ const handleAdminSignIn = async (e: React.FormEvent) => {
                     <label className="text-xs font-semibold text-slate-300">First Name</label>
                     <input
                       type="text"
+                      name="given-name"
+                      autoComplete="given-name"
                       value={expertFirst}
                       onChange={(e) => setExpertFirst(e.target.value)}
                       placeholder="e.g. Kwame"
@@ -898,6 +840,8 @@ const handleAdminSignIn = async (e: React.FormEvent) => {
                     <label className="text-xs font-semibold text-slate-300">Last Name</label>
                     <input
                       type="text"
+                      name="family-name"
+                      autoComplete="family-name"
                       value={expertLast}
                       onChange={(e) => setExpertLast(e.target.value)}
                       placeholder="e.g. Mensah"
@@ -911,11 +855,14 @@ const handleAdminSignIn = async (e: React.FormEvent) => {
                   <label className="text-xs font-semibold text-slate-300">Professional Email</label>
                   <input
                     type="email"
+                    name="email"
+                    autoComplete="email"
+                    autoCapitalize="none"
+                    spellCheck={false}
                     value={expertEmail}
                     onChange={(e) => setExpertEmail(e.target.value)}
                       placeholder="you@example.com"
                     required
-                      autoComplete="email"
                     className="w-full px-3 py-2 bg-slate-950/80 border border-slate-800 rounded-xl text-xs text-white"
                   />
                 </div>
@@ -953,6 +900,7 @@ const handleAdminSignIn = async (e: React.FormEvent) => {
                   <label className="text-xs font-semibold text-slate-300">Password</label>
                   <input
                     type="password"
+                    autoComplete="new-password"
                     value={expertPassword}
                     onChange={(e) => setExpertPassword(e.target.value)}
                     placeholder="At least 8 characters"
@@ -1231,11 +1179,14 @@ const handleAdminSignIn = async (e: React.FormEvent) => {
                   <label className="text-xs font-semibold text-slate-300">Corporate Email</label>
                   <input
                     type="email"
+                    name="email"
+                    autoComplete="email"
+                    autoCapitalize="none"
+                    spellCheck={false}
                     value={bizEmail}
                     onChange={(e) => setBizEmail(e.target.value)}
                     placeholder="contact@example.com"
                     required
-                    autoComplete="email"
                     className="w-full px-3 py-2 bg-slate-950/80 border border-slate-800 rounded-xl text-xs text-white"
                   />
                 </div>
@@ -1311,6 +1262,7 @@ const handleAdminSignIn = async (e: React.FormEvent) => {
                   <label className="text-xs font-semibold text-slate-300">Create Corporate Password</label>
                   <input
                     type="password"
+                    autoComplete="new-password"
                     value={bizPassword}
                     onChange={(e) => setBizPassword(e.target.value)}
                     placeholder="At least 8 characters"
@@ -1399,6 +1351,10 @@ const handleAdminSignIn = async (e: React.FormEvent) => {
                     <label className="text-xs font-semibold text-slate-300">Email Address</label>
                     <input
                       type="email"
+                      name="email"
+                      autoComplete="email"
+                      autoCapitalize="none"
+                      spellCheck={false}
                       value={bizEmail}
                       onChange={(e) => setBizEmail(e.target.value)}
                     placeholder="you@example.com"

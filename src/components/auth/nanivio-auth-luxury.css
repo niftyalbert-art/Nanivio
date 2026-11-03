@@ -218,6 +218,7 @@
 .auth-luxury .auth-panel input:not([type="checkbox"]):not([type="radio"]),
 .auth-luxury .auth-panel textarea,
 .auth-luxury .auth-panel select {
+  min-width: 0;
   min-height: 44px;
   padding: .68rem .78rem;
   border: 1px solid #393833 !important;
@@ -379,4 +380,204 @@
   .auth-luxury .auth-brand,
   .auth-luxury .auth-panel { animation: none; }
   .auth-luxury .auth-panel button { transition: none; }
+}
+
+/* Nanivio identity correction: keep the official holographic mark and its
+   cyan-to-violet language, with a restrained dark/cream authentication canvas. */
+.nanivio-auth.auth-luxury {
+  --auth-ink: #f4f1e8;
+  --auth-muted: #aaaeb8;
+  --auth-brass: #62d7ee;
+  --auth-brass-light: #b59bff;
+  --auth-brass-dim: #657de8;
+  --auth-line: rgba(102, 205, 239, .24);
+  color: var(--auth-ink) !important;
+  background:
+    radial-gradient(ellipse at 50% -16%, rgba(59, 128, 185, .18), transparent 38rem),
+    radial-gradient(ellipse at 90% 78%, rgba(116, 82, 189, .12), transparent 30rem),
+    #10131b !important;
+}
+
+.auth-luxury > .auth-ambient,
+.auth-luxury > .auth-ambient::before,
+.auth-luxury > .auth-ambient::after {
+  border-color: rgba(103, 191, 230, .09) !important;
+}
+.auth-luxury > .auth-top-rule {
+  background: linear-gradient(90deg, transparent, rgba(110, 204, 238, .48), transparent) !important;
+}
+.nanivio-auth.auth-luxury .auth-brand-pill { display: none !important; }
+.auth-luxury .auth-tagline,
+.auth-luxury .auth-overline { display: none !important; }
+.auth-luxury .auth-brand {
+  max-width: 42rem !important;
+  margin-bottom: 1rem !important;
+  gap: .55rem !important;
+}
+.auth-luxury .auth-brand > div:first-child {
+  order: 2 !important;
+  width: auto !important;
+  flex-direction: row !important;
+}
+.auth-luxury .auth-wordmark {
+  order: 1 !important;
+  gap: 0 !important;
+  padding: 0 !important;
+}
+.auth-luxury .auth-official-logo {
+  justify-content: center;
+}
+.auth-luxury .auth-official-logo > div:first-child {
+  width: 58px !important;
+  height: 58px !important;
+}
+.auth-luxury .auth-official-logo img {
+  filter: drop-shadow(0 7px 22px rgba(84, 178, 231, .2));
+}
+.nanivio-auth.auth-luxury .auth-language {
+  min-height: 30px !important;
+  padding: .25rem .6rem !important;
+  border: 1px solid rgba(167, 183, 210, .18) !important;
+  border-radius: 999px !important;
+  background: rgba(21, 25, 35, .88) !important;
+  box-shadow: none !important;
+  color: #c3c8d3 !important;
+}
+.auth-luxury .auth-language svg { color: #73d4ea !important; }
+.nanivio-auth.auth-luxury .auth-language-select {
+  max-width: 9rem !important;
+  color: #e6e8ed !important;
+  font-size: .69rem !important;
+}
+.auth-luxury .auth-language-select option { background: #171b26 !important; color: #f2f0e9 !important; }
+
+.nanivio-auth.auth-luxury .auth-panel {
+  width: min(100%, 35rem) !important;
+  padding: clamp(1.25rem, 4vw, 2.35rem) !important;
+  border: 1px solid rgba(220, 224, 229, .15) !important;
+  border-radius: 1.45rem !important;
+  background: linear-gradient(145deg, rgba(255,255,255,.035), transparent 34%), #171a23 !important;
+  box-shadow: 0 28px 90px rgba(0,0,0,.48), inset 0 1px rgba(255,255,255,.04) !important;
+  color: #f4f1e8 !important;
+}
+.auth-luxury .auth-panel-heading { margin-bottom: 1.4rem !important; }
+.auth-luxury .auth-panel-heading h1 {
+  margin: 0 0 .45rem !important;
+  color: #f6f2e9 !important;
+  font-size: clamp(1.65rem, 5vw, 2.15rem) !important;
+  letter-spacing: -.045em !important;
+}
+.auth-luxury .auth-panel-heading p {
+  color: #aeb2be !important;
+  font-size: .88rem !important;
+}
+.auth-luxury .auth-account-type {
+  display: grid;
+  grid-template-columns: minmax(5rem, .35fr) minmax(0, 1fr);
+  align-items: center;
+  gap: .85rem;
+  margin: 0 0 1.25rem;
+}
+.auth-luxury .auth-account-type label {
+  color: #c8cbd3 !important;
+  font-size: .75rem !important;
+  font-weight: 600;
+}
+.nanivio-auth.auth-luxury .auth-account-type select {
+  width: 100%;
+  min-height: 44px;
+  padding: .65rem 2.35rem .65rem .8rem !important;
+  border: 1px solid rgba(157, 169, 192, .24) !important;
+  border-radius: .72rem !important;
+  background-color: #11151e !important;
+  color: #f1efe8 !important;
+  font-size: .84rem !important;
+}
+.auth-luxury .auth-account-type option { background: #171b26; color: #f4f1e8; }
+.auth-luxury .auth-tabs { display: none !important; }
+
+.nanivio-auth.auth-luxury .auth-panel input:not([type="checkbox"]):not([type="radio"]),
+.nanivio-auth.auth-luxury .auth-panel textarea,
+.nanivio-auth.auth-luxury .auth-panel select {
+  border-color: rgba(157, 169, 192, .24) !important;
+  border-radius: .72rem !important;
+  background-color: #11151e !important;
+  color: #f4f1e8 !important;
+  box-shadow: inset 0 1px 2px rgba(0,0,0,.18) !important;
+}
+.nanivio-auth.auth-luxury .auth-panel input:focus,
+.nanivio-auth.auth-luxury .auth-panel textarea:focus,
+.nanivio-auth.auth-luxury .auth-panel select:focus {
+  border-color: rgba(106, 213, 238, .78) !important;
+  background-color: #151a25 !important;
+  outline: 2px solid rgba(106, 213, 238, .14) !important;
+}
+.auth-luxury .auth-panel button[class~="bg-emerald-500"],
+.auth-luxury .auth-panel button[class~="bg-emerald-600"],
+.auth-luxury .auth-panel button[class*="from-emerald-500"],
+.auth-luxury .auth-panel button[class~="bg-amber-500"] {
+  border: 1px solid rgba(171, 231, 244, .72) !important;
+  background: linear-gradient(105deg, #8ae2ed, #81b8eb 60%, #a99bea) !important;
+  color: #111722 !important;
+  box-shadow: 0 8px 24px rgba(83, 170, 211, .14) !important;
+}
+.auth-luxury .auth-panel button[class~="bg-emerald-500"]:hover,
+.auth-luxury .auth-panel button[class~="bg-emerald-600"]:hover,
+.auth-luxury .auth-panel button[class*="from-emerald-500"]:hover,
+.auth-luxury .auth-panel button[class~="bg-amber-500"]:hover { filter: brightness(1.06); }
+.auth-luxury .auth-panel button[class*="bg-slate-800"],
+.auth-luxury .auth-panel button[class*="bg-slate-700"] {
+  border-color: rgba(157, 169, 192, .2) !important;
+  background: #252a36 !important;
+  color: #e6e7eb !important;
+}
+.auth-luxury .auth-panel button[class*="bg-slate-900"] {
+  border-color: rgba(157, 169, 192, .2) !important;
+  background: #1b202b !important;
+  color: #d9dbe2 !important;
+}
+.auth-luxury .auth-panel button[class*="text-emerald-400"],
+.auth-luxury .auth-panel button[class*="text-emerald-300"],
+.auth-luxury .auth-panel [class*="text-emerald-800"],
+.auth-luxury .auth-panel [class*="text-emerald-700"],
+.auth-luxury .auth-panel [class*="text-emerald-900"] { color: #7dd9e9 !important; }
+.auth-luxury .auth-panel [class*="text-emerald-200"] { color: #b7e7ed !important; }
+.auth-luxury .auth-panel [class*="border-emerald-"] { border-color: rgba(104, 204, 226, .24) !important; }
+.auth-luxury .auth-panel [class*="bg-emerald-950"],
+.auth-luxury .auth-panel [class*="bg-emerald-500/20"] { background: rgba(69, 145, 171, .13) !important; }
+.auth-luxury .auth-panel [class*="bg-emerald-50"],
+.auth-luxury .auth-panel [class*="bg-white"] {
+  border-color: rgba(156, 174, 201, .18) !important;
+  background: #202633 !important;
+}
+.auth-luxury .auth-panel [class*="text-slate-500"],
+.auth-luxury .auth-panel [class*="text-slate-400"] { color: #a6adbc !important; }
+.auth-luxury .auth-panel [class*="text-slate-300"] { color: #d2d5dd !important; }
+.auth-luxury .auth-panel [class*="text-white"] { color: #f4f1e8 !important; }
+.auth-luxury .auth-panel [class*="text-amber-700"],
+.auth-luxury .auth-panel [class*="text-amber-200"] { color: #c7c5d8 !important; }
+.auth-luxury .auth-panel [class*="border-t"] { border-color: rgba(157, 169, 192, .18) !important; }
+.auth-luxury .auth-panel .country-selector-choice > div > button {
+  border-color: rgba(157, 169, 192, .24) !important;
+  background: #11151e !important;
+  color: #f1efe8 !important;
+}
+.auth-luxury .auth-panel button:focus-visible,
+.auth-luxury .auth-panel input:focus-visible,
+.auth-luxury .auth-panel select:focus-visible,
+.auth-luxury .auth-panel textarea:focus-visible {
+  outline: 2px solid #75d9eb !important;
+  outline-offset: 3px;
+}
+.auth-luxury > .fixed.inset-0 > div {
+  border-color: rgba(111, 202, 229, .3) !important;
+  background: #171b26 !important;
+}
+
+@media (max-width: 767px) {
+  .auth-luxury .auth-brand { margin-bottom: .85rem !important; }
+  .auth-luxury .auth-brand > div:first-child { width: auto !important; flex-direction: row !important; }
+  .auth-luxury .auth-official-logo > div:first-child { width: 52px !important; height: 52px !important; }
+  .nanivio-auth.auth-luxury .auth-panel { padding: 1.1rem !important; }
+  .auth-luxury .auth-account-type { grid-template-columns: 1fr; gap: .4rem; }
 }

@@ -84,10 +84,18 @@ including Chat's colour and layout. Use that shared palette consistently; keep
 the full WhatsApp-style conversation/composer interactions. Malvi feature work
 comes afterwards.
 
-For sign-up and sign-in, the user supplied a black-and-gold luxury reference
-with a folded gold N and asked to maintain that logo design and colour while
-including Nanivio's registration details. Apply the screen styling, not a
-phone-device mockup. This request is scoped to the authentication entrance.
+For sign-up and sign-in, use the luxury reference's compact screen layout,
+not its gold logo or a phone-device mockup. Keep Nanivio's official logo and
+its original colours. Group Sign in, Personal, Expert and Business behind one
+account-choice control. Offer saved-email browser autofill while allowing the
+user to enter a preferred email manually.
+
+**Why:** The user corrected the yellow replacement as an “unfamiliar logo”
+and repeated that Nanivio's official logo and colour must remain.
+
+**How to apply:** A reference image is layout guidance, not permission to
+redraw or recolour official artwork. Keep the existing authentication and
+verification requirements when simplifying account entry.
 
 **Why:** The user clarified the international audience, rejected the washed-out
 white/green refresh, and approved bringing the Bybit-inspired direction to Nanivio.
