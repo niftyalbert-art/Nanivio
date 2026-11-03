@@ -6,7 +6,6 @@ import {
   Copy,
   CreditCard,
   Fingerprint,
-  Globe2,
   MessageCircle,
   Phone,
   Search,
@@ -18,7 +17,6 @@ import {
   Eye,
   EyeOff,
   Clock3,
-  Languages,
   MoreHorizontal,
   Send,
   Wallet,
@@ -26,6 +24,7 @@ import {
 import { useNanivio } from '../../context/NanivioContext';
 import { lookupNanivioUser } from '../../utils/userLookup';
 import { VerifiedServicesLocationSection } from './VerifiedServicesLocationSection';
+import { LangpretationIcon } from '../common/LangpretationIcon';
 import './HomeView.css';
 
 const currencyFormatter = (currency: string, amount: number) => {
@@ -168,7 +167,7 @@ export const HomeView: React.FC = () => {
   const shortcuts = [
     { title: 'Chat', description: 'Pick up a conversation', icon: MessageCircle, action: () => setActiveTab('chat'), accent: 'cyan' },
     { title: 'Call', description: 'Audio or video', icon: AudioLines, action: () => setActiveTab('calls'), accent: 'violet' },
-    { title: 'Langpretation', description: 'Language controls in chat', icon: Languages, action: () => setActiveTab('chat'), accent: 'cream' },
+    { title: 'Langpretation', description: 'Language controls in chat', icon: LangpretationIcon, action: () => setActiveTab('chat'), accent: 'cream' },
     { title: 'Send credits', description: 'Nanivio credits to another user', icon: Send, action: () => { setPendingBillingAction({ subTab: 'transfer' }); setActiveTab('billing'); }, accent: 'violet' },
     { title: 'My credits', description: 'Credits & billing', icon: Wallet, action: goToWallet, accent: 'cyan' },
     { title: 'More', description: 'Explore Nanivio', icon: MoreHorizontal, action: () => setMoreOpen((open) => !open), accent: 'cream' },
@@ -263,7 +262,7 @@ export const HomeView: React.FC = () => {
             <button className={`home-shortcut home-accent-${accent}`} key={title} onClick={action}
               aria-expanded={title === 'More' ? moreOpen : undefined}
               aria-controls={title === 'More' ? 'home-more-shortcuts' : undefined}>
-              <span className="home-shortcut-icon"><Icon size={19} strokeWidth={1.8} /></span>
+              <span className="home-shortcut-icon"><Icon size={title === 'Langpretation' ? 28 : 19} strokeWidth={1.8} /></span>
               <span className="home-shortcut-copy"><strong>{title}</strong><small>{description}</small></span>
               <ArrowUpRight className="home-shortcut-arrow" size={15} />
             </button>
@@ -353,7 +352,7 @@ export const HomeView: React.FC = () => {
       </section>
 
       <section className="home-language-note" aria-label="Langpretation">
-        <span className="home-language-icon"><Globe2 size={19} /></span>
+        <span className="home-language-icon"><LangpretationIcon size={28} glow={false} /></span>
         <div><p className="home-overline">LANGPRETATION</p><p>Make every conversation understood. Find Langpretation in your chat and call controls.</p></div>
         <button onClick={() => setActiveTab('chat')} aria-label="Open chat to use Langpretation"><ArrowUpRight size={16} /></button>
       </section>

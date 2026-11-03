@@ -15,6 +15,8 @@ with “no fakes.”
 
 Use the owner's supplied cyan/blue/purple sculpted N with its holographic globe
 as Nanivio's official logo, not a green substitute or a redrawn approximation.
+Langpretation must use its own existing branded logo, not a generic language
+symbol, including on the Home shortcut.
 
 **Why:** The user identified the supplied artwork as “the app logo not that green one.”
 

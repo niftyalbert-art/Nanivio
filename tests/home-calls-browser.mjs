@@ -134,6 +134,9 @@ try {
     await settle();
     assert.equal(await page.evaluate(`document.body.textContent.includes('Fixture screen failure')`), false, 'Home crashed');
     assert.ok(await page.evaluate(`document.querySelector('h1')?.textContent.length>0`), 'Home needs a real screen heading');
+    assert.ok(await page.evaluate(`!![...document.querySelectorAll('.home-shortcut')]
+      .find(button=>button.querySelector('strong')?.textContent==='Langpretation')
+      ?.querySelector('svg[viewBox="0 0 100 100"] linearGradient')`), 'Langpretation must use its own brand logo, not a generic language icon');
     assert.ok(await page.evaluate(`(()=>{const style=getComputedStyle(document.querySelector('.nv-home-hero'));
       return style.borderTopWidth==='0px' && style.borderRadius==='0px';})()`), 'Home must be a screen, not a bordered promotional card');
     assert.ok(await page.evaluate(`document.documentElement.scrollWidth<=innerWidth+1`), `Home overflow at ${width}`);

@@ -658,14 +658,14 @@ content_type = "image/png"
 id = "n6JCI7XlxMg4roLE-ij1Y"
 uri = "file://generated-artifacts/home-dashboard/home-mobile.png"
 type = "image"
-title = "Corrected Home — Nanivio credits"
-description = "Actual Home components rendered with an isolated test account: Nanivio credit balance, Send credits and My credits. Official logo and colours unchanged. Not a live customer account."
+title = "Home — Langpretation logo corrected"
+description = "Updated Home preview using Langpretation’s existing branded logo. Isolated test account; not live financial data."
 logical_id = "f560f7fc-7fb2-457e-90df-f94cab53e428"
-content_hash = "sha256:a0add51d6e14180e543557d4e850ff9960c9342f609d55ccfc4ac39249b4560b"
-size = 108983
-mtime_ms = 1793728560282
-storage_uri = "gcs://replit-rams-assets-sisko/rams/assets/repl:8a53f482-19ae-49f0-ab16-31b527f92091/f560f7fc-7fb2-457e-90df-f94cab53e428/ca71a1f0-0c64-42f1-acef-6e7af02d2be1"
-storage_version_token = "1793728676181922"
+content_hash = "sha256:b7a2c5dc09d1c64a6b5f19dea13fe5b65e4978980ad363cd1552b834d6a07a4e"
+size = 114091
+mtime_ms = 1793729065857
+storage_uri = "gcs://replit-rams-assets-sisko/rams/assets/repl:8a53f482-19ae-49f0-ab16-31b527f92091/f560f7fc-7fb2-457e-90df-f94cab53e428/965de0e5-ead6-479c-8c1f-028a862d5d9f"
+storage_version_token = "1793729107192579"
 content_type = "image/png"
 
 [[outputs]]
