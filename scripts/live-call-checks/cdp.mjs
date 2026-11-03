@@ -4,11 +4,12 @@ import os from 'node:os';
 import path from 'node:path';
 import WebSocket from 'ws';
 
-export async function launchBrowser() {
+export async function launchBrowser({ fakeMedia = false } = {}) {
   const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'nanivio-live-browser-'));
   const child = spawn('/repl/tools/bin/chromium', [
     '--headless', '--no-sandbox', '--disable-dev-shm-usage',
     '--remote-debugging-port=0', '--no-first-run', `--user-data-dir=${directory}`,
+    ...(fakeMedia ? ['--use-fake-device-for-media-stream', '--use-fake-ui-for-media-stream'] : []),
   ], { stdio: ['ignore', 'ignore', 'pipe'] });
   const endpoint = await new Promise((resolve, reject) => {
     const timeout = setTimeout(() => reject(new Error('Browser startup timed out')), 15000);

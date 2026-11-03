@@ -168,3 +168,9 @@ a silent canvas can make the fixture itself look like a video-service failure.
 **How to apply:** Check remote tracks and rendered frames, not only join/publication
 success. Keep synthetic-device results separate from physical-device and Render
 account verification.
+
+Treat HTTP headers, body decoding, and application registration as separate checkpoints.
+
+**Why:** An HTTP 200 response can still fail during body reading or JSON decoding. Replacing that exception with an empty object mislabels a transport/format failure as a rejected registration; received media does not establish that registration completed.
+
+**How to apply:** Preserve safe abort/parse error categories, verify the parsed acknowledgement, and report an intermittent failure even when a later provider recheck passes. Do not infer a root-cause fix from the recheck alone.

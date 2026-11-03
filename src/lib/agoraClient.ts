@@ -178,7 +178,9 @@ class NanivioAgoraClient {
         body: JSON.stringify({ channelName, callType }),
         signal: AbortSignal.timeout(15000),
       });
-      const joinResult = await joinResponse.json().catch(() => ({}));
+      let joinResult: any;
+      try { joinResult = await joinResponse.json(); }
+      catch (error) { throw new CallMediaSetupError(stage, error, joinResponse.status); }
       stillCurrent();
       if (!joinResponse.ok || !joinResult.success) {
         throw new CallMediaSetupError(stage,

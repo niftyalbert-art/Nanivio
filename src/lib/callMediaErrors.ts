@@ -16,7 +16,7 @@ export function callMediaFailureDetails(error: unknown) {
   const setup = error instanceof CallMediaSetupError ? error : null;
   const cause = (setup ? setup.original : error) as { code?: string; name?: string } | null;
   const code = String(cause?.code || cause?.name || '');
-  const known = /^(NOT_READABLE|NOT_ALLOWED|PERMISSION_DENIED|DEVICE_NOT_FOUND|NOT_FOUND|INVALID_TOKEN|TOKEN_EXPIRED|CAN_NOT_GET_GATEWAY_SERVER|NETWORK_TIMEOUT|NETWORK_ERROR|WEB_SECURITY_RESTRICT|UID_CONFLICT|INVALID_APP_ID|NotAllowedError|NotReadableError|NotFoundError|AbortError|TimeoutError)$/;
+  const known = /^(NOT_READABLE|NOT_ALLOWED|PERMISSION_DENIED|DEVICE_NOT_FOUND|NOT_FOUND|INVALID_TOKEN|TOKEN_EXPIRED|CAN_NOT_GET_GATEWAY_SERVER|NETWORK_TIMEOUT|NETWORK_ERROR|WEB_SECURITY_RESTRICT|UID_CONFLICT|INVALID_APP_ID|NotAllowedError|NotReadableError|NotFoundError|AbortError|TimeoutError|SyntaxError)$/;
   return { stage: setup?.stage || 'unknown', code: known.test(code) ? code : 'UNCLASSIFIED',
     ...(isCallTokenErrorCode(setup?.serviceCode) ? { supportCode: setup.serviceCode } : {}),
     ...(setup?.httpStatus ? { httpStatus: setup.httpStatus } : {}) };
@@ -38,6 +38,12 @@ export function callMediaErrorMessage(error: unknown, type: 'audio' | 'video'): 
   }
   if (setup?.stage === 'token' && setup.httpStatus === 402) {
     return CALL_TOKEN_ERRORS.CALL_ALLOWANCE_REQUIRED;
+  }
+  if (setup?.stage === 'registration' && candidate?.name === 'SyntaxError') {
+    return 'The call service returned an unreadable response. Reload Nanivio, then start a new call. Support code: CALL_RESPONSE_INVALID.';
+  }
+  if (candidate?.name === 'AbortError' || candidate?.name === 'TimeoutError') {
+    return 'The call connection request timed out or was interrupted. Check your connection, then start a new call.';
   }
   if (/invalid_token|token_expired|invalid_app_id|credentials|certificate|dynamic.?key|appid/i.test(detail)) {
     return 'The call service could not authorize the media connection. Please contact Nanivio support.';

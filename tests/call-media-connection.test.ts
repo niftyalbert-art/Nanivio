@@ -333,6 +333,29 @@ test('audio and video token failures preserve the server support code and never 
   }
 });
 
+test('registration retains unreadable and interrupted response causes instead of inventing a failed HTTP-200 result', async () => {
+  for (const cause of ['SyntaxError', 'AbortError'] as const) {
+    fixture('none');
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = async (input, init) => {
+      if (!String(input).endsWith('/join')) return originalFetch(input, init);
+      if (cause === 'SyntaxError') return new Response('<html>private upstream content</html>', { status: 200 });
+      const response = Response.json({ success: true });
+      response.json = async () => { throw new DOMException('private transport detail', 'AbortError'); };
+      return response;
+    };
+    try {
+      const client = await loadClient();
+      await assert.rejects(client.joinChannel('private-call', 'user', 'User', 'video'), (error: any) =>
+        error.stage === 'registration' && error.httpStatus === 200 && error.original.name === cause);
+    } finally { globalThis.fetch = originalFetch; }
+    const error = new CallMediaSetupError('registration', { name: cause, message: 'private' }, 200);
+    assert.equal(callMediaFailureDetails(error).code, cause);
+    assert.doesNotMatch(callMediaErrorMessage(error, 'video'), /private/);
+    assert.match(callMediaErrorMessage(error, 'video'), cause === 'SyntaxError' ? /CALL_RESPONSE_INVALID/ : /timed out or was interrupted/);
+  }
+});
+
 test('call display components never acquire a second camera', () => {
   for (const name of ['ActiveCallModal', 'LiveCallVideoStage']) {
     const source = readFileSync(new URL(`../src/components/calls/${name}.tsx`, import.meta.url), 'utf8');
