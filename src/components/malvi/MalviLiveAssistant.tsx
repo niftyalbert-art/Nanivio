@@ -435,13 +435,6 @@ export const MalviLiveAssistantProvider: React.FC<{ children: React.ReactNode }>
     setReferenceStatus('idle'); setReferences([]); setUnavailableSources([]); setSearchSuggestions(''); setMemoryFeedback(''); setLiveAssets(null);
     setSecondsRemaining(60); setAudioBlocked(false); setPhase('connecting');
     try {
-      avatarStartup.current = new MalviAvatarStartup(() => {
-        if (run !== generation.current || !mounted.current || !sdk.current) return;
-        avatarAcceptingAudio.current = true;
-        setPhase('connected'); setCaption('');
-        const queued = startupAudio.current.splice(0);
-        for (const audio of queued) receiveBrainAudio.current?.(audio);
-      }, message => { if (run === generation.current && mounted.current) fail(message); });
       videoGate.current = new MalviAvatarVideoGate(() => videoRef.current, fail);
       const observer = new MalviAvatarPlayout(
         (track, clock) => captions.current?.start(clock, track),
@@ -467,6 +460,15 @@ export const MalviLiveAssistantProvider: React.FC<{ children: React.ReactNode }>
         import('../../lib/malviLiveAvatarSession'),
       ]);
       if (run !== generation.current) return;
+      // Budget video startup from the renderer connection, not the preceding
+      // authenticated session request and lazy SDK download.
+      avatarStartup.current = new MalviAvatarStartup(() => {
+        if (run !== generation.current || !mounted.current || !sdk.current) return;
+        avatarAcceptingAudio.current = true;
+        setPhase('connected'); setCaption('');
+        const queued = startupAudio.current.splice(0);
+        for (const audio of queued) receiveBrainAudio.current?.(audio);
+      }, message => { if (run === generation.current && mounted.current) fail(message); });
       const live = new MalviLiveAvatarSession(info.sessionToken, {
         autoKeepAlive: false,
         voiceChat: { defaultMuted: true },

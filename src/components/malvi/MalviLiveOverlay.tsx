@@ -429,7 +429,7 @@ export const MalviLiveOverlay: React.FC<MalviLiveOverlayProps> = ({
               <span className="text-[#c0d1c8]/75">Idle session</span>
               <span className="font-mono tabular-nums">{formatTime(secondsRemaining)}</span>
             </div>
-            {audioBlocked && phase === 'connected' && (
+            {audioBlocked && (phase === 'connecting' || phase === 'connected') && (
               <button
                 type="button"
                 onClick={handleEnableAudio}
