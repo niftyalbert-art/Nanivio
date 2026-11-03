@@ -20,9 +20,14 @@ export async function communicationCommand(action: string, payload: Record<strin
   if (!client) throw new CommunicationAccessError(503, 'Communication usage setup is unavailable. Ask an administrator to check setup.');
   const { data, error } = await client.rpc('nanivio_communication_access', { action, payload });
   if (error) {
+    const databaseCode = typeof error.code === 'string' && /^(?:[0-9A-Z]{5}|PGRST\d{3})$/.test(error.code)
+      ? error.code : 'UNKNOWN';
+    console.warn('Communication usage command failed.', { action, code: databaseCode });
     const known=['Cannot remove already consumed calling minutes','Cannot remove already consumed Langpretation minutes','Cannot remove already consumed text characters','Adjustment retry does not match'];
     const safe=known.find(message=>String(error.message).includes(message));
-    throw new CommunicationAccessError(safe?400:503,safe||'Communication usage setup is unavailable. Ask an administrator to check setup.');
+    const setupMissing = ['PGRST202', '42P01', '42703', '42883', '42501'].includes(databaseCode);
+    throw new CommunicationAccessError(safe?400:503,safe||'Communication usage setup is unavailable. Ask an administrator to check setup.',
+      setupMissing ? 'COMMUNICATION_SETUP_REQUIRED' : 'COMMUNICATION_ACCESS_UNAVAILABLE');
   }
   if (!data?.success) throw new CommunicationAccessError(402, data?.error || 'A subscription with available allowance is required.', data?.code || 'SUBSCRIPTION_REQUIRED');
   return data;

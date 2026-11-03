@@ -314,6 +314,25 @@ test('call errors distinguish authorization, service configuration, devices and 
   assert.doesNotMatch(callMediaErrorMessage(failure, 'audio'), /INVALID_TOKEN|private credential/);
 });
 
+test('audio and video token failures preserve the server support code and never join media', async () => {
+  for (const type of ['audio', 'video'] as const) {
+    const events = fixture('none');
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = async (input, init) => String(input).includes('/api/agora/token')
+      ? Response.json({ success: false, code: 'CALL_USAGE_SETUP_REQUIRED', error: 'Usage setup unavailable.' }, { status: 503 })
+      : originalFetch(input, init);
+    try {
+      const client = await loadClient();
+      await assert.rejects(client.joinChannel('private-call', 'user', 'User', type), (error: any) =>
+        error.stage === 'token' && error.httpStatus === 503 && error.serviceCode === 'CALL_USAGE_SETUP_REQUIRED');
+      assert.equal(events.includes('rtc:join'), false);
+      assert.equal(events.includes('microphone'), false);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  }
+});
+
 test('call display components never acquire a second camera', () => {
   for (const name of ['ActiveCallModal', 'LiveCallVideoStage']) {
     const source = readFileSync(new URL(`../src/components/calls/${name}.tsx`, import.meta.url), 'utf8');

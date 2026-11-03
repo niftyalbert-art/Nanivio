@@ -1,10 +1,18 @@
 import crypto from 'crypto';
 import * as AgoraTokenModule from 'agora-token';
+import type { CallTokenErrorCode } from '../shared/callTokenErrors.ts';
 
 // agora-token is CommonJS, and Node's ESM named-export detection misses some
 // class names from the package. Read its CommonJS default export in both modes.
 const RtcTokenBuilder = ((AgoraTokenModule as unknown as { default?: typeof AgoraTokenModule }).default || AgoraTokenModule)
   .RtcTokenBuilder;
+
+export class AgoraTokenConfigurationError extends Error {
+  constructor(public readonly code: CallTokenErrorCode) {
+    super('Agora token configuration is unavailable.');
+    this.name = 'AgoraTokenConfigurationError';
+  }
+}
 
 export interface AgoraTokenOptions {
   appId?: string;
@@ -54,8 +62,8 @@ export function generateAgoraRtcToken(options: AgoraTokenOptions): {
   expiresAt: number;
   isMock: boolean;
 } {
-  const appId = options.appId || process.env.AGORA_APP_ID || '';
-  const appCertificate = options.appCertificate || process.env.AGORA_APP_CERTIFICATE || '';
+  const appId = (options.appId || process.env.AGORA_APP_ID || '').trim();
+  const appCertificate = (options.appCertificate || process.env.AGORA_APP_CERTIFICATE || '').trim();
   const channelName = options.channelName;
   const uid = options.uid;
   const agoraUid = normalizeAgoraUid(uid);
@@ -63,7 +71,14 @@ export function generateAgoraRtcToken(options: AgoraTokenOptions): {
   const privilegeExpiredTs = Math.floor(Date.now() / 1000) + expireDuration;
 
   if (!appId || !appCertificate) {
-    throw new Error('Agora production credentials are not configured. Set AGORA_APP_ID and AGORA_APP_CERTIFICATE.');
+    throw new AgoraTokenConfigurationError('CALL_CONFIGURATION_REQUIRED');
+  }
+  // The upstream builder silently returns an empty token for malformed keys.
+  if (!/^[0-9a-f]{32}$/i.test(appId) || !/^[0-9a-f]{32}$/i.test(appCertificate)) {
+    throw new AgoraTokenConfigurationError('CALL_CONFIGURATION_INVALID');
+  }
+  if (typeof RtcTokenBuilder?.buildTokenWithUid !== 'function') {
+    throw new AgoraTokenConfigurationError('CALL_TOKEN_GENERATION_FAILED');
   }
 
   const role = options.role === 'subscriber' ? 2 : 1;
@@ -74,8 +89,11 @@ export function generateAgoraRtcToken(options: AgoraTokenOptions): {
     agoraUid,
     role,
     expireDuration,
-    privilegeExpiredTs
+    expireDuration
   );
+  if (typeof token !== 'string' || !token) {
+    throw new AgoraTokenConfigurationError('CALL_TOKEN_GENERATION_FAILED');
+  }
 
   return {
     token,

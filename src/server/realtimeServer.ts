@@ -95,7 +95,7 @@ export function authorizeSponsoredCall(userId: string, callId: string) { communi
 export function markCallTranslationReady(callId: string) { communicationMeter.translationReady(callId); }
 export async function communicationTokenSeconds(userId:string,channelName:string) {
   const call=[...activeCalls.values()].find(call=>call.channelName===channelName && call.status==='connected' && call.participants.includes(userId));
-  if(!call)throw new Error('Connect this authorized call before requesting media.');
+  if(!call)throw new CommunicationAccessError(409,'Connect this authorized call before requesting media.','CALL_NOT_READY');
   return communicationMeter.tokenSeconds(call.callId,userId);
 }
 const ringingTimers = new Map<string, ReturnType<typeof setTimeout>>();

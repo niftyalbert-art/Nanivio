@@ -4,6 +4,7 @@ import path from "path";
 import crypto from "crypto";
 import { communicationAccess, CommunicationAccessError, withCommunicationUsage, type UsageReservation } from './src/server/communicationAccess.ts';
 import { registerCommunicationRoutes, applyCommunicationCatalogue } from './src/server/communicationRoutes.ts';
+import { classifyCallTokenFailure } from './src/server/callTokenFailure.ts';
 import { authorizeSponsoredCall, markCallTranslationReady, communicationCall, communicationTokenSeconds } from './src/server/realtimeServer.ts';
 import proxyaddr from "proxy-addr";
 import { GoogleGenAI, FunctionDeclaration, Type } from "@google/genai";
@@ -1572,6 +1573,7 @@ app.get("/api/langpretation/azure-speech-token", requireAuthenticatedUser, async
 });
 
 app.post("/api/agora/token", requireAuthenticatedUser, async (req, res) => {
+  let stage: 'authorization' | 'allowance' | 'signing' = 'authorization';
   try {
     const { channelName: requestedChannel, expireTimeSeconds = 3600, role: requestedRole = "publisher" } = req.body;
 
@@ -1591,7 +1593,9 @@ app.post("/api/agora/token", requireAuthenticatedUser, async (req, res) => {
       return res.status(403).json({ error: "You are not a connected participant in this call." });
     }
 
+    stage = 'allowance';
     const callTokenSeconds=channelName.startsWith('nanivio_call_')?await communicationTokenSeconds(userId,channelName):undefined;
+    stage = 'signing';
     const tokenData = generateAgoraRtcToken({
       channelName: channelName.trim(),
       uid: userId,
@@ -1608,7 +1612,9 @@ app.post("/api/agora/token", requireAuthenticatedUser, async (req, res) => {
       ...(callTokenSeconds?{communicationExpiresIn:callTokenSeconds}:{}),
     });
   } catch (error: any) {
-    res.status(500).json({ error: error.message || "Failed to generate Agora token" });
+    const failure = classifyCallTokenFailure(error);
+    console.warn('Call media token request failed.', { stage, code: failure.code, status: failure.status });
+    res.status(failure.status).json({ success: false, error: failure.error, code: failure.code });
   }
 });
 

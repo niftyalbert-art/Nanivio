@@ -97,7 +97,8 @@ class NanivioAgoraClient {
     const data = await res.json().catch(() => ({}));
     if (!res.ok || !data.token || !data.appId || data.isMock) {
       throw new CallMediaSetupError('token',
-        new Error(data.error || 'Production credentials/token are not configured.'), res.status);
+        new Error(data.error || 'Production credentials/token are not configured.'), res.status,
+        typeof data.code === 'string' ? data.code : undefined);
     }
     this.token = data.token; this.appId = data.appId; this.agoraUid = data.agoraUid;
     this.communicationTokenExpiry=typeof data.communicationExpiresIn==='number'?Date.now()+data.communicationExpiresIn*1000:0;
