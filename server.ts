@@ -62,6 +62,7 @@ import { createMalviRuntimeRouter } from "./src/server/malviRuntimeLimits.ts";
 import { getPersistentInvoice } from "./src/server/normalizedBillingRepository.ts";
 import { authDb } from "./src/server/authDb.ts";
 import * as persistentAuth from "./src/server/persistentAuth.ts";
+import { registerSocialAuthRoutes } from './src/server/socialAuth';
 import { productionStatus } from "./src/server/productionStatus.ts";
 import { uploadStreamAttachment } from "./src/server/streamService.ts";
 import { audioCallingEnabled, featureSettingsHandler, videoCallingEnabled } from "./src/server/featureSettings.ts";
@@ -202,6 +203,12 @@ const LANGUAGE_NAMES: Record<string, string> = {
 };
 
 // API Routes
+registerSocialAuthRoutes(app);
+const socialSignup = (req: express.Request) => {
+  const token=req.headers['x-nanivio-social-token'],provider=req.headers['x-nanivio-social-provider'];
+  return typeof token==='string'&&typeof provider==='string'&&token.length<=16000&&['google','apple'].includes(provider)
+    ? {token,provider} : undefined;
+};
 app.get("/api/production/status", (_req, res) => { res.json(productionStatus()); });
 
 app.get("/api/health", (_req, res) => {
@@ -354,7 +361,7 @@ app.post("/api/auth/register/personal", async (req, res) => {
       city,
       constituency,
       districtOrMunicipality,
-    });
+    }, socialSignup(req));
 
     return res.json({
       success: true,
@@ -382,7 +389,7 @@ app.post("/api/auth/register/expert", async (req, res) => {
     const result = await persistentAuth.registerExpert({
       personal,
       ...expertData,
-    });
+    }, socialSignup(req));
 
     return res.json({
       success: true,
@@ -414,7 +421,7 @@ app.post("/api/auth/register/business", async (req, res) => {
       businessType,
       category: category || "Enterprise Commerce",
       ...bizData,
-    });
+    }, socialSignup(req));
 
     return res.json({
       success: true,
@@ -444,7 +451,7 @@ app.post("/api/auth/register/driver", async (req, res) => {
     const result = await persistentAuth.registerDriver({
       personal,
       ...driverData,
-    });
+    }, socialSignup(req));
 
     return res.json({
       success: true,

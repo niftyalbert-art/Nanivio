@@ -16,6 +16,7 @@ import type {
   VerificationStatus,
 } from '../types/auth';
 import type { PhoneVerificationDiagnostics } from '../types/phoneVerification';
+import { socialSignupHeaders, clearSocialSignup } from './socialAuthClient';
 
 const TOKEN_KEY = 'nanivio_auth_token';
 const USER_KEY = 'nanivio_auth_user';
@@ -172,7 +173,7 @@ export class AuthClient {
   public async registerPersonal(data: PersonalSignUpData): Promise<{ session: AuthSession; user: NanivioUser; nvId: string }> {
     const res = await fetch('/api/auth/register/personal', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', ...socialSignupHeaders(data.email) },
       body: JSON.stringify(data),
     });
     const json = await res.json();
@@ -181,13 +182,14 @@ export class AuthClient {
     }
     this.setToken(json.session.token);
     this.setStoredUser(json.user);
+    clearSocialSignup();
     return json;
   }
 
   public async registerExpert(data: ExpertSignUpData): Promise<{ session: AuthSession; user: NanivioUser; expertApp: ExpertApplication; nvId: string }> {
     const res = await fetch('/api/auth/register/expert', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', ...socialSignupHeaders(data.personal.email) },
       body: JSON.stringify(data),
     });
     const json = await res.json();
@@ -196,13 +198,14 @@ export class AuthClient {
     }
     this.setToken(json.session.token);
     this.setStoredUser(json.user);
+    clearSocialSignup();
     return json;
   }
 
   public async registerBusiness(data: BusinessSignUpData): Promise<{ session: AuthSession; user: NanivioUser; businessApp: BusinessApplication; nvId: string; businessNvId: string }> {
     const res = await fetch('/api/auth/register/business', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', ...socialSignupHeaders(data.personal.email) },
       body: JSON.stringify(data),
     });
     const json = await res.json();
@@ -211,13 +214,14 @@ export class AuthClient {
     }
     this.setToken(json.session.token);
     this.setStoredUser(json.user);
+    clearSocialSignup();
     return json;
   }
 
   public async registerDriver(data: DriverSignUpData): Promise<{ session: AuthSession; user: NanivioUser; driverApp: DriverVerificationApplication; nvId: string }> {
     const res = await fetch('/api/auth/register/driver', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', ...socialSignupHeaders(data.personal.email) },
       body: JSON.stringify(data),
     });
     const json = await res.json();
@@ -226,6 +230,7 @@ export class AuthClient {
     }
     this.setToken(json.session.token);
     this.setStoredUser(json.user);
+    clearSocialSignup();
     return json;
   }
 

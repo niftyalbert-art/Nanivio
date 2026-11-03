@@ -1,4 +1,4 @@
-﻿import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   ShieldCheck,
@@ -28,6 +28,7 @@ import { authClient } from '../../lib/authClient';
 import { normalizeSignupPhone } from '../../lib/phoneNumber';
 import { EmailVerification, type EmailProof } from './EmailVerification';
 import './nanivio-auth-luxury.css';
+import { startSocialSignIn, finishSocialSignIn, type SocialProvider } from '../../lib/socialAuthClient';
 
 interface NanivioAuthScreenProps {
   onSuccess?: () => void;
@@ -36,6 +37,7 @@ interface NanivioAuthScreenProps {
 export const NanivioAuthScreen: React.FC<NanivioAuthScreenProps> = ({ onSuccess }) => {
   const {
     signIn,
+    acceptSocialSignIn,
     signUpPersonal,
     signUpExpert,
     signUpBusiness,
@@ -60,6 +62,11 @@ export const NanivioAuthScreen: React.FC<NanivioAuthScreenProps> = ({ onSuccess 
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [socialNotice, setSocialNotice] = useState('');
+  const callbackCode = useRef(window.location.pathname === '/auth/callback'
+    ? new URLSearchParams(window.location.search).get('code') : null);
+  const callbackError = useRef(window.location.pathname === '/auth/callback' &&
+    new URLSearchParams(window.location.search).has('error'));
 
   // Sign In Form State
   const [signInIdentifier, setSignInIdentifier] = useState('');
@@ -172,6 +179,34 @@ export const NanivioAuthScreen: React.FC<NanivioAuthScreenProps> = ({ onSuccess 
   };
 
   // 1. Submit Sign In
+  useEffect(() => {
+    if (!callbackCode.current && !callbackError.current) return;
+    window.history.replaceState({}, '', '/');
+    if (callbackError.current) { setErrorMessage('Social sign-in was cancelled or unavailable. Please try again.'); return; }
+    let cancelled=false;
+    setIsLoading(true);
+    void finishSocialSignIn(callbackCode.current!).then(result => {
+      if(cancelled) return;
+      callbackCode.current=null;
+      if(result.needsRegistration){
+        setPersonalEmail(result.email);
+        setActiveTab('personal');
+        setSocialNotice('Your email is confirmed by your sign-in provider. Complete your Nanivio details and email verification below to create your account.');
+      }else{
+        acceptSocialSignIn(result.user);
+        onSuccess?.();
+      }
+    }).catch(error => { if(!cancelled) setErrorMessage(error instanceof Error ? error.message : 'Social sign-in could not be completed.'); })
+      .finally(()=>{if(!cancelled)setIsLoading(false);});
+    return ()=>{cancelled=true;};
+  }, [acceptSocialSignIn, onSuccess]);
+  const handleSocialSignIn = async (provider: SocialProvider) => {
+    if(isLoading) return;
+    setErrorMessage(null); setSocialNotice(''); setIsLoading(true);
+    try { await startSocialSignIn(provider); }
+    catch(error){ setErrorMessage(error instanceof Error ? error.message : 'Social sign-in could not be opened.'); setIsLoading(false); }
+  };
+
   const handleSignInSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     clearMessages();
@@ -507,6 +542,7 @@ const handleAdminSignIn = async (e: React.FormEvent) => {
         </div>
 
         {/* Status Alerts */}
+        {socialNotice && <p role="status" className="text-sm text-slate-300">{socialNotice}</p>}
         {errorMessage && (
           <motion.div
             initial={{ opacity: 0, y: -6 }}
@@ -594,14 +630,35 @@ const handleAdminSignIn = async (e: React.FormEvent) => {
                 </>
               )}
             </button>
+            <div className="auth-social">
+              <div className="auth-social-divider"><span>or</span></div>
+              <button id="btn-google-signin" type="button" disabled={isLoading}
+                onClick={() => void handleSocialSignIn('google')} className="auth-social-button">
+                <svg aria-hidden="true" viewBox="0 0 24 24" width="20" height="20">
+                  <path fill="#4285F4" d="M21.6 12.23c0-.71-.06-1.39-.18-2.05H12v3.88h5.38a4.6 4.6 0 0 1-2 3.02v2.52h3.24c1.9-1.75 2.98-4.33 2.98-7.37Z"/>
+                  <path fill="#34A853" d="M12 22c2.7 0 4.96-.9 6.62-2.4l-3.24-2.52c-.9.6-2.04.96-3.38.96-2.6 0-4.8-1.75-5.59-4.1H3.06v2.6A10 10 0 0 0 12 22Z"/>
+                  <path fill="#FBBC05" d="M6.41 13.94a6 6 0 0 1 0-3.88v-2.6H3.06a10 10 0 0 0 0 9.08l3.35-2.6Z"/>
+                  <path fill="#EA4335" d="M12 5.96c1.47 0 2.79.5 3.83 1.5L18.7 4.6A9.6 9.6 0 0 0 12 2a10 10 0 0 0-8.94 5.46l3.35 2.6C7.2 7.71 9.4 5.96 12 5.96Z"/>
+                </svg>
+                Continue with Google
+              </button>
+              <button id="btn-apple-signin" type="button" disabled={isLoading}
+                onClick={() => void handleSocialSignIn('apple')} className="auth-social-button">
+                <svg aria-hidden="true" viewBox="0 0 24 24" width="20" height="20" fill="currentColor">
+                  <path d="M17.05 12.54c.03 3.06 2.69 4.08 2.72 4.1-.02.07-.42 1.46-1.4 2.9-.86 1.24-1.75 2.48-3.15 2.5-1.37.03-1.81-.81-3.38-.81-1.57 0-2.06.78-3.36.84-1.35.05-2.37-1.35-3.23-2.59-1.76-2.54-3.11-7.18-1.3-10.32A5.02 5.02 0 0 1 8.2 6.6c1.34-.03 2.6.91 3.41.91.81 0 2.33-1.12 3.93-.96.67.03 2.55.27 3.76 2.04-.1.06-2.25 1.31-2.22 3.95ZM14.47 4.83c.72-.88 1.21-2.1 1.08-3.33-1.04.04-2.3.69-3.05 1.57-.67.78-1.25 2.03-1.09 3.23 1.16.09 2.34-.59 3.06-1.47Z"/>
+                </svg>
+                Continue with Apple
+              </button>
+            </div>
             <div className="pt-2 text-center text-xs text-slate-400">
               <span>{authTxt.noAccountText} </span>
               <button
                 type="button"
+                id="btn-auth-signup"
                 onClick={() => setActiveTab('personal')}
                 className="text-emerald-400 hover:underline font-semibold"
               >
-                {authTxt.createAccountLink}
+                Sign up
               </button>
             </div>
           </form>

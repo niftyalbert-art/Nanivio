@@ -630,14 +630,14 @@ content_type = "audio/wav"
 id = "rubJGygUXcOBEI76RB5HI"
 uri = "file://generated-artifacts/auth-design/signin-390.png"
 type = "image"
-title = "Revised Nanivio sign-in"
-description = "Official Nanivio logo, one account-choice control and autofill-ready sign-in fields."
+title = "Nanivio sign-in — Google and Apple options"
+description = "Updated sign-in screen with outlined Google and Apple buttons, an “or” divider and a Sign up link. Official Nanivio branding is preserved."
 logical_id = "6e435c09-0f83-41bf-a7a9-3a3a139b32b8"
-content_hash = "sha256:d405648f035de84c94509da8b9886aba21dd5c7ad02a0bd34dd52255211ef064"
-size = 198650
-mtime_ms = 1793715806948
-storage_uri = "gcs://replit-rams-assets-sisko/rams/assets/repl:8a53f482-19ae-49f0-ab16-31b527f92091/6e435c09-0f83-41bf-a7a9-3a3a139b32b8/a7f65aed-a7a9-4b93-9169-0cea7b064f4a"
-storage_version_token = "1793715862027378"
+content_hash = "sha256:d7510d928f2f1787a4e594c2972389c40329c25e44dde745ec32db9e5ede6188"
+size = 183522
+mtime_ms = 1793716827265
+storage_uri = "gcs://replit-rams-assets-sisko/rams/assets/repl:8a53f482-19ae-49f0-ab16-31b527f92091/6e435c09-0f83-41bf-a7a9-3a3a139b32b8/9f7c3900-637a-43fc-a5ac-e76b4a337f35"
+storage_version_token = "1793716895827125"
 content_type = "image/png"
 
 [[outputs]]

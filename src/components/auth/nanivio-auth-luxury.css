@@ -382,6 +382,27 @@
   .auth-luxury .auth-panel button { transition: none; }
 }
 
+.auth-luxury .auth-social { display: grid; gap: .65rem; }
+.auth-luxury .auth-social-divider {
+  display: flex; align-items: center; gap: .8rem;
+  color: #a6adbc; font-size: .75rem; margin: .35rem 0;
+}
+.auth-luxury .auth-social-divider::before,
+.auth-luxury .auth-social-divider::after {
+  content: ""; height: 1px; flex: 1; background: rgba(180,190,210,.2);
+}
+.nanivio-auth.auth-luxury .auth-panel .auth-social-button {
+  display: flex; justify-content: center; align-items: center; gap: .7rem;
+  min-height: 46px; width: 100%; padding: .65rem 1rem;
+  border: 1px solid #535660 !important; border-radius: 999px;
+  background: transparent !important; color: #f4f1e8 !important;
+  font-size: .85rem; font-weight: 500; cursor: pointer;
+}
+.nanivio-auth.auth-luxury .auth-panel .auth-social-button:hover:not(:disabled) {
+  background: rgba(255,255,255,.05) !important; border-color: #acb6ca !important;
+}
+.nanivio-auth.auth-luxury .auth-panel .auth-social-button:disabled { cursor: wait; opacity: .6; }
+
 /* Nanivio identity correction: keep the official holographic mark and its
    cyan-to-violet language, with a restrained dark/cream authentication canvas. */
 .nanivio-auth.auth-luxury {

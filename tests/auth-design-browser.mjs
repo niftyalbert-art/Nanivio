@@ -44,9 +44,12 @@ try {
     assert.ok(await page.evaluate("!!document.querySelector('img[src=\"/brand/nanivio-emblem.png\"]')"));
     assert.equal(await page.evaluate("!!document.querySelector('.auth-folded-mark')"), false);
     assert.ok(await page.evaluate('document.documentElement.scrollWidth<=innerWidth+1'));
+    for(const provider of ['google','apple']){
+      assert.ok(await page.evaluate(`!!document.getElementById('btn-${provider}-signin')`));
+    }
     await screenshot(page, `generated-artifacts/auth-design/signin-${width}.png`);
 
-    await chooseAccount(page, 'personal');
+    await page.evaluate("document.getElementById('btn-auth-signup').click();true");
     await page.wait("!!document.getElementById('input-personal-firstname')");
     for (const id of ['input-personal-firstname','input-personal-lastname',
       'input-personal-email','input-personal-phone','input-personal-password',
@@ -91,6 +94,7 @@ try {
   console.log(JSON.stringify({ passed:true, viewports:2, signIn:true,
     registrationFields:true, singleAccountChooser:true, emailAutofillHints:true,
     preferredEmailEditable:true, officialLogo:true, emailVerificationGuard:true,
+    socialButtons:true, signUpLink:true,
     realAccountRequests:0, screenshots:'generated-artifacts/auth-design' }));
 } finally {
   await browser.close();

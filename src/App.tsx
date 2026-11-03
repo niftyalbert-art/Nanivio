@@ -94,11 +94,18 @@ const AppOrchestrator: React.FC = () => {
     clearCelebrationEffect,
     setAuthMode,
   } = useNanivio();
-  const [showPublicAuth, setShowPublicAuth] = React.useState(false);
+  const [showPublicAuth, setShowPublicAuth] = React.useState(() => typeof window !== 'undefined' && window.location.pathname === '/auth/callback');
+  const [socialCallbackPending, setSocialCallbackPending] = React.useState(() => typeof window !== 'undefined' && window.location.pathname === '/auth/callback');
   const isAdminRoute = typeof window !== 'undefined' && window.location.pathname === '/admin';
   React.useEffect(() => {
     if (!isAuthenticated && (showPublicAuth || isAdminRoute)) prepareNanivioSignature();
   }, [isAuthenticated,showPublicAuth,isAdminRoute]);
+
+  // Finish the selected provider even if another stored account is still
+  // restoring. Never accidentally replace this callback with that dashboard.
+  if (socialCallbackPending) return <NanivioAuthScreen onSuccess={() => {
+    setSocialCallbackPending(false); setIsAuthModalOpen(false);
+  }} />;
 
   // The signature belongs only to a successful authentication, never app startup.
   if (isAuthenticated && activeCelebrationEffect?.show) {

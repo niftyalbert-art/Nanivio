@@ -115,6 +115,7 @@ interface NanivioContextType {
   authMode: 'signin' | 'personal' | 'expert' | 'business' | 'admin' | 'driver';
   setAuthMode: (mode: 'signin' | 'personal' | 'expert' | 'business' | 'admin' | 'driver') => void;
   signIn: (identifier: string, password: string) => Promise<NanivioUser>;
+  acceptSocialSignIn: (user: NanivioUser) => void;
   signUpPersonal: (data: PersonalSignUpData) => Promise<NanivioUser>;
   signUpExpert: (data: ExpertSignUpData) => Promise<NanivioUser>;
   signUpBusiness: (data: BusinessSignUpData) => Promise<NanivioUser>;
@@ -493,6 +494,9 @@ export const NanivioProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
   // Sync session on mount
   useEffect(() => {
+    // A provider callback selects an identity explicitly. Do not race it with
+    // restoration of a different account left in browser storage.
+    if (window.location.pathname === '/auth/callback') return;
     const checkSession = async () => {
       try {
         const stored = authClient.getStoredUser();
@@ -513,6 +517,13 @@ export const NanivioProvider: React.FC<{ children: React.ReactNode }> = ({ child
   }, [syncCurrentUserFromAuth]);
 
   // Auth Operations
+  const acceptSocialSignIn = useCallback((user: NanivioUser) => {
+    syncCurrentUserFromAuth(user);
+    setIsAuthenticated(true);
+    setIsAuthModalOpen(false);
+    setActiveTab(user.role === 'ADMIN' ? 'admin' : user.role === 'DRIVER' ? 'services' : 'account');
+    setActiveCelebrationEffect({ show: true, mode: 'signin' });
+  }, [syncCurrentUserFromAuth]);
   const signIn = useCallback(async (identifier: string, password: string) => {
     const res = await authClient.signIn(identifier, password);
     syncCurrentUserFromAuth(res.user);
@@ -3401,6 +3412,7 @@ export const NanivioProvider: React.FC<{ children: React.ReactNode }> = ({ child
         authMode,
         setAuthMode,
         signIn,
+        acceptSocialSignIn,
         signUpPersonal,
         signUpExpert,
         signUpBusiness,

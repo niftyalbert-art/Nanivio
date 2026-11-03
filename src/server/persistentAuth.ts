@@ -60,37 +60,55 @@ async function issueSession(email:string,password:string,user:NanivioUser):Promi
   await serverDb().from('nanivio_users').update({last_login_at:new Date().toISOString(),updated_at:new Date().toISOString()}).eq('id',user.id);
   return {token:data.session.access_token,user,expiresAt:Date.now()+data.session.expires_in*1000};
 }
-async function createAccount(input:any,role:any,application?:any){
+type SocialSignup = { token: string; provider: string } | undefined;
+async function createAccount(input:any,role:any,application?:any,social?:SocialSignup){
   const email=normalizeSignupEmail(input.email);
   if(typeof input.password !== 'string' || input.password.length < 8) throw new Error('Use a password with at least 8 characters.');
   if (typeof input.country !== 'string' || !input.country.trim() || typeof input.callingCode !== 'string' || !input.callingCode.trim()) {
     throw new Error('Choose your country and international calling code.');
   }
   const phone = otpService.normalizePhoneNumber(input.phoneNumber, input.callingCode, input.country);
+  const identity = social ? await (await import('./socialAuth')).verifiedSocialIdentity(social.token,social.provider) : null;
+  if(identity && (identity.email?.toLowerCase()!==email || await profileByAuthId(identity.id)))
+    throw new Error('Use the verified social email for a new account, or sign in to your existing account.');
   await emailSignupStore.assertAvailable(email, phone);
   await emailSignupService.consumeProof(input.verificationToken, email, phone);
   // Geography is optional profile data, never invented during signup.
   input = { ...input, email, phoneNumber: phone, city: undefined, constituency: undefined, districtOrMunicipality: undefined };
   const db=serverDb();
   const existing=await db.from('nanivio_users').select('id').eq('email',email).maybeSingle(); if(existing.error) throw new Error(existing.error.message); if(existing.data) throw new Error(`An account with email ${email} already exists. Please sign in instead.`);
-  const {data,error}=await db.auth.admin.createUser({email,password:input.password,email_confirm:true,user_metadata:{first_name:input.firstName,last_name:input.lastName,role}});
+  const {data,error}=identity ? {data:{user:identity},error:null}
+    : await db.auth.admin.createUser({email,password:input.password,email_confirm:true,user_metadata:{first_name:input.firstName,last_name:input.lastName,role}});
   if(error||!data.user) throw new Error(error?.message||'Unable to create authentication account.');
-  try { const user=await createProfile(data.user.id,input,role,application); const session=await issueSession(email,input.password,user); return {user,session}; }
+  try {
+    const user=await createProfile(data.user.id,input,role,application);
+    if(identity){
+      const updated=await db.auth.admin.updateUserById(identity.id,{password:input.password});
+      if(updated.error) throw new Error('Unable to finish your password setup. Please try again.');
+    }
+    const session=await issueSession(email,input.password,user); return {user,session};
+  }
   catch(e){
+    // The provider identity already exists. Never delete it or a profile that
+    // a concurrent completion may have created; a fresh social sign-in can
+    // recover an account whose password-session request was interrupted.
+    if(identity) throw e;
     // Profiles are not linked to auth.users by a cascading foreign key.
     // Explicitly remove only this newly-created account's partial profile/application.
     const cleanup = await db.from('nanivio_users').delete().eq('auth_user_id', data.user.id);
     if (cleanup.error) console.error('[Signup] Partial profile cleanup failed', { code: cleanup.error.code });
-    const removed = await db.auth.admin.deleteUser(data.user.id);
-    if (removed.error) console.error('[Signup] Authentication cleanup failed', { status: removed.error.status });
+    if(!identity){
+      const removed = await db.auth.admin.deleteUser(data.user.id);
+      if (removed.error) console.error('[Signup] Authentication cleanup failed', { status: removed.error.status });
+    }
     throw e;
   }
 }
 
-export async function registerPersonal(input:PersonalSignUpData){ return createAccount(input,'PERSONAL'); }
-export async function registerExpert(input:ExpertSignUpData){ const application=sanitizeApplication({...input,id:crypto.randomUUID()}); const r=await createAccount(input.personal,'EXPERT',application); return {...r,expertApp:{...application,userId:r.user.id,nvId:r.user.nvId,status:'PENDING',submittedAt:Date.now()}}; }
-export async function registerBusiness(input:BusinessSignUpData){ const businessNvId=`NV-BIZ-${crypto.randomBytes(5).toString('hex').toUpperCase()}`; const application=sanitizeApplication({...input,id:crypto.randomUUID(),businessNvId}); const r=await createAccount(input.personal,'BUSINESS',application); return {...r,businessApp:{...application,userId:r.user.id,nvId:r.user.nvId,businessNvId,status:'PENDING',submittedAt:Date.now()}}; }
-export async function registerDriver(input:DriverSignUpData){ const application=sanitizeApplication({...input,id:crypto.randomUUID()}); const r=await createAccount(input.personal,'DRIVER',application); return {...r,driverApp:{...application,userId:r.user.id,nvId:r.user.nvId,status:'PENDING',submittedAt:Date.now()}}; }
+export async function registerPersonal(input:PersonalSignUpData,social?:SocialSignup){ return createAccount(input,'PERSONAL',undefined,social); }
+export async function registerExpert(input:ExpertSignUpData,social?:SocialSignup){ const application=sanitizeApplication({...input,id:crypto.randomUUID()}); const r=await createAccount(input.personal,'EXPERT',application,social); return {...r,expertApp:{...application,userId:r.user.id,nvId:r.user.nvId,status:'PENDING',submittedAt:Date.now()}}; }
+export async function registerBusiness(input:BusinessSignUpData,social?:SocialSignup){ const businessNvId=`NV-BIZ-${crypto.randomBytes(5).toString('hex').toUpperCase()}`; const application=sanitizeApplication({...input,id:crypto.randomUUID(),businessNvId}); const r=await createAccount(input.personal,'BUSINESS',application,social); return {...r,businessApp:{...application,userId:r.user.id,nvId:r.user.nvId,businessNvId,status:'PENDING',submittedAt:Date.now()}}; }
+export async function registerDriver(input:DriverSignUpData,social?:SocialSignup){ const application=sanitizeApplication({...input,id:crypto.randomUUID()}); const r=await createAccount(input.personal,'DRIVER',application,social); return {...r,driverApp:{...application,userId:r.user.id,nvId:r.user.nvId,status:'PENDING',submittedAt:Date.now()}}; }
 
 export async function signIn(identifier:string,password:string){
   const db=serverDb(); const id=identifier.trim(); let q=db.from('nanivio_users').select('*').limit(1);
