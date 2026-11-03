@@ -15,6 +15,14 @@ diagnose that service.
 service when diagnosing it. Do not assume a workspace-secret update changes
 Render's environment, and do not repurpose the live Supabase project as staging.
 
+Nanivio's official URL is `https://naniviio.com` (note the spelling).
+
+**Why:** The user explicitly identified `naniviio.com` as the official Nanivio URL.
+
+**How to apply:** Use the official domain for customer-facing links and app OAuth
+origins/return URLs. This does not establish that DNS or provider configuration
+has been verified; distinguish it from the underlying Render service address.
+
 The owner confirmed that the Supabase project named “Malvi nanivio upgrades”
 matches the live Render service's `SUPABASE_URL`, after privately comparing them.
 This confirmation does not identify the target of workspace credentials or grant

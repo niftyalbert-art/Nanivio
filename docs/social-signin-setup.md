@@ -11,11 +11,16 @@ They do not migrate accounts to another authentication service.
    required by Supabase, and save. Apple web sign-in requires an Apple Developer
    setup; adding the button does not create that setup.
 4. Under **Authentication → URL Configuration**, allow the exact callback URL:
-   `https://nanivioupgrades.onrender.com/auth/callback`.
+   `https://naniviio.com/auth/callback`.
 5. For preview testing, add the preview's own HTTPS origin followed by
    `/auth/callback`. Never use a broad wildcard production redirect.
 6. In Google and Apple, use the Supabase provider callback URL shown in the
    relevant Supabase provider panel. It is different from the Nanivio app callback.
+
+For Google's **Authorized JavaScript origins**, use `https://naniviio.com`,
+the official Nanivio domain confirmed by the owner. If users also sign in
+through another host, add that host's exact origin in Google and its
+`/auth/callback` return URL in Supabase separately.
 
 Keep client secrets and private keys inside the provider/Supabase configuration.
 Do not paste them into chat or put them in frontend code. The browser receives
