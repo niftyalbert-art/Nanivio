@@ -31,6 +31,7 @@ import { LiveCallTranslation } from '../../services/liveCallTranslation';
 import { waitForCallTranslation } from '../../services/callTranslationReadiness';
 import { subscriptionHasCapability } from '../../lib/malviCapabilities';
 import { InCallMalvi } from './InCallMalvi';
+import { CallAllowanceNotice } from './CallAllowanceNotice';
 
 interface VideoCallScreenProps {
   onEndCall: () => void;
@@ -779,6 +780,10 @@ export const VideoCallScreen: React.FC<VideoCallScreenProps> = ({ onEndCall }) =
                 </span>
               </div>
             </div>
+          </div>
+
+          <div className="relative z-30 w-full px-3 py-2">
+            <CallAllowanceNotice />
           </div>
 
         {/* IN-CALL LIVE CHAT OVERLAY (WHEN TAB CHATS SELECTED) */}

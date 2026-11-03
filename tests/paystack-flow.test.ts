@@ -10,6 +10,7 @@ import { assertLivePaystackPayment, paystackLiveConfigurationError } from '../sr
 import {verifyPaystackTransaction,paystackVerificationDiagnostic} from '../src/server/paystackVerification.ts';
 import {createPaystackReconciler} from '../src/server/paystackReconciliation.ts';
 import {PAYSTACK_PURPOSES} from '../src/server/paystackOrders.ts';
+import { applyCommunicationCatalogue } from '../src/server/communicationRoutes.ts';
 
 // Execute the actual production handlers with a stubbed gateway and isolated stores.
 // No real provider credential, network payment, or customer account is used.
@@ -47,6 +48,8 @@ function system() {
   };
   const context: any = {
     Buffer, crypto, AbortSignal, quotePaystackOrder, validateVerifiedOrder,
+    applyCommunicationCatalogue,
+    communicationAccess:{policy:async()=>({callTrialDays:30,liveTrialMinutes:3,paidTextCharacters:20000,warningSeconds:60,plans:[]})},
     assertLivePaystackPayment, paystackLiveConfigurationError,
     process:{ env:{ PAYSTACK_SECRET_KEY:'sk_live_fixture_only' } },
     authenticatedUserId:(req: any)=>req.authId,
@@ -176,7 +179,7 @@ test('all billing routes commit usable benefits in PostgreSQL, roll back failed 
     await pg.exec('CREATE ROLE anon; CREATE ROLE authenticated; CREATE ROLE service_role; CREATE TABLE nanivio_users(id TEXT PRIMARY KEY);');
     for (const migration of ['002_billing_normalized_ledger', '005_malvi_credit_and_usage', '007_communication_plan_entitlements',
       '008_paystack_paid_subscriptions', '009_billing_malvi_expression_fix', '012_malvi_plan_catalog', '013_malvi_live_allowances',
-      '014_paystack_malvi_activation', '020_malvi_business_rooms']) {
+      '014_paystack_malvi_activation', '020_malvi_business_rooms', '021_communication_access_policy']) {
       await pg.exec(readFileSync(`migrations/${migration}.sql`, 'utf8').replace('CREATE EXTENSION IF NOT EXISTS pgcrypto;', ''));
     }
     await pg.exec('UPDATE nanivio_malvi_runtime_policy SET live_minutes_monthly=10000;');

@@ -29,6 +29,7 @@ import { BusinessTranslationAudience, type BusinessTranslationAuthorization } fr
 import { normalizeAgoraUid } from './agoraService';
 import { PalabraError } from './palabraSpeech.ts';
 import { participantLanguage } from '../shared/participantLanguage.ts';
+import { CommunicationCallMeter, CommunicationAccessError, withCommunicationUsage } from './communicationAccess.ts';
 let langpretationGateway:PalabraLiveGateway|null=null;
 let closeBusinessAudience: ((callId: string) => void) | null = null;
 export function endBusinessTranslation(roomId: string) {
@@ -72,6 +73,30 @@ const clientsByUserId: Map<string, Set<ConnectedUser>> = new Map();
 const clientsByNvId: Map<string, Set<ConnectedUser>> = new Map();
 const allSockets: Set<WebSocket> = new Set();
 const activeCalls: Map<string, ActiveCallState> = new Map();
+const completedCalls = new Map<string, ActiveCallState>();
+const cancelledInitiations = new Map<string,number>();
+export function communicationCall(userId: string, callId: string) {
+  const call = activeCalls.get(callId) || completedCalls.get(callId);
+  return call?.participants.includes(userId) ? call : null;
+}
+const communicationMeter = new CommunicationCallMeter({
+  end: (id, reason) => finishCall(id, 'SYSTEM', reason),
+  stopTranslation: id => { langpretationGateway?.endCall(id); },
+  state: (id, payload) => {
+    const call = activeCalls.get(id);
+    for (const user of call?.participants || []) {
+      if (!payload.recipientId || payload.recipientId === user)
+        sendToUser(user, { type: typeof payload.enabled === 'boolean' ? 'call:langpretation' : 'call:billing_notice', payload: { callId: id, ...payload } });
+    }
+  },
+});
+export function authorizeSponsoredCall(userId: string, callId: string) { communicationMeter.authorize(callId, userId); }
+export function markCallTranslationReady(callId: string) { communicationMeter.translationReady(callId); }
+export async function communicationTokenSeconds(userId:string,channelName:string) {
+  const call=[...activeCalls.values()].find(call=>call.channelName===channelName && call.status==='connected' && call.participants.includes(userId));
+  if(!call)throw new Error('Connect this authorized call before requesting media.');
+  return communicationMeter.tokenSeconds(call.callId,userId);
+}
 const ringingTimers = new Map<string, ReturnType<typeof setTimeout>>();
 const RING_TIMEOUT_MS = 30_000;
 
@@ -84,6 +109,7 @@ function clearRingingTimer(callId: string) {
 function finishCall(callId: string, endedBy: string, reason?: string) {
   const call = activeCalls.get(callId);
   if (!call) return false;
+  void communicationMeter.close(callId).catch(() => console.warn('Call usage finalization needs reconciliation.'));
   langpretationGateway?.endCall(callId);
   clearRingingTimer(callId);
   call.status = 'ended';
@@ -97,6 +123,8 @@ function finishCall(callId: string, endedBy: string, reason?: string) {
   // stale. Cancellation must reach that same destination, not only the old ID.
   if (call.recipientNvId && !call.recipientId) recipients.add(call.recipientNvId);
   activeCalls.delete(callId);
+  completedCalls.set(callId, call);
+  if (completedCalls.size > 1000) completedCalls.delete(completedCalls.keys().next().value!);
   for (const recipient of recipients) {
     sendToUser(recipient, {
       type: 'call:ended',
@@ -329,7 +357,8 @@ export async function broadcastStreamReaction(channelId: string, message: Stream
 }
 
 export function setupRealtimeServer(httpServer: HttpServer,options?:{
-  authorizeLangpretation:LangpretationAuthorizer; authorizeBusinessTranslation?:BusinessTranslationAuthorization
+  authorizeLangpretation:LangpretationAuthorizer; authorizeBusinessTranslation?:BusinessTranslationAuthorization;
+  chatLangpretationEnabled?:()=>boolean;
 }) {
   const businessAudience = new BusinessTranslationAudience(options?.authorizeBusinessTranslation
     || (async () => { throw new Error('Business live Langpretation is unavailable.'); }), normalizeAgoraUid);
@@ -370,6 +399,7 @@ export function setupRealtimeServer(httpServer: HttpServer,options?:{
     allSockets.add(socket);
     let currentUser: ConnectedUser | null = null;
     const translationPeer={closed:false,send:(type:string,payload:any)=>{
+      if (type === 'langpretation:ready' && !String(payload?.callId).startsWith('business:')) markCallTranslationReady(payload?.callId);
       if(socket.readyState===WebSocket.OPEN&&socket.bufferedAmount<512000)socket.send(JSON.stringify({type,payload}));
     }};
     let messageChain: Promise<void> = Promise.resolve();
@@ -419,6 +449,21 @@ export function setupRealtimeServer(httpServer: HttpServer,options?:{
               callId:payload?.callId,streamId:payload?.streamId,
               message:error instanceof PalabraError?error.message:'Live translation could not be authorized.'
             });}
+            break;
+          }
+          case 'call:media_ready': {
+            const call = activeCalls.get(String(payload?.callId));
+            if (call?.status === 'connected' && call.participants.includes(currentUser!.userId))
+              await communicationMeter.mediaReady(call.callId, currentUser!.userId);
+            break;
+          }
+          case 'call:langpretation': {
+            try {
+              await communicationMeter.sponsor(String(payload?.callId), currentUser!.userId, payload?.enabled === true);
+            } catch (error) {
+              socket.send(JSON.stringify({ type: 'call:billing_notice', payload: { callId: payload?.callId, subscriptionRequired: error instanceof CommunicationAccessError && error.status===402,
+                message: error instanceof Error ? error.message : 'Langpretation could not be enabled.' } }));
+            }
             break;
           }
           case 'langpretation:audio':
@@ -605,6 +650,10 @@ export function setupRealtimeServer(httpServer: HttpServer,options?:{
               return;
             }
 
+            if (String(callId).startsWith('grp_call_') || String(payload?.channelName || '').startsWith('nanivio_group_') || String(callType).startsWith('group_')) {
+              socket.send(JSON.stringify({type:'call:error',payload:{message:'Group calling is temporarily unavailable. One-to-one calls and authorised Business meetings remain available.'}}));
+              return;
+            }
             if (activeCalls.has(String(callId))) {
               socket.send(JSON.stringify({
                 type: 'call:error',
@@ -612,10 +661,19 @@ export function setupRealtimeServer(httpServer: HttpServer,options?:{
               }));
               return;
             }
+            try { await communicationMeter.admit(currentUser!.userId); }
+            catch (error) {
+              socket.send(JSON.stringify({ type: 'call:error', payload: { subscriptionRequired: error instanceof CommunicationAccessError && error.status===402, message: error instanceof Error ? error.message : 'Check your calling subscription.' } }));
+              return;
+            }
+            if(socket.readyState!==WebSocket.OPEN||!currentUser||cancelledInitiations.has(`${currentUser.userId}:${callId}`))return;
+            if([...activeCalls.values()].some(call=>call.participants.includes(currentUser!.userId)&&call.status!=='ended'&&call.status!=='declined')){
+              socket.send(JSON.stringify({type:'call:error',payload:{message:'End your current call before starting another.'}}));return;
+            }
 
             const callSession: ActiveCallState = {
               callId: String(callId),
-              channelName: channelName || `nanivio_call_${callId}`,
+              channelName: `nanivio_call_${callId}`,
               callType,
               caller,
               recipientId: recipientId ? String(recipientId) : '',
@@ -705,6 +763,9 @@ export function setupRealtimeServer(httpServer: HttpServer,options?:{
               return;
             }
 
+            try { await communicationMeter.admit(callSession.caller.id); }
+            catch { finishCall(callSession.callId, 'SYSTEM', 'The caller needs an active calling allowance.'); return; }
+            if (activeCalls.get(callSession.callId) !== callSession || callSession.status !== 'ringing') return;
             const responder = {
               id: currentUser.userId,
               name: currentUser.name,
@@ -719,6 +780,7 @@ export function setupRealtimeServer(httpServer: HttpServer,options?:{
             if (!callSession.participants.includes(currentUser.userId)) {
               callSession.participants.push(currentUser.userId);
             }
+            communicationMeter.add(callSession.callId, callSession.caller.id, [...callSession.participants]);
             registerAgoraParticipant(callSession.channelName, callSession.callType, {
               uid: currentUser.userId,
               name: currentUser.name,
@@ -786,6 +848,8 @@ export function setupRealtimeServer(httpServer: HttpServer,options?:{
             // reconnect. Acknowledge an already-removed call without touching
             // another call or exposing any participant data.
             if (currentUser && typeof callId === 'string' && callId.length > 0 && callId.length <= 128 && !callSession) {
+              cancelledInitiations.set(`${currentUser.userId}:${callId}`,Date.now());
+              if(cancelledInitiations.size>1000)cancelledInitiations.delete(cancelledInitiations.keys().next().value!);
               socket.send(JSON.stringify({ type: 'call:ended',
                 payload: { callId, endedBy: currentUser.userId, alreadyEnded: true } }));
               break;
@@ -847,10 +911,18 @@ export function setupRealtimeServer(httpServer: HttpServer,options?:{
             await requireStreamChannelMember(channelId, currentUser.userId);
 
             let translatedText: string | undefined;
-            if (sourceLang && targetLang && sourceLang !== targetLang) {
-              const translated = await callProductionTranslation(text, sourceLang, targetLang);
-              if (!translated?.text) return;
-              translatedText = translated.text;
+            if (sourceLang && targetLang && sourceLang !== targetLang && payload?.langpretationEnabled === true) {
+              try {
+                if(!options?.chatLangpretationEnabled?.())throw new Error('Langpretation is currently switched off. Your original message is still sent.');
+                const translated = await withCommunicationUsage(currentUser.userId,'text',Array.from(String(text)).length,async()=>{
+                  const result=await callProductionTranslation(text,sourceLang,targetLang);
+                  if(!result?.text)throw new Error('Langpretation is unavailable for this message.');
+                  return result;
+                });
+                translatedText = translated.text;
+              } catch(error) {
+                socket.send(JSON.stringify({type:'chat:langpretation_unavailable',payload:{channelId,message:error instanceof Error?error.message:'Langpretation is unavailable. Your original message is still sent.'}}));
+              }
             } else { translatedText = text; }
 
             const newMsg: StreamChatMessage = await addStreamMessage(channelId, {

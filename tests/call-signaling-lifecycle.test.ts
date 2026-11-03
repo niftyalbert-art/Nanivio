@@ -10,13 +10,17 @@ import { finishAnsweredCall } from '../src/lib/callMediaErrors';
 
 // Actual signaling server and real WebSockets on an isolated HTTP server.
 // Auth fixture exists only in this bundle; no app auth bypass or customer writes.
-async function fixture(t: any) {
+async function fixture(t: any, expired: string[] = []) {
+  const usage:any[]=[];
   const result = await build({
     entryPoints: ['src/server/realtimeServer.ts'], bundle: true, write: false,
     platform: 'node', format: 'cjs', packages: 'external',
     plugins: [{ name: 'isolated-auth', setup(b) {
       b.onResolve({ filter: /persistentAuth\.ts$/ }, () => ({ path: 'auth', namespace: 'fixture' }));
-      b.onLoad({ filter: /.*/, namespace: 'fixture' }, () => ({ loader: 'js', contents: `
+      b.onResolve({filter:/supabaseServer\.ts$/},()=>({path:'database',namespace:'fixture'}));
+      b.onLoad({ filter: /.*/, namespace: 'fixture' }, ({path}) => ({ loader: 'js', contents: path==='database'
+        ? 'export function getServerSupabase(){return {rpc:(name,args)=>__communicationRPC(name,args)}}'
+        : `
         export function adminFromToken(){return null}
         export async function persistentAuthConfigured(){return true}
         export async function userFromToken(token){
@@ -27,7 +31,14 @@ async function fixture(t: any) {
     } }],
   });
   const module = { exports: {} as any };
-  new Function('require','module','exports',result.outputFiles[0].text)(createRequire(import.meta.url),module,module.exports);
+  new Function('require','module','exports','__communicationRPC',result.outputFiles[0].text)(createRequire(import.meta.url),module,module.exports,
+    async(_name:string,args:any)=>{
+      usage.push(args);
+      const ended=expired.includes(args.payload?.userId);
+      return {data:{success:true,policy:{callTrialDays:30,warningSeconds:60},trialStartedAt:ended?'2020-01-01T00:00:00Z':null,
+        trialEndsAt:ended?'2020-02-01T00:00:00Z':null,callSecondsRemaining:ended?0:null,sharedCallMinutes:0,
+        liveTrialSecondsRemaining:180,translatedSecondsRemaining:0,amount:args.payload?.amount},error:null};
+    });
   const server = createServer();
   const wss = module.exports.setupRealtimeServer(server);
   await new Promise<void>(resolve => server.listen(0,'127.0.0.1',resolve));
@@ -57,8 +68,50 @@ async function fixture(t: any) {
     await wait('auth:presence_ack');
     return {send,wait,socket};
   }
-  return {peer,canJoin:module.exports.canJoinAgoraCall};
+  return {peer,canJoin:module.exports.canJoinAgoraCall,usage};
 }
+
+test('an expired recipient can answer free; only caller quota is reserved after both media connections',async t=>{
+  const f=await fixture(t,['receiver-id']),a=await f.peer('caller'),b=await f.peer('receiver');
+  const callId='billing-recipient';
+  a.send('call:initiate',{callId,callType:'audio',recipientId:'receiver-id'});
+  await b.wait('call:incoming',callId);
+  b.send('call:accept',{callId});await a.wait('call:accepted',callId);await b.wait('call:connected',callId);
+  assert.equal(f.usage.some(row=>row.action==='CONNECT'),false);
+  a.send('call:media_ready',{callId});
+  await new Promise(resolve=>setTimeout(resolve,20));
+  assert.equal(f.usage.some(row=>row.action==='CONNECT'),false);
+  b.send('call:media_ready',{callId});
+  await new Promise(resolve=>setTimeout(resolve,40));
+  assert.equal(f.usage.filter(row=>row.action==='CONNECT').length,2);
+  const base=f.usage.filter(row=>row.action==='RESERVE'&&row.payload.resource==='call');
+  assert.equal(base.length,1);assert.equal(base[0].payload.userId,'caller-id');
+  a.send('call:end',{callId});await b.wait('call:ended',callId);
+});
+
+test('an expired caller cannot ring another user without a subscription',async t=>{
+  const f=await fixture(t,['caller-id']),a=await f.peer('caller');
+  await f.peer('receiver');
+  a.send('call:initiate',{callId:'expired-caller',callType:'video',recipientId:'receiver-id'});
+  const error=await a.wait('call:error');
+  assert.equal(error.subscriptionRequired,true);
+  assert.equal(f.usage.some(row=>row.action==='RESERVE'||row.action==='CONNECT'),false);
+});
+
+test('legacy group invitations are blocked before quotas or ringing; ordinary calling is unaffected',async t=>{
+  const f=await fixture(t),a=await f.peer('caller'),b=await f.peer('receiver');
+  for(const payload of [
+    {callId:'grp_call_123',channelName:'nanivio_group_123',callType:'audio'},
+    {callId:'custom-group',channelName:'nanivio_group_456',callType:'video'},
+  ]){
+    a.send('call:initiate',{...payload,recipientId:'receiver-id'});
+    assert.match((await a.wait('call:error')).message,/Group calling is temporarily unavailable/);
+  }
+  assert.equal(f.usage.length,0);
+  a.send('call:initiate',{callId:'allowed-p2p',callType:'audio',recipientId:'receiver-id'});
+  await b.wait('call:incoming','allowed-p2p');
+  a.send('call:end',{callId:'allowed-p2p'});await b.wait('call:ended','allowed-p2p');
+});
 
 for(const type of ['audio','video']) {
   test(`${type}: caller cancellation reaches a receiver dialled through a stale contact ID`,async t=>{

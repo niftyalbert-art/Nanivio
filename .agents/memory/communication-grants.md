@@ -18,12 +18,25 @@ The initial 30-day ordinary audio/video calling period starts on the user's firs
 **How to apply:** Ringing, unanswered calls and failed connections do not start the period. Persist the start per account so reconnecting or signing in again cannot reset it. Keep this calendar-time window separate from actual consumed call minutes and the Langpretation trial.
 
 ## Paid communication purchases
+For ordinary one-to-one calls, only the caller needs paid calling minutes after the introductory period; receiving calls remains free. Whoever enables live Langpretation must explicitly agree to sponsor both directions, including captions and speech, from one allowance.
+
+**Why:** The user accepted the caller-pays and enabling-user-sponsors recommendation. Do not demand two subscriptions or bill captions and speech from the same translated conversation twice.
+
+**How to apply:** Keep ordinary calling and Langpretation allowances separate. Stop exhausted Langpretation without ending an otherwise entitled ordinary call. Do not transfer sponsorship or debit the other participant silently.
 
 Paid communication tiers must use verified Paystack payment, not the former free allowance selector. A paid purchase can grant a new purchased term; unpaid/free-plan switches must still preserve the existing term and consumption, and independently purchased minute packs remain separate.
 
 **Why:** The user requested working Paystack payments for top-ups, Langpretation, and subscriptions. Treating priced plans as free selections bypasses the intended payment.
 
 **How to apply:** Keep free-plan selection separate from verified external-payment fulfillment. Do not debit a wallet to fulfill an external payment. A one-off term purchase is not a recurring mandate: do not advertise or enable automatic renewal without implementing actual provider-authorized recurring billing.
+
+## Legacy group calling
+
+Legacy group calls are temporarily disabled; ordinary one-to-one calling and authorised Business meeting rooms remain available.
+
+**Why:** The user approved disabling the legacy route because it bypasses the new calling invitation and allowance checks.
+
+**How to apply:** Do not restore legacy group initiation or unrestricted room tokens until group membership and billing checks are implemented. Do not disable the separate authorised Business meeting flow.
 
 ## Unpaid self-service changes
 

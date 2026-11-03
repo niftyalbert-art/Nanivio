@@ -184,6 +184,8 @@ interface NanivioContextType {
   declineIncomingCall: (callId?: string) => void;
   endCall: () => void;
   toggleCallLangpretation: () => void;
+  callBillingNotice: {message:string;subscriptionRequired?:boolean}|null;
+  dismissCallBillingNotice: () => void;
   toggleCallMute: () => void;
   toggleCallVideo: () => void;
   processLiveSpeechUtterance: (speakerId: string, text: string, audio?: {audioBase64:string;signal:AbortSignal}) => Promise<void>;
@@ -1089,6 +1091,32 @@ export const NanivioProvider: React.FC<{ children: React.ReactNode }> = ({ child
   const callConnectTimerRef = useRef<NodeJS.Timeout | null>(null);
   const activeRingtoneRef = useRef<RingtoneHandle | null>(null);
   const incomingRingtoneRef = useRef<RingtoneHandle | null>(null);
+  const [callBillingNotice,setCallBillingNotice]=useState<{message:string;subscriptionRequired?:boolean}|null>(null);
+  useEffect(()=>{
+    if(activeCall?.status==='connected'&&(agoraStats.hasRemoteMedia||agoraStats.hasRemoteParticipant))
+      realtimeClient.send('call:media_ready',{callId:activeCall.id});
+  },[activeCall?.id,activeCall?.status,agoraStats.hasRemoteMedia,agoraStats.hasRemoteParticipant]);
+  useEffect(()=>{
+    const offState=realtimeClient.on('call:langpretation',(payload:any)=>{
+      if(activeTranslationCall.current?.id!==payload?.callId)return;
+      if(payload.enabled&&payload.sponsorId!==currentUser.id&&!window.confirm('Your partner wants to enable Langpretation for this call and cover its allowance. Allow your speech to be processed for Langpretation? Declining keeps the ordinary call available.')){
+        realtimeClient.send('call:langpretation',{callId:payload.callId,enabled:false});return;
+      }
+      if(!payload.enabled)agoraClient.restoreOriginalAudioTrack();
+      setActiveCall(previous=>previous?.id===payload.callId?{...previous,langpretationEnabled:payload.enabled===true,langpretationState:payload.enabled?'ON':'OFF'}:previous);
+      setCallBillingNotice({message:payload.message||'Call Langpretation updated.',subscriptionRequired:payload.subscriptionRequired});
+    });
+    const offNotice=realtimeClient.on('call:billing_notice',(payload:any)=>{
+      if(activeTranslationCall.current?.id===payload?.callId)setCallBillingNotice({message:payload.message,subscriptionRequired:payload.subscriptionRequired});
+    });
+    const offError=realtimeClient.on('call:error',(payload:any)=>{
+      if(payload?.subscriptionRequired){
+        setPendingBillingAction({purpose:'SUBSCRIPTION',subTab:'plans'});setActiveTab('billing');
+      }
+    });
+    return()=>{offState();offNotice();offError();};
+  },[currentUser.id]);
+  useEffect(()=>{setCallBillingNotice(null);},[activeCall?.id]);
 
   // A locally published track is not proof the other device joined. Do not
   // leave a call waiting forever if its peer failed during setup.
@@ -1840,8 +1868,8 @@ export const NanivioProvider: React.FC<{ children: React.ReactNode }> = ({ child
       participants: [currentUser, contact],
       startedAt: Date.now(),
       durationSeconds: 0,
-      langpretationEnabled: globalLangpretationEnabled && adminFeatures.langpretationEnabled,
-      langpretationState: (globalLangpretationEnabled && adminFeatures.langpretationEnabled) ? 'ON' : 'OFF',
+      langpretationEnabled: false,
+      langpretationState: 'OFF',
       isPaidServiceCall: isExpert,
       expertId: expert?.id,
       expertRatePerMin: rate,
@@ -1884,75 +1912,8 @@ export const NanivioProvider: React.FC<{ children: React.ReactNode }> = ({ child
     }, 60000);
   };
 
-  const startGroupCall = (participants: Participant[], type: 'audio' | 'video') => {
-    if (activeRingtoneRef.current) {
-      activeRingtoneRef.current.stop();
-      activeRingtoneRef.current = null;
-    }
-    if (incomingRingtoneRef.current) {
-      incomingRingtoneRef.current.stop();
-      incomingRingtoneRef.current = null;
-    }
-    if (callConnectTimerRef.current) {
-      clearTimeout(callConnectTimerRef.current);
-      callConnectTimerRef.current = null;
-    }
-
-    const callType: CallType = type === 'audio' ? 'group_audio' : 'group_video';
-    const allParticipants = [currentUser, ...participants];
-    const callId = `grp_call_${Date.now()}`;
-    const channelName = `nanivio_group_${Date.now()}`;
-
-    const newCall: CallSession = {
-      id: callId,
-      channelName,
-      type: callType,
-      status: 'ringing',
-      host: currentUser,
-      participants: allParticipants,
-      startedAt: Date.now(),
-      durationSeconds: 0,
-      langpretationEnabled: globalLangpretationEnabled && adminFeatures.groupLangpretationEnabled,
-      langpretationState: (globalLangpretationEnabled && adminFeatures.groupLangpretationEnabled) ? 'ON' : 'OFF',
-      isPaidServiceCall: false,
-      expertRatePerMin: 0,
-      billedMinutes: 0,
-      accruedCost: 0,
-      langpretationMinutesUsed: 0,
-    };
-
-    setActiveCall(newCall);
-    agoraClient.startLocalPreview(type).catch((error) => {
-      if (/cancelled/i.test(String(error))) return;
-      setActiveCall(prev => prev?.id === callId && prev.status === 'ringing' ? {
-        ...prev, mediaError: callMediaErrorMessage(error, type),
-      } : prev);
-    });
-    activeRingtoneRef.current = startRingtone();
-
-    // Signal all group participants via WebSocket
-    participants.forEach((p) => {
-      realtimeClient.initiateCall(
-        callId,
-        channelName,
-        type,
-        currentUser,
-        p.id,
-        p.nvId
-      );
-    });
-
-    // No auto-answering! Rings for up to 60s waiting for group participants to join
-    callConnectTimerRef.current = setTimeout(() => {
-      if (activeRingtoneRef.current) {
-        activeRingtoneRef.current.stop();
-        activeRingtoneRef.current = null;
-      }
-      playCallEndedTone();
-      participants.forEach(p => realtimeClient.endCall(callId, channelName, currentUser.id, p.id));
-      void agoraClient.leaveChannel();
-      setActiveCall(null);
-    }, 60000);
+  const startGroupCall = (_participants: Participant[], _type: 'audio' | 'video') => {
+    window.alert('Group calling is temporarily unavailable. You can still make one-to-one calls or use authorised Business meetings.');
   };
 
   const forceConnectCall = () => {
@@ -1979,8 +1940,8 @@ export const NanivioProvider: React.FC<{ children: React.ReactNode }> = ({ child
       participants: [caller, currentUser],
       startedAt: Date.now(),
       durationSeconds: 0,
-      langpretationEnabled: globalLangpretationEnabled && adminFeatures.langpretationEnabled,
-      langpretationState: (globalLangpretationEnabled && adminFeatures.langpretationEnabled) ? 'ON' : 'OFF',
+      langpretationEnabled: false,
+      langpretationState: 'OFF',
       isPaidServiceCall: false,
       expertRatePerMin: 0,
       billedMinutes: 0,
@@ -2163,18 +2124,11 @@ export const NanivioProvider: React.FC<{ children: React.ReactNode }> = ({ child
       alert('Langpretation is temporarily disabled by system administrator.');
       return;
     }
-    setActiveCall(prev => {
-      if (!prev) return null;
-      const newState = !prev.langpretationEnabled;
-      if (!newState) {
-        agoraClient.restoreOriginalAudioTrack();
-      }
-      return {
-        ...prev,
-        langpretationEnabled: newState,
-        langpretationState: newState ? 'ON' : 'OFF',
-      };
-    });
+    if(!activeCall||activeCall.status!=='connected')return;
+    const enabled=!activeCall.langpretationEnabled;
+    if(enabled&&!window.confirm('Enable Langpretation for both directions? This call’s translated captions and speech will use your one-time trial or paid Langpretation allowance. Your partner will not be charged.'))return;
+    if(!realtimeClient.send('call:langpretation',{callId:activeCall.id,enabled}))
+      setCallBillingNotice({message:'Your call connection is unavailable. Langpretation was not enabled.'});
   };
 
   const toggleCallMute = async () => {
@@ -3505,6 +3459,8 @@ export const NanivioProvider: React.FC<{ children: React.ReactNode }> = ({ child
         declineIncomingCall,
         endCall,
         toggleCallLangpretation,
+        callBillingNotice,
+        dismissCallBillingNotice:()=>setCallBillingNotice(null),
         toggleCallMute,
         toggleCallVideo,
         processLiveSpeechUtterance,

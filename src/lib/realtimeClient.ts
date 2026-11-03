@@ -288,7 +288,8 @@ class NanivioRealtimeClient {
     sourceLang?: string,
     targetLang?: string,
     userAvatar?: string,
-    attachments?: any[]
+    attachments?: any[],
+    langpretationEnabled = false
   ) {
     if (typeof messageOrText === 'object') {
       this.send('chat:message', {
@@ -304,6 +305,7 @@ class NanivioRealtimeClient {
         targetLang,
         userAvatar,
         attachments,
+        langpretationEnabled,
       });
     }
   }

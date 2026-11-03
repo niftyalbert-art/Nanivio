@@ -51,6 +51,7 @@ import { TransferValueModal } from './TransferValueModal';
 import { UniversalFlowTracer } from './UniversalFlowTracer';
 import { LiveLangpretationMeter } from './LiveLangpretationMeter';
 import { CommunicationMinutesModal } from './CommunicationMinutesModal';
+import { CommunicationAccessPanel } from './CommunicationAccessPanel';
 
 function malviPlanAmount(plan: MalviSubscriptionPlan, cycle: 'MONTHLY' | 'ANNUAL', currency: 'USD' | 'GHS'): number | null {
   const value = cycle === 'ANNUAL'
@@ -495,6 +496,7 @@ export const UniversalBillingHub: React.FC = () => {
 
         {activeSubTab === 'overview' && (
           <div className="space-y-6">
+            <CommunicationAccessPanel />
             {/* Quick Financial Operations Bar */}
             <div className="p-4 rounded-2xl bg-slate-900 border border-slate-800 flex flex-wrap items-center justify-between gap-3">
               <div className="flex items-center gap-2">

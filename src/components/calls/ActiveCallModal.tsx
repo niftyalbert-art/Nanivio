@@ -28,6 +28,7 @@ import {
 import { useNanivio } from '../../context/NanivioContext';
 import { SUPPORTED_LANGUAGES, Participant } from '../../types';
 import { VideoCallScreen } from './VideoCallScreen';
+import { CallAllowanceNotice } from './CallAllowanceNotice';
 import { agoraClient } from '../../lib/agoraClient';
 
 // Realistic DTMF key tone synthesizer
@@ -388,6 +389,9 @@ export const ActiveCallModal: React.FC = () => {
             </div>
           )}
         </div>
+        <div className="relative z-20 w-full px-4 pb-3">
+          <CallAllowanceNotice />
+        </div>
       </div>
     );
   }
@@ -688,6 +692,10 @@ export const ActiveCallModal: React.FC = () => {
             </div>
           </div>
         )}
+      </div>
+
+      <div className="relative z-30 w-full px-4 pb-2">
+        <CallAllowanceNotice />
       </div>
 
       {/* Bottom Call Controls Dock */}

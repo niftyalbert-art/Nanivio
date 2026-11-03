@@ -73,6 +73,8 @@ class NanivioAgoraClient {
   private previewGeneration: number | null = null;
   private pendingPreview: { generation: number; promise: Promise<MediaStream | null> } | null = null;
   private cameraSwitchPending = false;
+  private tokenRenewTimer:ReturnType<typeof setTimeout>|null=null;
+  private communicationTokenExpiry=0;
 
   constructor() {
     if (typeof window !== 'undefined') {
@@ -98,6 +100,7 @@ class NanivioAgoraClient {
         new Error(data.error || 'Production credentials/token are not configured.'), res.status);
     }
     this.token = data.token; this.appId = data.appId; this.agoraUid = data.agoraUid;
+    this.communicationTokenExpiry=typeof data.communicationExpiresIn==='number'?Date.now()+data.communicationExpiresIn*1000:0;
     return { token: data.token, appId: data.appId, agoraUid: data.agoraUid };
   }
 
@@ -182,6 +185,7 @@ class NanivioAgoraClient {
       }
     } catch (error) { throw error; }
     this.mediaReady = true;
+    this.scheduleCommunicationRenewal(client);
     this.connectionState = 'CONNECTED';
     this.startStatsTelemetry();
     this.notifyStats();
@@ -228,6 +232,28 @@ class NanivioAgoraClient {
       this.connectionState = state === 'CONNECTED' ? (this.mediaReady ? 'CONNECTED' : 'CONNECTING') : state === 'RECONNECTING' ? 'RECONNECTING' : state === 'DISCONNECTED' ? 'DISCONNECTED' : 'CONNECTING';
       this.notifyStats();
     });
+  }
+  private scheduleCommunicationRenewal(client:IAgoraRTCClient, retry=false){
+    if(this.tokenRenewTimer)clearTimeout(this.tokenRenewTimer);
+    if(!this.communicationTokenExpiry||this.client!==client||!this.currentChannel||this.currentUid===null)return;
+    const generation=this.mediaGeneration,channel=this.currentChannel,uid=this.currentUid;
+    const delay=retry?Math.min(5000,Math.max(1000,this.communicationTokenExpiry-Date.now()-1000))
+      :Math.max(1000,Math.min(30000,this.communicationTokenExpiry-Date.now()-10000));
+    this.tokenRenewTimer=setTimeout(async()=>{
+      if(this.client!==client||this.mediaGeneration!==generation)return;
+      const oldExpiry=this.communicationTokenExpiry;
+      try{
+        const token=await this.fetchToken(channel,uid);
+        if(this.client!==client||this.mediaGeneration!==generation)return;
+        await client.renewToken(token.token);
+        this.scheduleCommunicationRenewal(client);
+      }catch{
+        if(this.client!==client||this.mediaGeneration!==generation)return;
+        this.communicationTokenExpiry=oldExpiry;
+        if(Date.now()<oldExpiry-2000)this.scheduleCommunicationRenewal(client,true);
+        else await this.leaveChannel();
+      }
+    },delay);
   }
 
   private attachRemoteAudio(track: IRemoteAudioTrack) {
@@ -411,6 +437,8 @@ class NanivioAgoraClient {
   public subscribeTelemetry(cb: (stats: AgoraTelemetryStats) => void) { this.listeners.add(cb); cb(this.getStats()); return () => this.listeners.delete(cb); }
 
   public async leaveChannel() {
+    if(this.tokenRenewTimer)clearTimeout(this.tokenRenewTimer);
+    this.tokenRenewTimer=null;this.communicationTokenExpiry=0;
     this.mediaGeneration++;
     this.mediaReady = false;
     this.remoteAudioMuted = false;

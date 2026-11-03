@@ -2,6 +2,9 @@
 import http from "http";
 import path from "path";
 import crypto from "crypto";
+import { communicationAccess, CommunicationAccessError, withCommunicationUsage, type UsageReservation } from './src/server/communicationAccess.ts';
+import { registerCommunicationRoutes, applyCommunicationCatalogue } from './src/server/communicationRoutes.ts';
+import { authorizeSponsoredCall, markCallTranslationReady, communicationCall, communicationTokenSeconds } from './src/server/realtimeServer.ts';
 import proxyaddr from "proxy-addr";
 import { GoogleGenAI, FunctionDeclaration, Type } from "@google/genai";
 import dotenv from "dotenv";
@@ -878,7 +881,9 @@ const EAST_AFRICAN_LANGUAGES = new Set(["sw", "lg"]);
 const INTERNATIONAL_LANGUAGES = new Set(["en", "fr", "es", "ar", "de", "it", "pt", "zh", "ja", "ko"]);
 
 // 1:1 Translation Endpoint via Live Multi-Provider Engine
+registerCommunicationRoutes(app, requireAuthenticatedUser, requireAdmin, () => billingDb.subscriptionPlans);
 app.post("/api/translate", requireAuthenticatedUser, async (req, res) => {
+  let usage: UsageReservation | undefined;
   try {
     const start = Date.now();
     const { text, sourceLang = "en", targetLang = "en" } = req.body;
@@ -892,6 +897,9 @@ app.post("/api/translate", requireAuthenticatedUser, async (req, res) => {
     if (sourceLang === targetLang) {
       return res.json({ success: true, translatedText: text, sourceLang, targetLang, provider: "direct-passthrough", latencyMs: 0 });
     }
+    if(!adminFeatureSwitches.langpretationEnabled)return res.status(403).json({success:false,error:'Langpretation is currently switched off. Original messages remain available.'});
+    if (req.body?.callId) authorizeSponsoredCall(authenticatedUserId(req), String(req.body.callId));
+    else usage = await communicationAccess.reserve(authenticatedUserId(req), 'text', Array.from(text).length);
 
     // Check if either language is deactivated by administrator
     const srcOverride = serverLanguageOverrides.get(sourceLang);
@@ -906,6 +914,7 @@ app.post("/api/translate", requireAuthenticatedUser, async (req, res) => {
     const cacheKey = `${sourceLang}:${targetLang}:${text.trim()}`;
     const cached = serverTranslationCache.get(cacheKey);
     if (cached) {
+      if (usage) await communicationAccess.commit(usage);
       return res.json({
         success: true,
         translatedText: cached.translatedText,
@@ -932,6 +941,7 @@ app.post("/api/translate", requireAuthenticatedUser, async (req, res) => {
 
     // If completely unavailable, return honest untranslated status (NO FAKE PHRASES)
     if (!result || !result.text) {
+      if (usage) await communicationAccess.release(usage);
       return res.status(503).json({
         success: false,
         untranslated: true,
@@ -946,6 +956,8 @@ app.post("/api/translate", requireAuthenticatedUser, async (req, res) => {
 
     const translatedText = result.text;
     const provider = result.provider;
+    if (usage) await communicationAccess.commit(usage);
+    if (req.body?.callId) markCallTranslationReady(String(req.body.callId));
 
     // Store in high-speed server cache
     serverTranslationCache.set(cacheKey, { translatedText, provider, pivotUsed:result.pivotUsed, providerChain:result.providerChain });
@@ -966,13 +978,16 @@ app.post("/api/translate", requireAuthenticatedUser, async (req, res) => {
       timestamp: Date.now(),
     });
   } catch (err: any) {
-    return res.status(500).json({ success: false, error: err.message || "Translation engine error" });
+    return res.status(err instanceof CommunicationAccessError ? err.status : 500).json({ success: false, error: err.message || "Translation engine error" });
+  } finally {
+    if (usage) await communicationAccess.release(usage).catch(() => {});
   }
 });
 
 // Group Translation Fan-Out Endpoint via Multi-Provider Pipeline
 app.post("/api/translate/fan-out", requireAuthenticatedUser, async (req, res) => {
   try {
+    if(!adminFeatureSwitches.langpretationEnabled)return res.status(403).json({success:false,error:'Langpretation is currently switched off.'});
     const { text, sourceLang = "en", targetLangs = [] } = req.body;
     if (typeof text!=='string'||!text.trim()||text.length>5000||!Array.isArray(targetLangs)||targetLangs.length>18) {
       return res.status(400).json({ error: "Text and targetLangs array required" });
@@ -992,7 +1007,14 @@ app.post("/api/translate/fan-out", requireAuthenticatedUser, async (req, res) =>
         }
 
         if(serverLanguageOverrides.get(sourceLang)?.active===false||serverLanguageOverrides.get(lang)?.active===false){failures[lang]='Language deactivated.';return;}
-        const translatedObj=await translateWithProductionProviders(text,sourceLang,lang).catch(()=>null);
+        let translatedObj;
+        try {
+          translatedObj=await withCommunicationUsage(authenticatedUserId(req),'text',Array.from(text).length,async()=>{
+            const result=await translateWithProductionProviders(text,sourceLang,lang);
+            if(!result?.text)throw new Error('Production translation unavailable for this pair.');
+            return result;
+          });
+        } catch(error) {failures[lang]=error instanceof CommunicationAccessError?error.message:'Production translation unavailable for this pair.';return;}
         if(translatedObj?.text)results[lang]=translatedObj.text;
         else failures[lang]='Production translation unavailable for this pair.';
       })
@@ -1189,10 +1211,11 @@ app.post("/api/langpretation/admin/update-language", requireAdmin, async (req, r
 
 // 4. Langpretation Voice Note Pipeline Endpoint (Speech -> Translate -> Synthesize)
 app.post("/api/langpretation/voice-note/process", requireAuthenticatedUser, async (req, res) => {
+  let reservation: UsageReservation | undefined;
   try {
     const userId = authenticatedUserId(req);
     const { transcript, sourceLang = "en", targetLang = "ak", duration = 3 } = req.body;
-    if (!transcript || !transcript.trim()) {
+    if (typeof transcript!=='string'||!transcript.trim()||transcript.length>5000) {
       return res.status(400).json({ error: "Transcript is required for voice note processing" });
     }
 
@@ -1201,6 +1224,7 @@ app.post("/api/langpretation/voice-note/process", requireAuthenticatedUser, asyn
     let provider = "direct-passthrough";
 
     if (sourceLang !== targetLang) {
+      reservation=await communicationAccess.reserve(userId,'text',Array.from(String(transcript)).length);
       const isGhanaian = GHANAIAN_LANGUAGES.has(sourceLang) || GHANAIAN_LANGUAGES.has(targetLang);
       const isEastAfrican = EAST_AFRICAN_LANGUAGES.has(sourceLang) || EAST_AFRICAN_LANGUAGES.has(targetLang);
 
@@ -1222,11 +1246,8 @@ app.post("/api/langpretation/voice-note/process", requireAuthenticatedUser, asyn
       }
     }
 
-    const minsUsed = Number((duration / 60).toFixed(2)) || 0.1;
-    const usage = normalizedBillingEnabled()
-      ? await recordLangpretationUsagePersistent({ userId, channel:"VOICE_NOTE", minutes:minsUsed, sourceLang, targetLang, provider, audioSeconds:Number(duration)*60 })
-      : null;
-    if (!usage) return res.status(503).json({ success:false, error:"Persistent billing database is required for voice-note usage." });
+    if(reservation)await communicationAccess.commit(reservation);
+    const usage={charactersUsed:reservation?.amount||0};
 
     res.json({
       success: true,
@@ -1240,7 +1261,9 @@ app.post("/api/langpretation/voice-note/process", requireAuthenticatedUser, asyn
       usage,
     });
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    res.status(err instanceof CommunicationAccessError?err.status:500).json({ error: err.message });
+  } finally {
+    if(reservation)await communicationAccess.release(reservation).catch(()=>{});
   }
 });
 
@@ -1252,21 +1275,32 @@ app.post("/api/langpretation/asr", requireAuthenticatedUser, async (req, res) =>
     const language=({twi:'ak',atw:'tw-ak',ewe:'ee',hau:'ha',eng:'en'} as Record<string,string>)[suppliedLanguage]||suppliedLanguage;
 
     const contentType = String(req.headers["content-type"] || "audio/wav");
-    const chunks: Buffer[] = [];
-    for await (const chunk of req) chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
-    const audio = Buffer.concat(chunks);
+    const chunks:Buffer[]=[];let bytes=0;
+    for await(const chunk of req){
+      const buffer=Buffer.isBuffer(chunk)?chunk:Buffer.from(chunk);
+      bytes+=buffer.length;
+      if(bytes>4*1024*1024)throw new SpeechProviderError(413,'Recording is too large. Use a shorter voice message.');
+      chunks.push(buffer);
+    }
+    const audio=Buffer.concat(chunks);
     if (!audio.length) return res.status(400).json({ success:false, error:"Audio body is required." });
 
-    const recognized=await transcribeProviderAudio(audio,language,contentType);
+    const input=parsePalabraWav(audio,60);
+    const sessionId=String(req.query.sessionId||'');
+    if(sessionId)authorizeSponsoredCall(authenticatedUserId(req),sessionId);
+    const recognized=sessionId?await transcribeProviderAudio(audio,language,contentType)
+      :await withCommunicationUsage(authenticatedUserId(req),'note',input.seconds,()=>transcribeProviderAudio(audio,language,contentType));
+    if(sessionId)markCallTranslationReady(sessionId);
     res.json({success:true,...recognized,language});
   } catch (err:any) {
-    res.status(err instanceof SpeechProviderError?err.status:400).json({success:false,error:err instanceof SpeechProviderError?err.message:'Invalid speech request.'});
+    res.status(err instanceof CommunicationAccessError||err instanceof SpeechProviderError?err.status:400).json({success:false,error:err instanceof CommunicationAccessError||err instanceof SpeechProviderError?err.message:'Invalid speech request.'});
   }
 });
 
 // Production voice-note audio pipeline: raw audio -> ASR -> MT -> provider TTS -> audio response.
 // This endpoint intentionally accepts raw audio and never treats a client transcript as proof of speech.
 app.post("/api/langpretation/voice-note/process-audio", requireAuthenticatedUser, async (req, res) => {
+  let reservation: UsageReservation | undefined;
   let release:(()=>void)|undefined;
   const controller=new AbortController();
   const onClose=()=>{if(!res.writableEnded)controller.abort();};
@@ -1290,23 +1324,22 @@ app.post("/api/langpretation/voice-note/process-audio", requireAuthenticatedUser
         if(!(serverLanguageOverrides.get(code)?.active??settings.data?.find(row=>row.code===code)?.active??getLanguageCapability(code).active))
           throw new SpeechProviderError(403,'One of the selected languages is disabled.');
       }
-      const subscription=await getPersistentSubscription(authenticatedUserId(req));
-      if(!subscription||!['ACTIVE','TRIAL'].includes(subscription.status)||!(subscription.currentPeriodEnd>Date.now())
-        ||!(subscription.langpretationMinutesRemaining>=input.seconds/60))
-        throw new SpeechProviderError(402,'Your translation allowance is insufficient for this voice message.');
+       reservation = await communicationAccess.reserve(authenticatedUserId(req),'note',input.seconds);
     if(supportsPalabraPair(sourceLang,targetLang)){
       release=reservePalabraCapacity(authenticatedUserId(req));
       const spoken=await translatePalabraAudio(audio,sourceLang,targetLang,controller.signal,60);
-      const usage=await recordTranslatedVoiceNoteUsage(audio,{userId:authenticatedUserId(req),sourceLang,targetLang,provider:spoken.provider},recordLangpretationUsagePersistent);
+      await communicationAccess.commit(reservation);
+      const usage={minutesUsed:input.seconds/60};
       return res.json({success:true,sourceLang,targetLang,transcript:spoken.text,translatedTranscript:spoken.translatedText,
         asrProvider:spoken.provider,translationProvider:spoken.provider,...spoken,usage,requiresSynthesis:false});
     }
 
     const result=await processStagedVoiceNote(audio,sourceLang,targetLang,controller.signal);
-    const usage=await recordTranslatedVoiceNoteUsage(audio,{userId:authenticatedUserId(req),sourceLang,targetLang,provider:result.providerChain},recordLangpretationUsagePersistent);
+    await communicationAccess.commit(reservation);
+    const usage={minutesUsed:input.seconds/60};
     return res.json({success:true,sourceLang,targetLang,...result,usage,requiresSynthesis:false});
-  } catch(err:any){ return res.status(err instanceof SpeechProviderError||err instanceof PalabraError?err.status:500).json({success:false,error:err instanceof SpeechProviderError||err instanceof PalabraError?err.message:"Voice-note pipeline failed",...(err instanceof VoiceNoteProcessingError?{stage:err.stage}:{})}); }
-  finally{release?.();res.removeListener('close',onClose);}
+  } catch(err:any){ return res.status(err instanceof CommunicationAccessError||err instanceof SpeechProviderError||err instanceof PalabraError?err.status:500).json({success:false,error:err instanceof CommunicationAccessError||err instanceof SpeechProviderError||err instanceof PalabraError?err.message:"Voice-note pipeline failed",...(err instanceof VoiceNoteProcessingError?{stage:err.stage}:{})}); }
+  finally{if(reservation)await communicationAccess.release(reservation).catch(()=>{});release?.();res.removeListener('close',onClose);}
 });
 
 // Malvi production voice input: raw PCM/WAV -> provider ASR. No browser transcript is trusted.
@@ -1328,24 +1361,10 @@ app.post("/api/malvi/voice/transcribe", requireAuthenticatedUser, async (req, re
 // 5. Speech Synthesis Endpoint for Langpretation Audio Generation
 const authorizeLiveLangpretation = async (userId:string,sessionId:string,source:string,target:string) => {
     if (!adminFeatureSwitches.langpretationEnabled) throw new PalabraError(403,'Live translation is currently disabled.');
-    const session = billingDb.activeUsageSessions.get(sessionId);
     if (!canTranslateLiveCall(userId,sessionId))
       throw new PalabraError(403,'Join a connected call before starting Langpretation.');
-    if (!session) throw new PalabraError(425,'Call billing is still starting. Please wait a moment.');
-    if (session.status !== 'ACTIVE')
-      throw new PalabraError(403,'This call no longer has an active usage session.');
-    if (!session.isLangpretationActive)
-      throw new PalabraError(409,'Langpretation was off when this call started. End this call, enable Langpretation, and call again.');
-    // The existing call meter owns one shared call session. Both connected
-    // participants can interpret its two directions; each must also have allowance.
-    if (!((session.sourceLang === source && session.targetLang === target)
-      || (session.sourceLang === target && session.targetLang === source)))
-      throw new PalabraError(409,'The call language settings have changed. Restart translation.');
-    if (!normalizedBillingEnabled()) throw new PalabraError(503,'Persistent call billing is required.');
-    const subscription = await getPersistentSubscription(userId);
-    if (!subscription || !['ACTIVE','TRIAL'].includes(subscription.status)
-      || subscription.currentPeriodEnd <= Date.now() || !(subscription.langpretationMinutesRemaining > 0))
-      throw new PalabraError(402,'Your translation allowance is used up. Please check your subscription.');
+    try { authorizeSponsoredCall(userId,sessionId); }
+    catch(error){throw new PalabraError(error instanceof CommunicationAccessError ? error.status : 402,error instanceof Error ? error.message : 'Enable sponsored Langpretation first.');}
     const {data,error} = await getServerSupabase()!.from('nanivio_langpretation_configs').select('code,active').in('code',[source,target]);
     if (error) throw new PalabraError(503,'Language settings could not be checked.');
     for (const code of [source,target]) {
@@ -1368,7 +1387,10 @@ app.get("/api/langpretation/call/readiness", requireAuthenticatedUser, async (re
     });
   }
 });
-app.post("/api/langpretation/call/translate-audio",requireAuthenticatedUser,createPalabraCallHandler({
+app.post("/api/langpretation/call/translate-audio",requireAuthenticatedUser,(req,res,next)=>{
+  res.once('finish',()=>{if(res.statusCode<300)markCallTranslationReady(String(req.body?.sessionId||''));});
+  next();
+},createPalabraCallHandler({
   userId: authenticatedUserId,authorize:authorizeLiveLangpretation
 }));
 app.get("/api/langpretation/speech-readiness",requireAuthenticatedUser,(req,res)=>{
@@ -1392,16 +1414,24 @@ app.post("/api/langpretation/transcribe",requireAuthenticatedUser,async(req,res)
     const {language,audioBase64}=req.body;requireLanguage(language);
     if(typeof audioBase64!=='string'||audioBase64.length>5600000||!/^[A-Za-z0-9+/]+={0,2}$/.test(audioBase64))return res.status(400).json({success:false,error:'A base64 WAV recording is required.'});
     const audio=Buffer.from(audioBase64,'base64');
-    const recognized=await transcribeProviderAudio(audio,language,'audio/wav');
+    const input=parsePalabraWav(audio,60),sessionId=String(req.body.sessionId||'');
+    if(sessionId)authorizeSponsoredCall(authenticatedUserId(req),sessionId);
+    const recognized=sessionId?await transcribeProviderAudio(audio,language,'audio/wav')
+      :await withCommunicationUsage(authenticatedUserId(req),'note',input.seconds,()=>transcribeProviderAudio(audio,language,'audio/wav'));
+    if(sessionId)markCallTranslationReady(sessionId);
     res.json({success:true,...recognized,language});
-  }catch(error){res.status(error instanceof SpeechProviderError?error.status:400).json({success:false,error:error instanceof SpeechProviderError?error.message:'Invalid speech recognition request.'});}
+  }catch(error){res.status(error instanceof CommunicationAccessError||error instanceof SpeechProviderError?error.status:400).json({success:false,error:error instanceof CommunicationAccessError||error instanceof SpeechProviderError?error.message:'Invalid speech recognition request.'});}
 });
 app.post("/api/langpretation/synthesize", requireAuthenticatedUser, async (req, res) => {
   try {
     const { text, language = "en", purpose = "LANGPRETATION" } = req.body;
     if (!text || !text.trim()) return res.status(400).json({ error: "Text string is required for speech synthesis" });
 
-    const synthesized=await synthesizeProviderAudio(text,language);
+    const sessionId=String(req.body.sessionId||'');
+    if(sessionId)authorizeSponsoredCall(authenticatedUserId(req),sessionId);
+    const synthesized=purpose==='MALVI'||sessionId?await synthesizeProviderAudio(text,language)
+      :await withCommunicationUsage(authenticatedUserId(req),'text',Array.from(String(text)).length,()=>synthesizeProviderAudio(text,language));
+    if(sessionId)markCallTranslationReady(sessionId);
     const {audioBase64,provider,contentType}=synthesized;
 
     let usage = null;
@@ -1410,7 +1440,7 @@ app.post("/api/langpretation/synthesize", requireAuthenticatedUser, async (req, 
       usage = await recordMalviUsagePersistent(authenticatedUserId(req), synthesized.durationSeconds, { sourceLang: language, targetLang: language, provider, purpose: "MALVI_VOICE_RESPONSE" });
     }
     res.json({success:true,text,language,provider,audioBase64,contentType,timestamp:Date.now(),usage});
-  } catch (err:any) { res.status(err instanceof SpeechProviderError?err.status:500).json({success:false,error:err instanceof SpeechProviderError?err.message:'Speech synthesis failed'}); }
+  } catch (err:any) { res.status(err instanceof CommunicationAccessError||err instanceof SpeechProviderError?err.status:500).json({success:false,error:err instanceof CommunicationAccessError||err instanceof SpeechProviderError?err.message:'Speech synthesis failed'}); }
 });
 
 // 5. Langpretation Usage & Telemetry Summary Endpoint
@@ -1534,7 +1564,7 @@ app.get("/api/langpretation/azure-speech-token", requireAuthenticatedUser, async
   } catch (e:any) { res.status(500).json({error:e.message || 'Unable to issue Azure Speech token'}); }
 });
 
-app.post("/api/agora/token", requireAuthenticatedUser, (req, res) => {
+app.post("/api/agora/token", requireAuthenticatedUser, async (req, res) => {
   try {
     const { channelName: requestedChannel, expireTimeSeconds = 3600, role: requestedRole = "publisher" } = req.body;
 
@@ -1547,22 +1577,28 @@ app.post("/api/agora/token", requireAuthenticatedUser, (req, res) => {
     if (channelName.startsWith('nanivio_business_')) {
       return res.status(403).json({ error: 'Join Business meetings through the authorized workspace.' });
     }
+    if (!channelName.startsWith('nanivio_call_')) {
+      return res.status(403).json({error:'This room has no authorized call invitation. Use a person-to-person call or an authorized Business meeting.'});
+    }
     if (channelName.startsWith('nanivio_call_') && !canJoinAgoraCall(userId, String(authUser?.nvId || ''), channelName)) {
       return res.status(403).json({ error: "You are not a connected participant in this call." });
     }
 
+    const callTokenSeconds=channelName.startsWith('nanivio_call_')?await communicationTokenSeconds(userId,channelName):undefined;
     const tokenData = generateAgoraRtcToken({
       channelName: channelName.trim(),
       uid: userId,
       role: channelName.startsWith('nanivio_call_')
         ? "publisher"
         : requestedRole === "subscriber" ? "subscriber" : "publisher",
-      expireTimeSeconds,
+      expireTimeSeconds:callTokenSeconds ?? expireTimeSeconds,
+      ...(callTokenSeconds?{minimumExpireSeconds:1}:{}),
     });
 
     res.json({
       success: true,
       ...tokenData,
+      ...(callTokenSeconds?{communicationExpiresIn:callTokenSeconds}:{}),
     });
   } catch (error: any) {
     res.status(500).json({ error: error.message || "Failed to generate Agora token" });
@@ -1999,6 +2035,7 @@ const pendingPaystackOrders = new Map<string, {
 
 app.post("/api/paystack/initialize", requireAuthenticatedUser, async (req, res) => {
   try {
+    if (req.body?.purpose === 'SUBSCRIPTION') applyCommunicationCatalogue(await communicationAccess.policy(), billingDb.subscriptionPlans);
     const userId = authenticatedUserId(req);
     let quote: ReturnType<typeof quotePaystackOrder>;
     try {
@@ -2391,6 +2428,8 @@ app.post("/api/billing/langpretation/record-usage", requireAuthenticatedUser, as
   try {
     const userId = authenticatedUserId(req);
     const { channel, minutes, sourceLang = "en", targetLang = "ak", sessionId } = req.body;
+    if(channel==='TEXT_CHAT'||channel==='VOICE_NOTE'||communicationCall(userId,String(sessionId||'')))
+      return res.json({success:true,serverManaged:true,usage:null});
     if (!channel || !minutes || minutes <= 0) {
       return res.status(400).json({ error: "channel and positive minutes are required" });
     }
@@ -2515,6 +2554,13 @@ app.post("/api/billing/session/start", requireAuthenticatedUser, async (req, res
     const userId = authenticatedUserId(req);
     const sessionId = String(req.body?.sessionId || "");
     if (!sessionId) return res.status(400).json({ error: "sessionId is required" });
+    const call = communicationCall(userId,sessionId);
+    if (call && req.body?.serviceType === 'COMMUNICATION') {
+      if (call.status !== 'connected') return res.status(409).json({error:'This call is no longer connected.'});
+      return res.json({success:true,session:{...req.body,userId,status:'ACTIVE',startedAt:call.connectedAt,
+        elapsedSeconds:0,accruedCost:0,totalCost:0,baseCost:0,langpretationCost:0,unitRate:0,estimatedCharge:0,reservedAmount:0,
+        serverManaged:true,message:'Caller-funded allowance is metered by the server. Receiving is free.'}});
+    }
     const existingSession = billingDb.activeUsageSessions.get(sessionId);
     if (existingSession) {
       if (existingSession.userId !== userId) {
@@ -2558,6 +2604,9 @@ app.post("/api/billing/session/meter", requireAuthenticatedUser, async (req, res
   await previousMeter;
   try {
     const { sessionId, elapsedSeconds } = req.body;
+    const serverCall = communicationCall(meterUserId,String(sessionId));
+    if(serverCall) return res.json({success:true,session:{sessionId,userId:meterUserId,status:serverCall.status==='connected'?'ACTIVE':'COMPLETED',
+      elapsedSeconds:Math.max(0,(Date.now()-(serverCall.connectedAt||Date.now()))/1000),accruedCost:0,totalCost:0,baseCost:0,langpretationCost:0,serverManaged:true}});
     if (!sessionId || elapsedSeconds === undefined) {
       return res.status(400).json({ error: "sessionId and elapsedSeconds required" });
     }
@@ -2614,6 +2663,7 @@ app.post("/api/billing/session/meter", requireAuthenticatedUser, async (req, res
 app.post("/api/billing/session/complete", requireAuthenticatedUser, (req, res) => {
   try {
     const { sessionId } = req.body;
+    if (communicationCall(authenticatedUserId(req),String(sessionId))) return res.json({success:true,transaction:null,serverManaged:true,message:'Call allowance settled by the server; no recipient wallet charge.'});
     if (!sessionId) {
       return res.status(400).json({ error: "sessionId is required" });
     }
@@ -2656,8 +2706,9 @@ app.get("/api/billing/invoices/:invoiceId", requireAuthenticatedUser, async (req
 });
 
 // 8. Subscription Plans & Upgrades
-app.get("/api/billing/plans", (_req, res) => {
-  res.json({ success: true, plans: billingDb.subscriptionPlans });
+app.get("/api/billing/plans", async (_req, res) => {
+  try { res.json({ success: true, plans: applyCommunicationCatalogue(await communicationAccess.policy(),billingDb.subscriptionPlans) }); }
+  catch { res.status(503).json({success:false,error:'Communication plans require administrator setup.'}); }
 });
 
 app.post("/api/billing/plans/change", requireAuthenticatedUser, async (req, res) => {
@@ -3824,6 +3875,7 @@ async function startServer() {
 
   // Initialize Real-time WebSockets & Calling Signaling Server
     setupRealtimeServer(httpServer,{
+      chatLangpretationEnabled:()=>adminFeatureSwitches.langpretationEnabled,
       authorizeLangpretation:authorizeLiveLangpretation,
       authorizeBusinessTranslation: async (userId, callId, source, target) => {
         if (!/^business:[a-f0-9-]{36}$/i.test(callId) || !adminFeatureSwitches.langpretationEnabled

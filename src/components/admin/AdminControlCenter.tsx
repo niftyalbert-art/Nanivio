@@ -40,6 +40,7 @@ import { AdminFeatureLauncher } from './AdminFeatureLauncher';
 import { AdminLangpretationManager } from './AdminLangpretationManager';
 import { AdminMalviBillingWorkspace } from './AdminMalviBillingWorkspace';
 import { AdminMalviOverview } from './AdminMalviOverview';
+import { AdminCommunicationPolicy } from './AdminCommunicationPolicy';
 
 export const AdminControlCenter: React.FC = () => {
   const {
@@ -398,6 +399,7 @@ export const AdminControlCenter: React.FC = () => {
       {/* Existing Switches & Telemetry Tab */}
       {adminSubTab === 'switches' && (
         <div className="space-y-6 animate-in fade-in duration-200">
+          <AdminCommunicationPolicy />
           {/* ------------------------------------------------------------- */}
           {/* ADMIN MALVI OPERATIONS ASSISTANT & AUDIT LOG VIEWER */}
           {/* ------------------------------------------------------------- */}
