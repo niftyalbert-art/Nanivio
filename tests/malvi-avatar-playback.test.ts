@@ -1,10 +1,19 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { malviAvatarSoundBlocked, playMalviAvatar } from '../src/lib/malviAvatarPlayback.ts';
+import { malviAvatarSoundBlocked, playMalviAvatar, malviAvatarPlaybackFailure, MalviAvatarSoundRequiredError } from '../src/lib/malviAvatarPlayback.ts';
 
 function video(muted = false, volume = 1) {
   return { muted, volume, paused: true, play: async function () { this.paused = false; } };
 }
+test('sound consent and SDK stream replacement are not decoder failures',()=>{
+  assert.equal(malviAvatarPlaybackFailure(new MalviAvatarSoundRequiredError()),null);
+  assert.equal(malviAvatarPlaybackFailure(new DOMException('track changed','AbortError')),null);
+  assert.equal(malviAvatarPlaybackFailure(new DOMException('gesture required','NotAllowedError')),null);
+});
+test('a decoder failure is surfaced instead of mislabeled as sound consent',()=>{
+  assert.match(malviAvatarPlaybackFailure(new DOMException('sensitive provider detail','NotSupportedError'))!,/could not decode/);
+  assert.doesNotMatch(malviAvatarPlaybackFailure(Error('sensitive provider detail'))!,/sensitive/);
+});
 
 test('silent SDK fallback is blocked even when video play resolves successfully', async () => {
   const element = video(true);

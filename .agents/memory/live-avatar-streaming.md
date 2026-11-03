@@ -23,6 +23,19 @@ audio path. Test never-arriving tracks, subscribed-but-frozen video, cancellatio
 and both orders of SDK-start/frame readiness without automatically spending on
 replacement sessions.
 
+Startup can accept an already-presented frame, but speech delivery must still
+check fresh video progress.
+
+**Why:** A video-frame callback waits for a future frame; observing an already
+playing idle stream can otherwise reject video that the browser has already
+presented. Conversely, old frames do not prove continued progress during speech.
+
+**How to apply:** At startup require non-paused playback, current frame data,
+nonzero dimensions and browser-reported presented (not dropped) frames, or a new
+frame callback. Do not relax the separate per-audio delivery gate. Distinguish
+sound-consent failures from decoder failures instead of hiding both as muted
+playback.
+
 Receiving and decoding video does not establish that the user can see it:
 app-wide surface theming must not flatten translucent media overlays into
 opaque backgrounds.

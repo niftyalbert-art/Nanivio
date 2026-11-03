@@ -9,7 +9,7 @@ import { realtimeClient } from '../../lib/realtimeClient';
 import { MalviLiveOverlay } from './MalviLiveOverlay';
 import type { LiveAvatarSession } from '@heygen/liveavatar-web-sdk';
 import { MalviVoicePlayback } from '../../lib/malviVoicePlayback';
-import { malviAvatarSoundBlocked, playMalviAvatar } from '../../lib/malviAvatarPlayback';
+import { malviAvatarSoundBlocked, playMalviAvatar, malviAvatarPlaybackFailure } from '../../lib/malviAvatarPlayback';
 import { MalviCaptionPlayer, estimatedMalviCaptionTrack, type MalviCaptionTrack } from '../../lib/malviSpeechTiming';
 import { MalviAvatarPlayout } from '../../lib/malviAvatarPlayout';
 import { MalviAvatarVideoGate } from '../../lib/malviAvatarVideoGate';
@@ -226,8 +226,11 @@ export const MalviLiveAssistantProvider: React.FC<{ children: React.ReactNode }>
     try {
       sdk.current.attach(video);
       avatarStartup.current?.observe(video);
-      void playMalviAvatar(video).then(checkSound).catch(() => {
-        if (videoRef.current === video && sdk.current && mediaReady.current) setAudioBlocked(true);
+      void playMalviAvatar(video).then(checkSound).catch(error => {
+        if (videoRef.current !== video || !sdk.current || !mediaReady.current) return;
+        const message = malviAvatarPlaybackFailure(error);
+        if (message) fail(message);
+        else setAudioBlocked(malviAvatarSoundBlocked(video));
       });
     } catch (error) {
       fail(error instanceof Error ? error.message : 'The live video could not be attached.');
@@ -754,8 +757,11 @@ export const MalviLiveAssistantProvider: React.FC<{ children: React.ReactNode }>
                 try { avatarPlayout.current?.attach(video); }
                 catch (error) { setMicrophoneError(error instanceof Error ? error.message : 'Live subtitle playback monitoring is unavailable.'); }
               }
-            }).catch(() => {
-              if (videoRef.current === video && sdk.current) setAudioBlocked(true);
+            }).catch(error => {
+              if (videoRef.current !== video || !sdk.current) return;
+              const message = malviAvatarPlaybackFailure(error);
+              if (message) fail(message);
+              else setAudioBlocked(malviAvatarSoundBlocked(video));
             });
           }
         }}

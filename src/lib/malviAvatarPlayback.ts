@@ -6,6 +6,20 @@ export function malviAvatarSoundBlocked(video: AvatarVideo) {
   return video.muted || video.volume === 0 || video.paused;
 }
 
+export class MalviAvatarSoundRequiredError extends Error {
+  constructor() { super('Enable sound to hear Malvi.'); this.name = 'MalviAvatarSoundRequiredError'; }
+}
+
+// Muted playback is a recoverable consent state, not a failed decoder.
+// AbortError can occur while the SDK combines its audio and video tracks.
+export function malviAvatarPlaybackFailure(error: unknown): string | null {
+  if (error instanceof MalviAvatarSoundRequiredError) return null;
+  const name = error && typeof error === 'object' && 'name' in error ? error.name : '';
+  if (name === 'AbortError' || name === 'NotAllowedError') return null;
+  if (name === 'NotSupportedError') return 'This browser could not decode Malvi’s live video. Try an updated Chrome, Edge or Safari browser.';
+  return 'Malvi’s live video could not start playing. Check your connection and browser media permissions, then reconnect.';
+}
+
 export async function playMalviAvatar(video: AvatarVideo, enableSound = false) {
   if (enableSound) {
     // Run synchronously in the Enable sound click, before awaiting playback.
@@ -22,5 +36,5 @@ export async function playMalviAvatar(video: AvatarVideo, enableSound = false) {
     video.muted = true;
     await video.play();
   }
-  if (malviAvatarSoundBlocked(video)) throw new Error('Enable sound to hear Malvi.');
+  if (malviAvatarSoundBlocked(video)) throw new MalviAvatarSoundRequiredError();
 }

@@ -32,6 +32,17 @@ export class MalviAvatarStartup {
     this.observer = observer;
     this.video = video;
     this.frameRendered = false;
+    // Playback may have begun before React attaches its observer. A frame
+    // callback only reports a FUTURE frame; an idle renderer need not emit one.
+    // Require browser-reported decoded frames, not just tracks or metadata.
+    const quality = video.getVideoPlaybackQuality?.();
+    const presentedFrames = (quality?.totalVideoFrames ?? 0) - (quality?.droppedVideoFrames ?? 0);
+    if (!video.paused && video.readyState >= 2 && video.videoWidth > 0
+      && video.videoHeight > 0 && presentedFrames > 0) {
+      this.frameRendered = true;
+      this.complete();
+      return;
+    }
     void waitForMalviVideoFrame(video, observer.signal, Math.max(1, this.deadline - performance.now()))
       .then(() => {
         if (this.finished || observer.signal.aborted || this.video !== video) return;
@@ -57,7 +68,12 @@ export class MalviAvatarStartup {
 
   private fail() {
     if (this.finished) return;
+    const code = !this.sessionStarted ? 'STARTUP_CONNECTION'
+      : !this.video ? 'STARTUP_TRACKS'
+      : this.video.error ? `STARTUP_MEDIA_${this.video.error.code}`
+      : this.video.paused ? 'STARTUP_PLAYBACK'
+      : 'STARTUP_FRAME';
     this.cancel();
-    this.failed('Malvi’s live video did not become playable. Reconnect to start a new conversation.');
+    this.failed(`Malvi’s live video did not become playable. Reconnect to start a new conversation. Support code: ${code}.`);
   }
 }
