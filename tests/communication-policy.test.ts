@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { PGlite } from '@electric-sql/pglite';
-import { CommunicationCallMeter } from '../src/server/communicationAccess.ts';
+import { CommunicationCallMeter, CommunicationAccessError } from '../src/server/communicationAccess.ts';
 
 test('persistent communication policy, reservations, ownership and paid benefits', async t => {
   const db = new PGlite();
@@ -143,7 +143,7 @@ test('exhausted translation stops both translation streams but ordinary paid cal
     mayCall:async()=>({}),connected:async()=>({}),
     access:async()=>({policy:{warningSeconds:60},callSecondsRemaining:null,liveTrialSecondsRemaining:0,translatedSecondsRemaining:0}),
     reserve:async(userId:string,resource:string)=>{
-      if(resource==='live'&&exhausted)throw new Error('No translation minutes');
+      if(resource==='live'&&exhausted)throw new CommunicationAccessError(402,'No translation minutes');
       if(resource==='call')base.push(userId);
       return {userId,resource,amount:0.01,eventId:`${resource}_${base.length}`};
     },commit:async()=>{},release:async()=>{},
@@ -177,4 +177,50 @@ test('server call metering starts only after both media acknowledgements and nev
   assert.equal(reservations.filter(row=>row.resource==='live').length,1);
   assert.equal(reservations.find(row=>row.resource==='live').userId,'recipient');
   await meter.close('call');
+});
+
+test('allowance renewal does not temporarily reject a funded active translation',async()=>{
+  let finish!:()=>void,entered!:()=>void;
+  const renewing=new Promise<void>(resolve=>{entered=resolve;});
+  const pending=new Promise<void>(resolve=>{finish=resolve;});
+  let liveReservations=0;
+  const service:any={
+    connected:async()=>({}),
+    access:async()=>({policy:{warningSeconds:1},callSecondsRemaining:null,liveTrialSecondsRemaining:180,translatedSecondsRemaining:0}),
+    reserve:async(userId:string,resource:string)=>{
+      if(resource==='live'&&++liveReservations===2){entered();await pending;}
+      return{userId,resource,amount:.01,eventId:`${resource}-${liveReservations}`};
+    },commit:async()=>{},release:async()=>{},
+  };
+  const meter=new CommunicationCallMeter({end:assert.fail,state:()=>{},stopTranslation:()=>{}},service);
+  meter.add('renew','a',['a','b']);
+  await meter.mediaReady('renew','a');await meter.mediaReady('renew','b');
+  await meter.sponsor('renew','a',true);meter.translationReady('renew');
+  await renewing;
+  assert.doesNotThrow(()=>meter.authorize('renew','a'));
+  assert.doesNotThrow(()=>meter.authorize('renew','b'));
+  (meter as any).calls.get('renew').translationRenewingAt=Date.now()-11000;
+  assert.throws(()=>meter.authorize('renew','a'),(error:any)=>error.status===503);
+  finish();await meter.close('renew');
+});
+
+test('a failed provider setup releases its reservation and stops translation without ending the call',async()=>{
+  let released=0,stopped=0;
+  const states:any[]=[];
+  const service:any={
+    connected:async()=>({}),access:async()=>({policy:{warningSeconds:1},callSecondsRemaining:null}),
+    reserve:async(userId:string,resource:string,amount:number)=>({userId,resource,amount,eventId:resource}),
+    commit:async()=>{},release:async()=>{released++;},
+  };
+  const meter=new CommunicationCallMeter({end:assert.fail,state:(_id,state)=>states.push(state),stopTranslation:()=>{stopped++;}},service);
+  meter.add('setup','a',['a','b']);
+  await meter.mediaReady('setup','a');await meter.mediaReady('setup','b');
+  await meter.sponsor('setup','a',true);
+  await meter.translationFailed('setup','outsider','Not allowed');
+  assert.equal(stopped,0);
+  await meter.translationFailed('setup','a','Speech connection unavailable.');
+  assert.equal(released,1);assert.equal(stopped,1);
+  assert.ok(states.some(state=>state.enabled===false&&state.message.includes('ordinary call can continue')));
+  assert.throws(()=>meter.authorize('setup','b'));
+  await meter.close('setup');
 });

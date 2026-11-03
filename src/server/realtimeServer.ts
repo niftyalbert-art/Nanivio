@@ -30,6 +30,7 @@ import { normalizeAgoraUid } from './agoraService';
 import { PalabraError } from './palabraSpeech.ts';
 import { participantLanguage } from '../shared/participantLanguage.ts';
 import { CommunicationCallMeter, CommunicationAccessError, withCommunicationUsage } from './communicationAccess.ts';
+import { SUPPORTED_LANGUAGES } from '../types';
 let langpretationGateway:PalabraLiveGateway|null=null;
 let closeBusinessAudience: ((callId: string) => void) | null = null;
 export function endBusinessTranslation(roomId: string) {
@@ -398,8 +399,11 @@ export function setupRealtimeServer(httpServer: HttpServer,options?:{
   wss.on('connection', (socket: WebSocket) => {
     allSockets.add(socket);
     let currentUser: ConnectedUser | null = null;
+    let translationStreamId = '';
     const translationPeer={closed:false,send:(type:string,payload:any)=>{
       if (type === 'langpretation:ready' && !String(payload?.callId).startsWith('business:')) markCallTranslationReady(payload?.callId);
+      if(type==='langpretation:stopped'&&payload?.message&&payload.streamId===translationStreamId&&!String(payload?.callId).startsWith('business:')&&currentUser)
+        void communicationMeter.translationFailed(payload.callId,currentUser.userId,payload.message);
       if(socket.readyState===WebSocket.OPEN&&socket.bufferedAmount<512000)socket.send(JSON.stringify({type,payload}));
     }};
     let messageChain: Promise<void> = Promise.resolve();
@@ -444,11 +448,22 @@ export function setupRealtimeServer(httpServer: HttpServer,options?:{
           case 'langpretation:business_leave':
             businessAudience.remove(translationPeer); langpretationGateway?.stop(translationPeer); break;
           case 'langpretation:start': {
+            translationStreamId=String(payload?.streamId||'');
             try { await langpretationGateway!.start(translationPeer,currentUser!.userId,payload); }
             catch(error){translationPeer.send('langpretation:stopped',{
               callId:payload?.callId,streamId:payload?.streamId,
               message:error instanceof PalabraError?error.message:'Live translation could not be authorized.'
             });}
+            break;
+          }
+          case 'call:language': {
+            const call=activeCalls.get(String(payload?.callId));
+            if(!call||!call.participants.includes(currentUser!.userId)||!SUPPORTED_LANGUAGES.some(language=>language.code===payload?.language)){
+              socket.send(JSON.stringify({type:'call:billing_notice',payload:{callId:payload?.callId,message:'Choose a supported language in your own call.'}}));
+              break;
+            }
+            if(call.caller.id===currentUser!.userId)call.caller.myLanguage=payload.language;
+            for(const userId of call.participants)sendToUser(userId,{type:'call:participant_language',payload:{callId:call.callId,userId:currentUser!.userId,language:payload.language}});
             break;
           }
           case 'call:media_ready': {

@@ -98,6 +98,17 @@ test('an expired caller cannot ring another user without a subscription',async t
   assert.equal(f.usage.some(row=>row.action==='RESERVE'||row.action==='CONNECT'),false);
 });
 
+test('call language updates reach both users but outsiders and unsupported languages are rejected',async t=>{
+  const f=await fixture(t),a=await f.peer('caller'),b=await f.peer('receiver'),outsider=await f.peer('outsider');
+  a.send('call:initiate',{callId:'languages',callType:'video',recipientId:'receiver-id'});await b.wait('call:incoming','languages');
+  b.send('call:accept',{callId:'languages'});await a.wait('call:accepted','languages');await b.wait('call:connected','languages');
+  b.send('call:language',{callId:'languages',language:'fr'});
+  for(const peer of [a,b])assert.deepEqual(await peer.wait('call:participant_language','languages'),{callId:'languages',userId:'receiver-id',language:'fr'});
+  outsider.send('call:language',{callId:'languages',language:'ar'});await outsider.wait('call:billing_notice','languages');
+  a.send('call:language',{callId:'languages',language:'not-a-language'});await a.wait('call:billing_notice','languages');
+  a.send('call:end',{callId:'languages'});await b.wait('call:ended','languages');
+});
+
 test('legacy group invitations are blocked before quotas or ringing; ordinary calling is unaffected',async t=>{
   const f=await fixture(t),a=await f.peer('caller'),b=await f.peer('receiver');
   for(const payload of [

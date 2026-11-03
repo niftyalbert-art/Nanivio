@@ -1,4 +1,5 @@
 - [Agora package interoperability](agora-interop.md) — validate the Node/tsx runtime as well as the CJS production bundle.
+- [Mixed ESM test doubles](esm-test-mocks.md) — preserve constructor defaults and named exports in bundled provider fixtures before interpreting connection failures.
 - [Agora media lifecycle](agora-media-lifecycle.md) — re-enabling capture can replace tracks; refresh stream bindings and keep capture out of video display components.
 - [Communication grant periods](communication-grants.md) — self-service tier/cycle switches must preserve consumption and the existing term.
 - [Authentication signature](signature-video-policy.md) — show only after successful sign-in/sign-up, with sound and without skip or sound controls.

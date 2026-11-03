@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, useLayoutEffect, useRef, useCallback } from 'react';
 import confetti from 'canvas-confetti';
+import { useCallLanguageSync } from '../lib/useCallLanguageSync';
 import { prepareChatTranslation } from '../lib/chatTranslation';
 import { ChatSendError } from '../lib/chatSendFeedback';
 import {
@@ -1056,6 +1057,7 @@ export const NanivioProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
   // Calling, WebRTC Signaling & Agora RTC Telemetry
   const [activeCall, setActiveCall] = useState<CallSession | null>(null);
+  useCallLanguageSync(activeCall, myLanguage, currentUser.id, setActiveCall);
   const activeTranslationCall = useRef(activeCall);
   activeTranslationCall.current = activeCall;
   const [incomingCall, setIncomingCall] = useState<IncomingCallEvent | null>(null);

@@ -67,7 +67,7 @@ export async function withCommunicationUsage<T>(userId: string, resource: 'text'
 export class CommunicationCallMeter {
   private calls = new Map<string, {
     caller: string; connected: boolean; ready: Set<string>; participants: string[];
-    sponsor?: string; stopped: boolean; live: boolean; sponsoringAt?: number; changingSponsor?: boolean; sponsorVersion?: number; endedAt?: number;
+    sponsor?: string; stopped: boolean; live: boolean; sponsoringAt?: number; changingSponsor?: boolean; sponsorVersion?: number; endedAt?: number; translationRenewingAt?: number;
     base?: UsageReservation; translation?: UsageReservation;
     baseAt: number; translationAt: number; timer?: ReturnType<typeof setTimeout>;
     running?: Promise<void>; warning: Set<string>;
@@ -108,9 +108,10 @@ export class CommunicationCallMeter {
       // Reserve before announcing to either client. No raw voice may reach a
       // provider until the authenticated sponsor has accepted this allowance.
       call.changingSponsor=true;
+      const version=call.sponsorVersion;
       try{
         const reservation=await this.service.reserve(actor,'live',5);
-        if(call.stopped){await this.service.release(reservation);throw new CommunicationAccessError(409,'This call has ended.');}
+        if(call.stopped||call.sponsorVersion!==version){await this.service.release(reservation);throw new CommunicationAccessError(409,'This Langpretation request has stopped.');}
         call.translation=reservation;
       }finally{call.changingSponsor=false;}
       call.sponsor = actor; call.translationAt = 0; call.sponsoringAt = Date.now(); call.live = true;
@@ -125,7 +126,24 @@ export class CommunicationCallMeter {
   }
   authorize(id: string, actor: string) {
     const call = this.calls.get(id);
-    if (!call?.connected || call.stopped || !call.live || !call.sponsor || !call.translation || !call.participants.includes(actor)) throw new CommunicationAccessError(402, 'Enable sponsored Langpretation in this connected call first.');
+    const renewing=call?.translationRenewingAt!==undefined&&Date.now()-call.translationRenewingAt<10000;
+    if (!call?.connected || call.stopped || !call.live || !call.sponsor || !call.participants.includes(actor))
+      throw new CommunicationAccessError(402, 'Enable sponsored Langpretation in this connected call first.');
+    if(call?.translationRenewingAt!==undefined&&!renewing)
+      throw new CommunicationAccessError(503,'Langpretation allowance confirmation took too long. Your ordinary call can continue.');
+    if (!call.translation&&!renewing) throw new CommunicationAccessError(402, 'Enable sponsored Langpretation in this connected call first.');
+  }
+  async translationFailed(id:string,actor:string,message:string) {
+    const call=this.calls.get(id);
+    if(!call?.live||!call.participants.includes(actor))return;
+    call.live=false;call.sponsorVersion=(call.sponsorVersion||0)+1;
+    this.deps.stopTranslation(id);
+    this.deps.state(id,{enabled:false,message:`Langpretation paused: ${message} Your ordinary call can continue.`});
+    const reservation=call.translation,at=call.translationAt;
+    call.translation=undefined;call.sponsor=undefined;
+    await this.settle(reservation,at).catch(error=>{
+      console.error('Unable to settle paused Langpretation usage.',{callId:id,code:error instanceof CommunicationAccessError?error.code:'BILLING_UNAVAILABLE'});
+    });
   }
   translationReady(id: string) {
     const call = this.calls.get(id);
@@ -162,6 +180,7 @@ export class CommunicationCallMeter {
           this.deps.state(id, { enabled: false, message: 'Langpretation did not connect. No translation minutes were used.' });
         }
         if (call.live && call.sponsor && call.translationAt) {
+          call.translationRenewingAt=Date.now();
           try {
             const previousTranslation=call.translation;
             const payer=call.sponsor,version=call.sponsorVersion;
@@ -174,10 +193,13 @@ export class CommunicationCallMeter {
               if (call.stopped || !call.live || call.sponsorVersion!==version) await this.service.release(next);
               else {call.translation = next; call.translationAt = requestedAt-overdue*1000;}
             }
-          } catch {
+          } catch(error) {
             call.live = false; call.sponsor = undefined; this.deps.stopTranslation(id);
-            this.deps.state(id, { enabled: false, subscriptionRequired: true, message: 'Langpretation allowance ended. Subscribe to translate; the ordinary call can continue.' });
-          }
+            const exhausted=error instanceof CommunicationAccessError&&error.status===402;
+            this.deps.state(id, { enabled: false, subscriptionRequired: exhausted, message: exhausted
+              ?'Langpretation allowance ended. Subscribe to translate; the ordinary call can continue.'
+              :'Langpretation allowance could not be confirmed. Try again; the ordinary call can continue.' });
+          }finally{call.translationRenewingAt=undefined;}
         }
         const access = await this.service.access(call.caller);
         const remaining = access.callSecondsRemaining;

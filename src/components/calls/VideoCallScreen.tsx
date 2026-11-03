@@ -69,7 +69,7 @@ export const VideoCallScreen: React.FC<VideoCallScreenProps> = ({ onEndCall }) =
   const hasRemoteParticipant = remoteParticipant !== null;
 
   // Language info helpers
-  const hostLang = SUPPORTED_LANGUAGES.find((l) => l.code === (host.myLanguage || myLanguage)) || SUPPORTED_LANGUAGES[0];
+  const hostLang = SUPPORTED_LANGUAGES.find((l) => l.code === (myLanguage || host.myLanguage)) || SUPPORTED_LANGUAGES[0];
   const remoteLang = remoteParticipant
     ? SUPPORTED_LANGUAGES.find((l) => l.code === remoteParticipant.myLanguage) || null
     : null;
@@ -118,6 +118,10 @@ export const VideoCallScreen: React.FC<VideoCallScreenProps> = ({ onEndCall }) =
     if(!activeCall?.id)return;
     const service=new LiveCallTranslation(activeCall.id,currentUser.id,{
       transcript:p=>{
+        // Our source text is microphone feedback; incoming translations belong
+        // to the other speaker. Do not mix our own outgoing translation into
+        // the caption labelled with our listening language.
+        if(p.translated?p.speakerId===currentUser.id:p.speakerId!==currentUser.id)return;
         if(p.translated)setCurrentTranslatedSubtitle(p.text);
         else setCurrentSpokenSubtitle(p.text);
         setLangpretationStage(p.translated?'speaking':'interpreting');
