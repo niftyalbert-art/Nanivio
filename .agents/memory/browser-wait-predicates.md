@@ -2,6 +2,17 @@
 name: Browser wait predicates
 description: Avoid false failures when CDP evaluates DOM conditions by value.
 ---
+Use an actual HTML origin for isolated UI fixtures, not a browser image-viewer
+document.
+
+**Why:** Chromium's image viewer can leave `Page.setDocumentContent` hanging
+even while the application and server remain healthy. Opaque blank documents
+also make brand-asset loading less representative of the application.
+
+**How to apply:** Serve isolated HTML and its public assets through a local test
+server. This preserves real image rendering without bypassing application
+authentication or using a signed-in account.
+
 Return explicit booleans from browser wait predicates, particularly selector queries.
 
 Assert rendered fixture text, not the text of inline scripts.

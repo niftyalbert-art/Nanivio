@@ -37,7 +37,14 @@ cream actions with a floating pill navigation bar, kept clear of the typing area
 to see completed image reviews, then reiterated “use the same colour just as
 the image i sent.” They subsequently extended those colours to all app pages,
 not only Chat, requested “Langpretation” instead of “Translate,” and asked for
-a premium fintech-style Home rather than a web-design-agency look.
+a premium finance-style Home layout rather than a web-design-agency look.
+This is visual guidance only: the user clarified that Nanivio supports P2P app
+credits, not fintech or cash transfers; see `nanivio-credit-scope.md`.
+The user reiterated that the signed-in user Home must follow the supplied
+inside-phone dashboard arrangement: profile greeting, balance card, raised
+shortcut grid and recent activity, without changing functionality or official
+Nanivio colours. This is not a request to replace the logo with the reference's
+gold mark or embed the phone-device image.
 They corrected the colour-only interpretation again and specifically requested
 the reference's 3D buttons, arrangement, and illuminated chat composer.
 They approved applying the resulting landing and chat design to the app.

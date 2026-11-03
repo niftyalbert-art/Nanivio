@@ -653,3 +653,31 @@ mtime_ms = 1793715808528
 storage_uri = "gcs://replit-rams-assets-sisko/rams/assets/repl:8a53f482-19ae-49f0-ab16-31b527f92091/51bad839-df2d-417c-9566-72ae2efdb907/26924614-bc33-4632-adcc-3a2fee7f7306"
 storage_version_token = "1793715863330509"
 content_type = "image/png"
+
+[[outputs]]
+id = "n6JCI7XlxMg4roLE-ij1Y"
+uri = "file://generated-artifacts/home-dashboard/home-mobile.png"
+type = "image"
+title = "Corrected Home — Nanivio credits"
+description = "Actual Home components rendered with an isolated test account: Nanivio credit balance, Send credits and My credits. Official logo and colours unchanged. Not a live customer account."
+logical_id = "f560f7fc-7fb2-457e-90df-f94cab53e428"
+content_hash = "sha256:a0add51d6e14180e543557d4e850ff9960c9342f609d55ccfc4ac39249b4560b"
+size = 108983
+mtime_ms = 1793728560282
+storage_uri = "gcs://replit-rams-assets-sisko/rams/assets/repl:8a53f482-19ae-49f0-ab16-31b527f92091/f560f7fc-7fb2-457e-90df-f94cab53e428/ca71a1f0-0c64-42f1-acef-6e7af02d2be1"
+storage_version_token = "1793728676181922"
+content_type = "image/png"
+
+[[outputs]]
+id = "44ZV0mIIHa-jZw4stK1TT"
+uri = "file://generated-artifacts/home-dashboard/home-desktop.png"
+type = "image"
+title = "Nanivio Home — desktop preview"
+description = "Responsive desktop version of the updated Home. Official Nanivio logo preserved. Isolated test-account preview, not live financial data."
+logical_id = "dc04663e-a892-48f2-96e0-f8af4267b8ea"
+content_hash = "sha256:fb2ad05774c8b9f5e4053998b23b69e11a706c3e8ffe2534cffedad0bf1dcac6"
+size = 180409
+mtime_ms = 1793727971805
+storage_uri = "gcs://replit-rams-assets-sisko/rams/assets/repl:8a53f482-19ae-49f0-ab16-31b527f92091/dc04663e-a892-48f2-96e0-f8af4267b8ea/35986499-6d03-462f-affb-5d4f3fef375b"
+storage_version_token = "1793728106592326"
+content_type = "image/png"

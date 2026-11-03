@@ -532,19 +532,7 @@ export const UniversalBillingHub: React.FC = () => {
                   className="px-3.5 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs transition flex items-center gap-1.5 shadow-sm"
                 >
                   <Send className="w-3.5 h-3.5" />
-                  <span>Transfer Value (P2P)</span>
-                </button>
-                <button
-                  type="button"
-                  id="btn_transfer_internal_overview"
-                  onClick={() => {
-                    setTransferModalMode('INTERNAL');
-                    setIsTransferModalOpen(true);
-                  }}
-                  className="px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 font-semibold text-xs transition flex items-center gap-1.5 border border-slate-700"
-                >
-                  <ArrowRightLeft className="w-3.5 h-3.5" />
-                  <span>Internal Rebalance</span>
+                  <span>Send Nanivio credits (P2P)</span>
                 </button>
                 <button
                   type="button"
@@ -886,9 +874,9 @@ export const UniversalBillingHub: React.FC = () => {
         {activeSubTab === 'transfer' && (
           <div className="space-y-6">
             <div className="p-6 rounded-2xl bg-slate-900 border border-slate-800">
-              <h2 className="text-base font-bold text-slate-100 mb-1">Nanivio Instant Value Transfer Hub</h2>
+              <h2 className="text-base font-bold text-slate-100 mb-1">Nanivio credit transfers</h2>
               <p className="text-xs text-slate-400 mb-6">
-                Send communication credits or fintech funds directly to any Nanivio user or rebalance between your personal wallets.
+                Send Nanivio service credits directly to another Nanivio user. These are app credits, not cash or bank transfers.
               </p>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="p-5 rounded-xl bg-slate-950 border border-slate-800 flex flex-col justify-between">
@@ -898,7 +886,7 @@ export const UniversalBillingHub: React.FC = () => {
                       <h3 className="font-bold text-sm text-slate-100">Peer-to-Peer Transfer (P2P)</h3>
                     </div>
                     <p className="text-xs text-slate-400 leading-relaxed mb-4">
-                      Instant transfer of account value to any Nanivio ID, phone number, or email with 0% platform fee.
+                      Send Nanivio credits to a recipient’s Nanivio ID, phone number, or email.
                     </p>
                   </div>
                   <button
@@ -909,31 +897,10 @@ export const UniversalBillingHub: React.FC = () => {
                     }}
                     className="w-full py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs transition"
                   >
-                    Launch P2P Transfer &rarr;
+                    Send credits &rarr;
                   </button>
                 </div>
 
-                <div className="p-5 rounded-xl bg-slate-950 border border-slate-800 flex flex-col justify-between">
-                  <div>
-                    <div className="flex items-center gap-2 mb-2 text-emerald-400">
-                      <ArrowRightLeft className="w-5 h-5" />
-                      <h3 className="font-bold text-sm text-slate-100">Wallet-to-Wallet Rebalance</h3>
-                    </div>
-                    <p className="text-xs text-slate-400 leading-relaxed mb-4">
-                      Shift funds from your Fintech Account into your Communication Account for immediate Langpretation and Telecom minutes.
-                    </p>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setTransferModalMode('INTERNAL');
-                      setIsTransferModalOpen(true);
-                    }}
-                    className="w-full py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs transition"
-                  >
-                    Rebalance Internal Wallets &rarr;
-                  </button>
-                </div>
               </div>
             </div>
           </div>

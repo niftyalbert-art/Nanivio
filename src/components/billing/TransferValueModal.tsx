@@ -21,6 +21,7 @@ interface TransferValueModalProps {
   onClose: () => void;
   onSuccess: () => void;
   defaultMode?: 'P2P' | 'INTERNAL';
+  creditsOnly?: boolean;
   communicationBalance?: number;
   fintechBalance?: number;
   currency?: string;
@@ -31,11 +32,12 @@ export const TransferValueModal: React.FC<TransferValueModalProps> = ({
   onClose,
   onSuccess,
   defaultMode = 'P2P',
-  communicationBalance = 3450.0,
-  fintechBalance = 1255.5,
+  creditsOnly = true,
+  communicationBalance = 0,
+  fintechBalance = 0,
   currency = 'GHS',
 }) => {
-  const [transferMode, setTransferMode] = useState<'P2P' | 'INTERNAL'>(defaultMode);
+  const [transferMode, setTransferMode] = useState<'P2P' | 'INTERNAL'>(creditsOnly ? 'P2P' : defaultMode);
   const [accountType, setAccountType] = useState<FinancialAccountType>('COMMUNICATION');
   const [toIdentifier, setToIdentifier] = useState<string>('');
   const [amount, setAmount] = useState<number>(25);
@@ -52,7 +54,7 @@ export const TransferValueModal: React.FC<TransferValueModalProps> = ({
     { name: 'Yaw Boateng', identifier: '0486910243', role: 'Driver' },
   ];
 
-  const currentAvailableBalance = accountType === 'COMMUNICATION' ? communicationBalance : fintechBalance;
+  const currentAvailableBalance = creditsOnly || accountType === 'COMMUNICATION' ? communicationBalance : fintechBalance;
 
   const handleAmountChange = (val: string) => {
     setCustomAmount(val);
@@ -81,7 +83,7 @@ export const TransferValueModal: React.FC<TransferValueModalProps> = ({
     setIsProcessing(true);
 
     try {
-      if (transferMode === 'P2P') {
+      if (creditsOnly || transferMode === 'P2P') {
         if (!toIdentifier.trim()) {
           setErrorMessage('Please provide the recipient’s Nanivio ID, phone number, or email.');
           setIsProcessing(false);
@@ -93,7 +95,7 @@ export const TransferValueModal: React.FC<TransferValueModalProps> = ({
           toIdentifier: toIdentifier.trim(),
           amount,
           currency,
-          accountType,
+          accountType: creditsOnly ? 'COMMUNICATION' : accountType,
           note: note.trim() || undefined,
         });
 
@@ -157,13 +159,13 @@ export const TransferValueModal: React.FC<TransferValueModalProps> = ({
             </div>
             <div>
               <h2 className="text-base font-bold text-slate-100 flex items-center gap-2">
-                <span>Transfer Nanivio Value</span>
+                <span>{creditsOnly ? 'Send Nanivio credits' : 'Transfer Nanivio Value'}</span>
                 <span className="text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded bg-blue-500/20 text-blue-300 border border-blue-500/30">
                   Instant Rail
                 </span>
               </h2>
               <p className="text-xs text-slate-400">
-                Move value peer-to-peer or between internal accounts
+                {creditsOnly ? 'Send Nanivio service credits to another Nanivio user. This is not a cash or bank transfer.' : 'Move value peer-to-peer or between internal accounts'}
               </p>
             </div>
           </div>
@@ -251,7 +253,7 @@ export const TransferValueModal: React.FC<TransferValueModalProps> = ({
               )}
 
               {/* Mode Selector */}
-              <div className="grid grid-cols-2 gap-2 bg-slate-950 p-1 rounded-xl border border-slate-800 text-xs">
+              {!creditsOnly && <div className="grid grid-cols-2 gap-2 bg-slate-950 p-1 rounded-xl border border-slate-800 text-xs">
                 <button
                   type="button"
                   onClick={() => setTransferMode('P2P')}
@@ -276,10 +278,13 @@ export const TransferValueModal: React.FC<TransferValueModalProps> = ({
                   <ArrowRightLeft className="w-4 h-4" />
                   <span>Between My Wallets</span>
                 </button>
-              </div>
+              </div>}
 
               {/* Source Wallet Selector */}
-              <div className="p-3.5 rounded-xl bg-slate-950 border border-slate-800 space-y-2">
+              {creditsOnly ? <div className="p-3.5 rounded-xl bg-slate-950 border border-slate-800 text-xs">
+                <span className="text-slate-300">Available Nanivio credits ({currency})</span>
+                <strong className="block mt-1 font-mono text-slate-100">{communicationBalance.toFixed(2)} credits</strong>
+              </div> : <div className="p-3.5 rounded-xl bg-slate-950 border border-slate-800 space-y-2">
                 <label className="block text-xs font-semibold text-slate-300">Select Source Account</label>
                 <div className="grid grid-cols-2 gap-2">
                   <button
@@ -312,10 +317,10 @@ export const TransferValueModal: React.FC<TransferValueModalProps> = ({
                     </div>
                   </button>
                 </div>
-              </div>
+              </div>}
 
               {/* Recipient Input (P2P Mode) */}
-              {transferMode === 'P2P' ? (
+              {creditsOnly || transferMode === 'P2P' ? (
                 <div className="space-y-2">
                   <label className="block text-xs font-semibold text-slate-300">
                     Recipient Identifier (Nanivio ID, Phone, or Email)
@@ -329,7 +334,7 @@ export const TransferValueModal: React.FC<TransferValueModalProps> = ({
                   />
 
                   {/* Quick Select Buttons */}
-                  <div className="flex flex-wrap gap-1.5 pt-1">
+                  {!creditsOnly && <div className="flex flex-wrap gap-1.5 pt-1">
                     <span className="text-[10px] text-slate-500 self-center mr-1">Quick:</span>
                     {quickContacts.map((contact) => (
                       <button
@@ -341,7 +346,7 @@ export const TransferValueModal: React.FC<TransferValueModalProps> = ({
                         {contact.name} ({contact.identifier.slice(-4)})
                       </button>
                     ))}
-                  </div>
+                  </div>}
                 </div>
               ) : (
                 /* Internal Transfer Destination Info */
@@ -355,7 +360,7 @@ export const TransferValueModal: React.FC<TransferValueModalProps> = ({
 
               {/* Amount Input */}
               <div>
-                <label className="block text-xs font-semibold text-slate-300 mb-1.5">Transfer Amount</label>
+                <label className="block text-xs font-semibold text-slate-300 mb-1.5">{creditsOnly ? 'Credits to send' : 'Transfer Amount'}</label>
                 <div className="relative">
                   <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 font-mono text-xs">
                     {currency}
