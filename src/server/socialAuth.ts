@@ -1,8 +1,10 @@
 import type { Express } from 'express';
 import { createClient, type User } from '@supabase/supabase-js';
 import { userFromToken } from './persistentAuth';
+import { APPLE_SIGN_IN_ENABLED, APPLE_SIGN_IN_UNAVAILABLE } from '../shared/socialAuthPolicy';
 
 export function assertSocialIdentity(user: User | null, provider: string) {
+  if (provider === 'apple' && !APPLE_SIGN_IN_ENABLED) throw new Error(APPLE_SIGN_IN_UNAVAILABLE);
   if (!['google', 'apple'].includes(provider) || !user?.email || !user.email_confirmed_at ||
       !user.identities?.some(identity => identity.provider === provider)) {
     throw new Error('Your Google or Apple identity could not be verified. Please sign in again.');
@@ -29,7 +31,7 @@ export async function socialConfig() {
   if (!response.ok) throw new Error('Social sign-in settings are temporarily unavailable. Please use email and password.');
   const settings = await response.json();
   // The anon key is Supabase's public browser key, never the service-role key.
-  return { url, publicKey: key, google: settings.external?.google === true, apple: settings.external?.apple === true };
+  return { url, publicKey: key, google: settings.external?.google === true, apple: APPLE_SIGN_IN_ENABLED && settings.external?.apple === true };
 }
 
 export async function completeSocial(token: string, provider: string, deps = {
@@ -53,6 +55,9 @@ export function registerSocialAuthRoutes(app: Express, deps = { config: socialCo
     const { accessToken, provider } = req.body || {};
     if (typeof accessToken !== 'string' || accessToken.length > 16000 || !['google', 'apple'].includes(provider)) {
       return res.status(400).json({ error: 'Choose Google or Apple and sign in again.' });
+    }
+    if (provider === 'apple' && !APPLE_SIGN_IN_ENABLED) {
+      return res.status(403).json({ error: APPLE_SIGN_IN_UNAVAILABLE });
     }
     try { res.json(await deps.complete(accessToken, provider)); }
     catch { res.status(401).json({ error: 'Social sign-in could not be completed. Check your account status or try again.' }); }

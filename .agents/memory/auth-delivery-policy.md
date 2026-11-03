@@ -21,8 +21,8 @@ For signup phone verification, technical provider errors should appear only in p
 
 **How to apply:** Preserve the public/admin separation when changing error handling. Never include API keys, phone numbers, verification codes or raw provider response bodies in the diagnostic feed.
 
-Show the “Continue with Google” and “Continue with Apple” options, followed by the sign-up link, on the sign-in screen.
+Show the “Continue with Google” and “Continue with Apple” options, followed by the sign-up link, on the sign-in screen. Keep Apple disabled for now while preserving Google sign-in.
 
-**Why:** The user repeated the request after these options were omitted from their reference design.
+**Why:** The user repeated the request after these options were omitted from their reference design, then explicitly asked to disable Apple for now.
 
-**How to apply:** Keep the requested options visible; missing provider configuration must produce an honest unavailable message, not a fake successful sign-in. Preserve Nanivio's phone, role and verification requirements for new accounts.
+**How to apply:** Keep the requested options visible, with Apple clearly unavailable until the user asks to enable it; prevent Apple entry on both client and server. Missing provider configuration must produce an honest unavailable message, not a fake successful sign-in. Preserve Nanivio's phone, role and verification requirements for new accounts.

@@ -10,7 +10,8 @@ const identity = {
 } as User;
 test('social login requires an authoritative verified email and the requested linked provider', () => {
   assert.equal(assertSocialIdentity(identity,'google').id,'provider-user');
-  assert.throws(()=>assertSocialIdentity(identity,'apple'));
+  assert.throws(()=>assertSocialIdentity(identity,'apple'),/temporarily unavailable/);
+  assert.throws(()=>assertSocialIdentity({...identity,identities:[{provider:'apple'}] as User['identities']},'apple'),/temporarily unavailable/);
   assert.throws(()=>assertSocialIdentity({...identity,email_confirmed_at:undefined},'google'));
   assert.throws(()=>assertSocialIdentity({...identity,email:undefined},'google'));
   assert.throws(()=>assertSocialIdentity(identity,'github'));
@@ -31,7 +32,7 @@ test('social completion does not invent a profile or activate inactive subscribe
   }
   deps.profile=async()=>({id:'provider-user',accountStatus:'ACTIVE'});
   assert.equal((await completeSocial('checked-token','google',deps)).needsRegistration,false);
-  await assert.rejects(completeSocial('checked-token','apple',deps),/verified/);
+  await assert.rejects(completeSocial('checked-token','apple',deps),/temporarily unavailable/);
 });
 test('social endpoints validate input, preserve onboarding and hide upstream failures', async () => {
   let completeCalls=0;
@@ -57,6 +58,9 @@ test('social endpoints validate input, preserve onboarding and hide upstream fai
     assert.equal((await config.json()).google,false);
     assert.equal((await post({provider:'github',accessToken:'token'})).status,400);
     assert.equal((await post({provider:'google'})).status,400);
+    const apple=await post({provider:'apple',accessToken:'valid'});
+    assert.equal(apple.status,403);
+    assert.match((await apple.json()).error,/temporarily unavailable/);
     assert.equal(completeCalls,0);
     const failed=await post({provider:'google',accessToken:'invalid'});
     assert.equal(failed.status,401);

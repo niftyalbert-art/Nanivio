@@ -47,6 +47,9 @@ try {
     for(const provider of ['google','apple']){
       assert.ok(await page.evaluate(`!!document.getElementById('btn-${provider}-signin')`));
     }
+    assert.equal(await page.evaluate("document.getElementById('btn-google-signin').disabled"),false);
+    assert.equal(await page.evaluate("document.getElementById('btn-apple-signin').disabled"),true);
+    assert.ok(await page.evaluate("document.getElementById('apple-signin-status').textContent.includes('temporarily unavailable')"));
     await screenshot(page, `generated-artifacts/auth-design/signin-${width}.png`);
 
     await page.evaluate("document.getElementById('btn-auth-signup').click();true");

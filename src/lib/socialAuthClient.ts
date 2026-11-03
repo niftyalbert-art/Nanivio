@@ -1,5 +1,6 @@
 import { createClient } from '@supabase/supabase-js';
 import { authClient } from './authClient';
+import { APPLE_SIGN_IN_ENABLED, APPLE_SIGN_IN_UNAVAILABLE } from '../shared/socialAuthPolicy';
 
 export type SocialProvider = 'google' | 'apple';
 const PENDING = 'nanivio_social_signup';
@@ -19,6 +20,7 @@ function client(config: {url: string; publicKey: string}) {
   } });
 }
 export async function startSocialSignIn(provider: SocialProvider) {
+  if (provider === 'apple' && !APPLE_SIGN_IN_ENABLED) throw new Error(APPLE_SIGN_IN_UNAVAILABLE);
   const config = await configuration();
   if (!config[provider]) throw new Error(`${provider === 'google' ? 'Google' : 'Apple'} sign-in has not been enabled yet. Please use email and password for now.`);
   sessionStorage.removeItem(PENDING);
@@ -36,6 +38,7 @@ export function finishSocialSignIn(code: string) {
     const config = await configuration();
     const provider = sessionStorage.getItem(PROVIDER);
     if (provider !== 'google' && provider !== 'apple') throw new Error('Start social sign-in again from this browser tab.');
+    if (provider === 'apple' && !APPLE_SIGN_IN_ENABLED) throw new Error(APPLE_SIGN_IN_UNAVAILABLE);
     const db = client(config);
     const { data, error } = await db.auth.exchangeCodeForSession(code);
     if (error || !data.session) throw new Error('Social sign-in expired or was cancelled. Please try again.');

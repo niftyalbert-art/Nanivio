@@ -26,6 +26,7 @@ import { getAllLanguages } from '../../i18n/languages';
 import { getAuthText } from '../../i18n/authTranslations';
 import { authClient } from '../../lib/authClient';
 import { normalizeSignupPhone } from '../../lib/phoneNumber';
+import { APPLE_SIGN_IN_ENABLED, APPLE_SIGN_IN_UNAVAILABLE } from '../../shared/socialAuthPolicy';
 import { EmailVerification, type EmailProof } from './EmailVerification';
 import './nanivio-auth-luxury.css';
 import { startSocialSignIn, finishSocialSignIn, type SocialProvider } from '../../lib/socialAuthClient';
@@ -642,13 +643,16 @@ const handleAdminSignIn = async (e: React.FormEvent) => {
                 </svg>
                 Continue with Google
               </button>
-              <button id="btn-apple-signin" type="button" disabled={isLoading}
-                onClick={() => void handleSocialSignIn('apple')} className="auth-social-button">
+              <button id="btn-apple-signin" type="button" disabled={isLoading || !APPLE_SIGN_IN_ENABLED}
+                title={!APPLE_SIGN_IN_ENABLED ? APPLE_SIGN_IN_UNAVAILABLE : undefined}
+                aria-describedby={!APPLE_SIGN_IN_ENABLED ? 'apple-signin-status' : undefined}
+                onClick={() => void handleSocialSignIn('apple')} className="auth-social-button disabled:cursor-not-allowed disabled:opacity-50">
                 <svg aria-hidden="true" viewBox="0 0 24 24" width="20" height="20" fill="currentColor">
                   <path d="M17.05 12.54c.03 3.06 2.69 4.08 2.72 4.1-.02.07-.42 1.46-1.4 2.9-.86 1.24-1.75 2.48-3.15 2.5-1.37.03-1.81-.81-3.38-.81-1.57 0-2.06.78-3.36.84-1.35.05-2.37-1.35-3.23-2.59-1.76-2.54-3.11-7.18-1.3-10.32A5.02 5.02 0 0 1 8.2 6.6c1.34-.03 2.6.91 3.41.91.81 0 2.33-1.12 3.93-.96.67.03 2.55.27 3.76 2.04-.1.06-2.25 1.31-2.22 3.95ZM14.47 4.83c.72-.88 1.21-2.1 1.08-3.33-1.04.04-2.3.69-3.05 1.57-.67.78-1.25 2.03-1.09 3.23 1.16.09 2.34-.59 3.06-1.47Z"/>
                 </svg>
                 Continue with Apple
               </button>
+              {!APPLE_SIGN_IN_ENABLED && <p id="apple-signin-status" className="text-center text-xs text-slate-400">Apple sign-in is temporarily unavailable.</p>}
             </div>
             <div className="pt-2 text-center text-xs text-slate-400">
               <span>{authTxt.noAccountText} </span>
