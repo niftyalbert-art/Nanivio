@@ -47,6 +47,7 @@ type EventCallback<T = any> = (data: T) => void;
 class NanivioRealtimeClient {
   private socket: WebSocket | null = null;
   private currentUser: any = null;
+  private presenceReady = false;
   private isConnecting = false;
   private reconnectTimer: any = null;
   private listeners: Map<string, Set<EventCallback>> = new Map();
@@ -66,13 +67,16 @@ class NanivioRealtimeClient {
     }
 
     this.isConnecting = true;
+    this.presenceReady = false;
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
     const wsUrl = `${protocol}//${window.location.host}/ws`;
 
     try {
       this.socket = new WebSocket(wsUrl);
+      const openingSocket = this.socket;
 
       this.socket.onopen = () => {
+        if (this.socket !== openingSocket) return;
         this.isConnecting = false;
         if (this.reconnectTimer) {
           clearTimeout(this.reconnectTimer);
@@ -86,13 +90,17 @@ class NanivioRealtimeClient {
       };
 
       this.socket.onmessage = (event: MessageEvent) => {
+        if (this.socket !== openingSocket) return;
         try {
           const parsed = JSON.parse(event.data);
           const { type, payload } = parsed;
           if (type === 'call:ended' && payload?.callId) this.pendingCallEnds.delete(payload.callId);
           // Retry hang-ups only after the socket has authenticated, never via
           // the generic one-shot 500ms queue that can silently drop them.
-          if (type === 'auth:presence_ack') this.flushPendingCallEnds();
+          if (type === 'auth:presence_ack') {
+            this.presenceReady = payload?.status === 'ONLINE';
+            this.flushPendingCallEnds();
+          }
 
           if (type === 'auth:presence_ack' || type === 'presence:update') {
             if (payload?.activeOnlineUsers) {
@@ -110,6 +118,7 @@ class NanivioRealtimeClient {
       const closingSocket = this.socket;
       this.socket.onclose = () => {
         if (this.socket !== closingSocket) return;
+        this.presenceReady = false;
         this.isConnecting = false;
         this.socket = null;
         this.emit('connection:lost', {});
@@ -133,10 +142,17 @@ class NanivioRealtimeClient {
 
   public send(type: string, payload: any) {
     if (this.socket && this.socket.readyState === WebSocket.OPEN) {
+      // OPEN is not authenticated: wait for the presence acknowledgement so
+      // the server does not discard brain startup during identity verification.
+      if (type === 'malvi:brain_start' && !this.presenceReady) return false;
       if(type.startsWith('langpretation:')&&this.socket.bufferedAmount>128000)return false;
       this.socket.send(JSON.stringify({ type, payload }));
       return true;
     } else {
+      // Brain startup must not use the generic one-shot 500ms queue: a slow
+      // connection could drop it and leave a working avatar permanently silent.
+      // The session-scoped caller retries until OPEN, or cancels on close.
+      if (type === 'malvi:brain_start') { this.connect(); return false; }
       // Live microphone frames must never be delayed/replayed after reconnect.
       // Let the caller stop capture and show the disconnected state instead.
       if (type === 'malvi:brain_audio' || type.startsWith('nanivio:mic_') || type.startsWith('langpretation:')) return false;
@@ -158,7 +174,10 @@ class NanivioRealtimeClient {
     role?: string;
     myLanguage?: string;
   }) {
-    if (this.currentUser && this.currentUser.userId !== user.id) this.pendingCallEnds.clear();
+    if (this.currentUser && this.currentUser.userId !== user.id) {
+      this.pendingCallEnds.clear();
+      this.presenceReady = false;
+    }
     this.currentUser = {
       userId: user.id,
       nvId: user.nvId || '',

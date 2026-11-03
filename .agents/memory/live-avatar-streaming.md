@@ -23,6 +23,28 @@ audio path. Test never-arriving tracks, subscribed-but-frozen video, cancellatio
 and both orders of SDK-start/frame readiness without automatically spending on
 replacement sessions.
 
+Give SDK network initialization and decoded-frame readiness separate bounded
+deadlines; do not spend the frame budget on HTTP, WebRTC and control setup.
+
+**Why:** A shared deadline reported a playback failure while the SDK was still
+connecting, without identifying which connection stage had stalled.
+
+**How to apply:** Keep startup cancellable, keep the microphone and queued
+speech gated until both stages succeed, and never extend the server's allowance
+or hard session deadline. Use only public SDK state for support codes.
+
+Brain-start delivery must wait for the authenticated socket acknowledgement,
+not merely an open WebSocket, and must be cancelled when its session changes.
+
+**Why:** A one-shot retry can silently lose brain startup during a slow socket
+handshake; sending before identity verification can also be discarded. Either
+case can leave the avatar visible without its conversation.
+
+**How to apply:** Retry only until the command is actually sent, keep retries
+bounded and session-owned, and never replay microphone frames. After explicit
+activation, overlap independent renderer loading and owned-session preparation;
+optional caption monitoring must not block network startup.
+
 Startup can accept an already-presented frame, but speech delivery must still
 check fresh video progress.
 
@@ -53,9 +75,10 @@ bounding rectangle alone cannot detect video concealed by another layer.
 Inspect the SDK's actual package exports before treating sibling source files
 as runtime behavior.
 
-**Why:** The installed package's per-class JavaScript did not await a keep-alive
-request, but its exported ESM and CJS bundles did. Inspecting the unused file
-alone would falsely establish an unhandled-rejection bug.
+**Why:** Previously, the package's per-class JavaScript and exported bundles
+differed about awaiting keep-alive. That observation is version-specific;
+inspecting an unused file or treating that historical behavior as current can
+falsely establish an SDK bug.
 
 **How to apply:** Resolve the loaded entry point and inspect that implementation
 before proposing SDK workarounds or private-field patches.

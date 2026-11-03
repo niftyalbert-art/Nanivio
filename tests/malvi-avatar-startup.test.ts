@@ -99,3 +99,32 @@ test('dropped frames are not evidence of a visible startup frame',async()=>{
   startup.observe(f.video);startup.started();await flush();assert.equal(ready,0);
   f.frame();await flush();assert.equal(ready,1);
 });
+test('SDK connection does not consume the separate frame-readiness budget',async()=>{
+  let ready=0;const errors:string[]=[];
+  const startup=new MalviAvatarStartup(()=>ready++,m=>errors.push(m),30,
+    {timeoutMs:150,stage:()=> 'STARTUP_MEDIA_CONNECTION'});
+  const f=videoFixture();startup.observe(f.video);
+  await new Promise(r=>setTimeout(r,50));
+  assert.deepEqual(errors,[]);assert.equal(ready,0);
+  startup.started();f.frame();await flush();
+  assert.equal(ready,1);assert.deepEqual(errors,[]);
+});
+test('a stalled SDK connection stays bounded and reports its public connection stage',async()=>{
+  for(const stage of ['STARTUP_PROVIDER_REQUEST','STARTUP_MEDIA_CONNECTION','STARTUP_CONTROL_CHANNEL'] as const){
+    const errors:string[]=[];
+    const startup=new MalviAvatarStartup(()=>assert.fail('SDK did not connect'),m=>errors.push(m),100,
+      {timeoutMs:10,stage:()=>stage});
+    const f=videoFixture();startup.observe(f.video);f.frame();await flush();
+    await new Promise(r=>setTimeout(r,25));
+    assert.equal(errors.length,1);assert.match(errors[0],new RegExp(stage));
+    startup.started();await flush();assert.equal(errors.length,1);
+  }
+});
+test('SDK completion cannot extend the decoder deadline on repeated notifications',async()=>{
+  const errors:string[]=[];
+  const startup=new MalviAvatarStartup(()=>assert.fail('No video'),m=>errors.push(m),20,
+    {timeoutMs:100,stage:()=> 'STARTUP_MEDIA_CONNECTION'});
+  startup.started();await new Promise(r=>setTimeout(r,12));startup.started();
+  await new Promise(r=>setTimeout(r,20));
+  assert.equal(errors.length,1);assert.match(errors[0],/STARTUP_TRACKS/);
+});

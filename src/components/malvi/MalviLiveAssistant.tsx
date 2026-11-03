@@ -13,7 +13,8 @@ import { malviAvatarSoundBlocked, playMalviAvatar, malviAvatarPlaybackFailure } 
 import { MalviCaptionPlayer, estimatedMalviCaptionTrack, type MalviCaptionTrack } from '../../lib/malviSpeechTiming';
 import { MalviAvatarPlayout } from '../../lib/malviAvatarPlayout';
 import { MalviAvatarVideoGate } from '../../lib/malviAvatarVideoGate';
-import { MalviAvatarStartup } from '../../lib/malviAvatarStartup';
+import { MalviAvatarStartup, MALVI_AVATAR_CONNECTION_TIMEOUT_MS, MALVI_AVATAR_FRAME_TIMEOUT_MS, type MalviAvatarConnectionStage } from '../../lib/malviAvatarStartup';
+import { sendMalviBrainStart } from '../../lib/malviBrainStart';
 import MalviWakeControls from './MalviWakeControls';
 import { NanivioMicEngine } from '../../lib/nanivioMic/NanivioMicEngine';
 import { BrowserMicCapture, browserMicStreamId } from '../../lib/nanivioMic/BrowserMicCapture';
@@ -438,6 +439,7 @@ export const MalviLiveAssistantProvider: React.FC<{ children: React.ReactNode }>
     setReferenceStatus('idle'); setReferences([]); setUnavailableSources([]); setSearchSuggestions(''); setMemoryFeedback(''); setLiveAssets(null);
     setSecondsRemaining(60); setAudioBlocked(false); setPhase('connecting');
     try {
+      realtimeClient.connect();
       videoGate.current = new MalviAvatarVideoGate(() => videoRef.current, fail);
       const observer = new MalviAvatarPlayout(
         (track, clock) => captions.current?.start(clock, track),
@@ -445,37 +447,52 @@ export const MalviLiveAssistantProvider: React.FC<{ children: React.ReactNode }>
         message => { captions.current?.cancel(); setMicrophoneError(message); },
       );
       avatarPlayout.current = observer;
-      try { await observer.resume(); }
-      catch (error) {
-        setMicrophoneError(error instanceof Error ? error.message : 'Live subtitle playback monitoring is unavailable.');
-      }
-      if (run !== generation.current || !mounted.current) { observer.close(); return; }
+      // Caption monitoring is optional; a suspended AudioContext must not hold
+      // the provider session and SDK download behind its resume promise.
+      void observer.resume().catch(error => {
+        if (run === generation.current && mounted.current)
+          setMicrophoneError(error instanceof Error ? error.message : 'Live subtitle playback monitoring is unavailable.');
+      });
       // No token exchange, SDK download, WebRTC, or provider audio before activation.
       const language = getMalviLanguage(languageRef.current);
-      const info = await assistantRequest('/session', { activation, language: language.code });
-      if (run !== generation.current || !mounted.current) {
-        await assistantRequest(`/session/${info.id}/end`, {}, true).catch(() => {});
-        return;
-      }
-      sessionId.current = info.id; deadline.current = info.idleDeadline; sessionClock.current.update(info);
-      const [{ SessionEvent, SessionMode, AgentEventsEnum }, { MalviLiveAvatarSession }] = await Promise.all([
-        import('@heygen/liveavatar-web-sdk'),
-        import('../../lib/malviLiveAvatarSession'),
+      const sessionRequest = assistantRequest('/session', { activation, language: language.code }).then(async info => {
+        if (run !== generation.current || !mounted.current) {
+          await assistantRequest(`/session/${info.id}/end`, {}, true).catch(() => {});
+          return info;
+        }
+        sessionId.current = info.id; deadline.current = info.idleDeadline; sessionClock.current.update(info);
+        // Begin the brain as soon as the owned session exists, not after the
+        // much larger renderer bundle has downloaded.
+        void sendMalviBrainStart((type, payload) => realtimeClient.send(type, payload),
+          { sessionId: info.id, language: language.code },
+          () => run === generation.current && mounted.current && sessionId.current === info.id,
+        ).catch(error => {
+          if (run === generation.current && mounted.current) fail(error instanceof Error ? error.message : 'Malvi’s conversation connection could not open.');
+        });
+        return info;
+      });
+      const [info, [{ SessionEvent, SessionMode, AgentEventsEnum }, { MalviLiveAvatarSession }]] = await Promise.all([
+        sessionRequest,
+        Promise.all([import('@heygen/liveavatar-web-sdk'), import('../../lib/malviLiveAvatarSession')]),
       ]);
-      if (run !== generation.current) return;
-      // Budget video startup from the renderer connection, not the preceding
-      // authenticated session request and lazy SDK download.
+      if (run !== generation.current || !mounted.current) return;
+      const live = new MalviLiveAvatarSession(info.sessionToken, {
+        autoKeepAlive: false,
+        voiceChat: { defaultMuted: true },
+      });
+      const connectionStage = (): MalviAvatarConnectionStage => !live.sessionId
+        ? 'STARTUP_PROVIDER_REQUEST' : mediaReady.current
+          ? 'STARTUP_CONTROL_CHANNEL' : 'STARTUP_MEDIA_CONNECTION';
+      // Network initialization and decoded-frame readiness have separate,
+      // bounded budgets; neither admits microphone capture or early speech.
       avatarStartup.current = new MalviAvatarStartup(() => {
         if (run !== generation.current || !mounted.current || !sdk.current) return;
         avatarAcceptingAudio.current = true;
         setPhase('connected'); setCaption('');
         const queued = startupAudio.current.splice(0);
         for (const audio of queued) receiveBrainAudio.current?.(audio);
-      }, message => { if (run === generation.current && mounted.current) fail(message); });
-      const live = new MalviLiveAvatarSession(info.sessionToken, {
-        autoKeepAlive: false,
-        voiceChat: { defaultMuted: true },
-      });
+      }, message => { if (run === generation.current && mounted.current) fail(message); },
+      MALVI_AVATAR_FRAME_TIMEOUT_MS, { timeoutMs: MALVI_AVATAR_CONNECTION_TIMEOUT_MS, stage: connectionStage });
       if (live.mode !== SessionMode.LITE) throw new Error('LiveAvatar returned a non-LITE session. It was not started.');
       // The current official SDK starts VoiceChat even with defaultMuted:true.
       // Disable that public component BEFORE start, so no microphone is opened
@@ -498,16 +515,17 @@ export const MalviLiveAssistantProvider: React.FC<{ children: React.ReactNode }>
           fail('The live avatar connection ended. Your microphone has stopped. Tap below to start a new conversation; a new session uses your allowance.');
         }
       });
-      // Connect the one selected brain while the renderer starts. Never open
-      // the microphone here; the bounded early speech queue waits for media.
-      realtimeClient.send('malvi:brain_start', { sessionId: info.id, language: languageRef.current });
+      // Brain startup is already in progress. The bounded early speech queue
+      // still waits for actual renderer playback; no microphone is opened here.
       const starting = live.start().then(async () => {
         if (run !== generation.current) await live.stop();
       });
       let connectionTimeout: ReturnType<typeof setTimeout>;
       try {
         await Promise.race([starting, new Promise<never>((_, reject) => {
-          connectionTimeout = setTimeout(() => reject(new Error('The live avatar did not connect within 20 seconds.')), 20_000);
+          connectionTimeout = setTimeout(() => reject(new Error(
+            `Malvi’s live connection did not finish starting. Support code: ${connectionStage()}.`,
+          )), MALVI_AVATAR_CONNECTION_TIMEOUT_MS);
         })]);
       } finally { clearTimeout(connectionTimeout!); }
       // User audio belongs to our backend, not the provider-managed voice chat.
@@ -553,7 +571,9 @@ export const MalviLiveAssistantProvider: React.FC<{ children: React.ReactNode }>
         return;
       }
       sessionId.current = info.id; deadline.current = info.idleDeadline; sessionClock.current.update(info);
-      if (!realtimeClient.send('malvi:brain_start', { sessionId: info.id, language: language.code })) throw new Error('Your conversation connection is not ready. Please try again when connected.');
+      if (!await sendMalviBrainStart((type, payload) => realtimeClient.send(type, payload),
+        { sessionId: info.id, language: language.code },
+        () => run === generation.current && mounted.current && sessionId.current === info.id)) return;
       busy.current = false;
     } catch (error) {
       if (run === generation.current) fail(error instanceof Error ? error.message : 'The voice conversation could not start.');

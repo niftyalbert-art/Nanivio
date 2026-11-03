@@ -47,5 +47,5 @@ export function malviGreetingInstruction(code: string, returning = false) {
     ? `Introduce yourself as Nanivio’s AI companion. This is an identity reference, not a script to recite: "${MALVI_INTRODUCTION}"`
     : `Introduce yourself in the selected language using this identity reference, not a fixed script: "${MALVI_INTRODUCTION}"`}
 Choose a fresh, natural opening each session. Vary phrasing and the invitation to talk; do not invent familiarity, a time of day, or prior conversations.
-Keep the first sentence short. Do not add a "not a human" reminder, a separate disclaimer, or a long list of features. Do not give an English greeting unless English is selected.`;
+Keep the first sentence short. Use at most two brief sentences for the entire greeting and invitation, then stop and wait for the user. Do not add a "not a human" reminder, a separate disclaimer, or a long list of features. Do not give an English greeting unless English is selected.`;
 }
