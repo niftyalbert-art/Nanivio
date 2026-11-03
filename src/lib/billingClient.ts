@@ -34,6 +34,7 @@ import {
   LangpretationMeterData,
   MalviBusinessSession,
 } from '../types/billing';
+import type { PaystackPurchase } from './paystackReturn';
 
 function billingHeaders(): Record<string, string> {
   const headers: Record<string, string> = { 'Content-Type': 'application/json' };
@@ -181,6 +182,8 @@ export const billingClient = {
   async verifyPaystack(reference: string, _userId?: string, _amount?: number): Promise<{
     success: boolean;
     verified: boolean;
+    purchase?: PaystackPurchase;
+    alreadyFulfilled?: boolean;
     type?: string;
     reference: string;
     amount: number;

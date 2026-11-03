@@ -126,6 +126,11 @@ for (const purpose of PAYSTACK_PURPOSES) {
       s.context.pendingPaystackOrders.clear(); // buyer closes checkout / server restarts
       const recovered = await s.call(s.verify, { authId: 'owner', params: { reference } });
       assert.equal(recovered.body.success, true);
+      assert.equal(recovered.body.purchase.purpose, purpose);
+      if (purpose.includes('SUBSCRIPTION')) {
+        assert.equal(recovered.body.purchase.name, 'Premium');
+        assert.equal(recovered.body.purchase.billingCycle, 'MONTHLY');
+      }
       assert.equal((await s.call(s.verify, { authId: 'owner', params: { reference } })).body.alreadyFulfilled, true);
       assert.equal(s.deliveries.length, 1);
       assert.ok(s.fulfilled.has(reference));

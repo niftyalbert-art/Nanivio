@@ -6,12 +6,21 @@ import { MEDIA_TOOL, researchPublicMedia } from './mediaResearch.ts';
 import { MAPS_TOOL, prepareDrivingRoute } from './mapTools.ts';
 import { claimMalviRequest } from './liveUsage.ts';
 import { requireMalviCapability } from './planAccess.ts';
+import { LANGUAGE_TOOL } from './languageControl.ts';
 
-export function createConversationTools(owner: string, notify: (payload: Record<string, unknown>) => void, closed: () => boolean) {
+export function createConversationTools(owner: string, notify: (payload: Record<string, unknown>) => void, closed: () => boolean,
+  languageControl?: (args: unknown) => Promise<unknown>, sharedInterpretation: () => boolean = () => false) {
   const reference = createReferenceToolRunner(notify, closed);
-  let active = false, used = 0, startedAt = 0;
+  let active = false, used = 0, startedAt = 0, changingLanguage = false;
   return async (name: string | undefined, args: unknown) => {
     if (closed()) return { error: 'The conversation has ended.' };
+    if (name === LANGUAGE_TOOL.name) {
+      if (changingLanguage) return { error: 'Wait for the current language change before requesting another.', switched: false };
+      changingLanguage = true;
+      try { return languageControl ? await languageControl(args) : { error: 'Spoken-language control is unavailable in this conversation.' }; }
+      catch (error) { return { error: (error as Error).message, switched: false }; }
+      finally { changingLanguage = false; }
+    }
     if (name === MAPS_TOOL.name) {
       try {
         const result = prepareDrivingRoute(args);
@@ -20,6 +29,7 @@ export function createConversationTools(owner: string, notify: (payload: Record<
       } catch (error) { return { error: (error as Error).message }; }
     }
     if (name === MEMORY_TOOL_NAME) {
+      if (sharedInterpretation()) return { error: 'Private account memory is unavailable during shared interpretation. Translate only what participants share in this conversation.' };
       try {
         await requireMalviCapability(owner, 'memory');
         const state = await readConversationMemory(owner, memoryQuery((args as any)?.query));

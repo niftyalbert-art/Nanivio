@@ -26,6 +26,7 @@ function fixture(verify:()=>Promise<any>) {
     clearInterval:()=>{cleared++;},
     setVerificationResult:(value:any)=>events.push(['verified',value]),
     setPaymentStep:(step:string)=>events.push(['step',step]),
+    announcePaystackActivation:()=>{},
     onSuccess:()=>events.push(['success']),
     setErrorMessage:(message:string)=>events.push(['error',message]),
     setHasOpenedCheckout:(value:boolean)=>events.push(['opened',value]),

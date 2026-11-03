@@ -25,9 +25,10 @@ import { MalviFloatingWidget } from './components/malvi/MalviFloatingWidget';
 import { MalviLiveAssistantProvider } from './components/malvi/MalviLiveAssistant';
 import { ErrorBoundary } from './components/common/ErrorBoundary';
 import { NanivioLandingPage } from './components/landing/NanivioLandingPage';
+import { BillingPaymentConfirmation } from './components/billing/BillingPaymentConfirmation';
 
 const MainLayout: React.FC = () => {
-  const { activeTab, incomingCall, acceptIncomingCall, declineIncomingCall, isAdmin } = useNanivio();
+  const { activeTab, incomingCall, acceptIncomingCall, declineIncomingCall, isAdmin, authUser, refreshBilling, setActiveTab, setPendingBillingAction } = useNanivio();
   const adminWorkspace = isAdmin && activeTab === 'admin';
 
   return (
@@ -72,6 +73,10 @@ const MainLayout: React.FC = () => {
 
       {/* Global Modals */}
       <ChatToastNotification />
+      <BillingPaymentConfirmation key={authUser?.id || 'signed-out'} owner={authUser?.id || ''} refresh={refreshBilling} onViewBilling={purpose => {
+        setPendingBillingAction({ purpose: purpose as any, subTab: purpose === 'MALVI_SUBSCRIPTION' ? 'malvi' : purpose === 'SUBSCRIPTION' ? 'plans' : 'overview' });
+        setActiveTab('billing');
+      }}/>
       <ActiveCallModal />
       <LanguageSelectorModal />
       <NewUserInstallPrompt />

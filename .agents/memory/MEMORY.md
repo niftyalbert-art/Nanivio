@@ -37,3 +37,5 @@
 - [Malvi session activity](malvi-session-activity.md) — count verified speech and reply playback, without extending unattended sessions or bypassing the hard cap.
 - [Live avatar streaming](live-avatar-streaming.md) — keep native voice packets in one utterance; provider events do not establish phoneme-level lip synchronization.
 - [Langpretation providers](langpretation-provider-policy.md) — Palabra for international speech; preserve Malvi and specialist routes; audio integration does not establish text-route coverage.
+- [Purchase confirmations](purchase-confirmations.md) — confirm the named purchase after verified activation; distinguish original purchased benefits from current remaining usage.
+- [Malvi spoken language](malvi-spoken-language.md) — spoken changes are session-local; two-person interpretation is turn-by-turn and excluded from private account memory.

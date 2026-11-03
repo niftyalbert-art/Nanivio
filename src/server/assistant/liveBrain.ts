@@ -23,6 +23,7 @@ import { MAPS_TOOL } from './mapTools.ts';
 import { VISION_INSTRUCTION } from './visionInput.ts';
 import { AssistantError } from './redisStore.ts';
 import { getNanivioAppKnowledge } from './nanivioAppKnowledge.ts';
+import { LANGUAGE_TOOL, parseLanguageControl } from './languageControl.ts';
 
 type BrainEvent = (type: string, payload: Record<string, unknown>) => void;
 type BrainConnection = {
@@ -31,6 +32,7 @@ type BrainConnection = {
   sessionId: string;
   provider: LiveBrainProviderId;
   language: string;
+  interpreterPair: [string, string] | null;
   ready: boolean;
   changeLanguage: (code: string) => void;
   sendAudio: (base64: string) => void;
@@ -72,7 +74,7 @@ const activeBySession = new Map<string, BrainConnection>();
 function saveMemoryTurn(connection: BrainConnection) {
   const user = connection.memoryUser.trim(), assistant = connection.memoryAssistant.trim();
   connection.memoryUser = ''; connection.memoryAssistant = '';
-  if (!connection.memory.enabled || !user) return; // Do not archive an unsolicited greeting.
+  if (connection.interpreterPair || !connection.memory.enabled || !user) return; // Shared interpretation is not private account memory.
   const turn = ++connection.memoryTurn;
   const events = [
     { key: `${connection.sessionId}:${turn}:user`, role: 'user' as const, text: user },
@@ -276,7 +278,7 @@ async function connectGemini(
       },
       tools: [{ functionDeclarations: [{
         name: REFERENCE_TOOL_NAME, description: REFERENCE_TOOL_DESCRIPTION, parametersJsonSchema: REFERENCE_TOOL_PARAMETERS,
-      }, MEMORY_TOOL, WEB_TOOL, MEDIA_TOOL, MAPS_TOOL] }],
+      }, MEMORY_TOOL, WEB_TOOL, MEDIA_TOOL, MAPS_TOOL, LANGUAGE_TOOL] }],
     },
     callbacks: {
       onmessage(message) {
@@ -347,7 +349,7 @@ async function connectGemini(
   };
   connection.changeLanguage = code => {
     session.sendClientContent({
-      turns: [{ role: 'user', parts: [{ text: `${malviLanguageInstruction(code, connection.provider)}${connection.isFirstTurn ? `\n${malviGreetingInstruction(code, connection.memory.hasPrevious)}` : ''}${connection.speechProvider === 'gemini' ? `\n${malviGeminiVoiceDirection(code)}` : ''}` }] }],
+      turns: [{ role: 'user', parts: [{ text: `${malviLanguageInstruction(code, connection.provider)}\nInterpretation mode is off; continue normal conversation.${connection.isFirstTurn ? `\n${malviGreetingInstruction(code, connection.memory.hasPrevious)}` : ''}${connection.speechProvider === 'gemini' ? `\n${malviGeminiVoiceDirection(code)}` : ''}` }] }],
       turnComplete: false,
     });
   };
@@ -433,7 +435,7 @@ async function connectOpenAI(
             ...(process.env.MALVI_OPENAI_REASONING_MODEL ? { model: process.env.MALVI_OPENAI_REASONING_MODEL } : {}),
             instructions: buildMalviLiveInstructions(connection.language, connection.provider) + '\n' + connection.productKnowledge + conversationMemoryContext(connection.memory),
             tools: [{ type: 'function', name: REFERENCE_TOOL_NAME, description: REFERENCE_TOOL_DESCRIPTION, parameters: REFERENCE_TOOL_PARAMETERS, strict: true },
-              ...[MEMORY_TOOL, WEB_TOOL, MEDIA_TOOL, MAPS_TOOL].map(tool => ({ type: 'function', name: tool.name, description: tool.description, parameters: tool.parametersJsonSchema, strict: true }))],
+              ...[MEMORY_TOOL, WEB_TOOL, MEDIA_TOOL, MAPS_TOOL, LANGUAGE_TOOL].map(tool => ({ type: 'function', name: tool.name, description: tool.description, parameters: tool.parametersJsonSchema, strict: true }))],
             tool_choice: 'auto', parallel_tool_calls: false,
           },
         },
@@ -454,7 +456,7 @@ async function connectOpenAI(
   connection.changeLanguage = code => {
     live.send({
       type: 'session.instructions.append',
-      content: `${malviLanguageInstruction(code, connection.provider)}${connection.isFirstTurn ? `\n${malviGreetingInstruction(code)}` : ''}`,
+      content: `${malviLanguageInstruction(code, connection.provider)}\nInterpretation mode is off; continue normal conversation.${connection.isFirstTurn ? `\n${malviGreetingInstruction(code)}` : ''}`,
       delegation_id: null,
     });
   };
@@ -473,6 +475,7 @@ function createConnection(socket: WebSocket, userId: string, sessionId: string, 
     sessionId,
     provider: 'gemini',
     language,
+    interpreterPair: null,
     productKnowledge,
     ready: false,
     changeLanguage: () => {},
@@ -514,6 +517,17 @@ function createConnection(socket: WebSocket, userId: string, sessionId: string, 
     research: createConversationTools(userId,
       payload => send(socket, 'malvi:brain_sources', { sessionId, ...payload }),
       () => connection.closed,
+      async args => {
+        if (!connection.ready || connection.closed) throw new Error('Start a connected Malvi conversation before changing language.');
+        const selection = parseLanguageControl(args, code => assertMalviVoiceLanguage(code, connection.speechProvider));
+        await liveAvatarService.owned(userId, sessionId);
+        if (connection.closed) throw new Error('The conversation has ended.');
+        applyConversationLanguage(connection, selection.language.code, selection.interpreterPair, 'voice');
+        return { switched: true, language: selection.language.code, name: selection.language.name,
+          interpreterPair: selection.interpreterPair,
+          instruction: `${malviLanguageInstruction(selection.language.code, connection.provider)}\n${connection.speechProvider === 'gemini' ? malviGeminiVoiceDirection(selection.language.code) : ''}\n${selection.interpreterPair ? 'Interpret faithfully into the selected listener language; do not answer the translated content as a question to you.' : 'Interpretation mode is off. Continue normal conversation in the confirmed language.'}` };
+      },
+      () => Boolean(connection.interpreterPair),
     ),
   };
   const providerConfig = getLiveBrainProviderConfig();
@@ -553,6 +567,23 @@ function armIdleDeadline(connection: BrainConnection, deadline: number, expired:
       else expired();
     }).catch(() => { if (!connection.closed) expired(); });
   }, Math.max(1, deadline - Date.now() + 50));
+}
+
+function applyConversationLanguage(connection: BrainConnection, code: string, pair: [string, string] | null, source: 'voice' | 'selection') {
+  if (pair || connection.interpreterPair) { connection.memoryUser = ''; connection.memoryAssistant = ''; }
+  connection.outputGeneration++;
+  connection.speech.cancel(); connection.nativeVoice.cancel();
+  connection.playbackUntil = 0; connection.transcript = '';
+  // A manual update can arrive mid-turn: retain its old language marker until
+  // that turn ends, so late old-language audio is discarded rather than relabelled.
+  // A voice tool result resumes the current turn in the confirmed new language.
+  if (source === 'voice') connection.outputLanguage = null;
+  send(connection.socket, 'malvi:brain_interrupted', { sessionId: connection.sessionId });
+  if (source === 'selection') connection.changeLanguage(code);
+  connection.language = code; connection.interpreterPair = pair;
+  send(connection.socket, 'malvi:brain_language', { sessionId: connection.sessionId,
+    language: code, source, interpreterPair: pair, provider: connection.provider,
+    coverage: malviLanguageCoverage(code, connection.provider) });
 }
 
 export const malviLiveBrainController = {
@@ -631,18 +662,7 @@ export const malviLiveBrainController = {
       assertMalviVoiceLanguage(language.code, connection.speechProvider);
       // Updating a preference neither changes providers nor extends idle time.
       // Discard the old spoken turn before applying the new preference.
-      connection.outputGeneration++;
-      connection.speech.cancel();
-      connection.nativeVoice.cancel();
-      connection.playbackUntil = 0;
-      send(socket, 'malvi:brain_interrupted', { sessionId });
-      connection.transcript = '';
-      connection.changeLanguage(language.code);
-      connection.language = language.code;
-      send(socket, 'malvi:brain_language', {
-        sessionId, language: language.code, provider: connection.provider,
-        coverage: malviLanguageCoverage(language.code, connection.provider),
-      });
+      applyConversationLanguage(connection, language.code, null, 'selection');
     } catch (error) {
       send(socket, 'malvi:brain_language_error', {
         sessionId,

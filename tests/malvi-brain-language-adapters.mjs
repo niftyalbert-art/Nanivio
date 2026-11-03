@@ -8,7 +8,7 @@ const fixtures = {
   gemini: `
     export const Modality = { AUDIO: 'AUDIO' };
     export const StartSensitivity = { START_SENSITIVITY_HIGH: 'START_SENSITIVITY_HIGH' };
-    export const EndSensitivity = { END_SENSITIVITY_HIGH: 'END_SENSITIVITY_HIGH' };
+    export const EndSensitivity = { END_SENSITIVITY_HIGH: 'END_SENSITIVITY_HIGH', END_SENSITIVITY_LOW: 'END_SENSITIVITY_LOW' };
     export class GoogleGenAI {
       live = { connect: async options => {
         const state = globalThis.__malviAdapter;
@@ -16,7 +16,7 @@ const fixtures = {
         return {
           sendRealtimeInput: data => state.geminiInput.push(data),
           sendClientContent: data => state.geminiContent.push(data),
-          sendToolResponse: () => {}, close: () => { state.geminiCloses++; }
+          sendToolResponse: result => (state.geminiToolResponses ||= []).push(result), close: () => { state.geminiCloses++; }
         };
       }};
     }`,
@@ -174,6 +174,25 @@ try {
   assert.equal(state.geminiContent.length, contentCount);
   assert.equal(gemini.events.at(-1).type, 'malvi:brain_language_error');
   assert.equal(state.geminiConnects, 1, 'Language changes must reuse the same selected provider connection');
+  const beforeSpokenSwitch = state.activity;
+  const spokenSwitch = async (id, args) => {
+    state.geminiOptions.callbacks.onmessage({ toolCall:{ functionCalls:[{ id, name:'set_malvi_language', args }] } });
+    await new Promise(resolve => setImmediate(resolve));
+    return state.geminiToolResponses.at(-1).functionResponses[0].response;
+  };
+  const switched = await spokenSwitch('spoken-fr', { language:'fr', mode:'conversation', partnerLanguage:null });
+  assert.equal(switched.switched, true);
+  assert.equal(controller.inputReadiness(gemini,'owner',id1).language, 'fr');
+  assert.equal(gemini.events.filter(event=>event.type==='malvi:brain_language').at(-1).payload.source, 'voice');
+  const interpreting = await spokenSwitch('interpret-en-fr', { language:'en', mode:'interpreter', partnerLanguage:'fr' });
+  assert.deepEqual(interpreting.interpreterPair, ['en','fr']);
+  const reverse = await spokenSwitch('interpret-fr-en', { language:'fr', mode:'interpreter', partnerLanguage:'en' });
+  assert.deepEqual(reverse.interpreterPair, ['fr','en']);
+  const refused = await spokenSwitch('unsupported-language', { language:'xx', mode:'conversation', partnerLanguage:null });
+  assert.equal(refused.switched, false);
+  assert.equal(controller.inputReadiness(gemini,'owner',id1).language, 'fr', 'Rejected switch must preserve the actual language');
+  assert.equal(state.geminiConnects, 1, 'Spoken interpretation must not reconnect or start a second provider');
+  assert.equal(state.activity, beforeSpokenSwitch, 'A tool call alone must not extend the allowance or idle deadline');
   controller.closeSocket(gemini);
   assert.equal(state.geminiCloses, 1);
 
@@ -237,8 +256,8 @@ try {
   await new Promise(resolve => setImmediate(resolve));
   assert.equal(native.events.find(e => e.type === 'malvi:brain_ready').payload.speechProvider, 'gemini');
   assert.equal(state.geminiOptions.config.speechConfig.voiceConfig.prebuiltVoiceConfig.voiceName, 'Sulafat');
-  assert.equal(state.geminiOptions.config.realtimeInputConfig.automaticActivityDetection.silenceDurationMs, 250);
-  assert.equal(state.geminiOptions.config.realtimeInputConfig.automaticActivityDetection.endOfSpeechSensitivity, 'END_SENSITIVITY_HIGH');
+  assert.equal(state.geminiOptions.config.realtimeInputConfig.automaticActivityDetection.silenceDurationMs, 650);
+  assert.equal(state.geminiOptions.config.realtimeInputConfig.automaticActivityDetection.endOfSpeechSensitivity, 'END_SENSITIVITY_LOW');
   assert.match(state.geminiOptions.config.systemInstruction, /British English and light Ghanaian English/);
   assert.match(state.geminiOptions.config.systemInstruction, /"Na ni vio"/);
   const emitNative = state.geminiOptions.callbacks.onmessage;

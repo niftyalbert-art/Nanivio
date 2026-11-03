@@ -167,17 +167,33 @@ test('HTTP session creation carries a validated language; invalid input never cr
   const keys = ['HEYGEN_API_KEY', 'AVATAR_ID', 'REDIS_URL', 'GEMINI_API_KEY', 'MALVI_BRAIN_PROVIDER', 'ELEVENLABS_API_KEY', 'MALVI_TTS_TRANSPORT'];
   const original = Object.fromEntries(keys.map(key => [key, process.env[key]]));
   const calls: string[] = [];
-  const originalCreate = liveAvatarService.create;
+  // Bundle the actual router with isolated plan access. Mocking only avatar
+  // creation would still query the connected account database before that call.
+  const { build } = await import('esbuild');
+  const { createRequire } = await import('node:module');
+  const bundled = await build({
+    stdin: { contents: `export {registerAssistantRoutes} from './src/server/assistant/routes.ts'; export {liveAvatarService} from './src/server/assistant/liveAvatarService.ts';`,
+      resolveDir: process.cwd(), loader:'ts' },
+    bundle:true, platform:'node', format:'cjs', packages:'external', write:false,
+    plugins:[{ name:'isolated-plan-access', setup(builder) {
+      builder.onResolve({filter:/planAccess\.ts$/},()=>({path:'plan-access',namespace:'fixture'}));
+      builder.onLoad({filter:/.*/,namespace:'fixture'},()=>({loader:'js',contents:'export async function requireMalviCapability(){return {allowed:true};}'}));
+    }}],
+  });
+  const isolated: any = { exports:{} };
+  new Function('require','module','exports',bundled.outputFiles[0].text)(createRequire(import.meta.url),isolated,isolated.exports);
+  const { registerAssistantRoutes: isolatedRoutes, liveAvatarService: isolatedService } = isolated.exports;
+  const originalCreate = isolatedService.create;
   for (const key of keys) process.env[key] = 'fixture-only';
   process.env.MALVI_BRAIN_PROVIDER = 'gemini';
   process.env.MALVI_TTS_TRANSPORT = 'direct';
-  liveAvatarService.create = async (_user, language = 'en') => {
+  isolatedService.create = async (_user: string, language = 'en') => {
     calls.push(language);
     return { id: 'fixture', sessionToken: 'fixture', mode: 'LITE', language, idleDeadline: 1, hardDeadline: 2, serverNow: 0, disclosure: 'AI' };
   };
   const app = express();
   app.use(express.json());
-  registerAssistantRoutes(app, (req, _res, next) => { (req as any).authUser = { id: 'fixture-user' }; next(); }, () => true, false, {
+  isolatedRoutes(app, (req: any, _res: any, next: () => void) => { req.authUser = { id: 'fixture-user' }; next(); }, () => true, false, {
     get: async () => 'elevenlabs' as const, save: async () => { throw new Error('This language fixture cannot change admin policy'); },
   });
   const server = app.listen(0, '127.0.0.1');
@@ -189,7 +205,7 @@ test('HTTP session creation carries a validated language; invalid input never cr
     });
     for (const language of ['fr', 'ar', 'en', 'es']) {
       const response = await request({ activation: 'manual', language });
-      assert.equal(response.status, 201);
+      assert.equal(response.status, 201, response.status !== 201 ? JSON.stringify(await response.clone().json()) : '');
       assert.equal((await response.json()).language, language);
     }
     const before = calls.length;
@@ -207,7 +223,7 @@ test('HTTP session creation carries a validated language; invalid input never cr
     assert.equal((await request({ activation: 'manual' })).status, 201);
     assert.equal(calls.at(-1), 'en', 'Older English clients remain compatible');
   } finally {
-    liveAvatarService.create = originalCreate;
+    isolatedService.create = originalCreate;
     for (const key of keys) {
       if (original[key] === undefined) delete process.env[key];
       else process.env[key] = original[key];

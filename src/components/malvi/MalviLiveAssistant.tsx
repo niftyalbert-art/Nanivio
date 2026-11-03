@@ -27,6 +27,7 @@ import { malviAllowanceIsUsedUp, openMalviSubscriptionPlans } from '../../lib/ma
 
 type Phase = 'idle' | 'connecting' | 'connected' | 'error';
 interface LiveControls {
+  conversationLanguage: string;
   voiceProvider: 'elevenlabs' | 'gemini';
   saveVoice: (provider: 'elevenlabs' | 'gemini') => Promise<void>;
   voiceSaving: boolean;
@@ -51,7 +52,9 @@ const LiveContext = createContext<LiveControls | null>(null);
 
 export const MalviLiveAssistantProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { currentUser, appLanguage, setPendingBillingAction, setActiveTab } = useNanivio();
-  const preferredLanguage = appLanguage || currentUser?.appLanguage || currentUser?.myLanguage || 'en';
+  const [spokenLanguage, setSpokenLanguage] = useState<string | null>(null);
+  const preferredLanguage = spokenLanguage || appLanguage || currentUser?.appLanguage || currentUser?.myLanguage || 'en';
+  useEffect(() => { setSpokenLanguage(null); }, [appLanguage, currentUser?.id]);
   const languageRef = useRef(preferredLanguage);
   languageRef.current = preferredLanguage;
   const [rawReadiness, setReadiness] = useState<LiveAvatarReadiness | null>(null);
@@ -337,6 +340,16 @@ export const MalviLiveAssistantProvider: React.FC<{ children: React.ReactNode }>
     });
     const offLanguage = realtimeClient.on('malvi:brain_language', payload => {
       if (!isCurrent(payload) || typeof payload.language !== 'string') return;
+      try { getMalviLanguage(payload.language); } catch { return; }
+      // The server-confirmed spoken preference must reach playback filters before
+      // the next audio packet, without changing the entire app's language.
+      languageRef.current = payload.language;
+      if (payload.source === 'voice') setSpokenLanguage(payload.language);
+      if (payload.source === 'voice') {
+        const pair = Array.isArray(payload.interpreterPair) ? payload.interpreterPair : null;
+        setNotice(pair ? `Interpreting ${pair.map((code: string) => getMalviLanguage(code).name).join(' ↔ ')}. Speak one at a time; shared interpretation is not saved to account memory.`
+          : `Speaking ${getMalviLanguage(payload.language).name}.`);
+      }
       setActiveLanguage(payload.language);
       setBrainReady(true);
       setCaption(''); setUserTranscript(''); userText.current.reset();
@@ -680,7 +693,7 @@ export const MalviLiveAssistantProvider: React.FC<{ children: React.ReactNode }>
     }).catch(err => fail(err instanceof Error ? err.message : 'The session has ended.'));
   };
   return (
-    <LiveContext.Provider value={{ readiness, voiceProvider, voiceSaving, voiceFeedback, saveVoice: async provider => {
+    <LiveContext.Provider value={{ conversationLanguage: preferredLanguage, readiness, voiceProvider, voiceSaving, voiceFeedback, saveVoice: async provider => {
       if (!readiness?.canManageVoice || phase !== 'idle' || voiceSaving) return;
       disarmWake(); setVoiceSaving(true); setVoiceFeedback('');
       try {
@@ -821,11 +834,12 @@ export const MalviLiveControls: React.FC = () => {
         {diagnostic && <p role="status">{diagnostic}</p>}
       </div>}
       <label className="mt-4 block text-sm text-slate-200">
-        Malvi’s language · follows your app language
+        App language · Malvi’s starting language
         <select aria-label="Malvi conversation language" value={appLanguage} onChange={event => setAppLanguage(event.target.value)} className="mt-2 block w-full max-w-full rounded-xl border border-slate-600 bg-slate-900 p-3 text-white">
           {MALVI_LANGUAGES.map(language => <option key={language.code} value={language.code}>{language.name} · {language.nativeName}</option>)}
         </select>
       </label>
+      <p className="mt-2 text-xs text-slate-400">Currently speaking {MALVI_LANGUAGES.find(item => item.code === live.conversationLanguage)?.name || 'your selected language'}. Ask “Malvi, speak French” or “Interpret between English and French.”</p>
       <p role="status" className="mt-2 text-xs leading-relaxed text-amber-200">
         {MALVI_LANGUAGES.some(language => language.code === appLanguage)
           ? malviLanguageCoverage(appLanguage, readiness?.brainProvider).notice

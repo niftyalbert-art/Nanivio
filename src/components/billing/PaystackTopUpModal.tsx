@@ -14,6 +14,8 @@ import {
 import { motion, AnimatePresence } from 'motion/react';
 import { billingClient } from '../../lib/billingClient';
 import { useNanivio } from '../../context/NanivioContext';
+import { announcePaystackActivation, rememberPaystackReturn } from '../../lib/paystackReturn';
+import { PaymentReceipt } from './PaymentReceipt';
 
 interface PaystackTopUpModalProps {
   isOpen: boolean;
@@ -114,6 +116,7 @@ export const PaystackTopUpModal: React.FC<PaystackTopUpModalProps> = ({
             clearInterval(interval);
             setVerificationResult(verifyRes);
             setPaymentStep('SUCCESS');
+            announcePaystackActivation(paystackData.reference);
             onSuccess();
           }
         } catch (error: any) {
@@ -174,6 +177,7 @@ export const PaystackTopUpModal: React.FC<PaystackTopUpModalProps> = ({
         metadata: purpose === 'MALVI_SUBSCRIPTION' ? { catalogVersion: malviQuote?.catalogVersion } : undefined,
       });
 
+      rememberPaystackReturn(authUser?.id || '', initRes.reference);
       setPaystackData({
         reference: initRes.reference,
         authorization_url: initRes.authorization_url,
@@ -199,6 +203,7 @@ export const PaystackTopUpModal: React.FC<PaystackTopUpModalProps> = ({
 
       setVerificationResult(verifyRes);
       setPaymentStep('SUCCESS');
+      announcePaystackActivation(paystackData.reference);
       onSuccess();
     } catch (err: any) {
       setErrorMessage(err.message || 'Paystack verification failed. Ensure payment was authorized.');
@@ -505,40 +510,16 @@ export const PaystackTopUpModal: React.FC<PaystackTopUpModalProps> = ({
                 <CheckCircle2 className="w-8 h-8" />
               </div>
               <div>
-                <h3 className="text-lg font-bold text-slate-100">Payment Verified &amp; Account Credited</h3>
-                <p className="text-xs text-emerald-400 font-medium mt-1">
-                  +{verificationResult.currency} {verificationResult.amount.toFixed(2)} added to Communication Balance
-                </p>
+                <PaymentReceipt result={verificationResult}/>
               </div>
 
-              {/* Receipt Summary Bento */}
-              <div className="w-full p-4 rounded-xl bg-slate-950 border border-slate-800 text-left space-y-2 text-xs font-mono">
-                <div className="flex justify-between">
-                  <span className="text-slate-400 font-sans">Reference:</span>
-                  <span className="text-slate-200">{verificationResult.reference}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-slate-400 font-sans">New Available Balance:</span>
-                  <span className="text-emerald-400 font-bold">
-                    {verificationResult.currency} {verificationResult.newBalance?.toFixed(2)}
-                  </span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-slate-400 font-sans">Target Wallet:</span>
-                  <span className="text-slate-200 font-sans">Nanivio Communication Account</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-slate-400 font-sans">Ledger Status:</span>
-                  <span className="text-emerald-300 font-sans font-semibold">APPENDED (COMMUNICATION_TOPUP)</span>
-                </div>
-              </div>
 
               <button
                 type="button"
                 onClick={handleReset}
                 className="w-full py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-100 font-semibold text-xs transition"
               >
-                Close &amp; Return to Wallet
+                Close receipt
               </button>
             </div>
           )}

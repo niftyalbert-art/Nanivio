@@ -2287,7 +2287,19 @@ app.get("/api/paystack/verify/:reference", requireAuthenticatedUser, async (req,
         verifiedCurrency,
         order,
       });
-      return res.json(fulfillment);
+      return res.json({ ...fulfillment, purchase: {
+        purpose: savedOrder.purpose,
+        name: savedOrder.product?.name || (savedOrder.purpose === 'COMMUNICATION_MINUTES'
+          ? `${savedOrder.product?.minutes ?? savedOrder.minutes} communication minutes`
+          : savedOrder.purpose === 'MALVI_SUBSCRIPTION' ? 'Malvi subscription'
+          : savedOrder.purpose === 'SUBSCRIPTION' ? 'Communication subscription' : 'Communication wallet top-up'),
+        billingCycle: savedOrder.billingCycle ?? null,
+        minutes: savedOrder.product?.minutes ?? savedOrder.minutes ?? null,
+        validityDays: savedOrder.product?.validityDays ?? null,
+        voiceMinutes: savedOrder.product?.voiceMinutesAllowed ?? savedOrder.product?.voiceQuota ?? null,
+        videoMinutes: savedOrder.product?.videoMinutesAllowed ?? null,
+        langpretationMinutes: savedOrder.product?.langpretationQuota ?? null,
+      } });
     }
 
     res.status(400).json({ success: false, error: "Payment verification was unsuccessful." });

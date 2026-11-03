@@ -13,6 +13,7 @@ const realtimeFixture = `
   const listeners = new Map();
   window.emitBrain = (type, payload) => { for(const fn of listeners.get(type)||[]) fn(payload); };
   export const realtimeClient = {
+    connect() {},
     on(type, fn) {
       if(!listeners.has(type)) listeners.set(type,new Set());
       listeners.get(type).add(fn);
@@ -195,9 +196,31 @@ try {
   const sessionCount = () => page.evaluate(`window.checks.requests.filter(r=>r.url.endsWith('/session')).length`);
   assert.equal(await sessionCount(), 0, 'Idle controls must not start a billable session');
   assert.equal(await page.evaluate('window.checks.localStarts'), 0, 'Idle controls must not start listening');
+  if (process.argv.includes('--spoken-only')) {
+    await page.evaluate(`window.voiceOptionsEnabled=true;window.managedVoice='gemini';window.refreshFixture();true`);
+    await page.wait(`document.querySelector('#malvi-voice-provider')?.value==='gemini'`);
+    await page.evaluate(`Array.from(document.querySelectorAll('button')).find(b=>b.textContent.includes('Test voice only')).click();true`);
+    await page.wait(`window.checks.messages.some(m=>m.type==='malvi:brain_start')`);
+    await page.evaluate(`window.emitBrain('malvi:brain_ready',{sessionId:'11111111-1111-4111-8111-111111111111',provider:'gemini',speechProvider:'gemini',language:'en'});true`);
+    await page.wait(`window.overlay.brainReady===true`);
+    const manualChanges = await page.evaluate(`window.checks.messages.filter(m=>m.type==='malvi:brain_language').length`);
+    for (const language of ['fr','en','fr']) {
+      await page.evaluate(`window.emitBrain('malvi:brain_language',{sessionId:'11111111-1111-4111-8111-111111111111',language:'${language}',source:'voice',interpreterPair:['${language}','${language==='fr'?'en':'fr'}']});true`);
+      await page.wait(`document.body.innerText.includes('Currently speaking ${language==='fr'?'French':'English'}')`);
+      assert.equal(await page.evaluate(`document.querySelector('[aria-label="Malvi conversation language"]').value`),'en');
+      assert.equal(await page.evaluate(`window.checks.messages.filter(m=>m.type==='malvi:brain_language').length`), manualChanges);
+    }
+    await page.evaluate(`window.emitBrain('malvi:brain_audio',{sessionId:'11111111-1111-4111-8111-111111111111',language:'fr',pcm24k:'AAAAAA==',sampleRate:24000,format:'pcm_s16le',channels:1,durationMs:1,text:'Bonjour',speechProvider:'gemini',captionTiming:'estimated'});true`);
+    await page.wait(`window.checks.voicePlayed===1`);
+    assert.equal(await page.evaluate(`window.checks.requests.filter(r=>r.url.endsWith('/voice-session')).length`),1);
+    assert.equal(await page.evaluate(`window.overlay.microphoneOn`),false);
+    await page.evaluate(`window.overlay.onClose();true`);
+    console.log(JSON.stringify({passed:true,spokenLanguageSwitch:true,appLanguageUnchanged:true,noAutomaticReversion:true,newLanguageAudioAccepted:true,noExtraSession:true}));
+  } else {
   const buttonStyle = await page.evaluate(`(()=>{const button=[...document.querySelectorAll('button')].find(b=>b.textContent.includes('Start live avatar'));const style=getComputedStyle(button);return {background:style.backgroundColor,color:style.color};})()`);
-  assert.equal(buttonStyle.background, 'rgb(226, 187, 98)');
-  assert.equal(buttonStyle.color, 'rgb(18, 20, 23)', 'The live activation button must stay readable in the shared theme');
+  const accent = await page.evaluate(`(()=>{const probe=document.createElement('span');probe.style.backgroundColor='var(--nv-gold)';[...document.querySelectorAll('button')].find(b=>b.textContent.includes('Start live avatar')).parentElement.append(probe);const color=getComputedStyle(probe).backgroundColor;probe.remove();return color;})()`);
+  assert.equal(buttonStyle.background, accent, 'The live activation button uses the current approved theme accent');
+  assert.ok(buttonStyle.color.match(/\d+/g).slice(0,3).every(value=>Number(value)<128), 'The live activation button must stay readable on the light accent');
   assert.equal(await page.evaluate('document.querySelectorAll("select option").length'), 34);
   await select('fr');
   await page.wait(`document.querySelector('select').value==='fr'`);
@@ -514,8 +537,17 @@ try {
   await page.wait(`window.checks.voicePlayed===2`);
   assert.equal(await page.evaluate(`window.overlay.approximateCaptions`), true);
   assert.equal(await page.evaluate(`window.overlay.microphoneOn`), false, 'Voice selection does not enable microphone');
+  const manualUpdatesBeforeVoice = await page.evaluate(`window.checks.messages.filter(m=>m.type==='malvi:brain_language').length`);
+  await page.evaluate(`window.emitBrain('malvi:brain_language',{sessionId:'11111111-1111-4111-8111-111111111111',language:'fr',source:'voice',interpreterPair:['fr','en']});true`);
+  await page.wait(`document.body.innerText.includes('Currently speaking French')`);
+  assert.equal(await page.evaluate(`document.querySelector('[aria-label="Malvi conversation language"]').value`), 'en', 'Spoken switches must not change the app language');
+  assert.equal(await page.evaluate(`window.checks.messages.filter(m=>m.type==='malvi:brain_language').length`), manualUpdatesBeforeVoice, 'The client must not switch a confirmed spoken language back to the old app preference');
+  await page.evaluate(`window.emitBrain('malvi:brain_audio',{sessionId:'11111111-1111-4111-8111-111111111111',language:'fr',pcm24k:'AAAAAA==',sampleRate:24000,format:'pcm_s16le',channels:1,durationMs:1,text:'Bonjour',speechProvider:'gemini',captionTiming:'estimated'});true`);
+  await page.wait(`window.checks.voicePlayed===3`);
+  assert.equal(await page.evaluate(`window.checks.requests.filter(r=>r.url.endsWith('/voice-session')).length`), 2, 'Spoken switches cannot create another billable session');
   await page.evaluate(`window.overlay.onClose();true`);
   console.log(JSON.stringify({ adminOnlyGlobalVoiceSelection: true, failedSaveDoesNotSwitchProvider: true, noClientVoiceOverride: true, noIdleProviderOrMicrophone: true, mobileWidths: [320,390,768], appLanguageSelector: true, cancellableWakeSetup: true, explicitLocalPackInstall: true, stoppedAndHiddenWakeCannotActivate: true, onceOnlyHeyMalviActivation: true, selectedLanguageSentToBackend: true, noEnglishWelcome: true, activeLanguageUpdateWithoutNewAvatar: true, unverifiedLanguageWarning: true, failedUpdatesCloseRatherThanFallBack: true }));
+  }
 } finally {
   await browser.close();
 }
