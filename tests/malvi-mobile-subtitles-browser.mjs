@@ -55,7 +55,7 @@ const bundle = await build({
           setPendingBillingAction:pending=>setNavigation(n=>({...n,pending})),
           setActiveTab:activeTab=>setNavigation(n=>({...n,activeTab}))
         }):undefined}
-        onInterrupt={noop} onPlayAudio={noop} audioBlocked
+        onInterrupt={noop} onPlayAudio={()=>{window.audioUnlocks=(window.audioUnlocks||0)+1;}} audioBlocked
          caption={caption} userTranscript={text} speaking={speaking} inputState={input.state} inputLevel={input.level} brainReady microphoneOn
         languageCode={new URLSearchParams(location.search).get('language') || 'en'}
         microphoneError="Please check microphone access." brainProvider="gemini"
@@ -249,6 +249,14 @@ if (preview) {
       await page.evaluate("window.changePhase('connecting');true");
       await page.wait("!document.querySelector('[aria-label=\"Conversation subtitles\"]')");
       assert.ok(await page.evaluate("!!document.querySelector('[aria-label=\"Session status and feedback\"]')"));
+      assert.ok(await page.evaluate(`(()=>{
+        const button=Array.from(document.querySelectorAll('button')).find(b=>b.textContent.trim()==='Enable sound');
+        if(!button||button.disabled)return false;
+        const r=button.getBoundingClientRect();
+        return r.width>0&&r.height>0&&r.top>=0&&r.bottom<=innerHeight;
+      })()`), 'autoplay recovery must be available before the first rendered avatar frame');
+      await page.evaluate("Array.from(document.querySelectorAll('button')).find(b=>b.textContent.trim()==='Enable sound').click();true");
+      assert.equal(await page.evaluate('window.audioUnlocks'), 1);
       await page.evaluate('window.showProviderFailure();true');
       await page.wait("!!document.querySelector('[role=\"alert\"]')");
       assert.equal(await page.evaluate("!!document.querySelector('[aria-label=\"Subscribe to Malvi\"]')"), false,
