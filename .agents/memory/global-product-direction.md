@@ -84,6 +84,11 @@ including Chat's colour and layout. Use that shared palette consistently; keep
 the full WhatsApp-style conversation/composer interactions. Malvi feature work
 comes afterwards.
 
+For sign-up and sign-in, the user supplied a black-and-gold luxury reference
+with a folded gold N and asked to maintain that logo design and colour while
+including Nanivio's registration details. Apply the screen styling, not a
+phone-device mockup. This request is scoped to the authentication entrance.
+
 **Why:** The user clarified the international audience, rejected the washed-out
 white/green refresh, and approved bringing the Bybit-inspired direction to Nanivio.
 They repeated the space and mobile-readability requirements after finding clipped
