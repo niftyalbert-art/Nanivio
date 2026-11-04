@@ -20,6 +20,7 @@
 - [Post-merge runtime freshness](post-merge-runtime.md) — successful setup reconciliation does not prove the running process picked up reinstalled dependencies.
 - [Feature access boundary](feature-access-boundary.md) — ordinary users need readable capabilities; denied settings requests must not appear as administrator shutdowns.
 - [Billing display contracts](billing-display-contracts.md) — normalize persisted rows for display; distinguish zero from unknown and never show demonstration balances as funds.
+- [Recent communication presentation](recent-communication-policy.md) — one entry per person, separate activity counts/times, and audio/video/chat return actions.
 - [Nanivio credit scope](nanivio-credit-scope.md) — P2P Nanivio service credits, not fintech, bank accounts or sending money; finance-style references are visual only.
 - [Malvi upgrade direction](malvi-upgrade-direction.md) — responses, visuals, and brain are being upgraded; the user specified “Heygen lite mode.”
 - [Malvi brand expansion](malvi-brand-expansion.md) — owner-defined MALVI expansion and its approved wording.

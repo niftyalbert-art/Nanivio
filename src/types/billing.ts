@@ -794,12 +794,26 @@ export interface UserMalviSubscriptionState {
 }
 
 export interface LangpretationMeterData {
+  userId?: string;
+  available?: boolean;
+  observedAt?: number;
+  totalAllowance?: number;
+  usageBasis?: 'used-or-reserved';
+  trialQuotaMinutes?: number;
+  trialRemainingMinutes?: number;
+  subscriptionQuotaMinutes?: number;
+  subscriptionRemainingMinutes?: number;
+  textCharactersRemaining?: number;
+  callMinutesRemaining?: number | null;
+  fallbackEnabled?: boolean;
+  estimatedSavingsAvailable?: boolean;
+  channelBreakdownAvailable?: boolean;
   remainingAllowance: number;
   monthlyQuota: number;
   minutesUsed: number;
   estimatedSavingsGHS: number;
   estimatedSavingsUSD: number;
-  status: 'ACTIVE' | 'TRIAL' | 'EXHAUSTED' | 'EXPIRED';
+  status: 'ACTIVE' | 'TRIAL' | 'EXHAUSTED' | 'EXPIRED' | 'UNAVAILABLE';
   currentPeriodStart: number;
   currentPeriodEnd: number;
   tier: string;

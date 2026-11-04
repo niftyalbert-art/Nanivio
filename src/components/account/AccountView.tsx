@@ -33,7 +33,7 @@ import { getLanguageByCode, getAllLanguages } from '../../i18n/languages';
 import { LangpretationIcon } from '../common/LangpretationIcon';
 import { PWAInstallButton } from '../common/PWAInstallButton';
 import { getAccountText } from '../../i18n/authTranslations';
-import { billingNumber, formatBillingAmount } from '../../lib/billingPresentation';
+import { billingNumber, formatBillingAmount, communicationCreditBalance } from '../../lib/billingPresentation';
 
 export const AccountView: React.FC = () => {
   const {
@@ -52,6 +52,8 @@ export const AccountView: React.FC = () => {
     upgradeSubscriptionPlan,
     openBillingWithPlan,
     billingSummary,
+    billingSyncError,
+    langpretationMeter,
     wallets,
     isSubscribed,
     setActiveTab,
@@ -81,7 +83,9 @@ export const AccountView: React.FC = () => {
   const speakLangInfo = getLanguageByCode(speakingLanguage || 'en') || getLanguageByCode('en')!;
   const transLangInfo = getLanguageByCode(translationLanguage || 'ak') || getLanguageByCode('ak')!;
 
-  const sub = billingSummary?.subscription;
+  const ownerId = authUser?.id || currentUser.id;
+  const ownedSummary = !billingSyncError && billingSummary?.userId === ownerId ? billingSummary : null;
+  const sub = ownedSummary?.subscription;
   const nvId = authUser?.nvId || currentUser.nvId || currentUser.nanivioNumber || '0486000000';
   const role = authUser?.role || (currentUser.role === 'admin' ? 'ADMIN' : currentUser.role === 'expert' ? 'EXPERT' : currentUser.role === 'business' ? 'BUSINESS' : currentUser.role === 'driver' ? 'DRIVER' : 'PERSONAL');
   const verificationStatus = authUser?.verificationStatus || 'VERIFIED';
@@ -106,30 +110,20 @@ export const AccountView: React.FC = () => {
   };
 
   // Nanivio credit
-  const availableServiceValue = billingNumber(
-    billingSummary?.accounts?.communicationAccount?.wallets?.find(w => w.currency === 'GHS')?.available ??
-    billingSummary?.communicationAccount?.balance ??
-    (billingSummary?.wallets?.find((w) => w.currency === 'GHS')?.available ?? 
-     wallets?.find((w) => w.currency === 'GHS')?.amount ?? 
-     0.0)
-  ) ?? 0;
+  const creditWallets = ownedSummary?.accounts?.communicationAccount?.wallets ?? ownedSummary?.wallets;
+  const creditValue = communicationCreditBalance(ownedSummary, ownerId);
+  const balanceAvailable = creditValue !== undefined;
+  const availableServiceValue = creditValue ?? 0;
 
   // Meter Reading Calculation
-  const totalQuotaMinutes = sub?.langpretationMinutesQuota ?? (isFreeTrialActive ? 15 : (currentPlan?.langpretationMinutesQuota ?? 0));
-  const remainingMinutes = sub?.langpretationMinutesRemaining ?? (isFreeTrialActive ? freeTrialMinutesRemaining : (currentPlan?.langpretationMinutesRemaining ?? 0));
-  const minutesUsed = Math.max(0, totalQuotaMinutes - remainingMinutes);
+  const meter = langpretationMeter?.userId === ownerId ? langpretationMeter : null;
+  const meterReady = !!meter && meter.available !== false && meter.status !== 'UNAVAILABLE';
+  const totalQuotaMinutes = billingNumber(meter?.totalAllowance ?? meter?.monthlyQuota) ?? 0;
+  const remainingMinutes = billingNumber(meter?.remainingAllowance) ?? 0;
+  const minutesUsed = billingNumber(meter?.minutesUsed) ?? 0;
   const percentConsumed = totalQuotaMinutes > 0 ? Math.min(100, Math.round((minutesUsed / totalQuotaMinutes) * 100)) : 0;
-  const estimatedSavings = `GH₵ ${(minutesUsed * 1.5).toFixed(2)}`;
-
-  const subscriptionStatus = isFreeTrialActive
-    ? 'Free Trial Active (15 Min)'
-    : (isSubscribed || (currentPlan?.tier && currentPlan.tier !== 'free'))
-    ? (currentPlan?.tier === 'business_b2b' || currentPlan?.tier === 'enterprise'
-        ? 'B2B Enterprise Plan'
-        : currentPlan?.tier === 'langpretation_pro'
-        ? 'Langpretation Pro Plan'
-        : 'Individual Premium Plan')
-    : 'Free Basic Tier (Pay-As-You-Go)';
+  const displayMinutes = (value: number) => meterReady ? value.toLocaleString(undefined, { maximumFractionDigits: 2 }) : 'Unavailable';
+  const subscriptionStatus = meterReady ? meter.planName : 'Allowance unavailable';
 
   const handleCopyNvId = () => {
     navigator.clipboard.writeText(nvId);
@@ -337,7 +331,7 @@ export const AccountView: React.FC = () => {
               <h2 className="text-xl font-bold text-white">Live Langpretation Meter Reading</h2>
             </div>
             <p className="text-xs text-slate-400 break-words">
-              Live communication consumption &amp; included monthly Langpretation allowance meter.
+              Live trial and paid Langpretation minutes. Text Langpretation uses a separate character allowance.
             </p>
           </div>
 
@@ -354,47 +348,50 @@ export const AccountView: React.FC = () => {
               Remaining Allowance
             </div>
             <div className="text-2xl font-black font-mono text-emerald-400">
-              {remainingMinutes} min
+              {displayMinutes(remainingMinutes)}{meterReady ? ' min' : ''}
             </div>
             <div className="text-[11px] text-slate-500">Live available translation time</div>
           </div>
 
           <div className="p-4 rounded-2xl bg-slate-950 border border-slate-800 space-y-1.5">
             <div className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider">
-              Monthly Quota
+              Live trial + plan quota
             </div>
             <div className="text-2xl font-black font-mono text-white">
-              {totalQuotaMinutes} min
+              {displayMinutes(totalQuotaMinutes)}{meterReady ? ' min' : ''}
             </div>
-            <div className="text-[11px] text-slate-500">Included monthly allowance</div>
+            <div className="text-[11px] text-slate-500">Live trial plus current paid plan</div>
           </div>
 
           <div className="p-4 rounded-2xl bg-slate-950 border border-slate-800 space-y-1.5">
             <div className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider">
-              Minutes Used
+              Used / reserved minutes
             </div>
             <div className="text-2xl font-black font-mono text-cyan-400">
-              {minutesUsed} min
+              {displayMinutes(minutesUsed)}{meterReady ? ' min' : ''}
             </div>
-            <div className="text-[11px] text-slate-500">Consumed in current cycle</div>
+            <div className="text-[11px] text-slate-500">Consumed or held for active usage</div>
           </div>
 
           <div className="p-4 rounded-2xl bg-slate-950 border border-slate-800 space-y-1.5">
             <div className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider">
-              Estimated Savings
+              Text allowance
             </div>
             <div className="text-2xl font-black font-mono text-amber-300">
-              {estimatedSavings}
+              {meterReady ? (meter.textCharactersRemaining ?? 0).toLocaleString() : 'Unavailable'}
             </div>
-            <div className="text-[11px] text-slate-500">Vs. traditional live interpreting</div>
+            <div className="text-[11px] text-slate-500">Characters remaining; not voice minutes</div>
           </div>
         </div>
 
         {/* Visual Progress Meter */}
+        <p className="text-xs text-slate-400" role="status">
+          {meterReady ? `Live trial: ${displayMinutes(meter.trialRemainingMinutes ?? 0)} min · Paid plan: ${displayMinutes(meter.subscriptionRemainingMinutes ?? 0)} min. Free test minutes apply to live calls only; voice notes and text require a plan.` : 'Allowances could not be loaded. No zero balance or active subscription has been assumed.'}
+        </p>
         <div className="p-5 rounded-2xl bg-slate-950/80 border border-slate-800 space-y-3">
           <div className="flex items-center justify-between text-xs">
             <span className="text-slate-300 font-semibold">Allowance Consumption Meter</span>
-            <span className="font-mono text-emerald-400 font-bold">{percentConsumed}% Consumed ({minutesUsed} / {totalQuotaMinutes} min)</span>
+            <span className="font-mono text-emerald-400 font-bold">{meterReady ? `${percentConsumed}% used / reserved (${displayMinutes(minutesUsed)} / ${displayMinutes(totalQuotaMinutes)} min)` : 'Allowance unavailable'}</span>
           </div>
 
           <div className="w-full h-3.5 bg-slate-800 rounded-full overflow-hidden p-0.5 border border-slate-700/80">
@@ -404,14 +401,14 @@ export const AccountView: React.FC = () => {
                   ? 'bg-gradient-to-r from-amber-500 to-red-500'
                   : 'bg-gradient-to-r from-teal-500 to-emerald-400'
               }`}
-              style={{ width: `${Math.max(4, percentConsumed)}%` }}
+              style={{ width: `${meterReady ? percentConsumed : 0}%` }}
             />
           </div>
 
           <div className="flex items-center justify-between text-[11px] text-slate-400">
-            <span>0 min used</span>
-            <span className="text-emerald-400 font-medium">Subscription allowance active</span>
-            <span>{totalQuotaMinutes} min max</span>
+            <span>{meterReady ? `${displayMinutes(minutesUsed)} min used / reserved` : 'Usage unavailable'}</span>
+            <span className="text-emerald-400 font-medium">{!meterReady ? 'Reconnect to refresh allowance' : remainingMinutes > 0 ? 'Allowance available' : 'No live minutes available; view plans'}</span>
+            <span>{meterReady ? `${displayMinutes(totalQuotaMinutes)} min total` : 'Quota unavailable'}</span>
           </div>
         </div>
       </div>
@@ -455,21 +452,26 @@ export const AccountView: React.FC = () => {
           <div className="p-5 rounded-2xl bg-slate-950 border border-emerald-500/40 space-y-2">
             <div className="text-xs text-slate-400">Available Nanivio credit</div>
             <div className="text-3xl font-black font-mono text-emerald-400">
-              GH₵ {availableServiceValue.toFixed(2)}
+              {balanceAvailable ? `GH₵ ${availableServiceValue.toFixed(2)}` : 'Unavailable'}
             </div>
             <div className="text-[11px] text-slate-400">
-              ≈ ${(availableServiceValue / 15.5).toFixed(2)} USD equivalent
+              Service credit only. Purchased minutes are shown separately.
             </div>
+            {creditWallets?.filter(wallet => wallet.currency !== 'GHS').map(wallet =>
+              <div key={wallet.currency} className="text-xs text-slate-300">
+                {wallet.currency} {billingNumber(wallet.available)?.toFixed(2) ?? 'Unavailable'}
+              </div>
+            )}
           </div>
 
           <div className="p-5 rounded-2xl bg-slate-950 border border-slate-800 space-y-2">
             <div className="text-xs text-slate-400">Fallback Protection</div>
             <div className="text-sm font-bold text-white flex items-center gap-1.5">
               <ShieldCheck className="w-4 h-4 text-emerald-400" />
-              <span>Auto-Switch Enabled</span>
+              <span>Subscription allowance required</span>
             </div>
             <p className="text-[11px] text-slate-400 leading-relaxed">
-              When subscription minutes expire, Nanivio credit keeps your active calls and Langpretation alive uninterrupted.
+              Nanivio credit and subscription minutes are separate. Automatic credit fallback is not enabled for Langpretation.
             </p>
           </div>
 
@@ -727,12 +729,12 @@ export const AccountView: React.FC = () => {
                 className="w-full bg-slate-950 border border-slate-700 rounded-xl py-3 px-4 text-white font-mono font-bold text-lg focus:outline-none focus:border-emerald-500"
               />
               <div className="text-[11px] text-slate-500">
-                Available Value: GH₵ {availableServiceValue.toFixed(2)}
+                Available Nanivio credit: {balanceAvailable ? `GH₵ ${availableServiceValue.toFixed(2)}` : 'Unavailable'}
               </div>
             </div>
 
             <button
-              disabled={isProcessingAction || !transferRecipient.trim() || transferAmount > availableServiceValue}
+              disabled={!balanceAvailable || isProcessingAction || !transferRecipient.trim() || transferAmount > availableServiceValue}
               onClick={handleExecuteTransferValue}
               className="w-full py-3.5 rounded-2xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-sm transition-all shadow-md shadow-emerald-500/20 flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
             >

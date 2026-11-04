@@ -20,7 +20,6 @@ import {
 } from 'lucide-react';
 import { motion } from 'motion/react';
 import { useNanivio } from '../../context/NanivioContext';
-import { formatBillingAmount } from '../../lib/billingPresentation';
 
 interface LiveLangpretationMeterProps {
   onTopUpMinutes?: () => void;
@@ -33,34 +32,23 @@ export const LiveLangpretationMeter: React.FC<LiveLangpretationMeterProps> = ({
   onChangePlan,
   compact = false,
 }) => {
-  const { langpretationMeter, billingSummary, setIsMinutesModalOpen } = useNanivio();
+  const { langpretationMeter, currentUser, authUser, refreshBilling, setIsMinutesModalOpen } = useNanivio();
   const [showChannelDetails, setShowChannelDetails] = useState(false);
 
-  // Meter fallback from context if langpretationMeter is loading
-  const meter = langpretationMeter || {
-    remainingAllowance: billingSummary?.subscription?.langpretationMinutesRemaining ?? 0,
-    monthlyQuota: billingSummary?.subscription?.langpretationMinutesQuota ?? 0,
-    minutesUsed: billingSummary?.subscription?.langpretationMinutesUsed ?? 0,
-    estimatedSavingsGHS: Number(((billingSummary?.subscription?.langpretationMinutesUsed ?? 0) * 32.8).toFixed(2)),
-    estimatedSavingsUSD: Number(((billingSummary?.subscription?.langpretationMinutesUsed ?? 0) * 2.35).toFixed(2)),
-    status: (billingSummary?.subscription?.langpretationMinutesRemaining ?? 0) > 0 ? 'ACTIVE' : 'EXHAUSTED',
-    currentPeriodStart: billingSummary?.subscription?.currentPeriodStart ?? Date.now(),
-    currentPeriodEnd: billingSummary?.subscription?.currentPeriodEnd ?? Date.now() + 86400000 * 30,
-    tier: billingSummary?.subscription?.tier ?? 'free',
-    planName: billingSummary?.subscription?.planName ?? 'Free Basic Tier',
-    channelBreakdown: {
-      audioCalls: 0,
-      videoCalls: 0,
-      groupAudioCalls: 0,
-      voiceNotes: 0,
-      textChat: 0,
-    },
-  };
+  const ownerId = authUser?.id || currentUser.id;
+  const meter = langpretationMeter?.userId === ownerId ? langpretationMeter : null;
+  if (!meter || meter.available === false || meter.status === 'UNAVAILABLE') {
+    return <section className="rounded-2xl border border-slate-700 p-4" aria-label="Live Langpretation Meter">
+      <h3>Live Langpretation Meter</h3>
+      <p role="status">Live allowance unavailable. No zero balance has been assumed.</p>
+      <button onClick={() => void refreshBilling()}>Refresh allowance</button>
+    </section>;
+  }
 
-  const quota = Math.max(1, meter.monthlyQuota);
+  const quota = Math.max(0, meter.totalAllowance ?? meter.monthlyQuota);
   const remaining = Math.max(0, meter.remainingAllowance);
   const used = Math.max(0, meter.minutesUsed);
-  const percentRemaining = Math.min(100, Math.round((remaining / quota) * 100));
+  const percentRemaining = quota > 0 ? Math.min(100, Math.round((remaining / quota) * 100)) : 0;
 
   const statusColorMap = {
     ACTIVE: 'text-emerald-400 bg-emerald-500/10 border-emerald-500/30',
@@ -83,7 +71,7 @@ export const LiveLangpretationMeter: React.FC<LiveLangpretationMeterProps> = ({
         <div className="flex items-center gap-2">
           <div className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse" />
           <span className="font-mono text-slate-300">Live Meter:</span>
-          <span className="font-mono font-bold text-emerald-400 text-sm">{remaining.toFixed(1)} mins</span>
+          <span className="font-mono font-bold text-emerald-400 text-sm">{remaining.toFixed(2)} mins</span>
           <span className="text-slate-500">/ {quota} quota</span>
         </div>
         <button
@@ -153,18 +141,18 @@ export const LiveLangpretationMeter: React.FC<LiveLangpretationMeterProps> = ({
             <Activity className="w-3.5 h-3.5 text-emerald-400" />
           </div>
           <div className="text-2xl sm:text-3xl font-black text-emerald-400 font-mono">
-            {remaining.toFixed(1)}{' '}
+            {remaining.toFixed(2)}{' '}
             <span className="text-xs font-normal text-slate-400">mins</span>
           </div>
           <div className="text-[11px] text-slate-400">
-            {percentRemaining}% of monthly quota available
+            {percentRemaining}% of live trial + plan allowance available
           </div>
         </div>
 
         {/* Metric 2: Monthly Quota */}
         <div className="p-4 rounded-2xl bg-slate-950/80 border border-slate-800 space-y-1">
           <div className="flex items-center justify-between text-slate-400 text-xs">
-            <span className="font-mono">Monthly Quota</span>
+            <span className="font-mono">Live trial + plan quota</span>
             <Clock className="w-3.5 h-3.5 text-cyan-400" />
           </div>
           <div className="text-2xl sm:text-3xl font-black text-cyan-400 font-mono">
@@ -179,38 +167,42 @@ export const LiveLangpretationMeter: React.FC<LiveLangpretationMeterProps> = ({
         {/* Metric 3: Minutes Used */}
         <div className="p-4 rounded-2xl bg-slate-950/80 border border-slate-800 space-y-1">
           <div className="flex items-center justify-between text-slate-400 text-xs">
-            <span className="font-mono">Minutes Used</span>
+            <span className="font-mono">Used / reserved minutes</span>
             <TrendingUp className="w-3.5 h-3.5 text-amber-400" />
           </div>
           <div className="text-2xl sm:text-3xl font-black text-amber-400 font-mono">
-            {used.toFixed(1)}{' '}
+            {used.toFixed(2)}{' '}
             <span className="text-xs font-normal text-slate-400">mins</span>
           </div>
           <div className="text-[11px] text-slate-400">
-            Current billing cycle usage
+            Trial and current plan usage, including active reservations
           </div>
         </div>
 
         {/* Metric 4: Estimated Savings */}
         <div className="p-4 rounded-2xl bg-slate-950/80 border border-slate-800 space-y-1">
           <div className="flex items-center justify-between text-slate-400 text-xs">
-            <span className="font-mono">Estimated Savings</span>
+            <span className="font-mono">Text allowance</span>
             <Sparkles className="w-3.5 h-3.5 text-purple-400" />
           </div>
           <div className="text-2xl sm:text-3xl font-black text-purple-400 font-mono">
-            GH₵ {formatBillingAmount(meter.estimatedSavingsGHS)}
+            {(meter.textCharactersRemaining ?? 0).toLocaleString()}
           </div>
           <div className="text-[11px] text-slate-400">
-            ~${formatBillingAmount(meter.estimatedSavingsUSD)} USD vs traditional
+            Text characters remaining; separate from voice minutes
           </div>
         </div>
       </div>
 
       {/* Progress Bar with Real-Time Fill */}
+      <p className="text-xs text-slate-400">
+        Live trial: {(meter.trialRemainingMinutes ?? 0).toFixed(2)} min · Paid plan: {(meter.subscriptionRemainingMinutes ?? 0).toFixed(2)} min.
+        {' '}Free test minutes apply to live calls only. Voice notes and text require a plan.
+      </p>
       <div className="space-y-2 relative z-10 pb-4">
         <div className="flex justify-between text-xs text-slate-400 font-mono">
           <span>Live Allowance Fill</span>
-          <span className="text-emerald-400 font-bold">{remaining.toFixed(1)} mins remaining</span>
+          <span className="text-emerald-400 font-bold">{remaining.toFixed(2)} mins remaining</span>
         </div>
         <div className="w-full h-3 rounded-full bg-slate-950 border border-slate-800 overflow-hidden p-0.5">
           <motion.div
@@ -233,25 +225,25 @@ export const LiveLangpretationMeter: React.FC<LiveLangpretationMeterProps> = ({
         <div className="flex items-center gap-4 flex-wrap">
           <div className="flex items-center gap-1.5 font-mono">
             <Calendar className="w-3.5 h-3.5 text-slate-500" />
-            <span>Cycle Start: {new Date(meter.currentPeriodStart).toLocaleDateString()}</span>
+            <span>{meter.currentPeriodStart > 0 ? `Plan start: ${new Date(meter.currentPeriodStart).toLocaleDateString()}` : 'Live trial does not renew monthly'}</span>
           </div>
           <div className="flex items-center gap-1.5 font-mono">
             <Clock className="w-3.5 h-3.5 text-slate-500" />
-            <span>Expires: {new Date(meter.currentPeriodEnd).toLocaleDateString()}</span>
+            <span>{meter.currentPeriodEnd > 0 ? `Plan expires: ${new Date(meter.currentPeriodEnd).toLocaleDateString()}` : 'Subscribe for additional allowance'}</span>
           </div>
         </div>
 
-        <button
+        {meter.channelBreakdownAvailable === true && <button
           onClick={() => setShowChannelDetails(!showChannelDetails)}
           className="text-emerald-400 hover:text-emerald-300 font-bold transition flex items-center gap-1 cursor-pointer"
         >
           <span>{showChannelDetails ? 'Hide' : 'View'} Channel Breakdown</span>
           <ArrowRight className={`w-3.5 h-3.5 transform transition-transform ${showChannelDetails ? 'rotate-90' : ''}`} />
-        </button>
+        </button>}
       </div>
 
       {/* Channel Usage Breakdown Strip */}
-      {showChannelDetails && (
+      {showChannelDetails && meter.channelBreakdownAvailable === true && (
         <motion.div
           initial={{ opacity: 0, height: 0 }}
           animate={{ opacity: 1, height: 'auto' }}

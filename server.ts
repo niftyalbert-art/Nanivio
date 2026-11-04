@@ -3,6 +3,7 @@ import http from "http";
 import path from "path";
 import crypto from "crypto";
 import { communicationAccess, CommunicationAccessError, withCommunicationUsage, type UsageReservation } from './src/server/communicationAccess.ts';
+import { unavailableCommunicationMeter } from './src/server/langpretationMeter.ts';
 import { registerCommunicationRoutes, applyCommunicationCatalogue } from './src/server/communicationRoutes.ts';
 import { classifyCallTokenFailure } from './src/server/callTokenFailure.ts';
 import { authorizeSponsoredCall, markCallTranslationReady, communicationCall, communicationTokenSeconds } from './src/server/realtimeServer.ts';
@@ -1908,13 +1909,14 @@ app.get("/api/billing/summary", requireAuthenticatedUser, async (req, res) => {
   try {
     const userId = authenticatedUserId(req);
     if (!normalizedBillingEnabled()) return res.status(503).json({success:false,error:"Persistent billing database is required."});
-    const [communication,fintech,subscription,malviSub,malviCredit,credit,meter,recentTransactions,invoices] = await Promise.all([
-      getPersistentWallets(userId,'COMMUNICATION'), getPersistentWallets(userId,'FINTECH'), getPersistentSubscription(userId), getPersistentMalviSubscription(userId), getMalviCreditAccount(userId), getPersistentCreditAccount(userId), getPersistentUsageMeter(userId), getPersistentTransactions(userId,15), getPersistentInvoices(userId,15)
+    const [communication,fintech,subscription,malviSub,malviCredit,credit,recentTransactions,invoices] = await Promise.all([
+      getPersistentWallets(userId,'COMMUNICATION'), getPersistentWallets(userId,'FINTECH'), getPersistentSubscription(userId), getPersistentMalviSubscription(userId), getMalviCreditAccount(userId), getPersistentCreditAccount(userId), getPersistentTransactions(userId,15), getPersistentInvoices(userId,15)
     ]);
+    const meter = await getPersistentUsageMeter(userId, subscription).catch(() => unavailableCommunicationMeter(userId));
     const symbol=(c:string)=>({GHS:'GHâ‚µ',USD:'$',EUR:'â‚¬',GBP:'Â£',NGN:'â‚¦',KES:'KSh',UGX:'USh',TZS:'TSh',XOF:'CFA',XAF:'FCFA'} as any)[c]||c;
     const map=(rows:any[])=>rows.map(w=>({currency:w.currency,available:Number(w.available||0),reserved:Number(w.reserved||0),promotional:Number(w.promotional||0),symbol:symbol(w.currency)}));
     const wallets=map(communication);
-    res.json({success:true,userId,accounts:{communicationAccount:{wallets,activeSubscription:subscription},fintechAccount:{wallets:map(fintech),activeSubscription:null}},subscription,malviSubscription:malviSub,malviCredit:malviCredit,langpretationMeter:{minutesUsed:meter.minutesUsed,recent:meter.recent},wallets,recentTransactions,promotionalCredits:[],activeUsageSessionsCount:0,emergencyControls:{globalBillingFreeze:false,maintenanceMode:false,disableNewCharges:false}});
+    res.json({success:true,userId,accounts:{communicationAccount:{wallets,activeSubscription:subscription},fintechAccount:{wallets:map(fintech),activeSubscription:null}},subscription,malviSubscription:malviSub,malviCredit:malviCredit,langpretationMeter:meter,wallets,recentTransactions,promotionalCredits:[],activeUsageSessionsCount:0,emergencyControls:{globalBillingFreeze:false,maintenanceMode:false,disableNewCharges:false}});
   } catch(error:any){ res.status(502).json({success:false,error:error.message||"Unable to load persistent billing summary"}); }
 });
 

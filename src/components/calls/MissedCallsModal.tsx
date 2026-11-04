@@ -1,9 +1,10 @@
 import React, { useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
-import { PhoneMissed, PhoneCall, Video, X, Clock, UserCheck, MessageSquare } from 'lucide-react';
+import { PhoneMissed, PhoneCall, Video, X, Clock, UserCheck, MessageSquare, MessageCircle } from 'lucide-react';
 import { useNanivio } from '../../context/NanivioContext';
 import { Participant } from '../../types';
 import { lookupNanivioUser } from '../../utils/userLookup';
+import { aggregateRecentCommunications } from '../../lib/recentCommunication';
 
 interface MissedCallsModalProps {
   isOpen: boolean;
@@ -18,6 +19,11 @@ export const MissedCallsModal: React.FC<MissedCallsModalProps> = ({ isOpen, onCl
     setActiveConversationId,
     setActiveTab,
     clearMissedCallLogs,
+    currentUser,
+    authUser,
+    conversations,
+    messages,
+    adminFeatures,
   } = useNanivio();
   const dialogRef = useRef<HTMLDivElement>(null);
   const onCloseRef = useRef(onClose);
@@ -65,62 +71,79 @@ export const MissedCallsModal: React.FC<MissedCallsModalProps> = ({ isOpen, onCl
 
   if (!isOpen) return null;
 
-  const missedLogs = callLogs.filter((l) => l.direction === 'missed');
+  const recentCommunications = aggregateRecentCommunications({
+    callLogs,
+    conversations,
+    messages,
+    selfIds: [currentUser?.id, authUser?.id],
+    selfNumbers: [currentUser?.nvId, currentUser?.nanivioNumber, authUser?.nvId],
+  });
+  const alerts = recentCommunications.filter((item) => item.missedCount > 0 || item.unreadCount > 0);
+  const missedTotal = alerts.reduce((total, item) => total + item.missedCount, 0);
+  const unreadTotal = alerts.reduce((total, item) => total + item.unreadCount, 0);
+  const audioEnabled = adminFeatures?.audioCallsEnabled !== false;
+  const videoEnabled = adminFeatures?.videoCallsEnabled !== false;
 
-  const resolveParticipant = async (log: any): Promise<Participant | null> => {
-    if (log.participantNvId) {
-      const found = await lookupNanivioUser(log.participantNvId);
-      if (found) return found;
+  const resolveParticipant = async (record: (typeof recentCommunications)[number]): Promise<Participant | null> => {
+    if (!record.participantId && !record.participantNvId) return null;
+    if (record.participantNvId) {
+      try {
+        const found = await lookupNanivioUser(record.participantNvId);
+        if (found) return found;
+      } catch {
+        // A temporary directory failure should not prevent responding to a known call record.
+      }
     }
-    const id = log.participantId || log.participantNvId;
-    if (!id) return null;
     return {
-      id: String(id),
-      nvId: log.participantNvId,
-      name: log.participantName || 'Nanivio Contact',
-      avatar: log.participantAvatar || '',
-      initials: (log.participantName || 'NV').slice(0, 2).toUpperCase(),
-      myLanguage: 'en',
+      id: String(record.participantId || record.participantNvId),
+      nvId: record.participantNvId,
+      name: record.participantName || 'Nanivio contact',
+      avatar: record.participantAvatar || '',
+      initials: (record.participantName || 'NV').slice(0, 2).toUpperCase(),
+      myLanguage: currentUser?.myLanguage || 'en',
       role: 'user',
     };
   };
 
-  const handleReturnCall = async (log: any, callType: 'audio' | 'video') => {
-    const targetParticipant = await resolveParticipant(log);
+  const handleReturnCall = async (record: (typeof recentCommunications)[number], callType: 'audio' | 'video') => {
+    if (callType === 'audio' ? !audioEnabled : !videoEnabled) return;
+    const targetParticipant = await resolveParticipant(record);
     if (!targetParticipant) return;
     onClose();
-    start1on1Call(targetParticipant, callType, true);
+    start1on1Call(targetParticipant, callType);
   };
 
-  const handleChatBack = async (log: any) => {
-    const targetParticipant = await resolveParticipant(log);
+  const handleChatBack = async (record: (typeof recentCommunications)[number]) => {
+    const targetParticipant = await resolveParticipant(record);
     if (!targetParticipant) return;
     onClose();
     const convId = startDirectChatWithUser(targetParticipant);
-    setActiveConversationId(convId);
+    if (convId) setActiveConversationId(convId);
     setActiveTab('chat');
   };
+  const formatTimestamp = (value?: number) => value
+    ? new Date(value).toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })
+    : '';
 
   return (
     createPortal(
     <div className="nv-theme-dark nv-portal-backdrop fixed inset-0 z-[100] flex items-center justify-center p-3 sm:p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-200" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
-      <div ref={dialogRef} role="dialog" aria-modal="true" aria-labelledby="missed-calls-title" tabIndex={-1} className="bg-[#0b1424] border border-red-500/40 rounded-3xl p-4 sm:p-6 max-w-lg w-full shadow-2xl space-y-4 sm:space-y-5 max-h-[calc(100dvh-1.5rem)] flex flex-col overflow-hidden">
-        {/* Header */}
+      <div ref={dialogRef} role="dialog" aria-modal="true" aria-labelledby="missed-calls-title" tabIndex={-1} className="nv-alerts-dialog max-w-2xl w-full max-h-[calc(100dvh-1.5rem)] flex flex-col overflow-hidden">
         <div className="flex items-center justify-between border-b border-slate-800 pb-3">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-2xl bg-red-500/20 text-red-400 flex items-center justify-center">
-              <PhoneMissed className="w-5 h-5 animate-pulse" />
+            <div className={`w-10 h-10 rounded-2xl flex items-center justify-center ${missedTotal ? 'bg-red-500/20 text-red-400' : 'bg-[#e2bb62]/15 text-[#e2bb62]'}`}>
+              {missedTotal ? <PhoneMissed className="w-5 h-5" /> : <MessageCircle className="w-5 h-5" />}
             </div>
             <div>
               <h3 id="missed-calls-title" className="font-bold text-base text-white flex items-center gap-2">
-                <span>Missed Calls &amp; Alerts</span>
-                {missedLogs.length > 0 && (
-                  <span className="px-2 py-0.5 rounded-full bg-red-500/20 text-red-400 font-mono text-xs font-bold border border-red-500/30">
-                    {missedLogs.length} missed
+                <span>Recent alerts</span>
+                {(missedTotal > 0 || unreadTotal > 0) && (
+                  <span className="px-2 py-0.5 rounded-full bg-[#29271f] text-[#e2bb62] font-mono text-xs font-bold border border-[#51482f]">
+                    {missedTotal} missed · {unreadTotal} unread
                   </span>
                 )}
               </h3>
-              <p className="text-xs text-slate-400">Caller details, Nanivio NV numbers &amp; quick redial</p>
+              <p className="text-xs text-slate-400">One person per row. Unread counts are messages, not chat attempts.</p>
             </div>
           </div>
 
@@ -133,111 +156,70 @@ export const MissedCallsModal: React.FC<MissedCallsModalProps> = ({ isOpen, onCl
           </button>
         </div>
 
-        {/* Missed Calls List */}
-        <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain space-y-3 pr-1">
-          {missedLogs.length === 0 ? (
+        <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain space-y-3 pr-1 pt-3">
+          {alerts.length === 0 ? (
             <div className="py-12 text-center text-slate-400 text-xs space-y-2">
               <UserCheck className="w-8 h-8 mx-auto text-slate-600" />
-              <p>No missed calls.</p>
+              <p>You are all caught up.</p>
             </div>
           ) : (
-            missedLogs.map((log) => {
-              const canContact = Boolean(log.participantId || log.participantNvId);
-              const formattedNvNumber = log.participantNvId
-                ? log.participantNvId.startsWith('NV ')
-                  ? log.participantNvId
-                  : `NV ${log.participantNvId}`
-                : 'NV Line';
-
+            alerts.map((record) => {
+              const canContact = Boolean(record.participantId || record.participantNvId);
               return (
-                <div
-                  key={log.id}
-                  className="p-4 bg-slate-950/90 border border-red-500/20 hover:border-red-500/40 rounded-2xl space-y-3 transition-all"
-                >
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="flex items-center gap-3">
-                      {log.participantAvatar ? (
-                        <img
-                          src={log.participantAvatar}
-                          alt={log.participantName}
-                          referrerPolicy="no-referrer"
-                          className="w-11 h-11 rounded-2xl object-cover border border-slate-700"
-                        />
-                      ) : (
-                        <div className="w-11 h-11 rounded-2xl bg-gradient-to-br from-red-600 to-rose-700 text-white font-bold flex items-center justify-center text-sm shadow-md">
-                          {log.participantName.slice(0, 2).toUpperCase()}
-                        </div>
-                      )}
-                      <div>
-                        <div className="text-sm font-bold text-white flex items-center gap-2">
-                          <span>{log.participantName}</span>
-                          <span className="text-[10px] px-2 py-0.5 rounded bg-red-500/20 text-red-300 font-mono font-bold">
-                            MISSED
-                          </span>
-                        </div>
-                        <div className="text-xs font-mono text-emerald-400 font-semibold mt-0.5">
-                          {formattedNvNumber}
-                        </div>
-                        <div className="text-[10px] text-slate-400 flex items-center gap-1.5 mt-0.5 font-mono">
-                          <Clock className="w-3 h-3 text-slate-500" />
-                          <span>{new Date(log.timestamp).toLocaleDateString()} at {new Date(log.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
-                        </div>
+                <article key={record.key} className="nv-alert-person">
+                  <div className="flex items-start gap-3">
+                    {record.participantAvatar ? <img src={record.participantAvatar} alt="" referrerPolicy="no-referrer" className="nv-alert-avatar" /> : (
+                      <span className="nv-alert-avatar nv-alert-initials">{record.participantName.slice(0, 2).toUpperCase()}</span>
+                    )}
+                    <div className="min-w-0 flex-1">
+                      <strong className="nv-alert-name">{record.participantName}</strong>
+                      <div className="nv-alert-id">{record.participantNvId ? `NV ${record.participantNvId.replace(/^NV[\s-]*/i, '')}` : 'Nanivio contact'}</div>
+                      <div className="nv-alert-activity">
+                        {record.missedCount > 0 && <span className="is-missed"><PhoneMissed size={13} /> {record.missedCount} missed ({record.missedAudioCount} audio, {record.missedVideoCount} video)</span>}
+                        {record.unreadCount > 0 && <span className="is-unread"><MessageSquare size={13} /> {record.unreadCount} unread {record.unreadCount === 1 ? 'message' : 'messages'}</span>}
+                      </div>
+                      <div className="nv-alert-times">
+                        {record.latestMissedTimestamp && <span><Clock size={12} /> Missed {formatTimestamp(record.latestMissedTimestamp)}</span>}
+                        {record.latestChatTimestamp && <span><Clock size={12} /> Chat {formatTimestamp(record.latestChatTimestamp)}</span>}
                       </div>
                     </div>
                   </div>
-
-                  {/* Actions: Audio Call Back, Video Call Back, Direct Chat Back */}
-                  <div className="flex items-center gap-2 pt-1 border-t border-slate-900 flex-wrap">
+                  <div className="nv-alert-actions">
                     <button
-                      onClick={() => handleReturnCall(log, 'audio')}
-                      disabled={!canContact}
-                      aria-label={`Return audio call to ${log.participantName}`}
-                      className="flex-1 py-2 px-3 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-slate-950 font-bold text-xs flex items-center justify-center gap-1.5 transition-all shadow-md cursor-pointer"
+                      onClick={() => handleReturnCall(record, 'audio')}
+                      disabled={!canContact || !audioEnabled}
+                      aria-label={`Audio call ${record.participantName}`}
                     >
-                      <PhoneCall className="w-3.5 h-3.5" />
-                      <span>Audio Call</span>
+                      <PhoneCall size={15} /><span>Audio call</span>
                     </button>
-
                     <button
-                      onClick={() => handleReturnCall(log, 'video')}
-                      disabled={!canContact}
-                      aria-label={`Return video call to ${log.participantName}`}
-                      className="flex-1 py-2 px-3 rounded-xl bg-cyan-500/20 hover:bg-cyan-500/30 text-cyan-300 font-bold text-xs flex items-center justify-center gap-1.5 transition-all border border-cyan-500/30 cursor-pointer"
+                      onClick={() => handleReturnCall(record, 'video')}
+                      disabled={!canContact || !videoEnabled}
+                      aria-label={`Video call ${record.participantName}`}
                     >
-                      <Video className="w-3.5 h-3.5" />
-                      <span>Video</span>
+                      <Video size={15} /><span>Video call</span>
                     </button>
-
                     <button
-                      onClick={() => handleChatBack(log)}
+                      onClick={() => handleChatBack(record)}
                       disabled={!canContact}
-                      className="py-2 px-3 rounded-xl bg-slate-800 hover:bg-slate-750 text-slate-200 border border-slate-700 hover:border-emerald-500/50 font-bold text-xs flex items-center justify-center gap-1.5 transition-all cursor-pointer"
-                      title="Send message to caller"
+                      aria-label={`Chat back with ${record.participantName}`}
                     >
-                      <MessageSquare className="w-3.5 h-3.5 text-emerald-400" />
-                      <span>Chat</span>
+                      <MessageCircle size={15} /><span>Chat back</span>
                     </button>
                   </div>
-                </div>
+                </article>
               );
             })
           )}
         </div>
 
-        {/* Footer */}
-        {missedLogs.length > 0 && (
-          <div className="pt-2 border-t border-slate-800/80 flex items-center justify-between text-xs">
-            <span className="text-slate-500 font-mono text-[11px]">
-              Tap call back or chat to respond immediately
-            </span>
+        {missedTotal > 0 && (
+          <div className="nv-alert-footer">
+            <span>Clearing removes missed-call records only.</span>
             <button
-              onClick={() => {
-                clearMissedCallLogs();
-                onClose();
-              }}
-              className="text-slate-400 hover:text-red-400 text-xs font-bold transition-colors cursor-pointer"
+              onClick={clearMissedCallLogs}
             >
-              Clear Missed Calls
+              Clear missed calls
             </button>
           </div>
         )}

@@ -1,4 +1,14 @@
 import type { BillingTransaction } from '../types/billing';
+import type { UserBillingSummaryResponse } from './billingClient';
+
+/** A known empty communication wallet is zero; another owner's/missing data is unknown. */
+export function communicationCreditBalance(summary: UserBillingSummaryResponse | null | undefined, ownerId: string, currency = 'GHS'): number | undefined {
+  if (!summary?.success || summary.userId !== ownerId) return undefined;
+  const wallets = summary.accounts?.communicationAccount?.wallets ?? summary.wallets;
+  if (!Array.isArray(wallets)) return undefined;
+  const wallet = wallets.find(row => row.currency === currency);
+  return wallet ? billingNumber(wallet.available) : 0;
+}
 
 export function billingNumber(value: unknown): number | undefined {
   if (typeof value === 'string') {

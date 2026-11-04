@@ -306,6 +306,7 @@ interface NanivioContextType {
 
   // Universal Billing & Monetization Engine State & Methods
   billingSummary: UserBillingSummaryResponse | null;
+  billingSyncError: string | null;
   billingPlans: BillingSubscriptionPlan[];
   userInvoices: BillingInvoice[];
   userDisputes: BillingDispute[];
@@ -1420,6 +1421,8 @@ export const NanivioProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
   // Universal Billing & Monetization Engine State
   const [billingSummary, setBillingSummary] = useState<UserBillingSummaryResponse | null>(null);
+  const [billingSyncError, setBillingSyncError] = useState<string | null>(null);
+  const billingRefreshSequence = useRef(0);
   const [billingPlans, setBillingPlans] = useState<BillingSubscriptionPlan[]>([]);
   const [userInvoices, setUserInvoices] = useState<BillingInvoice[]>([]);
   const [userDisputes, setUserDisputes] = useState<BillingDispute[]>([]);
@@ -1436,6 +1439,7 @@ export const NanivioProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
   // Synchronize Universal Billing State with Server
   const refreshBilling = useCallback(async () => {
+    const sequence = ++billingRefreshSequence.current;
     try {
       const [summary, plans, invoices, disputes, minutePkgs, mPlans] = await Promise.all([
         billingClient.getSummary(currentUser.id),
@@ -1445,7 +1449,9 @@ export const NanivioProvider: React.FC<{ children: React.ReactNode }> = ({ child
         billingClient.getCommunicationMinutePackages().catch(() => []),
         billingClient.getMalviPlans().catch(() => []),
       ]);
+      if (sequence !== billingRefreshSequence.current || currentAccountIdRef.current !== currentUser.id || summary.userId !== currentUser.id) return;
       setBillingSummary(summary);
+      setBillingSyncError(null);
       setBillingPlans(plans);
       setUserInvoices(invoices);
       setUserDisputes(disputes);
@@ -1457,7 +1463,8 @@ export const NanivioProvider: React.FC<{ children: React.ReactNode }> = ({ child
         setMalviSubscription(summary.malviSubscription);
       }
       if (summary.langpretationMeter) {
-        setLangpretationMeter(summary.langpretationMeter);
+        const meter = summary.langpretationMeter;
+        setLangpretationMeter(previous => previous?.userId === meter.userId && (previous.observedAt ?? 0) > (meter.observedAt ?? 0) ? previous : meter);
       }
 
       // Sync user wallets from billing server if available
@@ -1505,6 +1512,9 @@ export const NanivioProvider: React.FC<{ children: React.ReactNode }> = ({ child
         }
       }
     } catch (err) {
+      if (sequence !== billingRefreshSequence.current || currentAccountIdRef.current !== currentUser.id) return;
+      setBillingSyncError('Billing could not refresh. Reconnect and try again.');
+      setLangpretationMeter(null);
       console.warn('Billing state sync fallback to local state:', err);
     }
   }, [currentUser.id]);
@@ -1514,9 +1524,10 @@ export const NanivioProvider: React.FC<{ children: React.ReactNode }> = ({ child
   }, [refreshBilling]);
 
   useEffect(()=>{
-    if(activeTab!=='billing')return;
+    if(activeTab!=='billing' && activeTab!=='account')return;
     // A webhook can activate the purchase while checkout is in another tab.
     const refresh=()=>{if(document.visibilityState==='visible')void refreshBilling();};
+    refresh();
     const timer=setInterval(refresh,15000);
     window.addEventListener('focus',refresh);
     document.addEventListener('visibilitychange',refresh);
@@ -1526,6 +1537,27 @@ export const NanivioProvider: React.FC<{ children: React.ReactNode }> = ({ child
       document.removeEventListener('visibilitychange',refresh);
     };
   },[activeTab,refreshBilling]);
+
+  useEffect(() => {
+    if (activeTab !== 'billing' && activeTab !== 'account' && activeCall?.status !== 'connected') return;
+    let disposed = false, pending = false;
+    const refresh = async () => {
+      if (pending || document.visibilityState !== 'visible') return;
+      pending = true;
+      try {
+        const meter = await billingClient.getLangpretationMeter();
+        if (!disposed && currentAccountIdRef.current === currentUser.id && meter.userId === currentUser.id) {
+          setLangpretationMeter(previous => previous?.userId === meter.userId && (previous.observedAt ?? 0) > (meter.observedAt ?? 0) ? previous : meter);
+        }
+      } catch {
+        if (!disposed && currentAccountIdRef.current === currentUser.id) setLangpretationMeter(null);
+      } finally { pending = false; }
+    };
+    void refresh();
+    const timer = setInterval(refresh, 5000);
+    window.addEventListener('focus', refresh);
+    return () => { disposed = true; clearInterval(timer); window.removeEventListener('focus', refresh); };
+  }, [activeTab, activeCall?.status, currentUser.id]);
 
   const previewBillingCharge = useCallback(async (req: BillingPreviewRequest): Promise<BillingPreviewResponse> => {
     return await billingClient.previewCharge(req);
@@ -3550,6 +3582,7 @@ export const NanivioProvider: React.FC<{ children: React.ReactNode }> = ({ child
         topUpMinutesWithGateway,
 
         billingSummary,
+        billingSyncError,
         billingPlans,
         userInvoices,
         userDisputes,

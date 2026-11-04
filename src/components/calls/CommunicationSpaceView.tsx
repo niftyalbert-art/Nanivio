@@ -1,16 +1,17 @@
 import React, { useRef, useState } from 'react';
-import { AudioLines, Clock3, Users, Video, Phone, Trash2, ArrowUpRight, Radio, Check, AlertCircle, Award, MessageCircle, Search, X } from 'lucide-react';
+import { AudioLines, Clock3, Users, Video, Phone, Trash2, ArrowUpRight, Radio, Check, Award, MessageCircle, Search, X, MessageSquareText } from 'lucide-react';
 import { useNanivio } from '../../context/NanivioContext';
 import { Participant } from '../../types';
 import { PhoneDialerModal } from './PhoneDialerModal';
 import { lookupNanivioUser, normalizeNanivioNumber } from '../../utils/userLookup';
+import { aggregateRecentCommunications } from '../../lib/recentCommunication';
 
 type CallsSection = 'keypad' | 'history' | 'contacts' | 'groups' | 'specialists';
 
 export const CommunicationSpaceView: React.FC = () => {
   const {
     currentUser, authUser, callLogs, clearCallLogs, contacts, experts, start1on1Call, startGroupCall,
-    adminFeatures, startDirectChatWithUser, setActiveTab,
+    adminFeatures, startDirectChatWithUser, setActiveTab, conversations, messages, setActiveConversationId,
   } = useNanivio();
   const [section, setSection] = useState<CallsSection>('keypad');
   const [selected, setSelected] = useState<string[]>([]);
@@ -22,6 +23,44 @@ export const CommunicationSpaceView: React.FC = () => {
   const [groupError, setGroupError] = useState('');
   const audioEnabled = adminFeatures?.audioCallsEnabled !== false;
   const videoEnabled = adminFeatures?.videoCallsEnabled !== false;
+  const recentCommunications = aggregateRecentCommunications({
+    callLogs,
+    conversations,
+    messages,
+    selfIds: [currentUser?.id, authUser?.id],
+    selfNumbers: [currentUser?.nvId, currentUser?.nanivioNumber, authUser?.nvId],
+  });
+  const startRecentCall = (record: (typeof recentCommunications)[number], type: 'audio' | 'video') => {
+    const id = record.participantId || record.participantNvId;
+    if (!id || (type === 'audio' ? !audioEnabled : !videoEnabled)) return;
+    start1on1Call({
+      id,
+      nvId: record.participantNvId,
+      name: record.participantName,
+      avatar: record.participantAvatar || '',
+      initials: record.participantName.slice(0, 2).toUpperCase(),
+      myLanguage: currentUser.myLanguage || 'en',
+      role: 'user',
+    }, type);
+  };
+  const startRecentChat = (record: (typeof recentCommunications)[number]) => {
+    const id = record.participantId || record.participantNvId;
+    if (!id) return;
+    const convId = startDirectChatWithUser({
+      id,
+      nvId: record.participantNvId,
+      name: record.participantName,
+      avatar: record.participantAvatar || '',
+      initials: record.participantName.slice(0, 2).toUpperCase(),
+      myLanguage: currentUser.myLanguage || 'en',
+      role: 'user',
+    });
+    if (convId) setActiveConversationId(convId);
+    setActiveTab('chat');
+  };
+  const formatActivityTime = (timestamp?: number) => timestamp
+    ? new Date(timestamp).toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })
+    : '';
   const nav = [
     { id: 'keypad' as const, label: 'Keypad', icon: Phone },
     { id: 'history' as const, label: 'Recent', icon: Clock3 },
@@ -106,8 +145,6 @@ export const CommunicationSpaceView: React.FC = () => {
       setGroupLookupPending(false);
     }
   };
-  const formatDuration = (seconds: number) => seconds > 0 ? `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}` : '';
-
   return (
     <div className="nv-calls-page">
       <header className="nv-calls-heading">
@@ -122,14 +159,36 @@ export const CommunicationSpaceView: React.FC = () => {
         <PhoneDialerModal isOpen onClose={() => {}} presentation="inline" />
       </section>}
       {section === 'history' && <section className="nv-calls-content">
-        <div className="nv-content-heading"><div><span className="nv-section-index">YOUR CALLS</span><h2>Recent conversations</h2></div>{callLogs.length > 0 && <button className="nv-danger-quiet" onClick={clearCallLogs}><Trash2 size={15} /> Clear history</button>}</div>
-        {!callLogs.length ? <div className="nv-call-empty"><Clock3 size={24} /><strong>No calls yet</strong><p>Your call history will appear here after your first conversation.</p><button onClick={() => setSection('keypad')}>Open keypad <ArrowUpRight size={15} /></button></div> :
-          <div className="nv-history-list">{callLogs.map((log: any, index) => <article className="nv-history-row" key={log.id || `${log.timestamp || ''}-${index}`}>
-            <span className={`nv-history-icon ${log.direction === 'missed' ? 'missed' : ''}`}>{log.callType === 'video' ? <Video size={17} /> : log.direction === 'missed' ? <AlertCircle size={17} /> : <Phone size={17} />}</span>
-            <div className="nv-history-person"><strong>{log.participantName || 'Nanivio member'}</strong><small>{log.participantNvId || 'Nanivio call'} · {log.direction === 'missed' ? 'Missed' : log.direction === 'outgoing' ? 'Outgoing' : 'Incoming'}</small></div>
-            <span className="nv-history-time">{formatDuration(log.durationSeconds) || (log.timestamp ? new Date(log.timestamp).toLocaleDateString() : '')}</span>
-            {log.participantId && <button disabled={log.callType === 'video' ? !videoEnabled : !audioEnabled} aria-label={`${log.callType === 'video' ? 'Video' : 'Audio'} call ${log.participantName || 'member'} again`} onClick={() => start1on1Call({ id: log.participantId!, name: log.participantName || 'Nanivio member', nvId: log.participantNvId, avatar: log.participantAvatar || '', initials: log.participantName?.slice(0, 2).toUpperCase() || 'NV', myLanguage: currentUser.myLanguage || 'en' }, log.callType === 'video' ? 'video' : 'audio')}>{log.callType === 'video' ? <Video size={15} /> : <Phone size={15} />}</button>}
-          </article>)}</div>}
+        <div className="nv-content-heading"><div><span className="nv-section-index">YOUR COMMUNICATIONS</span><h2>Recent conversations</h2><p className="nv-recent-note">Call counts reflect saved history. Unread totals count messages.</p></div>{callLogs.length > 0 && <button className="nv-danger-quiet" onClick={clearCallLogs}><Trash2 size={15} /> Clear history</button>}</div>
+        {!recentCommunications.length ? <div className="nv-call-empty"><Clock3 size={24} /><strong>No recent communications</strong><p>Calls and direct conversations will appear here when you connect with someone.</p><button onClick={() => setSection('keypad')}>Open keypad <ArrowUpRight size={15} /></button></div> :
+          <div className="nv-history-list">{recentCommunications.map((record) => {
+            const hasContactRoute = Boolean(record.participantId || record.participantNvId);
+            const latestActivity = record.latestTimestamp ? formatActivityTime(record.latestTimestamp) : '';
+            return <article className="nv-history-row nv-recent-row" key={record.key}>
+              <span className={`nv-history-icon ${record.missedCount ? 'missed' : ''}`} aria-hidden="true"><Radio size={17} /></span>
+              <div className="nv-history-person nv-recent-person">
+                <strong>{record.participantName}</strong>
+                <small>{record.participantNvId || 'Nanivio contact'}{latestActivity ? ` · Latest ${latestActivity}` : ''}</small>
+                <div className="nv-recent-counts" aria-label="Communication activity">
+                  <span><Phone size={12} /> {record.audioCount} audio</span>
+                  <span><Video size={12} /> {record.videoCount} video</span>
+                  <span className={record.unreadCount ? 'has-unread' : ''}><MessageSquareText size={12} /> {record.unreadCount} unread {record.unreadCount === 1 ? 'message' : 'messages'}</span>
+                  {record.missedCount > 0 && <span className="has-missed">{record.missedCount} missed ({record.missedAudioCount} audio, {record.missedVideoCount} video)</span>}
+                </div>
+                <div className="nv-recent-times">
+                  {record.latestAudioTimestamp && <span>Audio {formatActivityTime(record.latestAudioTimestamp)}</span>}
+                  {record.latestVideoTimestamp && <span>Video {formatActivityTime(record.latestVideoTimestamp)}</span>}
+                  {record.latestChatTimestamp && <span>Chat {formatActivityTime(record.latestChatTimestamp)}</span>}
+                  {record.latestMissedTimestamp && <span>Missed {formatActivityTime(record.latestMissedTimestamp)}</span>}
+                </div>
+              </div>
+              <div className="nv-recent-actions" aria-label={`Contact ${record.participantName}`}>
+                <button disabled={!hasContactRoute || !audioEnabled} aria-label={`Audio call ${record.participantName}`} onClick={() => startRecentCall(record, 'audio')}><Phone size={15} /><span>Audio call</span></button>
+                <button disabled={!hasContactRoute || !videoEnabled} aria-label={`Video call ${record.participantName}`} onClick={() => startRecentCall(record, 'video')}><Video size={15} /><span>Video call</span></button>
+                <button disabled={!hasContactRoute} aria-label={`Chat back with ${record.participantName}`} onClick={() => startRecentChat(record)}><MessageCircle size={15} /><span>Chat back</span></button>
+              </div>
+            </article>;
+          })}</div>}
       </section>}
       {section === 'contacts' && <section className="nv-calls-content">
         <div className="nv-content-heading"><div><span className="nv-section-index">SAVED PEOPLE</span><h2>Contacts</h2></div><span className="nv-history-time">{contacts.length} saved</span></div>

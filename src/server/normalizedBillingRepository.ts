@@ -1,5 +1,7 @@
 import crypto from 'crypto';
 import { getServerSupabase } from './supabaseServer';
+import { communicationAccess } from './communicationAccess.ts';
+import { buildCommunicationMeter } from './langpretationMeter.ts';
 
 function db() {
   const client = getServerSupabase();
@@ -181,9 +183,24 @@ export async function getPersistentWallets(userId:string, accountType:'COMMUNICA
 export async function getPersistentCreditAccount(userId:string){
   const {data,error}=await db().from('nanivio_credit_accounts').select('*').eq('user_id',userId).maybeSingle(); if(error)throw new Error(`Unable to load Nanivio credit: ${error.message}`); return data;
 }
-export async function getPersistentUsageMeter(userId:string){
-  const {data,error}=await db().from('nanivio_usage_events').select('audio_seconds,credits_consumed,source_language,target_language,provider,created_at').eq('user_id',userId).order('created_at',{ascending:false}).limit(200);
-  if(error) return {minutesUsed:0,recent:[]}; const rows=data||[]; return {minutesUsed:Number((rows.reduce((n:any,r:any)=>n+Number(r.audio_seconds||0),0)/60).toFixed(2)),recent:rows};
+export async function getPersistentUsageMeter(userId:string, subscription?: Awaited<ReturnType<typeof getPersistentSubscription>>){
+  const [access, currentSubscription] = await Promise.all([
+    communicationAccess.access(userId), subscription === undefined ? getPersistentSubscription(userId) : subscription,
+  ]);
+  let trialSeconds = 0;
+  for (let offset = 0; ; offset += 500) {
+    const { data, error } = await db().from('nanivio_communication_reservations').select('amount')
+      .eq('user_id', userId).eq('source', 'live_trial').in('status', ['RESERVED', 'COMMITTED'])
+      .order('event_id').range(offset, offset + 499);
+    if (error || !data) throw new Error('Unable to read live trial consumption.');
+    for (const row of data) {
+      const amount = Number(row.amount);
+      if (!Number.isFinite(amount) || amount < 0) throw new Error('Live trial consumption is invalid.');
+      trialSeconds += amount;
+    }
+    if (data.length < 500) break;
+  }
+  return buildCommunicationMeter(userId, access, currentSubscription, Date.now(), trialSeconds / 60);
 }
 export async function getPersistentMalviSubscription(userId:string){
   const database=db(),now=new Date().toISOString();
