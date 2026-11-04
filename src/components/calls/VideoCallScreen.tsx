@@ -26,7 +26,7 @@ import { formatBillingAmount } from '../../lib/billingPresentation';
 import { speechService } from '../../services/speechService';
 import { NanivioTranslatorEngine } from '../../lib/translator-engine/engine';
 import { agoraClient } from '../../lib/agoraClient';
-import { supportsPalabraPair } from '../../shared/palabraLanguages';
+import { supportsPalabraLivePair as supportsPalabraPair, supportsPalabraVoiceCloning } from '../../shared/palabraLanguages';
 import { LiveCallTranslation } from '../../services/liveCallTranslation';
 import { waitForCallTranslation } from '../../services/callTranslationReadiness';
 import { subscriptionHasCapability } from '../../lib/malviCapabilities';
@@ -207,10 +207,11 @@ export const VideoCallScreen: React.FC<VideoCallScreenProps> = ({ onEndCall }) =
       if(!current())return;
       if(remoteLang&&supportsPalabraPair(hostLang.code,remoteLang.code)){
         setSpeechStatus('Connecting Langpretation…');
-          const started=await liveTranslation.current?.start(hostLang.code,remoteLang.code,preserveMyVoice,agoraClient.getLocalStream());
+          const voiceConsent=preserveMyVoice&&supportsPalabraVoiceCloning(hostLang.code,remoteLang.code);
+          const started=await liveTranslation.current?.start(hostLang.code,remoteLang.code,voiceConsent,agoraClient.getLocalStream());
           if(!current())return;
           setIsListeningToSpeech(Boolean(started));
-          if(started)setSpeechStatus(preserveMyVoice?'Listening continuously. Voice preservation requested; allow about 10–20 seconds of speech.':'Listening continuously.');
+          if(started)setSpeechStatus(voiceConsent?'Listening continuously. Voice preservation requested; allow about 10–20 seconds of speech.':supportsPalabraVoiceCloning(hostLang.code,remoteLang.code)?'Listening continuously.':'Listening continuously with a standard translated voice.');
         return;
       }
       setSpeechStatus('Starting speech Langpretation…');
@@ -683,7 +684,7 @@ export const VideoCallScreen: React.FC<VideoCallScreenProps> = ({ onEndCall }) =
                   {speechStatus && <span role="status" className="max-w-[38vw] whitespace-normal text-[10px] text-amber-200">{speechStatus}</span>}
                 </div>
 
-                {remoteLang&&supportsPalabraPair(hostLang.code,remoteLang.code)&&(
+                {remoteLang&&supportsPalabraVoiceCloning(hostLang.code,remoteLang.code)&&(
                   <details className="order-last basis-full border-t border-white/10 pt-1 text-[10px] text-slate-200">
                     <summary className="min-h-9 cursor-pointer py-2 font-semibold text-white/75">Voice options &amp; consent</summary>
                     <div className="space-y-1 pb-2">

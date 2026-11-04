@@ -1,6 +1,8 @@
 import WebSocket from 'ws';
 import { randomUUID } from 'node:crypto';
-import { supportsPalabraPair } from '../shared/palabraLanguages.ts';
+import { supportsPalabraLivePair, supportsPalabraVoiceCloning } from '../shared/palabraLanguages.ts';
+import {LIVE_PCM_FRAME_SAMPLES,LIVE_PCM_FRAME_BYTES,LEGACY_PCM_FRAME_BYTES,LIVE_PCM_BASE64_LENGTH,LEGACY_PCM_BASE64_LENGTH} from '../shared/palabraLiveProtocol.ts';
+import {palabraLiveTask} from './palabraLiveSettings.ts';
 import { PalabraError, palabraConfigured } from './palabraSpeech.ts';
 import { reservePalabraCapacity } from './palabraCapacity.ts';
 
@@ -30,8 +32,10 @@ export class PalabraLiveGateway {
     if(this.sessions.has(peer)||this.pending.has(peer)||this.users.has(userId))throw new PalabraError(409,'Stop the current translation before starting another.');
     if(!input||typeof input.callId!=='string'||input.callId.length>160
       ||typeof input.streamId!=='string'||!/^[a-zA-Z0-9-]{8,80}$/.test(input.streamId)
-      ||!supportsPalabraPair(input.sourceLang,input.targetLang)||typeof input.voiceConsent!=='boolean')
+      ||!supportsPalabraLivePair(input.sourceLang,input.targetLang)||typeof input.voiceConsent!=='boolean')
       throw new PalabraError(400,'Choose a supported language pair and your voice permission.');
+    if(input.voiceConsent&&!supportsPalabraVoiceCloning(input.sourceLang,input.targetLang))
+      throw new PalabraError(400,'Voice preservation is unavailable for this language pair. Turn it off to use a standard translated voice.');
     if(!palabraConfigured())throw new PalabraError(503,'Nanivio live translation is not configured.');
     if(this.users.size>=8)throw new PalabraError(429,'Live translation is busy. Please try again later.');
     this.starts=this.starts.filter(t=>Date.now()-t<60000);
@@ -74,16 +78,7 @@ export class PalabraLiveGateway {
     },3000);
     ws.on('open',()=> {
       if(session.closed)return;
-      ws.send(JSON.stringify({message_type:'set_task',data:{
-        input_stream:{content_type:'audio',source:{type:'ws',format:'pcm_s16le',sample_rate:16000,channels:1}},
-        output_stream:{content_type:'audio',target:{type:'ws',format:'pcm_s16le'}},
-        pipeline:{
-          transcription:{source_language:input.sourceLang,segment_confirmation_silence_threshold:0.5,only_confirm_by_silence:false},
-          translations:[{target_language:input.targetLang==='zh'?'zh-hans':input.targetLang,
-            speech_generation:{voice_cloning:input.voiceConsent}}],
-          allowed_message_types:['partial_transcription','validated_transcription','translated_transcription']
-        }
-      }}));
+      ws.send(JSON.stringify({message_type:'set_task',data:palabraLiveTask(input.sourceLang,input.targetLang,input.voiceConsent)}));
     });
     ws.on('message',raw=>{
       if(session.closed)return;
@@ -126,7 +121,7 @@ export class PalabraLiveGateway {
       if(session.callId!==callId||session.userId!==speakerId||session.streamId!==streamId||listenerId===speakerId
         ||!session.upstreamReady||session.ready||session.closed)continue;
       session.ready=true;session.started=Date.now();session.lastFrame=Date.now();clearTimeout(session.deadline);
-      session.peer.send('langpretation:ready',{callId,streamId,voiceConsent:session.voiceConsent});
+      session.peer.send('langpretation:ready',{callId,streamId,voiceConsent:session.voiceConsent,audioFrameSamples:LIVE_PCM_FRAME_SAMPLES});
     }
   }
   announce(callId:string) {
@@ -144,10 +139,10 @@ export class PalabraLiveGateway {
     const session=this.sessions.get(peer);
     if(!session||session.closed)return;
     if(!session.ready||payload?.streamId!==session.streamId||payload?.sequence!==session.sequence
-      ||typeof payload.data!=='string'||payload.data.length!==13656||!/^[A-Za-z0-9+/]+={0,2}$/.test(payload.data))
+      ||typeof payload.data!=='string'||![LIVE_PCM_BASE64_LENGTH,LEGACY_PCM_BASE64_LENGTH].includes(payload.data.length)||!/^[A-Za-z0-9+/]+={0,2}$/.test(payload.data))
       return this.stop(peer,'Microphone stream is out of order. Tap Listen to reconnect.');
     const audio=Buffer.from(payload.data,'base64');
-    if(audio.length!==10240)return this.stop(peer,'Unsupported microphone audio format.');
+    if(![LIVE_PCM_FRAME_BYTES,LEGACY_PCM_FRAME_BYTES].includes(audio.length))return this.stop(peer,'Unsupported microphone audio format.');
     session.bytes+=audio.length;
     if(session.bytes > ((Date.now()-session.started)/1000+1)*32000 || session.ws.bufferedAmount>128000)
       return this.stop(peer,'Microphone audio could not be delivered in real time.');

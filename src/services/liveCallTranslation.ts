@@ -1,4 +1,5 @@
 import { realtimeClient } from '../lib/realtimeClient';
+import {LIVE_PCM_FRAME_SAMPLES,LEGACY_PCM_FRAME_SAMPLES} from '../shared/palabraLiveProtocol';
 
 type Transport = {send:(type:string,payload:any)=>boolean|void;on:(event:string,callback:(p:any)=>void)=>()=>void};
 type Callbacks = {
@@ -90,9 +91,11 @@ export class LiveCallTranslation {
   private generation=0;
   private sequence=0;
   private readyWait:{resolve:()=>void;reject:(e:Error)=>void;timer:ReturnType<typeof setTimeout>}|null=null;
+  private frameSamples=LEGACY_PCM_FRAME_SAMPLES;
   constructor(private callId:string,private userId:string,private callbacks:Callbacks,private transport:Transport=realtimeClient){
     this.off.push(transport.on('langpretation:ready',p=>{
       if(p.callId!==callId||p.streamId!==this.streamId)return;
+      this.frameSamples=p.audioFrameSamples===LIVE_PCM_FRAME_SAMPLES?LIVE_PCM_FRAME_SAMPLES:LEGACY_PCM_FRAME_SAMPLES;
       this.ready=true;this.sequence=0;this.readyWait?.resolve();
       if(this.readyWait)clearTimeout(this.readyWait.timer);this.readyWait=null;
     }));
@@ -145,6 +148,7 @@ export class LiveCallTranslation {
 
   async start(sourceLang:string,targetLang:string,voiceConsent:boolean,inputStream?:MediaStream|null){
     this.stop();
+    this.frameSamples=LEGACY_PCM_FRAME_SAMPLES;
     const generation=this.generation;
     try{
       // Obtain capture permission before opening any paid upstream session.
@@ -163,19 +167,19 @@ export class LiveCallTranslation {
       if(generation!==this.generation)return false;
       if(ctx.state!=='running')throw new Error('Microphone audio could not start.');
       this.streamId=crypto.randomUUID();
-      const source=ctx.createMediaStreamSource(stream),processor=ctx.createScriptProcessor(4096,1,1),silence=ctx.createGain();
+      const source=ctx.createMediaStreamSource(stream),processor=ctx.createScriptProcessor(2048,1,1),silence=ctx.createGain();
       this.source=source;this.processor=processor;this.silence=silence;silence.gain.value=0;
       source.connect(processor);processor.connect(silence);silence.connect(ctx.destination);
-      let position=0,filled=0;const pcm=new Int16Array(5120),ratio=ctx.sampleRate/16000;
+      let position=0,filled=0;const pcm=new Int16Array(LEGACY_PCM_FRAME_SAMPLES),ratio=ctx.sampleRate/16000;
       processor.onaudioprocess=(event:AudioProcessingEvent)=>{
         if(!this.ready||generation!==this.generation)return;
         const input=event.inputBuffer.getChannelData(0);
         for(;position<input.length;position+=ratio){
           const sample=Math.max(-1,Math.min(1,input[Math.floor(position)]));
           pcm[filled++]=Math.round(sample*(sample<0?32768:32767));
-          if(filled===5120){
-            const bytes=new Uint8Array(10240),view=new DataView(bytes.buffer);
-            for(let i=0;i<pcm.length;i++)view.setInt16(i*2,pcm[i],true);
+          if(filled===this.frameSamples){
+            const bytes=new Uint8Array(this.frameSamples*2),view=new DataView(bytes.buffer);
+            for(let i=0;i<this.frameSamples;i++)view.setInt16(i*2,pcm[i],true);
             let binary='';for(const b of bytes)binary+=String.fromCharCode(b);
             const sent=this.transport.send('langpretation:audio',{streamId:this.streamId,sequence:this.sequence++,data:btoa(binary)});
             filled=0;

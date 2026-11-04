@@ -102,7 +102,12 @@ try {
   assert.equal(await page.evaluate('window.__callActions.filter(e=>e.type==="stream-start").length'),2,
     'Denied allowance cannot start a paid provider stream');
 
-  await page.evaluate('window.__denyCall=false;window.__callValue.activeCall.participants[1].myLanguage="ak";window.__renderCall()');
+  await page.evaluate('window.__denyCall=false;window.__callValue.activeCall.participants[1].myLanguage="sw";window.__renderCall()');
+  await wait('window.__callActions.some(e=>e.type==="stream-start"&&e.target==="sw")');
+  assert.equal(await page.evaluate('window.__callActions.find(e=>e.type==="stream-start"&&e.target==="sw").consent'),false);
+  assert.equal(await page.evaluate('document.body.textContent.includes("standard translated voice")'),true);
+  assert.equal(await page.evaluate('document.body.textContent.includes("I allow my voice")'),false);
+  await page.evaluate('window.__callValue.activeCall.participants[1].myLanguage="ak";window.__renderCall()');
   await wait('window.__speechOptions?.targetLanguage==="ak"');
   assert.equal(await page.evaluate('window.__callActions.find(e=>e.type==="phrase-start").borrowed'),true);
   await page.evaluate('window.__speechOptions.onAudio("microphone-wav-fixture",new AbortController().signal)');
@@ -112,12 +117,13 @@ try {
   await wait('document.body.textContent.includes("NOT LISTENING")');
   await page.evaluate('window.__callValue.activeCall.participants[0].isMuted=false;window.__callValue.activeCall.participants[1].myLanguage="en";window.__renderCall()');
   await wait('document.body.textContent.includes("Original call audio is used")');
-  assert.equal(await page.evaluate('window.__callActions.filter(e=>e.type==="stream-start").length'),2);
+  assert.equal(await page.evaluate('window.__callActions.filter(e=>e.type==="stream-start").length'),3);
   await page.evaluate('window.__unmountCall()');
   console.log(JSON.stringify({passed:true,isolatedFixture:true,paidRequests:0,
     checks:['automatic activation','StrictMode duplicate prevention','pause and resume',
       'switch off cleanup','allowance failure visibility','specialist raw WAV',
-      'call microphone reuse','mute cleanup','same-language original audio']},null,2));
+      'call microphone reuse','mute cleanup','same-language original audio',
+      'Swahili live call selection with standard voice']},null,2));
 } finally {
   await browser.close();
 }

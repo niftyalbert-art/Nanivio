@@ -165,7 +165,10 @@ test('production endpoint requires authentication and authorizes connected parti
   visit(ast);assert.ok(route);
   assert.equal(route.arguments[1].getText(ast),'requireAuthenticatedUser');
   const body=source.slice(source.indexOf('const authorizeLiveLangpretation'),source.indexOf('app.get("/api/langpretation/speech-readiness"'));
-  for(const guard of ['canTranslateLiveCall','session.status','getPersistentSubscription','langpretationMinutesRemaining','normalizedBillingEnabled','nanivio_langpretation_configs','serverLanguageOverrides'])
+  for(const guard of ['adminFeatureSwitches.langpretationEnabled','canTranslateLiveCall','authorizeSponsoredCall','nanivio_langpretation_configs','serverLanguageOverrides'])
     assert.ok(body.includes(guard),guard);
+  const realtime=readFileSync('src/server/realtimeServer.ts','utf8');
+  assert.match(realtime,/call\.status === 'connected' && call\.participants\.includes\(userId\)/);
+  assert.match(realtime,/authorizeSponsoredCall\(userId: string, callId: string\) \{ communicationMeter\.authorize\(callId, userId\); \}/);
   assert.doesNotMatch(source.slice(source.indexOf('app.post("/api/langpretation/call/translate-audio"'),source.indexOf('app.get("/api/langpretation/speech-readiness"')),/recordLangpretationUsagePersistent/,'existing call meter must not be charged twice');
 });

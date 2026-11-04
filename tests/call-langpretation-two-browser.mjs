@@ -11,6 +11,7 @@ import { launchBrowser } from '../scripts/live-call-checks/cdp.mjs';
 // server gateway. No sign-in bypass or customer account is added to the app.
 // --provider is an explicit paid manual run: exactly two upstreams, no retries.
 const paid=process.argv.includes('--provider');
+const partnerLanguage=process.argv.includes('--swahili')?'sw':'fr';
 if(paid&&!process.env.PALABRA_API_KEY)throw new Error('Provider configuration required');
 if(!paid&&!process.env.PALABRA_API_KEY)process.env.PALABRA_API_KEY='isolated-fixture-only';
 let upstreams=0;
@@ -46,7 +47,7 @@ const sockets=new Map(),errors=[];
 const gateway=new PalabraLiveGateway({
   authorize:async(user,call,source,target)=>{
     assert.equal(call,'isolated-call');
-    assert.ok(user==='A'&&source==='en'&&target==='fr'||user==='B'&&source==='fr'&&target==='en');
+    assert.ok(user==='A'&&source==='en'&&target===partnerLanguage||user==='B'&&source===partnerLanguage&&target==='en');
   },
   remote:(_call,speaker,type,payload)=>{
     const remote=sockets.get(speaker==='A'?'B':'A');
@@ -59,10 +60,13 @@ const client=await build({stdin:{loader:'tsx',resolveDir:process.cwd(),contents:
   const user=new URLSearchParams(location.search).get('user');
   const listeners=new Map();
   const socket=new WebSocket('ws://'+location.host+'/fixture-ws?user='+user);
-  window.transport={send(type,payload){if(socket.readyState!==1)return false;socket.send(JSON.stringify({type,payload}));return true;},
+  window.transport={send(type,payload){if(socket.readyState!==1)return false;
+    if(type==='langpretation:audio'&&!window.result.firstInputFrameBytes)window.result.firstInputFrameBytes=atob(payload.data).length;
+    socket.send(JSON.stringify({type,payload}));return true;},
     on(type,fn){const set=listeners.get(type)||new Set();listeners.set(type,set);set.add(fn);return()=>set.delete(fn);}};
   window.result={ready:false,started:false,audioPackets:0,scheduled:0,signal:0,errors:[]};
   socket.onmessage=e=>{const m=JSON.parse(e.data);if(m.type==='langpretation:audio_out')window.result.audioPackets++;
+    if(m.type==='langpretation:ready')window.result.audioFrameSamples=m.payload.audioFrameSamples;
     for(const fn of listeners.get(m.type)||[])fn(m.payload);};
   const original=AudioContext.prototype.createBufferSource;
   AudioContext.prototype.createBufferSource=function(){
@@ -87,7 +91,7 @@ const client=await build({stdin:{loader:'tsx',resolveDir:process.cwd(),contents:
         : `source.buffer=C.createBuffer(1,C.sampleRate*3,C.sampleRate);
            const data=source.buffer.getChannelData(0);for(let i=0;i<data.length;i++)data[i]=Math.sin(i/20)*0.1;`}
       source.connect(destination);
-      const started=await service.start(user==='A'?'en':'fr',user==='A'?'fr':'en',false,destination.stream);
+      const started=await service.start(user==='A'?'en':'${partnerLanguage}',user==='A'?'${partnerLanguage}':'en',false,destination.stream);
       window.result.started=started;
       if(started)source.start();
       window.finish=()=>{service.dispose();source.stop();destination.stream.getTracks().forEach(t=>t.stop());C.close();socket.close();};
@@ -147,8 +151,8 @@ try{
     if(errors.length||results.some(r=>r.errors.length))break;
     await new Promise(resolve=>setTimeout(resolve,250));
   }
-  const passed=results.every(r=>r.started&&r.audioPackets>0&&r.signal>0)&&errors.length===0;
-  const report={checkedAt:new Date().toISOString(),paidProvider:paid,upstreams,results,errors,passed,
+  const passed=results.every(r=>r.started&&r.audioPackets>0&&r.signal>0&&r.audioFrameSamples===1600&&r.firstInputFrameBytes===3200)&&errors.length===0;
+  const report={checkedAt:new Date().toISOString(),partnerLanguage,paidProvider:paid,upstreams,results,errors,passed,
     boundary:'Isolated browsers and connected-call authorizer; not signed-in Render accounts.'};
   if(paid)await writeFile('generated-artifacts/langpretation-two-browser-result.json',JSON.stringify(report,null,2));
   console.log(JSON.stringify(report));

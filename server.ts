@@ -72,7 +72,7 @@ import { quotePaystackOrder, validateVerifiedOrder } from "./src/server/paystack
 import { assertLivePaystackPayment, paystackLiveConfigurationError } from "./src/server/paystackPaymentSafety.ts";
 import { verifyPaystackTransaction, paystackVerificationDiagnostic } from "./src/server/paystackVerification.ts";
 import { buildLangpretationReadiness } from "./src/shared/langpretationReadiness.ts";
-import { supportsPalabraPair } from "./src/shared/palabraLanguages.ts";
+import { supportsPalabraPair, supportsPalabraLivePair } from "./src/shared/palabraLanguages.ts";
 import { palabraConfigured, PalabraError, parsePalabraWav, translatePalabraAudio } from "./src/server/palabraSpeech.ts";
 import { reservePalabraCapacity } from "./src/server/palabraCapacity.ts";
 import {processStagedVoiceNote,VoiceNoteProcessingError} from "./src/server/voiceNotePipeline.ts";
@@ -1062,7 +1062,7 @@ app.get("/api/langpretation/admin/readiness", requireAdmin, async (_req, res) =>
       active: code => serverLanguageOverrides.get(code)?.active ?? persisted.get(code) ?? getLanguageCapability(code).active,
       speech: speechConfigured,
       translation: translationProviderConfigured,
-      integratedSpeech: (source,target) => supportsPalabraPair(source,target) ? palabraConfigured() : undefined,
+      integratedSpeech: (source,target) => supportsPalabraLivePair(source,target) ? palabraConfigured() : undefined,
     });
     res.json({ success: true, report });
   } catch {

@@ -3,6 +3,8 @@ import assert from 'node:assert/strict';
 import vm from 'node:vm';
 import { EventEmitter } from 'node:events';
 import { build } from 'esbuild';
+import {supportsPalabraLivePair,supportsPalabraPair,supportsPalabraVoiceCloning} from '../src/shared/palabraLanguages.ts';
+import {palabraLiveTask} from '../src/server/palabraLiveSettings.ts';
 
 const serverBundle=await build({entryPoints:['src/server/palabraLiveStream.ts'],bundle:true,write:false,format:'cjs',platform:'node',plugins:[{
   name:'ws-fixture',setup(b){b.onResolve({filter:/^ws$/},()=>({path:'ws',namespace:'fake'}));
@@ -44,8 +46,8 @@ function serverFixture(){
     const remote=events.filter(e=>e.event==='langpretation:remote_start').at(-1);
     if(remote)gateway.acknowledgeReceiver(remote.callId,remote.userId,remote.payload.streamId,'receiver-fixture');
   };
-  const frame=(p:any,index:number)=>{
-    now+=320;const pcm=Buffer.alloc(10240);for(let i=0;i<pcm.length;i+=2)pcm.writeInt16LE(1800,i);
+  const frame=(p:any,index:number,samples=5120)=>{
+    now+=samples/16;const pcm=Buffer.alloc(samples*2);for(let i=0;i<pcm.length;i+=2)pcm.writeInt16LE(1800,i);
     gateway.audio(p,{streamId:'stream-one-123',sequence:index,data:pcm.toString('base64')});
   };
   return {gateway,peer,input,message,ready,frame,sockets,events,intervals,deadlines,authorized,
@@ -76,6 +78,40 @@ test('voice cloning is off without explicit per-call speaker consent',async()=>{
   f.gateway.stop(peer);
   await assert.rejects(f.gateway.start(peer,'speaker-A',{...f.input(),voiceConsent:undefined}),/permission/);
   assert.equal(f.sockets.length,1);
+});
+
+test('Swahili uses the live call transport without changing recorded-note routing or claiming voice cloning',async()=>{
+  for(const [source,target] of [['sw','en'],['en','sw'],['sw','fr']]){
+    assert.equal(supportsPalabraLivePair(source,target),true);
+    assert.equal(supportsPalabraPair(source,target),false);
+    assert.equal(supportsPalabraVoiceCloning(source,target),false);
+  }
+  assert.equal(supportsPalabraLivePair('sw','lg'),false);
+  const f=serverFixture(),p=f.peer();
+  await assert.rejects(f.gateway.start(p,'speaker-A',{...f.input(true),sourceLang:'sw'}),/Voice preservation/);
+  assert.equal(f.sockets.length,0,'unsupported voice cloning must not open a paid connection');
+  await f.gateway.start(p,'speaker-A',{...f.input(false),sourceLang:'sw'});
+  f.ready(f.sockets[0]);
+  assert.equal(p.sent.find((e:any)=>e.event==='langpretation:ready').payload.audioFrameSamples,1600);
+  for(let i=0;i<24;i++)f.frame(p,i,1600);
+  assert.equal(f.sockets.length,1);
+  assert.equal(f.sockets[0].sent.filter((m:any)=>m.message_type==='set_task').length,1);
+  assert.equal(f.sockets[0].sent.filter((m:any)=>m.message_type==='input_audio_data').length,24);
+  f.message(f.sockets[0],'output_audio_data',{language:'fr',data:Buffer.alloc(4800).toString('base64')});
+  assert.equal(f.sockets[0].terminated,false,'the declared target is French in this fixture');
+  f.gateway.stop(p);
+});
+
+test('conversational settings reduce buffering without lowering the audio-drop cap or speaking unconfirmed text',()=>{
+  const task=palabraLiveTask('sw','en',false);
+  assert.equal(task.pipeline.transcription.sentence_splitter.enabled,true);
+  assert.equal(task.pipeline.transcription.segment_confirmation_silence_threshold,0.5);
+  assert.equal(task.pipeline.translations[0].translate_partial_transcriptions,false);
+  assert.equal(task.pipeline.translations[0].speech_generation.voice_cloning,false);
+  const queue=task.pipeline.translation_queue_configs.global;
+  assert.equal(queue.desired_queue_level_ms,2000);
+  assert.equal(queue.auto_tempo_max_delay_ms,60);
+  assert.equal(queue.max_queue_level_ms,20000);
 });
 
 test('two participants own separate directional voice adaptation streams',async()=>{
@@ -209,6 +245,25 @@ test('browser streams fixed PCM chunks before silence, stops on mute and discard
   assert.equal(audio[0].payload.sequence,0);assert.equal(audio[1].payload.sequence,1);
   f.service.stop();process(event);assert.equal(f.sent.filter(p=>p.event==='langpretation:audio').length,2);
   assert.ok(f.tracks.every(t=>t.stopped));f.service.dispose();
+});
+
+test('a modern receiver negotiates 100ms PCM without waiting for silence or accumulating 320ms',async()=>{
+  const f=clientFixture(),start=f.service.start('sw','en',false);await flush();
+  const request=f.sent.find(p=>p.event==='langpretation:start');
+  const processor=f.contexts[0].processor;
+  const event={inputBuffer:{getChannelData:()=>new Float32Array(2048).fill(0.2)}};
+  processor.onaudioprocess(event);
+  assert.equal(f.sent.filter(p=>p.event==='langpretation:audio').length,0);
+  f.emit('langpretation:ready',{callId:'call-one',streamId:request.payload.streamId,audioFrameSamples:1600});
+  assert.equal(await start,true);
+  processor.onaudioprocess(event);processor.onaudioprocess(event);
+  assert.equal(f.sent.filter(p=>p.event==='langpretation:audio').length,0);
+  processor.onaudioprocess(event);
+  const audio=f.sent.filter(p=>p.event==='langpretation:audio');
+  assert.equal(audio.length,1);
+  assert.equal(Buffer.from(audio[0].payload.data,'base64').length,3200);
+  assert.equal(audio[0].payload.sequence,0);
+  f.service.dispose();
 });
 
 test('a late-mounted receiver gets another readiness notice without opening another paid stream',async()=>{
