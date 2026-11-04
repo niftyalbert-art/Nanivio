@@ -15,8 +15,8 @@ export interface StreamChannelData { id: string; type: string; name: string; mem
 export interface StreamEventLog { id: string; type: string; channelId?: string; userId?: string; payload: any; timestamp: number; }
 
 function cfg() {
-  const apiKey = process.env.STREAM_API_KEY, secret = process.env.STREAM_API_SECRET;
-  if (!apiKey || !secret) throw new StreamAccessError('GetStream is not configured.', 503);
+  const apiKey = process.env.STREAM_API_KEY?.trim(), secret = process.env.STREAM_API_SECRET?.trim();
+  if (!apiKey || !secret) throw new StreamAccessError('Chat setup is incomplete.', 503, 'CHAT_CONFIGURATION_REQUIRED');
   return { apiKey, secret, base: (process.env.STREAM_API_BASE_URL || 'https://chat.stream-io-api.com').replace(/\/$/, '') };
 }
 
@@ -32,6 +32,10 @@ function signedToken(payload: Record<string, unknown>) {
 // below checks provider-authoritative membership before accessing private data.
 async function streamRequest(path: string, method = 'POST', body?: unknown, actingUserId?: string): Promise<any> {
   const { apiKey, base } = cfg();
+  const operation = /\/message$/.test(path) ? 'send'
+    : path.startsWith('/members') ? 'membership'
+    : path === '/channels' ? 'query' : 'request';
+  try {
   const response = await fetch(`${base}${path}${path.includes('?') ? '&' : '?'}api_key=${encodeURIComponent(apiKey)}`, {
     method,
     headers: {
@@ -47,16 +51,31 @@ async function streamRequest(path: string, method = 'POST', body?: unknown, acti
     // Do not log provider bodies, credentials, identifiers, or chat contents.
     const detail = await response.json().catch(() => null);
     console.warn('[Nanivio chat upstream]', {
-      operation: /\/message$/.test(path) ? 'send'
-        : path.startsWith('/members') ? 'membership'
-        : path === '/channels' ? 'query' : 'request',
+      operation,
       status: response.status,
       code: typeof detail?.code === 'number' ? detail.code : undefined,
     });
     // Never return provider payloads containing private state or request details.
-    throw new StreamAccessError(response.status === 404 ? 'Channel not found.' : 'GetStream request failed.', response.status === 404 ? 404 : 502);
+    const serviceCode = response.status === 401 || response.status === 403 ? 'CHAT_PROVIDER_REJECTED'
+      : response.status === 429 ? 'CHAT_PROVIDER_LIMIT' : 'CHAT_PROVIDER_UNAVAILABLE';
+    throw new StreamAccessError(response.status === 404 ? 'Channel not found.' : 'Chat provider request failed.',
+      response.status === 404 ? 404 : response.status === 429 ? 503 : 502,
+      response.status === 404 ? undefined : serviceCode);
   }
-  return response.json();
+  const data = await response.json();
+  if (!data || typeof data !== 'object' || Array.isArray(data)) throw new SyntaxError('Invalid chat response.');
+  return data;
+  } catch (error) {
+    if (error instanceof StreamAccessError) throw error;
+    // Native fetch errors can originate in another realm (workers/VM tests).
+    // Compare only known names; never render or log arbitrary error text.
+    const name = (error as { name?: unknown } | null)?.name;
+    const timeout = name === 'AbortError' || name === 'TimeoutError';
+    const serviceCode = timeout ? 'CHAT_PROVIDER_TIMEOUT'
+      : name === 'SyntaxError' ? 'CHAT_PROVIDER_RESPONSE_INVALID' : 'CHAT_PROVIDER_UNAVAILABLE';
+    console.warn('[Nanivio chat upstream]', { operation, code: serviceCode });
+    throw new StreamAccessError('Chat provider request could not complete.', timeout ? 504 : 502, serviceCode);
+  }
 }
 
 function mapMember(member: any): StreamChannelMember {

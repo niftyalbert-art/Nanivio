@@ -1,8 +1,9 @@
 import crypto from 'node:crypto';
 import type { RequestHandler } from 'express';
+import type { ChatServiceCode } from '../shared/chatServiceErrors.ts';
 
 export class StreamAccessError extends Error {
-  constructor(message = 'Channel access denied.', public status = 403) {
+  constructor(message = 'Channel access denied.', public status = 403, public serviceCode?: ChatServiceCode) {
     super(message);
     this.name = 'StreamAccessError';
   }

@@ -352,7 +352,7 @@ class NanivioRealtimeClient {
       const offError = this.on('chat:error', data => {
         if (data?.requestId !== requestId) return;
         cleanup();
-        reject(new ChatSendError(data.code === 'access' ? 'access' : 'unavailable'));
+        reject(new ChatSendError(data.code === 'access' ? 'access' : 'unavailable', data.serviceCode));
       });
       // An acknowledgment timed out does not prove the server failed to save.
       const timeout = setTimeout(() => { cleanup(); reject(new ChatSendError('unconfirmed')); }, 20000);

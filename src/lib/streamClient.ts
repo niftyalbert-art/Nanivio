@@ -225,11 +225,11 @@ class NanivioStreamClient {
         headers: streamHeaders(),
         body: JSON.stringify({ id, name, members, type, custom }),
       });
+      const data = await res.json().catch(() => null);
       if (!res.ok) throw new ChatSendError(
-        res.status === 401 ? 'session' : res.status === 403 ? 'access' : 'unavailable',
+        res.status === 401 ? 'session' : res.status === 403 ? 'access' : 'unavailable', data?.serviceCode,
       );
-      const data = await res.json();
-      if (!data.channel) throw new ChatSendError('unavailable');
+      if (!data?.channel) throw new ChatSendError('unavailable', 'CHAT_PROVIDER_RESPONSE_INVALID');
       return data.channel;
     } catch (e) {
       if (e instanceof ChatSendError) throw e;

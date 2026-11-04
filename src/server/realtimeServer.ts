@@ -1069,10 +1069,14 @@ export function setupRealtimeServer(httpServer: HttpServer,options?:{
             socket.send(JSON.stringify({ type: 'chat:error', payload: {
               requestId: chatRequestId,
               code: err instanceof StreamAccessError && err.status === 403 ? 'access' : 'unavailable',
+              serviceCode: err instanceof StreamAccessError ? err.serviceCode : undefined,
               message: 'Private chat request could not be authorized or completed.',
             } }));
           }
-          console.warn('WebSocket request could not be completed.');
+          console.warn('WebSocket request could not be completed.', {
+            serviceCode: err instanceof StreamAccessError ? err.serviceCode : undefined,
+            status: err instanceof StreamAccessError ? err.status : undefined,
+          });
         }
       });
     });

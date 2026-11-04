@@ -1745,7 +1745,10 @@ app.post("/api/stream/channels", requireAuthenticatedUser, requireActiveChatAcco
     }, actor.id);
     res.json({ success: true, channel });
   } catch (error: any) {
-    res.status(error instanceof StreamAccessError ? error.status : 502).json({ success: false, error: error instanceof StreamAccessError ? error.message : "Unable to create private channel." });
+    res.status(error instanceof StreamAccessError ? error.status : 502).json({
+      success: false, error: error instanceof StreamAccessError ? error.message : "Unable to create private channel.",
+      serviceCode: error instanceof StreamAccessError ? error.serviceCode : undefined,
+    });
   }
 });
 

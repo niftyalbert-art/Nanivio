@@ -1,12 +1,19 @@
+import { CHAT_SERVICE_ERRORS, isChatServiceCode, type ChatServiceCode } from '../shared/chatServiceErrors';
+
 /** Only display application-owned messages, never raw provider responses. */
 export class ChatSendError extends Error {
-  constructor(public readonly code: 'connection' | 'session' | 'access' | 'unavailable' | 'unconfirmed' | 'conversation') {
+  public readonly serviceCode?: ChatServiceCode;
+  constructor(public readonly code: 'connection' | 'session' | 'access' | 'unavailable' | 'unconfirmed' | 'conversation', serviceCode?: unknown) {
     super(code);
     this.name = 'ChatSendError';
+    this.serviceCode = isChatServiceCode(serviceCode) ? serviceCode : undefined;
   }
 }
 
 export function chatSendFeedback(error: unknown): string {
+  if (error instanceof ChatSendError && error.code === 'unavailable' && error.serviceCode) {
+    return `${CHAT_SERVICE_ERRORS[error.serviceCode]} Support code: ${error.serviceCode}. Your draft is still here.`;
+  }
   const code = error instanceof ChatSendError ? error.code : undefined;
   const detail = {
     connection: 'Chat is reconnecting. Please try again in a moment.',
