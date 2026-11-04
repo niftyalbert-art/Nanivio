@@ -328,6 +328,14 @@ try {
   assert.equal(closing.ended, true);
   assert.equal(closing.text, '', 'Trailing sound must not repeat the transcript');
   assert.equal(native.events.filter(e => e.type === 'malvi:brain_turn_end').length, endEventsBefore + 1);
+  const connectsBeforeArabic = state.geminiConnects;
+  const arabicSwitch = await spokenSwitch('native-arabic-signature', { language:'ar', mode:'conversation', partnerLanguage:null });
+  assert.equal(arabicSwitch.switched, true);
+  assert.equal(controller.inputReadiness(native, 'owner', nativeId).language, 'ar');
+  assert.match(arabicSwitch.instruction, /female voice, speaker identity and feminine timbre/);
+  assert.match(arabicSwitch.instruction, /never the speaker, gender, voice provider or voice preset/);
+  assert.equal(state.geminiOptions.config.speechConfig.voiceConfig.prebuiltVoiceConfig.voiceName, 'Sulafat');
+  assert.equal(state.geminiConnects, connectsBeforeArabic, 'A spoken Arabic switch cannot select another voice or reconnect');
   controller.closeSocket(native);
   emitNative({ serverContent: { modelTurn: { parts: [spokenChunk] }, outputTranscription: { text: 'Late' }, turnComplete: true } });
   assert.equal(native.events.filter(e => e.type === 'malvi:brain_audio').length, 5);

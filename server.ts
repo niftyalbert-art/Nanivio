@@ -17,6 +17,7 @@ import { WEB_TOOL } from "./src/server/assistant/webResearch.ts";
 import { MEDIA_TOOL } from "./src/server/assistant/mediaResearch.ts";
 import { MAPS_TOOL } from "./src/server/assistant/mapTools.ts";
 import { malviSpeechSetup } from "./src/server/assistant/malviSpeech.ts";
+import { synthesizeMalviReply } from "./src/server/assistant/malviReplySpeech.ts";
 import {
   setupRealtimeServer,
   getActiveConnectedUsersList,
@@ -1438,7 +1439,8 @@ app.post("/api/langpretation/synthesize", requireAuthenticatedUser, async (req, 
 
     const sessionId=String(req.body.sessionId||'');
     if(sessionId)authorizeSponsoredCall(authenticatedUserId(req),sessionId);
-    const synthesized=purpose==='MALVI'||sessionId?await synthesizeProviderAudio(text,language)
+    const synthesized=purpose==='MALVI'?await synthesizeMalviReply(text,language)
+      :sessionId?await synthesizeProviderAudio(text,language)
       :await withCommunicationUsage(authenticatedUserId(req),'text',Array.from(String(text)).length,()=>synthesizeProviderAudio(text,language));
     if(sessionId)markCallTranslationReady(sessionId);
     const {audioBase64,provider,contentType}=synthesized;

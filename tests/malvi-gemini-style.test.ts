@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
 import { MALVI_GEMINI_VOICE, malviGeminiVoiceDirection } from '../src/server/assistant/geminiVoiceStyle.ts';
+import { MALVI_SYSTEM_PROMPT } from '../src/server/assistant/malviSystemPrompt.ts';
 import { applyMalviGeminiEffects, MALVI_GEMINI_TAIL_SAMPLES } from '../src/server/assistant/geminiVoiceEffects.ts';
 import { MAX_SPEECH_BYTES } from '../src/server/assistant/malviSpeech.ts';
 
@@ -27,6 +28,17 @@ test('approved Sulafat direction keeps brand pronunciation and applies English a
     assert.match(direction, /Do not switch to English/);
     assert.doesNotMatch(direction, /British English and light Ghanaian English/);
     assert.match(direction, /"Na ni vio"/);
+  }
+});
+
+test('the female signature is protected at system level and in every language direction', () => {
+  assert.match(MALVI_SYSTEM_PROMPT, /female voice, speaker identity and feminine timbre/);
+  for (const code of ['ak','tw-ak','gaa','ee','dag','ha','yo','sw','en','fr','es','ar','de','it','pt','zh','ja','ko']) {
+    const direction = malviGeminiVoiceDirection(code);
+    assert.match(direction, /female voice, speaker identity and feminine timbre/);
+    assert.match(direction, /never the speaker, gender, voice provider or voice preset/);
+    assert.match(direction, /without imitating either speaker's vocal identity/);
+    assert.doesNotMatch(direction, /Use a slightly fuller, deeper/);
   }
 });
 
