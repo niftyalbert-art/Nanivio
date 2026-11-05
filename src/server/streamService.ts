@@ -34,6 +34,8 @@ async function streamRequest(path: string, method = 'POST', body?: unknown, acti
   const { apiKey, base } = cfg();
   const operation = /\/message$/.test(path) ? 'send'
     : path.startsWith('/members') ? 'membership'
+    : path === '/users' ? 'users_sync'
+    : /^\/channels\/messaging\/[^/]+\/query$/.test(path) ? 'channel_create'
     : path === '/channels' ? 'query' : 'request';
   try {
   const response = await fetch(`${base}${path}${path.includes('?') ? '&' : '?'}api_key=${encodeURIComponent(apiKey)}`, {
@@ -57,6 +59,7 @@ async function streamRequest(path: string, method = 'POST', body?: unknown, acti
     });
     // Never return provider payloads containing private state or request details.
     const serviceCode = response.status === 401 || response.status === 403 ? 'CHAT_PROVIDER_REJECTED'
+      : [400, 413, 422].includes(response.status) ? 'CHAT_PROVIDER_REQUEST_INVALID'
       : response.status === 429 ? 'CHAT_PROVIDER_LIMIT' : 'CHAT_PROVIDER_UNAVAILABLE';
     throw new StreamAccessError(response.status === 404 ? 'Channel not found.' : 'Chat provider request failed.',
       response.status === 404 ? 404 : response.status === 429 ? 503 : 502,
@@ -85,7 +88,7 @@ function mapMember(member: any): StreamChannelMember {
     name: member.user?.name || member.user_id || '',
     avatar: member.user?.image,
     nvId: member.user?.nvId,
-    language: member.user?.language,
+    language: member.user?.nanivio_language || member.user?.language,
     role: member.is_moderator || ['admin', 'channel_moderator', 'channel_admin'].includes(channelRole) ? 'admin' : 'member',
   };
 }
@@ -136,8 +139,8 @@ function mapMessage(message: any, channelId: string): StreamChatMessage {
 async function queryChannel(channelId: string, messageLimit = 0, actingUserId?: string) {
   const id = normalizeChannelId(channelId);
   const data = await streamRequest('/channels', 'POST', {
-    filter_conditions: { cid: `messaging:${id}`, ...(actingUserId ? { members: { $in: [actingUserId] } } : {}) }, limit: 1, messages_limit: messageLimit,
-    member_limit: 100, state: true, watch: false, presence: false,
+    filter_conditions: { cid: `messaging:${id}`, ...(actingUserId ? { members: { $in: [actingUserId] } } : {}) }, limit: 1, message_limit: messageLimit,
+    member_limit: 100, user_id: actingUserId, state: Boolean(actingUserId), watch: false, presence: false,
   });
   return data.channels?.[0] || null;
 }
@@ -217,7 +220,7 @@ export async function upsertStreamChannel(channel: StreamChannelData, actingUser
     id = `nv_${crypto.randomUUID().replace(/-/g, '')}`;
   }
   const users = Object.fromEntries(channel.members.map(member => [member.userId, {
-    id: member.userId, name: member.name, image: member.avatar || '', nvId: member.nvId, language: member.language,
+    id: member.userId, name: member.name, image: streamProfileImageUrl(member.avatar), nvId: member.nvId, nanivio_language: member.language,
   }]));
   await streamRequest('/users', 'POST', { users });
   const custom = channel.custom || {};
@@ -234,6 +237,17 @@ export async function upsertStreamChannel(channel: StreamChannelData, actingUser
     await streamRequest(`/channels/messaging/${id}/query`, 'POST', { data, watch: false, state: true, presence: false });
   }
   return getStreamChannel(id, actingUserId);
+}
+
+function streamProfileImageUrl(value?: string): string {
+  // Nanivio profiles may contain large inline photos. Stream user metadata has a
+  // much smaller size limit: copying a data URI can prevent all chat creation.
+  // Leave the Nanivio profile untouched; only sync bounded HTTP(S) image URLs.
+  if (typeof value !== 'string' || !value || Buffer.byteLength(value, 'utf8') > 2048) return '';
+  try {
+    const url = new URL(value);
+    return ['https:', 'http:'].includes(url.protocol) && !url.username && !url.password ? value : '';
+  } catch { return ''; }
 }
 
 export async function getStreamChannel(channelId: string, userId: string) {

@@ -47,6 +47,8 @@ test('missing chat setup and upstream failures return safe actionable support co
     [{missing:true},'CHAT_CONFIGURATION_REQUIRED',503],
     [{status:401},'CHAT_PROVIDER_REJECTED',502],
     [{status:403},'CHAT_PROVIDER_REJECTED',502],
+    [{status:400},'CHAT_PROVIDER_REQUEST_INVALID',502],
+    [{status:413},'CHAT_PROVIDER_REQUEST_INVALID',502],
     [{status:429},'CHAT_PROVIDER_LIMIT',503],
     [{status:503},'CHAT_PROVIDER_UNAVAILABLE',502],
     [{timeout:true},'CHAT_PROVIDER_TIMEOUT',504],
@@ -61,6 +63,57 @@ test('missing chat setup and upstream failures return safe actionable support co
     assert.equal(f.requests.some(request=>request.url.pathname.endsWith('/message')),false);
     assert.doesNotMatch(JSON.stringify(f.warnings),/PRIVATE|fixture-signing|fixture-public/);
   }
+});
+test('channel existence probes do not request user state, and direct reads bind user state to the verified member',async()=>{
+  const f=fixture();
+  await assert.rejects(f.api.getStreamMessages('room','alice'));
+  const query=f.requests.find(r=>r.url.pathname==='/channels');
+  assert.equal(query.body.user_id,'alice');
+  assert.equal(query.body.state,true);
+  assert.equal(query.body.message_limit,50);
+  assert.equal('messages_limit' in query.body,false);
+});
+
+test('actual private-channel creation keeps Nanivio languages separate from provider-native translation fields',async()=>{
+  const requests:any[]=[];let createdId='';
+  const snapshot=()=>({channel:{id:createdId,type:'messaging',name:'Fixture',created_by_id:'alice'},
+    members:[{user_id:'alice',user:{id:'alice',nanivio_language:'ar'}},{user_id:'bob',user:{id:'bob',nanivio_language:'ak'}}]});
+  const context=vm.createContext({
+    module:{exports:{}},require:createRequire(import.meta.url),Buffer,URL,AbortSignal,Response,
+    process:{env:{STREAM_API_KEY:'fixture-public-key',STREAM_API_SECRET:'fixture-secret'}},console,
+    fetch:async(raw:string,options:any)=>{
+      const url=new URL(raw),body=options.body?JSON.parse(options.body):undefined;
+      requests.push({url,body});
+      if(url.pathname==='/users'){
+        assert.equal(body.users.bob.nanivio_language,'ak');
+        assert.equal('language' in body.users.bob,false);
+        assert.equal(body.users.bob.image,'');
+        assert.equal(body.users.alice.image,'https://example.invalid/avatar.png');
+        assert.ok(Buffer.byteLength(JSON.stringify(body))<5000,'Inline photos must not reach provider user metadata.');
+        return Response.json({users:body.users});
+      }
+      if(url.pathname.endsWith('/query')){
+        createdId=url.pathname.split('/')[3];
+        assert.equal(body.data.created_by_id,'alice');return Response.json(snapshot());
+      }
+      if(url.pathname==='/members')return Response.json({members:snapshot().members});
+      if(url.pathname==='/channels'){
+        assert.equal(body.message_limit,createdId?1:0);
+        if(!createdId){assert.equal(body.state,false);assert.equal(body.user_id,undefined);}
+        else {assert.equal(body.state,true);assert.equal(body.user_id,'alice');}
+        return Response.json({channels:createdId?[snapshot()]:[]});
+      }
+      throw Error('Unexpected fixture request');
+    },
+  });
+  vm.runInContext(bundle.outputFiles[0].text,context);
+  const api=(context.module as any).exports;
+  const result=await api.upsertStreamChannel({id:'draft-fixture',type:'messaging',name:'Fixture',
+    members:[{userId:'alice',name:'Fixture A',language:'ar',avatar:'https://example.invalid/avatar.png'},
+      {userId:'bob',name:'Fixture B',language:'ak',avatar:`data:image/png;base64,${'a'.repeat(665000)}`} ]},'alice');
+  assert.match(result.id,/^nv_/);
+  assert.equal(result.members.find((m:any)=>m.userId==='bob').language,'ak');
+  assert.equal(requests.filter(r=>r.url.pathname==='/users').length,1);
 });
 test('message sends retain the verified actor token after authoritative membership succeeds',async()=>{
   const f=fixture();
