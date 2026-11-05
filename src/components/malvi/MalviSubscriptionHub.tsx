@@ -455,7 +455,7 @@ export const MalviSubscriptionHub: React.FC<MalviSubscriptionHubProps> = ({
                           }`}
                         >
                           <CreditCard className="w-3.5 h-3.5" />
-                          <span>Pay with Paystack (Instant)</span>
+                          <span>Paystack or USDT</span>
                         </button>
                         <div className="flex items-center gap-1.5">
                           <button

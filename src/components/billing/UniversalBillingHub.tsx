@@ -1036,7 +1036,7 @@ export const UniversalBillingHub: React.FC = () => {
                           onClick={() => void handleUpgradePlan(plan.tier)}
                           className="w-full py-2.5 rounded-xl font-bold text-xs bg-emerald-500 hover:bg-emerald-400 text-slate-950 shadow-md shadow-emerald-500/20 transition flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-60"
                         >
-                          <span>{upgradingTier === plan.tier ? 'Selecting…' : price > 0 ? 'Pay with Paystack' : 'Select free plan'}</span>
+                          <span>{upgradingTier === plan.tier ? 'Selecting…' : price > 0 ? 'Paystack or USDT' : 'Select free plan'}</span>
                         </button>
                       )}
                     </div>
@@ -1279,7 +1279,7 @@ export const UniversalBillingHub: React.FC = () => {
                             className="w-full py-2.5 rounded-xl font-bold text-xs bg-gradient-to-r from-cyan-500 to-emerald-400 hover:from-cyan-400 hover:to-emerald-300 text-slate-950 shadow-md shadow-cyan-500/20 transition flex items-center justify-center gap-1.5 cursor-pointer"
                           >
                             <CreditCard className="w-3.5 h-3.5" />
-                            <span>Pay with Paystack (Instant)</span>
+                            <span>Paystack or USDT</span>
                           </button>
                           <button
                             id={`btn_malvi_balance_${plan.tier}`}

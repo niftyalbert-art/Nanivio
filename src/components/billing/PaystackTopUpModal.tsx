@@ -67,16 +67,24 @@ export const PaystackTopUpModal: React.FC<PaystackTopUpModalProps> = ({
   const [malviQuoteLoading, setMalviQuoteLoading] = useState(false);
   const [cryptoCheckoutOpen, setCryptoCheckoutOpen] = useState(false);
   const [cryptoAccess, setCryptoAccess] = useState<{ userId: string; recoveryOnly: boolean } | null>(null);
+  const [cryptoAccessNotice, setCryptoAccessNotice] = useState<string | null>(null);
+  const [cryptoAccessLoading, setCryptoAccessLoading] = useState(false);
+  const [cryptoAccessAttempt, setCryptoAccessAttempt] = useState(0);
   React.useEffect(() => {
     setCryptoAccess(null);
     setCryptoCheckoutOpen(false);
+    setCryptoAccessNotice(null);
+    setCryptoAccessLoading(false);
     if (!isOpen || !authUser?.id || !['SUBSCRIPTION', 'MALVI_SUBSCRIPTION'].includes(purpose)) return;
     let cancelled = false;
     const userId = authUser.id;
+    setCryptoAccessLoading(true);
     void (async () => {
       try {
         const config = await cryptoBillingClient.config();
-        if (config.eligible === true) {
+        // Older public releases return enabled without rollout metadata.
+        // An explicit denial must never be overridden by that compatibility path.
+        if (config.eligible === true || (config.eligible === undefined && config.enabled === true)) {
           if (!cancelled) setCryptoAccess({ userId, recoveryOnly: false });
           return;
         }
@@ -85,14 +93,20 @@ export const PaystackTopUpModal: React.FC<PaystackTopUpModalProps> = ({
         if (!cancelled && invoices.some(invoice => invoice.purpose === purpose &&
             invoice.planTier === planTier && invoice.billingCycle === billingCycle)) {
           setCryptoAccess({ userId, recoveryOnly: true });
+        } else if (!cancelled) {
+          setCryptoAccessNotice(config.reason || 'USDT checkout is unavailable for this account. Paystack remains available.');
         }
       } catch {
-        // Optional crypto visibility must never block the existing Paystack flow.
-        if (!cancelled) setCryptoAccess(null);
+        if (!cancelled) {
+          setCryptoAccess(null);
+          setCryptoAccessNotice('We could not check USDT checkout availability. Retry below; Paystack remains available.');
+        }
+      } finally {
+        if (!cancelled) setCryptoAccessLoading(false);
       }
     })();
     return () => { cancelled = true; };
-  }, [isOpen, authUser?.id, purpose, planTier, billingCycle]);
+  }, [isOpen, authUser?.id, purpose, planTier, billingCycle, cryptoAccessAttempt]);
   React.useEffect(() => {
     if (!isOpen) return;
     let cancelled = false;
@@ -287,11 +301,13 @@ export const PaystackTopUpModal: React.FC<PaystackTopUpModalProps> = ({
               <h2 className="text-base font-bold text-slate-100 flex items-center gap-2">
                 <span>{modalTitle}</span>
                 <span className="text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
-                  Paystack Rail
+                  {purpose === 'SUBSCRIPTION' || purpose === 'MALVI_SUBSCRIPTION' ? 'Paystack / USDT' : 'Paystack Rail'}
                 </span>
               </h2>
               <p className="text-xs text-slate-400">
-                Live cryptographic verification via Paystack API
+                {purpose === 'SUBSCRIPTION' || purpose === 'MALVI_SUBSCRIPTION'
+                  ? 'Choose Paystack or USDT on TRON for your subscription'
+                  : 'Live cryptographic verification via Paystack API'}
               </p>
             </div>
           </div>
@@ -305,20 +321,25 @@ export const PaystackTopUpModal: React.FC<PaystackTopUpModalProps> = ({
 
         {/* Modal Body */}
         <div className="p-6 space-y-5">
-          {cryptoAccess?.userId === authUser?.id && cryptoAccess !== null && (
+          {(purpose === 'SUBSCRIPTION' || purpose === 'MALVI_SUBSCRIPTION') && (
             <div className="rounded-xl border border-slate-800 bg-slate-950/70 p-3">
               <p className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-slate-400">Choose payment method</p>
               <div className="grid grid-cols-2 gap-2">
                 <div className="flex min-h-10 items-center justify-center gap-2 rounded-lg border border-emerald-500/40 bg-emerald-500/10 px-3 text-xs font-bold text-emerald-200">
                   <CreditCard className="h-4 w-4" />Paystack
                 </div>
-                <button type="button" onClick={() => setCryptoCheckoutOpen(true)} className="flex min-h-10 items-center justify-center gap-2 rounded-lg border border-slate-700 bg-slate-900 px-3 text-xs font-bold text-slate-200 transition hover:border-emerald-400/60 hover:text-emerald-200">
-                  <WalletCards className="h-4 w-4" />{cryptoAccess.recoveryOnly ? 'View USDT payment' : 'USDT · TRON'}
+                <button type="button" disabled={!cryptoAccess || cryptoAccess.userId !== authUser?.id} onClick={() => setCryptoCheckoutOpen(true)} className="flex min-h-10 items-center justify-center gap-2 rounded-lg border border-slate-700 bg-slate-900 px-3 text-xs font-bold text-slate-200 transition hover:border-emerald-400/60 hover:text-emerald-200 disabled:cursor-not-allowed disabled:opacity-50">
+                  <WalletCards className="h-4 w-4" />{cryptoAccess?.userId === authUser?.id && cryptoAccess.recoveryOnly ? 'View USDT payment' : 'USDT · TRON'}
                 </button>
               </div>
-              <p className="mt-2 text-[11px] text-slate-500">{cryptoAccess.recoveryOnly
+              <p className="mt-2 text-[11px] text-slate-500">{cryptoAccess?.userId === authUser?.id && cryptoAccess.recoveryOnly
                 ? 'View or check an existing USDT invoice. New crypto checkout is not available for this account.'
                 : 'Paystack remains available. Crypto checkout is for subscriptions only.'}</p>
+              {cryptoAccessLoading && <p role="status" className="mt-2 text-xs text-slate-300">Checking USDT availability…</p>}
+              {cryptoAccessNotice && <div role="status" className="mt-2 text-xs text-amber-200">
+                <p>{cryptoAccessNotice}</p>
+                <button type="button" disabled={cryptoAccessLoading} onClick={() => setCryptoAccessAttempt(value => value + 1)} className="mt-2 underline underline-offset-2">Retry USDT availability</button>
+              </div>}
             </div>
           )}
           {errorMessage && (
