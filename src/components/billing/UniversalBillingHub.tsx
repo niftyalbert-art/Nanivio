@@ -1927,9 +1927,11 @@ export const UniversalBillingHub: React.FC = () => {
           setIsPaystackModalOpen(false);
           setPaystackConfig({});
         }}
-        onSuccess={() => {
-          setIsPaystackModalOpen(false);
-          setPaystackConfig({});
+        onSuccess={(source) => {
+          if (source !== 'CRYPTO') {
+            setIsPaystackModalOpen(false);
+            setPaystackConfig({});
+          }
           refreshBilling();
         }}
         purpose={paystackConfig.purpose || 'COMMUNICATION_TOPUP'}

@@ -140,11 +140,13 @@ export const MalviSubscriptionHub: React.FC<MalviSubscriptionHubProps> = ({
     }
   };
 
-  const handlePaystackSuccess = async () => {
-    setIsPaystackOpen(false);
+  const handlePaystackSuccess = async (source: 'PAYSTACK' | 'CRYPTO' = 'PAYSTACK') => {
+    if (source !== 'CRYPTO') setIsPaystackOpen(false);
     await refreshBilling();
-    setSuccessMessage('Paystack payment verified! Malvi subscription activated.');
-    if (onSuccess) onSuccess();
+    setSuccessMessage(source === 'CRYPTO'
+      ? 'TRON USDT payment verified! Malvi subscription activated.'
+      : 'Paystack payment verified! Malvi subscription activated.');
+    if (source !== 'CRYPTO' && onSuccess) onSuccess();
   };
 
   return (

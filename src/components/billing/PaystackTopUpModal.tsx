@@ -10,17 +10,19 @@ import {
   Lock,
   Smartphone,
   Check,
+  WalletCards,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { billingClient } from '../../lib/billingClient';
 import { useNanivio } from '../../context/NanivioContext';
 import { announcePaystackActivation, rememberPaystackReturn } from '../../lib/paystackReturn';
 import { PaymentReceipt } from './PaymentReceipt';
+import { CryptoSubscriptionCheckout } from './CryptoSubscriptionCheckout';
 
 interface PaystackTopUpModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onSuccess: () => void;
+  onSuccess: (source?: 'PAYSTACK' | 'CRYPTO') => void;
   defaultCurrency?: string;
   initialAmount?: number;
   purpose?: 'COMMUNICATION_TOPUP' | 'SUBSCRIPTION' | 'COMMUNICATION_MINUTES' | 'MALVI_SUBSCRIPTION';
@@ -62,6 +64,7 @@ export const PaystackTopUpModal: React.FC<PaystackTopUpModalProps> = ({
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [malviQuote, setMalviQuote] = useState<import('../../types/billing').MalviSubscriptionPlan | null>(null);
   const [malviQuoteLoading, setMalviQuoteLoading] = useState(false);
+  const [cryptoCheckoutOpen, setCryptoCheckoutOpen] = useState(false);
   React.useEffect(() => {
     if (!isOpen) return;
     let cancelled = false;
@@ -77,6 +80,7 @@ export const PaystackTopUpModal: React.FC<PaystackTopUpModalProps> = ({
     setVerificationResult(null);
     setErrorMessage(null);
     setMalviQuote(null);
+    setCryptoCheckoutOpen(false);
     setMalviQuoteLoading(isMalvi);
     if (isMalvi) {
       billingClient.getMalviPlans().then(plans => {
@@ -273,6 +277,20 @@ export const PaystackTopUpModal: React.FC<PaystackTopUpModalProps> = ({
 
         {/* Modal Body */}
         <div className="p-6 space-y-5">
+          {(purpose === 'SUBSCRIPTION' || purpose === 'MALVI_SUBSCRIPTION') && (
+            <div className="rounded-xl border border-slate-800 bg-slate-950/70 p-3">
+              <p className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-slate-400">Choose payment method</p>
+              <div className="grid grid-cols-2 gap-2">
+                <div className="flex min-h-10 items-center justify-center gap-2 rounded-lg border border-emerald-500/40 bg-emerald-500/10 px-3 text-xs font-bold text-emerald-200">
+                  <CreditCard className="h-4 w-4" />Paystack
+                </div>
+                <button type="button" onClick={() => setCryptoCheckoutOpen(true)} className="flex min-h-10 items-center justify-center gap-2 rounded-lg border border-slate-700 bg-slate-900 px-3 text-xs font-bold text-slate-200 transition hover:border-emerald-400/60 hover:text-emerald-200">
+                  <WalletCards className="h-4 w-4" />USDT · TRON
+                </button>
+              </div>
+              <p className="mt-2 text-[11px] text-slate-500">Paystack remains available. Crypto checkout is for subscriptions only.</p>
+            </div>
+          )}
           {errorMessage && (
             <div className="p-3 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-300 text-xs flex items-center gap-2">
               <AlertCircle className="w-4 h-4 flex-shrink-0" />
@@ -525,6 +543,14 @@ export const PaystackTopUpModal: React.FC<PaystackTopUpModalProps> = ({
           )}
         </div>
       </motion.div>
+      {(purpose === 'SUBSCRIPTION' || purpose === 'MALVI_SUBSCRIPTION') && planTier && (
+        <CryptoSubscriptionCheckout
+          isOpen={cryptoCheckoutOpen}
+          onClose={() => setCryptoCheckoutOpen(false)}
+          onSuccess={() => onSuccess('CRYPTO')}
+          purchase={{ purpose, planTier, billingCycle, catalogVersion }}
+        />
+      )}
     </div>
   );
 };

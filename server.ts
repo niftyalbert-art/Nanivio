@@ -70,6 +70,7 @@ import { productionStatus } from "./src/server/productionStatus.ts";
 import { uploadStreamAttachment } from "./src/server/streamService.ts";
 import { audioCallingEnabled, featureSettingsHandler, videoCallingEnabled } from "./src/server/featureSettings.ts";
 import { quotePaystackOrder, validateVerifiedOrder } from "./src/server/paystackOrders.ts";
+import { registerCryptoBillingRoutes } from "./src/server/crypto/routes.ts";
 import { assertLivePaystackPayment, paystackLiveConfigurationError } from "./src/server/paystackPaymentSafety.ts";
 import { verifyPaystackTransaction, paystackVerificationDiagnostic } from "./src/server/paystackVerification.ts";
 import { buildLangpretationReadiness } from "./src/shared/langpretationReadiness.ts";
@@ -2052,6 +2053,19 @@ const pendingPaystackOrders = new Map<string, {
   email: string;
   createdAt: number;
 }>();
+
+registerCryptoBillingRoutes(app, {
+  user: requireAuthenticatedUser,
+  admin: requireAdmin,
+  userId: authenticatedUserId,
+  quote: async input => {
+    if (input.purpose === 'SUBSCRIPTION') applyCommunicationCatalogue(await communicationAccess.policy(), billingDb.subscriptionPlans);
+    const catalog = input.purpose === 'MALVI_SUBSCRIPTION'
+      ? { ...billingDb, malviPlans: (await malviCatalogService.published()).plans }
+      : billingDb;
+    return quotePaystackOrder(input, catalog);
+  },
+});
 
 app.post("/api/paystack/initialize", requireAuthenticatedUser, async (req, res) => {
   try {

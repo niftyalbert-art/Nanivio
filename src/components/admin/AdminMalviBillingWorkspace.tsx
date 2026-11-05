@@ -1,15 +1,17 @@
 import React, { useState } from 'react';
-import { Calculator, Layers3 } from 'lucide-react';
+import { Calculator, Layers3, WalletCards } from 'lucide-react';
 import { AdminMalviCostCalculator } from './AdminMalviCostCalculator';
 import { AdminMalviPlanManager } from './AdminMalviPlanManager';
+import { AdminCryptoPayments } from '../billing/AdminCryptoPayments';
 
-type WorkspaceSection = 'plans' | 'calculator';
+type WorkspaceSection = 'plans' | 'calculator' | 'crypto';
 
 export const AdminMalviBillingWorkspace: React.FC = () => {
   const [section, setSection] = useState<WorkspaceSection>('plans');
   const sections: { id: WorkspaceSection; label: string; icon: typeof Layers3 }[] = [
     { id: 'plans', label: 'Plans', icon: Layers3 },
     { id: 'calculator', label: 'Cost calculator', icon: Calculator },
+    { id: 'crypto', label: 'Crypto payments', icon: WalletCards },
   ];
 
   return (
@@ -28,7 +30,9 @@ export const AdminMalviBillingWorkspace: React.FC = () => {
             onKeyDown={(event) => {
               if (event.key === 'ArrowRight' || event.key === 'ArrowLeft') {
                 event.preventDefault();
-                const next = section === 'plans' ? 'calculator' : 'plans';
+                const order: WorkspaceSection[] = ['plans', 'calculator', 'crypto'];
+                const index = order.indexOf(section);
+                const next = order[(index + (event.key === 'ArrowRight' ? 1 : order.length - 1)) % order.length];
                 setSection(next);
                 document.getElementById(`malvi-billing-tab-${next}`)?.focus();
               }
@@ -44,6 +48,9 @@ export const AdminMalviBillingWorkspace: React.FC = () => {
       </div>
       <div id="malvi-billing-panel-calculator" role="tabpanel" aria-labelledby="malvi-billing-tab-calculator" hidden={section !== 'calculator'}>
         {section === 'calculator' && <AdminMalviCostCalculator />}
+      </div>
+      <div id="malvi-billing-panel-crypto" role="tabpanel" aria-labelledby="malvi-billing-tab-crypto" hidden={section !== 'crypto'}>
+        {section === 'crypto' && <AdminCryptoPayments />}
       </div>
     </section>
   );
