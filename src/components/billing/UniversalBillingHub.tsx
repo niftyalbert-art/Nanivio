@@ -46,6 +46,8 @@ import type { MalviSubscriptionPlan } from '../../types/billing';
 import { billingClient } from '../../lib/billingClient';
 import { billingNumber, formatBillingAmount } from '../../lib/billingPresentation';
 import { PaystackTopUpModal } from './PaystackTopUpModal';
+import type { PaymentMethod } from './PaymentMethodButtons';
+import { CommunicationCreditCheckout } from './CommunicationCreditCheckout';
 import { PaystackPaymentRecovery } from './PaystackPaymentRecovery';
 import { TransferValueModal } from './TransferValueModal';
 import { UniversalFlowTracer } from './UniversalFlowTracer';
@@ -69,6 +71,7 @@ function malviPlanAmount(plan: MalviSubscriptionPlan, cycle: 'MONTHLY' | 'ANNUAL
 
 export const UniversalBillingHub: React.FC = () => {
   const {
+    authUser,
     billingSummary,
     billingPlans,
     userInvoices,
@@ -89,6 +92,8 @@ export const UniversalBillingHub: React.FC = () => {
 
   const [activeSubTab, setActiveSubTab] = useState<'overview' | 'flow' | 'plans' | 'malvi' | 'transfer' | 'calculator' | 'invoices' | 'disputes' | 'b2b'>('overview');
   const [isPaystackModalOpen, setIsPaystackModalOpen] = useState<boolean>(false);
+  const [externalPaymentMethod, setExternalPaymentMethod] = useState<PaymentMethod>('PAYSTACK');
+  const [creditPlanTier, setCreditPlanTier] = useState<string | null>(null);
   const [paystackConfig, setPaystackConfig] = useState<{
     purpose?: 'COMMUNICATION_TOPUP' | 'SUBSCRIPTION' | 'COMMUNICATION_MINUTES' | 'MALVI_SUBSCRIPTION';
     planTier?: string;
@@ -153,9 +158,18 @@ export const UniversalBillingHub: React.FC = () => {
             setPendingBillingAction(null);
             return;
           }
-          const price = cycle === 'ANNUAL' ? plan.priceAnnualGHS : plan.priceMonthlyGHS;
+          const requestedCurrency = pendingBillingAction.paymentMethod === 'USDT' || pendingBillingAction.paymentMethod === 'NANIVIO_CREDIT' ? 'USD' : 'GHS';
+          const price = requestedCurrency === 'USD'
+            ? cycle === 'ANNUAL' ? plan.priceAnnualUSD : plan.priceMonthlyUSD
+            : cycle === 'ANNUAL' ? plan.priceAnnualGHS : plan.priceMonthlyGHS;
+          if (price > 0 && pendingBillingAction.paymentMethod === 'NANIVIO_CREDIT') {
+            setCreditPlanTier(tier);
+            setPendingBillingAction(null);
+            return;
+          }
           if (price > 0) {
-            setPaystackConfig({ purpose:'SUBSCRIPTION', planTier:tier, billingCycle:cycle, amount:price, currency:'GHS' });
+            setExternalPaymentMethod(pendingBillingAction.paymentMethod || 'PAYSTACK');
+            setPaystackConfig({ purpose:'SUBSCRIPTION', planTier:tier, billingCycle:cycle, amount:price, currency:requestedCurrency });
             setIsPaystackModalOpen(true);
             setPendingBillingAction(null);
             return;
@@ -190,6 +204,7 @@ export const UniversalBillingHub: React.FC = () => {
             return;
           }
           setMalviCurrency('USD');
+          setExternalPaymentMethod(pendingBillingAction.paymentMethod || 'PAYSTACK');
           setPaystackConfig({
             purpose: 'MALVI_SUBSCRIPTION',
             planTier: tier,
@@ -268,16 +283,21 @@ export const UniversalBillingHub: React.FC = () => {
     }
   };
 
-  const handleUpgradePlan = async (tier: string) => {
+  const handleUpgradePlan = async (tier: string, method: PaymentMethod = 'PAYSTACK') => {
+    if (method === 'NANIVIO_CREDIT') { setCreditPlanTier(tier); return; }
+    setExternalPaymentMethod(method);
     const plan = billingPlans.find(p => p.tier === tier);
     if (!plan) {
       setCommunicationPlanStatus({ type:'error', message:'This plan is unavailable. Refresh and try again.' });
       return;
     }
-    const price = billingCycle === 'ANNUAL' ? plan.priceAnnualGHS : plan.priceMonthlyGHS;
+    const requestedCurrency = method === 'USDT' ? 'USD' : 'GHS';
+    const price = requestedCurrency === 'USD'
+      ? billingCycle === 'ANNUAL' ? plan.priceAnnualUSD : plan.priceMonthlyUSD
+      : billingCycle === 'ANNUAL' ? plan.priceAnnualGHS : plan.priceMonthlyGHS;
     if (price > 0) {
       setCommunicationPlanStatus(null);
-      setPaystackConfig({ purpose:'SUBSCRIPTION', planTier:tier, billingCycle, amount:price, currency:'GHS' });
+      setPaystackConfig({ purpose:'SUBSCRIPTION', planTier:tier, billingCycle, amount:price, currency:requestedCurrency });
       setIsPaystackModalOpen(true);
       return;
     }
@@ -299,7 +319,8 @@ export const UniversalBillingHub: React.FC = () => {
     }
   };
 
-  const handleSubscribeMalvi = async (tier: string, forcePaystack = false) => {
+  const handleSubscribeMalvi = async (tier: string, forcePaystack = false, method: PaymentMethod = 'PAYSTACK') => {
+    setExternalPaymentMethod(method);
     setUpgradingTier(tier);
     const targetPlan = malviPlans.find((p) => p.tier === tier);
     if (!targetPlan) {
@@ -307,7 +328,8 @@ export const UniversalBillingHub: React.FC = () => {
       setUpgradingTier(null);
       return;
     }
-    const price = malviPlanAmount(targetPlan, billingCycle, malviCurrency);
+    const requestedCurrency = method === 'USDT' ? 'USD' : malviCurrency;
+    const price = malviPlanAmount(targetPlan, billingCycle, requestedCurrency);
     if (price === null) {
       setCommunicationPlanStatus({ type: 'error', message: `The ${malviCurrency} price or current exchange-rate quote is unavailable. Refresh the Malvi catalogue before selecting or paying.` });
       setUpgradingTier(null);
@@ -341,14 +363,19 @@ export const UniversalBillingHub: React.FC = () => {
     }
 
     setCommunicationPlanStatus(null);
-    if (forcePaystack || commBalance < price || commBalance <= 0) {
+    if (!forcePaystack && (commBalance < price || commBalance <= 0)) {
+      setCommunicationPlanStatus({ type: 'error', message: `Insufficient ${malviCurrency} Nanivio credit. Receive or add credit, or choose Paystack or USDT.` });
+      setUpgradingTier(null);
+      return;
+    }
+    if (forcePaystack) {
       setUpgradingTier(null);
       setPaystackConfig({
         purpose: 'MALVI_SUBSCRIPTION',
         planTier: tier,
         billingCycle,
         amount: price,
-        currency: malviCurrency,
+        currency: requestedCurrency,
       });
       setIsPaystackModalOpen(true);
       return;
@@ -438,7 +465,7 @@ export const UniversalBillingHub: React.FC = () => {
                 <button
                   key={tab.id}
                   id={`btn_billing_subtab_${tab.id}`}
-                  onClick={() => setActiveSubTab(tab.id as any)}
+                  onClick={() => { setPendingBillingAction(null); setActiveSubTab(tab.id as any); }}
                   className={`flex items-center gap-2 px-3.5 py-1.5 rounded-lg text-xs font-medium whitespace-nowrap transition-all ${
                     isActive
                       ? 'bg-emerald-500 text-slate-950 font-bold shadow-sm'
@@ -511,8 +538,9 @@ export const UniversalBillingHub: React.FC = () => {
                   className="px-3.5 py-2 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-xs transition flex items-center gap-1.5 shadow-sm"
                 >
                   <CreditCard className="w-3.5 h-3.5" />
-                  <span>Top Up via Paystack</span>
+                  <span>Paystack</span>
                 </button>
+                <button type="button" onClick={() => { setExternalPaymentMethod('USDT'); setPaystackConfig({ purpose: 'COMMUNICATION_TOPUP' }); setIsPaystackModalOpen(true); }} className="min-h-11 rounded-xl border border-emerald-400/50 bg-emerald-500/10 px-3 py-2 text-xs font-semibold text-emerald-200">USDT</button>
                 <button
                   type="button"
                   id="btn_buy_minutes_overview"
@@ -559,14 +587,20 @@ export const UniversalBillingHub: React.FC = () => {
                 <div className="text-2xl font-black text-slate-100 font-mono tracking-tight">
                   GH₵ {formatBillingAmount(communicationAvailable)}
                 </div>
+                <p className="mt-1 text-sm text-cyan-200">USD credit: {formatBillingAmount(
+                  authUser?.id && billingSummary?.userId === authUser.id
+                    ? billingSummary.accounts?.communicationAccount?.wallets?.find(wallet => wallet.currency === 'USD')?.available ?? 0
+                    : undefined
+                )}</p>
                 <div className="mt-3 flex items-center justify-between text-[11px] text-slate-400 border-t border-slate-800/80 pt-2.5">
                   <span>Reserved: GH₵ {formatBillingAmount(communicationWallet?.reserved ?? (billingSummary ? 0 : undefined))}</span>
                   <button
                     onClick={() => setIsPaystackModalOpen(true)}
                     className="text-emerald-400 font-bold hover:underline"
                   >
-                    + Top Up
+                    Paystack
                   </button>
+                  <button type="button" onClick={() => { setExternalPaymentMethod('USDT'); setPaystackConfig({ purpose: 'COMMUNICATION_TOPUP' }); setIsPaystackModalOpen(true); }} className="min-h-11 px-2 font-semibold text-emerald-200 hover:underline">USDT</button>
                 </div>
               </div>
 
@@ -629,6 +663,7 @@ export const UniversalBillingHub: React.FC = () => {
             {/* Architecture Flow Diagnostic Card in Overview */}
             <UniversalFlowTracer
               onOpenPaystackModal={() => setIsPaystackModalOpen(true)}
+              onOpenUSDTModal={() => { setExternalPaymentMethod('USDT'); setPaystackConfig({ purpose: 'COMMUNICATION_TOPUP' }); setIsPaystackModalOpen(true); }}
               onOpenTransferModal={() => {
                 setTransferModalMode('P2P');
                 setIsTransferModalOpen(true);
@@ -860,6 +895,7 @@ export const UniversalBillingHub: React.FC = () => {
           <div className="space-y-6">
             <UniversalFlowTracer
               onOpenPaystackModal={() => setIsPaystackModalOpen(true)}
+              onOpenUSDTModal={() => { setExternalPaymentMethod('USDT'); setPaystackConfig({ purpose: 'COMMUNICATION_TOPUP' }); setIsPaystackModalOpen(true); }}
               onOpenTransferModal={() => {
                 setTransferModalMode('P2P');
                 setIsTransferModalOpen(true);
@@ -1036,9 +1072,13 @@ export const UniversalBillingHub: React.FC = () => {
                           onClick={() => void handleUpgradePlan(plan.tier)}
                           className="w-full py-2.5 rounded-xl font-bold text-xs bg-emerald-500 hover:bg-emerald-400 text-slate-950 shadow-md shadow-emerald-500/20 transition flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-60"
                         >
-                          <span>{upgradingTier === plan.tier ? 'Selecting…' : price > 0 ? 'Paystack or USDT' : 'Select free plan'}</span>
+                          <span>{upgradingTier === plan.tier ? 'Selecting…' : price > 0 ? 'Paystack' : 'Select free plan'}</span>
                         </button>
                       )}
+                      {!isCurrent && (price > 0 || Number(billingCycle === 'ANNUAL' ? plan.priceAnnualUSD : plan.priceMonthlyUSD) > 0) && <div className="space-y-2">
+                        <button type="button" disabled={upgradingTier !== null} onClick={() => void handleUpgradePlan(plan.tier, 'USDT')} className="min-h-11 w-full rounded-xl border border-emerald-400/50 p-2 text-xs font-semibold text-emerald-200">USDT</button>
+                        <button type="button" disabled={upgradingTier !== null} onClick={() => void handleUpgradePlan(plan.tier, 'NANIVIO_CREDIT')} className="min-h-11 w-full rounded-xl border border-cyan-400/30 p-2 text-xs font-semibold text-cyan-100">Nanivio credit · P2P</button>
+                      </div>}
                     </div>
                   </div>
                 );
@@ -1279,15 +1319,16 @@ export const UniversalBillingHub: React.FC = () => {
                             className="w-full py-2.5 rounded-xl font-bold text-xs bg-gradient-to-r from-cyan-500 to-emerald-400 hover:from-cyan-400 hover:to-emerald-300 text-slate-950 shadow-md shadow-cyan-500/20 transition flex items-center justify-center gap-1.5 cursor-pointer"
                           >
                             <CreditCard className="w-3.5 h-3.5" />
-                            <span>Paystack or USDT</span>
+                            <span>Paystack</span>
                           </button>
+                          <button type="button" disabled={upgradingTier === plan.tier || !malviPlanAmount(plan, billingCycle, 'USD') || isFree} onClick={() => void handleSubscribeMalvi(plan.tier, true, 'USDT')} className="min-h-11 w-full rounded-xl border border-emerald-400/50 p-2 text-xs font-semibold text-emerald-200">USDT</button>
                           <button
                             id={`btn_malvi_balance_${plan.tier}`}
                             disabled={upgradingTier === plan.tier || !canSelect}
                             onClick={() => handleSubscribeMalvi(plan.tier, false)}
                             className="w-full py-1.5 rounded-xl font-medium text-[11px] bg-slate-800 hover:bg-slate-700 text-slate-300 transition flex items-center justify-center gap-1 cursor-pointer"
                           >
-                            <span>Pay with Nanivio credit</span>
+                            <span>Nanivio credit · P2P</span>
                           </button>
                         </>
                       )}
@@ -1923,8 +1964,10 @@ export const UniversalBillingHub: React.FC = () => {
       {/* Paystack Top-Up Modal */}
       <PaystackTopUpModal
         isOpen={isPaystackModalOpen}
+        initialPaymentMethod={externalPaymentMethod}
         onClose={() => {
           setIsPaystackModalOpen(false);
+          setExternalPaymentMethod('PAYSTACK');
           setPaystackConfig({});
         }}
         onSuccess={(source) => {
@@ -1943,6 +1986,12 @@ export const UniversalBillingHub: React.FC = () => {
         packageId={paystackConfig.packageId}
         minutes={paystackConfig.minutes}
       />
+      {creditPlanTier && billingPlans.find(plan => plan.tier === creditPlanTier) && <CommunicationCreditCheckout
+        key={`${creditPlanTier}:${billingCycle}`}
+        plan={billingPlans.find(plan => plan.tier === creditPlanTier)!}
+        cycle={billingCycle} onClose={() => setCreditPlanTier(null)}
+        onSuccess={() => setCommunicationPlanStatus({ type: 'success', message: 'Communication subscription activated using Nanivio credit.' })}
+      />}
 
       {/* Communication Minutes Purchase Modal */}
       <CommunicationMinutesModal

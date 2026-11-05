@@ -46,7 +46,7 @@ test('real billing SQL reserves unique discounted amounts and activates exactly 
       '002_billing_normalized_ledger', '005_malvi_credit_and_usage', '007_communication_plan_entitlements',
       '008_paystack_paid_subscriptions', '009_billing_malvi_expression_fix', '012_malvi_plan_catalog',
       '013_malvi_live_allowances', '014_paystack_malvi_activation', '020_malvi_business_rooms',
-      '021_communication_access_policy', '022_tron_usdt_subscriptions',
+      '021_communication_access_policy', '022_tron_usdt_subscriptions', '023_tron_usdt_all_billing',
     ]) await db.exec(readFileSync(`migrations/${name}.sql`, 'utf8').replace('CREATE EXTENSION IF NOT EXISTS pgcrypto;', ''));
     await db.exec("INSERT INTO nanivio_users(id) VALUES('a'),('b'),('c')");
     const command = async (name: string, payload: any) =>
@@ -117,5 +117,58 @@ test('real billing SQL reserves unique discounted amounts and activates exactly 
     await command('CONFIRM',{id:annualInvoice.id,proof:annualProof,actorId:'b'});
     assert.equal((await db.query<{n:number}>(`SELECT count(*)::int n FROM nanivio_subscriptions WHERE user_id='b'
       AND current_period_end > now()+interval '364 days' AND auto_renew=false`)).rows[0].n,1);
+    // The expansion keeps the original verified-activation pipeline and credits
+    // the owner's USD service wallet, never a cash wallet or USDT wallet.
+    await db.exec("INSERT INTO nanivio_users(id) VALUES('topup-user'),('pack-user')");
+    assert.deepEqual((await command('PREFLIGHT', {})).paymentPurposes,
+      ['SUBSCRIPTION','MALVI_SUBSCRIPTION','COMMUNICATION_TOPUP','COMMUNICATION_MINUTES']);
+    const topup = (await create('topup-user', {
+      purpose:'COMMUNICATION_TOPUP', currency:'USD', billingCycle:'MONTHLY', amount:10,
+      product:{id:'nanivio-usd-credit',name:'Nanivio credit top-up',creditAmountUSD:10},
+    })).invoice;
+    const proofFor = (invoice: any, hash: string) => ({
+      ...actualProof, transactionId:hash, amountUnits:String(invoice.amount_units),
+      blockTimestamp:Date.parse(invoice.created_at)+100,
+    });
+    const topupProof = proofFor(topup,'3'.repeat(64));
+    assert.equal((await command('CONFIRM',{id:topup.id,proof:topupProof,actorId:'topup-user'})).invoice.status,'ACTIVATED');
+    await command('CONFIRM',{id:topup.id,proof:topupProof,actorId:'topup-user'});
+    const balance = async () => Number((await db.query<{available:string}>(
+      "SELECT available FROM nanivio_wallets WHERE user_id='topup-user' AND account_type='COMMUNICATION' AND currency='USD'")).rows[0].available);
+    assert.equal(await balance(),10);
+    assert.equal((await db.query<{n:number}>("SELECT count(*)::int n FROM nanivio_wallet_ledger WHERE user_id='topup-user'")).rows[0].n,1);
+    const pack = (await create('pack-user', {
+      purpose:'COMMUNICATION_MINUTES', currency:'USD', billingCycle:'MONTHLY', amount:8.99,
+      packageId:'pack-150',product:{id:'pack-150',name:'150 Communication minutes',minutes:150,validityDays:60},
+    })).invoice;
+    const packProof = proofFor(pack,'4'.repeat(64));
+    await command('CONFIRM',{id:pack.id,proof:packProof,actorId:'pack-user'});
+    await command('CONFIRM',{id:pack.id,proof:packProof,actorId:'pack-user'});
+    const grant = (await db.query<{voice:string;lp:string;days:number}>(
+      "SELECT voice_minutes_quota voice,langpretation_minutes_remaining lp,extract(epoch from (current_period_end-current_period_start))/86400 days FROM nanivio_subscriptions WHERE subscription_id=$1",
+      [`tron_${pack.id}`])).rows[0];
+    assert.equal(Number(grant.voice),150);assert.equal(Number(grant.lp),150);assert.equal(Number(grant.days),60);
+    const creditPayload = {
+      userId:'topup-user', requestId:'11111111-2222-4333-8444-555555555555',
+      referenceId:'NV-CREDIT-test',transactionId:'tx-credit-test',subscriptionId:'credit-test',
+      tier:'individual_premium',planId:'plan_individual_premium',planName:'Communication Premium',
+      billingCycle:'MONTHLY',periodDays:30,price:4.99,currency:'USD',paymentMethod:'Nanivio credit',
+      langpretationQuota:100,voiceQuota:100,malviQuota:0,
+    };
+    const buy = async (payload: any) => (await db.query<{result:any}>(
+      'SELECT nanivio_buy_communication_with_credit($1::jsonb) result',[JSON.stringify(payload)])).rows[0].result;
+    const creditResult = await buy(creditPayload);
+    assert.equal(creditResult.success,true);
+    assert.equal(creditResult.subscription.autoRenew,false);
+    assert.equal((await buy(creditPayload)).alreadyFulfilled,true);
+    assert.equal(await balance(),5.01);
+    await assert.rejects(buy({...creditPayload,billingCycle:'ANNUAL'}));
+    assert.equal(await balance(),5.01);
+    await assert.rejects(buy({...creditPayload,requestId:'21111111-2222-4333-8444-555555555555',price:100,referenceId:'too-much',transactionId:'too-much'}));
+    assert.equal(await balance(),5.01);
+    // Owner reruns must not duplicate a delivery or revert the original rail.
+    await db.exec(readFileSync('migrations/023_tron_usdt_all_billing.sql','utf8'));
+    assert.equal(await balance(),5.01);
+    assert.equal((await command('PREFLIGHT', {})).paymentPurposes.length,4);
   } finally { await db.close(); }
 });

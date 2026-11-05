@@ -78,8 +78,9 @@ export const LiveLangpretationMeter: React.FC<LiveLangpretationMeterProps> = ({
           onClick={handleOpenTopUp}
           className="px-2.5 py-1 rounded-lg bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 font-bold font-mono transition"
         >
-          + Top Up
+          Paystack
         </button>
+        <button type="button" onClick={handleOpenTopUp} className="min-h-11 rounded-lg border border-emerald-400/40 px-3 py-2 text-xs font-semibold text-emerald-200">USDT</button>
       </div>
     );
   }
@@ -127,8 +128,9 @@ export const LiveLangpretationMeter: React.FC<LiveLangpretationMeterProps> = ({
             className="px-3.5 py-1.5 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-slate-950 font-bold text-xs shadow-md shadow-emerald-500/20 transition flex items-center gap-1.5 cursor-pointer"
           >
             <Zap className="w-3.5 h-3.5" />
-            <span>Top Up Minutes</span>
+            <span>Paystack · minutes</span>
           </button>
+          <button type="button" onClick={handleOpenTopUp} className="min-h-11 rounded-xl border border-emerald-400/50 px-3 py-2 text-xs font-semibold text-emerald-200">USDT · minutes</button>
         </div>
       </div>
 

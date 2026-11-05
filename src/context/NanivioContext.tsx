@@ -363,18 +363,20 @@ interface NanivioContextType {
   recordLangpretationUsage: (channel: 'AUDIO_CALL' | 'VIDEO_CALL' | 'GROUP_AUDIO' | 'VOICE_NOTE' | 'TEXT_CHAT', minutes: number, sourceLang?: string, targetLang?: string, sessionId?: string) => Promise<any>;
   recordMalviVideoUsage: (seconds: number) => Promise<any>;
   pendingBillingAction: {
+    paymentMethod?: 'PAYSTACK' | 'USDT' | 'NANIVIO_CREDIT';
     subTab?: 'overview' | 'flow' | 'plans' | 'transfer' | 'calculator' | 'invoices' | 'disputes' | 'b2b' | 'malvi';
     planTier?: string;
     cycle?: 'MONTHLY' | 'ANNUAL';
     purpose?: 'SUBSCRIPTION' | 'MALVI_SUBSCRIPTION' | 'COMMUNICATION_MINUTES';
   } | null;
   setPendingBillingAction: React.Dispatch<React.SetStateAction<{
+    paymentMethod?: 'PAYSTACK' | 'USDT' | 'NANIVIO_CREDIT';
     subTab?: 'overview' | 'flow' | 'plans' | 'transfer' | 'calculator' | 'invoices' | 'disputes' | 'b2b' | 'malvi';
     planTier?: string;
     cycle?: 'MONTHLY' | 'ANNUAL';
     purpose?: 'SUBSCRIPTION' | 'MALVI_SUBSCRIPTION' | 'COMMUNICATION_MINUTES';
   } | null>>;
-  openBillingWithPlan: (tier: string, purpose?: 'SUBSCRIPTION' | 'MALVI_SUBSCRIPTION', cycle?: 'MONTHLY' | 'ANNUAL') => void;
+  openBillingWithPlan: (tier: string, purpose?: 'SUBSCRIPTION' | 'MALVI_SUBSCRIPTION', cycle?: 'MONTHLY' | 'ANNUAL', paymentMethod?: 'PAYSTACK' | 'USDT' | 'NANIVIO_CREDIT') => void;
 
   // Cinematic Video Effect
   activeCelebrationEffect: { show: boolean; mode: 'signin' | 'signup' | 'intro' } | null;
@@ -1722,6 +1724,7 @@ export const NanivioProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
   // Automatic routing to Billing Section with pre-configured plan
   const [pendingBillingAction, setPendingBillingAction] = useState<{
+    paymentMethod?: 'PAYSTACK' | 'USDT' | 'NANIVIO_CREDIT';
     subTab?: 'overview' | 'flow' | 'plans' | 'transfer' | 'calculator' | 'invoices' | 'disputes' | 'b2b' | 'malvi';
     planTier?: string;
     cycle?: 'MONTHLY' | 'ANNUAL';
@@ -1731,13 +1734,15 @@ export const NanivioProvider: React.FC<{ children: React.ReactNode }> = ({ child
   const openBillingWithPlan = useCallback((
     tier: string,
     purpose: 'SUBSCRIPTION' | 'MALVI_SUBSCRIPTION' = 'SUBSCRIPTION',
-    cycle: 'MONTHLY' | 'ANNUAL' = 'MONTHLY'
+    cycle: 'MONTHLY' | 'ANNUAL' = 'MONTHLY',
+    paymentMethod: 'PAYSTACK' | 'USDT' | 'NANIVIO_CREDIT' = 'PAYSTACK'
   ) => {
     setPendingBillingAction({
       subTab: purpose === 'MALVI_SUBSCRIPTION' ? 'malvi' : 'plans',
       planTier: tier,
       cycle,
       purpose,
+      paymentMethod,
     });
     setActiveTab('billing');
   }, []);

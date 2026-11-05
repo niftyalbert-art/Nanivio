@@ -34,6 +34,7 @@ import { LangpretationIcon } from '../common/LangpretationIcon';
 import { PWAInstallButton } from '../common/PWAInstallButton';
 import { getAccountText } from '../../i18n/authTranslations';
 import { billingNumber, formatBillingAmount, communicationCreditBalance } from '../../lib/billingPresentation';
+import { AccountHomeSections } from '../home/AccountHomeSections';
 
 export const AccountView: React.FC = () => {
   const {
@@ -560,8 +561,12 @@ export const AccountView: React.FC = () => {
                       : 'bg-emerald-500 hover:bg-emerald-400 text-slate-950 shadow-sm'
                   }`}
                 >
-                  {isCurrent ? 'Current Plan' : activatingPlanTier === plan.tier ? 'Selecting…' : Number(plan.priceMonthlyGHS) > 0 ? `Pay with Paystack — ${plan.name}` : `Select ${plan.name}`}
+                  {isCurrent ? 'Current Plan' : activatingPlanTier === plan.tier ? 'Selecting…' : Number(plan.priceMonthlyGHS) > 0 ? `Paystack — ${plan.name}` : `Select ${plan.name}`}
                 </button>
+                {!isCurrent && (Number(plan.priceMonthlyGHS) > 0 || Number(plan.priceMonthlyUSD) > 0) && <div className="mt-2 grid grid-cols-2 gap-2">
+                  <button type="button" disabled={activatingPlanTier !== null} onClick={() => openBillingWithPlan(plan.tier, 'SUBSCRIPTION', 'MONTHLY', 'USDT')} className="min-h-11 rounded-xl border border-emerald-400/50 p-2 text-xs font-semibold text-emerald-200">USDT</button>
+                  <button type="button" disabled={activatingPlanTier !== null} onClick={() => openBillingWithPlan(plan.tier, 'SUBSCRIPTION', 'MONTHLY', 'NANIVIO_CREDIT')} className="min-h-11 rounded-xl border border-cyan-400/30 p-2 text-xs font-semibold text-cyan-100">Nanivio credit · P2P</button>
+                </div>}
               </div>
             );
           })}
@@ -617,6 +622,8 @@ export const AccountView: React.FC = () => {
           )}
         </div>
       </div>
+
+      <AccountHomeSections />
 
       {/* ------------------------------------------------------------- */}
       {/* MODAL 1: INCREASE VALUE */}

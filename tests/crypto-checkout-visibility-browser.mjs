@@ -11,8 +11,9 @@ const bundle = await build({
     import React from 'react';
     import {createRoot} from 'react-dom/client';
     import {PaystackTopUpModal} from './src/components/billing/PaystackTopUpModal';
+    import {PaymentMethodButtons} from './src/components/billing/PaymentMethodButtons';
     window.owner={id:'fixture-a',email:'fixture@example.invalid'};
-    window.config={enabled:true,eligible:true};
+    window.config={enabled:true,eligible:true,supportedPurposes:['SUBSCRIPTION','MALVI_SUBSCRIPTION','COMMUNICATION_TOPUP','COMMUNICATION_MINUTES']};
     window.configFailure=false;window.calls=[];
     window.request=async(url,init={})=>{
       window.calls.push({url,method:init.method||'GET'});
@@ -24,11 +25,15 @@ const bundle = await build({
       return {success:true,invoices:[]};
     };
     const root=createRoot(document.getElementById('root'));
-    window.renderCheckout=(purpose='MALVI_SUBSCRIPTION')=>root.render(
-      <PaystackTopUpModal isOpen onClose={()=>{}} onSuccess={()=>{}}
-        purpose={purpose} planTier="malvi_basic" initialAmount={4.99}
-        billingCycle="MONTHLY" />);
-    window.renderCheckout();
+    window.renderCheckout=(purpose='MALVI_SUBSCRIPTION',method='USDT')=>root.render(
+      <PaystackTopUpModal key={purpose+method+window.caseNumber} isOpen onClose={()=>window.showMethods(purpose)} onSuccess={()=>{}}
+        purpose={purpose} planTier={purpose.includes('SUBSCRIPTION')?'malvi_basic':undefined}
+        packageId={purpose==='COMMUNICATION_MINUTES'?'pack-150':undefined}
+        initialPaymentMethod={method} billingCycle="MONTHLY" />);
+    window.showMethods=(purpose='MALVI_SUBSCRIPTION')=>root.render(<PaymentMethodButtons
+      creditEnabled={purpose!=='COMMUNICATION_TOPUP'}
+      onSelect={method=>window.renderCheckout(purpose,method)} />);
+    window.caseNumber=0;window.showMethods();
   ` },
   plugins: [{
     name: 'checkout-fixtures',
@@ -71,32 +76,46 @@ try {
     const page = await browser.page(origin);
     currentPage = page;
     await page.command('Emulation.setDeviceMetricsOverride', { width, height: 900, deviceScaleFactor: 1, mobile: width === 390 });
-    await page.wait(`!![...document.querySelectorAll('button')].find(e=>e.innerText==='USDT · TRON'&&!e.disabled)`);
-    assert.match(await page.evaluate('document.body.innerText'), /Choose Paystack or USDT on TRON/);
+    await page.wait(`!![...document.querySelectorAll('button')].find(e=>e.innerText==='USDT'&&!e.disabled)`);
+    let text = await page.evaluate('document.body.innerText');
+    assert.match(text,/Pay with:/);assert.match(text,/Paystack/);assert.match(text,/Nanivio credit · P2P/);
+    assert.doesNotMatch(text,/Paystack or USDT/);
+    await page.evaluate(`[...document.querySelectorAll('button')].find(e=>e.innerText==='USDT').click();true`);
+    await page.wait(`document.body.innerText.includes('Create USDT invoice')`);
+    assert.doesNotMatch(await page.evaluate('document.body.innerText'),/Live cryptographic verification via Paystack/);
     // Legacy enabled-only config must not make a public checkout disappear.
-    await page.evaluate(`window.config={enabled:true};window.owner={...window.owner,id:'fixture-legacy'};window.renderCheckout();true`);
-    await page.wait(`!![...document.querySelectorAll('button')].find(e=>e.innerText==='USDT · TRON'&&!e.disabled)`);
+    await page.evaluate(`window.config={enabled:true};window.caseNumber++;window.renderCheckout();true`);
+    await page.wait(`document.body.innerText.includes('Create USDT invoice')`);
     // Explicit ineligibility wins, even if the service itself is enabled.
-    await page.evaluate(`window.config={enabled:true,eligible:false,reason:'Fixture account not eligible'};window.owner={...window.owner,id:'fixture-denied'};window.renderCheckout();true`);
+    await page.evaluate(`window.config={enabled:true,eligible:false,reason:'Fixture account not eligible'};window.caseNumber++;window.renderCheckout();true`);
     await page.wait(`document.body.innerText.includes('Fixture account not eligible')`);
-    assert.equal(await page.evaluate(`[...document.querySelectorAll('button')].find(e=>e.innerText==='USDT · TRON').disabled`), true);
+    assert.equal(await page.evaluate(`!![...document.querySelectorAll('button')].find(e=>e.innerText==='Create USDT invoice')`), false);
     // Network failures stay visible with a working retry instead of a silent hide.
-    await page.evaluate(`window.configFailure=true;window.owner={...window.owner,id:'fixture-retry'};window.renderCheckout();true`);
-    await page.wait(`document.body.innerText.includes('We could not check USDT checkout availability')`);
-    assert.equal(await page.evaluate(`!![...document.querySelectorAll('button')].find(e=>e.innerText==='USDT · TRON')`), true);
+    await page.evaluate(`window.configFailure=true;window.caseNumber++;window.renderCheckout();true`);
+    await page.wait(`document.body.innerText.includes('Fixture network failure')`);
     await page.evaluate(`window.configFailure=false;window.config={enabled:true,eligible:true};[...document.querySelectorAll('button')].find(e=>e.innerText==='Retry USDT availability').click();true`);
-    await page.wait(`!![...document.querySelectorAll('button')].find(e=>e.innerText==='USDT · TRON'&&!e.disabled)`);
-    await page.evaluate(`[...document.querySelectorAll('button')].find(e=>e.innerText==='USDT · TRON').click();true`);
     await page.wait(`document.body.innerText.includes('Create USDT invoice')`);
     assert.equal(await page.evaluate('document.documentElement.scrollWidth<=innerWidth'), true);
     await mkdir('generated-artifacts/crypto-checkout', { recursive: true });
     await page.screenshot(`generated-artifacts/crypto-checkout/checkout-${width}.png`);
-    // Credit top-ups remain Paystack-only; they aren't subscriptions.
-    await page.evaluate(`window.renderCheckout('COMMUNICATION_TOPUP');true`);
-    await page.wait(`!document.body.innerText.includes('USDT · TRON')&&!document.body.innerText.includes('Create USDT invoice')`);
+    // Expanded products cannot create invoices against the old database setup.
+    await page.evaluate(`window.caseNumber++;window.renderCheckout('COMMUNICATION_TOPUP');true`);
+    await page.wait(`document.body.innerText.includes('expanded crypto database setup')`);
+    assert.equal(await page.evaluate(`document.body.innerText.includes('Create USDT invoice')`),false);
+    await page.evaluate(`window.config.supportedPurposes=['SUBSCRIPTION','MALVI_SUBSCRIPTION','COMMUNICATION_TOPUP','COMMUNICATION_MINUTES'];window.caseNumber++;window.renderCheckout('COMMUNICATION_TOPUP');true`);
+    await page.wait(`document.body.innerText.includes('USD Nanivio credit to add')`);
+    assert.equal(await page.evaluate(`!!document.querySelector('input[type=number]')`),true);
+    await page.evaluate(`window.caseNumber++;window.renderCheckout('COMMUNICATION_MINUTES');true`);
+    await page.wait(`document.body.innerText.includes('Create USDT invoice')&&document.body.innerText.includes('pack-150')`);
+    await page.evaluate(`window.renderCheckout('MALVI_SUBSCRIPTION','PAYSTACK');true`);
+    await page.wait(`document.body.innerText.includes('Secure payment verification via Paystack')`);
+    assert.equal(await page.evaluate(`document.body.innerText.includes('Create USDT invoice')`),false);
+    await page.evaluate(`window.showMethods('COMMUNICATION_TOPUP');true`);
+    await page.wait(`document.body.innerText.includes('Pay with:')`);
+    assert.doesNotMatch(await page.evaluate('document.body.innerText'),/Nanivio credit · P2P/);
     assert.equal(await page.evaluate(`window.calls.some(call=>call.method==='POST')`), false);
   }
-  console.log(JSON.stringify({ passed: true, viewports: [390, 1440], publicAndLegacy: true, explicitDenial: true, visibleErrorAndRetry: true, cryptoDialog: true, subscriptionOnly: true, paymentWrites: 0 }));
+  console.log(JSON.stringify({ passed: true, viewports: [390, 1440], separateMethods: true, publicAndLegacy: true, explicitDenial: true, visibleError: true, cryptoDialog: true, topUpsAndMinutes: true, oldDatabaseFailsClosed:true, paymentWrites: 0 }));
 } catch (error) {
   console.log(JSON.stringify({ diagnostics: await currentPage?.evaluate(`({
     text:document.body.innerText.slice(0,3500),

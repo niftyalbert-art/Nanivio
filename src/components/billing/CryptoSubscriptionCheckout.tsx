@@ -23,7 +23,9 @@ const validInvoiceTerms = (item: CryptoInvoice) => {
     Number.isFinite(expected) && relationshipMatches;
 };
 const purposeMatches = (invoice: CryptoInvoice, purchase: CryptoPurchase) =>
-  invoice.purpose === purchase.purpose && invoice.planTier === purchase.planTier && invoice.billingCycle === purchase.billingCycle;
+  invoice.purpose === purchase.purpose && invoice.planTier === purchase.planTier && invoice.billingCycle === purchase.billingCycle &&
+  invoice.packageId === purchase.packageId &&
+  (purchase.purpose !== 'COMMUNICATION_TOPUP' || purchase.amount === undefined || invoice.basePriceUSD === purchase.amount);
 
 export const CryptoSubscriptionCheckout: React.FC<Props> = ({ isOpen, onClose, onSuccess, purchase }) => {
   const { refreshBilling } = useNanivio();
@@ -38,6 +40,7 @@ export const CryptoSubscriptionCheckout: React.FC<Props> = ({ isOpen, onClose, o
   const [notice, setNotice] = useState('');
   const [error, setError] = useState('');
   const [qrData, setQrData] = useState('');
+  const [topUpAmount, setTopUpAmount] = useState(purchase.amount ? String(purchase.amount) : '');
   const [copied, setCopied] = useState<CopyTarget>(null);
   const [pageVisible, setPageVisible] = useState(() => typeof document === 'undefined' || document.visibilityState === 'visible');
   const successCalled = useRef(false);
@@ -74,8 +77,13 @@ export const CryptoSubscriptionCheckout: React.FC<Props> = ({ isOpen, onClose, o
       cryptoBillingClient.list(),
     ]);
     if (configResult.status === 'fulfilled') {
-      setEnabled(configResult.value.enabled);
-      setDisabledReason(configResult.value.reason || '');
+      const supported = configResult.value.supportedPurposes ||
+        ['SUBSCRIPTION', 'MALVI_SUBSCRIPTION'];
+      const productSupported = supported.includes(purchase.purpose);
+      setEnabled(configResult.value.enabled && configResult.value.eligible !== false && productSupported);
+      setDisabledReason(!productSupported
+        ? 'USDT top-ups and minute purchases need the expanded crypto database setup. Do not send funds yet.'
+        : configResult.value.reason || '');
     } else {
       setEnabled(false);
       setDisabledReason(configResult.reason instanceof Error ? configResult.reason.message : 'Crypto availability could not be confirmed.');
@@ -95,7 +103,7 @@ export const CryptoSubscriptionCheckout: React.FC<Props> = ({ isOpen, onClose, o
       setError(`Could not recover existing crypto invoices (${reason}). Paystack remains available.`);
     }
     setLoading(false);
-  }, [purchase.purpose, purchase.planTier, purchase.billingCycle, setInvoiceState]);
+  }, [purchase.purpose, purchase.planTier, purchase.billingCycle, purchase.packageId, purchase.amount, setInvoiceState]);
 
   useEffect(() => {
     if (!visible) {
@@ -103,7 +111,7 @@ export const CryptoSubscriptionCheckout: React.FC<Props> = ({ isOpen, onClose, o
       activePurchaseKey.current = null;
       return;
     }
-    const purchaseKey = `${purchase.purpose}:${purchase.planTier}:${purchase.billingCycle}`;
+    const purchaseKey = `${purchase.purpose}:${purchase.planTier}:${purchase.billingCycle}:${purchase.packageId}:${purchase.amount}`;
     if (wasVisible.current && activePurchaseKey.current === purchaseKey) return;
     wasVisible.current = true;
     activePurchaseKey.current = purchaseKey;
@@ -155,7 +163,13 @@ export const CryptoSubscriptionCheckout: React.FC<Props> = ({ isOpen, onClose, o
     successCalled.current = false;
     refreshedInvoiceId.current = null;
     try {
-      const result = await cryptoBillingClient.create(purchase);
+      const value = Number(topUpAmount);
+      if (purchase.purpose === 'COMMUNICATION_TOPUP' &&
+          (!/^\d+(?:\.\d{1,2})?$/.test(topUpAmount) || value < 0.01 || value > 100000)) {
+        throw new Error('Enter a USD credit amount between 0.01 and 100,000, with at most two decimal places.');
+      }
+      const result = await cryptoBillingClient.create(purchase.purpose === 'COMMUNICATION_TOPUP'
+        ? { ...purchase, amount: value } : purchase);
       setPollingActive(true);
       setInvoiceState(result.invoice);
     } catch (err) { setError(err instanceof Error ? err.message : 'Could not create an invoice. Paystack remains available.'); }
@@ -185,7 +199,7 @@ export const CryptoSubscriptionCheckout: React.FC<Props> = ({ isOpen, onClose, o
       <header className="flex items-center justify-between border-b border-slate-800 bg-slate-950/60 px-5 py-4">
         <div className="flex items-center gap-3">
           <span className="flex h-10 w-10 items-center justify-center rounded-xl border border-emerald-400/30 bg-emerald-400/10 text-emerald-300"><WalletCards className="h-5 w-5" /></span>
-          <div><h2 id="crypto-checkout-title" className="font-bold">USDT subscription</h2><p className="text-xs text-slate-400">Direct TRON mainnet payment</p></div>
+          <div><h2 id="crypto-checkout-title" className="font-bold">Pay with USDT</h2><p className="text-xs text-slate-400">Direct TRON mainnet payment</p></div>
         </div>
         <button type="button" onClick={() => invoice?.status === 'ACTIVATED' ? acknowledgeSuccess() : onClose()} className="rounded-lg px-3 py-2 text-sm text-slate-400 hover:bg-slate-800 hover:text-white">{invoice?.status === 'ACTIVATED' ? 'Close receipt' : 'Close'}</button>
       </header>
@@ -200,13 +214,24 @@ export const CryptoSubscriptionCheckout: React.FC<Props> = ({ isOpen, onClose, o
           <p className="font-semibold">Crypto checkout is currently unavailable.</p><p className="mt-1 text-xs text-slate-400">{disabledReason || 'This payment method is not enabled for your account right now.'} You can still complete this purchase with Paystack.</p>
         </div>}
         {!loading && enabled === null && <div className="rounded-xl border border-amber-400/30 bg-amber-400/5 p-3 text-xs text-amber-100">Crypto availability could not be confirmed. {disabledReason} Existing invoices were checked where available; Paystack remains usable.</div>}
+        {!loading && enabled !== true && <button type="button" onClick={() => void recover()} className="min-h-11 rounded-xl border border-slate-600 px-4 py-2 text-sm text-slate-200">Retry USDT availability</button>}
         {!loading && enabled && !listAvailable && <div className="rounded-xl border border-amber-400/30 bg-amber-400/5 p-4 text-sm"><p className="font-semibold text-amber-100">Crypto invoice recovery is unavailable.</p><p className="mt-1 text-xs text-slate-300">We cannot safely create another invoice until existing payment requests can be checked. Use Paystack for now.</p></div>}
         {!loading && enabled && listAvailable && !invoice && <div className="space-y-4">
           <div className="rounded-xl border border-slate-700 bg-slate-950/50 p-4">
             <p className="text-xs uppercase tracking-wider text-slate-400">Purchase</p>
-            <p className="mt-1 font-semibold">{purchase.planTier} · {purchase.billingCycle === 'ANNUAL' ? 'Annual' : 'Monthly'}</p>
+            <p className="mt-1 font-semibold">{purchase.purpose === 'COMMUNICATION_TOPUP'
+              ? 'USD Nanivio credit top-up' : purchase.purpose === 'COMMUNICATION_MINUTES'
+                ? `Communication minute pack · ${purchase.packageId || 'Selected pack'}`
+                : `${purchase.planTier} · ${purchase.billingCycle === 'ANNUAL' ? 'Annual' : 'Monthly'}`}</p>
             <p className="mt-2 text-xs text-slate-400">The published USD plan price is denominated as USDT at merchant 1:1 pricing. The invoice shows the exact charge and any matching discount.</p>
           </div>
+          {purchase.purpose === 'COMMUNICATION_TOPUP' && <label className="block text-sm text-slate-200">
+            USD Nanivio credit to add
+            <input type="number" min="0.01" max="100000" step="0.01" inputMode="decimal" value={topUpAmount}
+              onChange={event => setTopUpAmount(event.target.value)}
+              className="mt-2 w-full rounded-xl border border-slate-600 bg-slate-950 p-3 text-white" />
+            <span className="mt-2 block text-xs text-slate-400">1 USDT per USD of service credit, minus a small matching discount. This adds USD Nanivio service credit, not cash or a bank balance.</span>
+          </label>}
           <button type="button" onClick={createInvoice} className="w-full rounded-xl bg-emerald-400 px-4 py-3 text-sm font-bold text-slate-950 hover:bg-emerald-300">Create USDT invoice</button>
         </div>}
         {!loading && invoice && <div className="space-y-4">
@@ -218,7 +243,7 @@ export const CryptoSubscriptionCheckout: React.FC<Props> = ({ isOpen, onClose, o
             </strong>
           </div>
           {(!termsValid || !protocolValid) && invoice.status !== 'ACTIVATED' && <div role="alert" className="rounded-xl border border-rose-400/30 bg-rose-400/10 p-3 text-xs text-rose-200">Invoice terms or network could not be validated. Do not send funds. Contact support or use Paystack.</div>}
-          {invoice.status === 'ACTIVATED' ? <div className="rounded-xl border border-emerald-400/30 bg-emerald-400/10 p-4 text-sm text-emerald-100"><p className="font-bold">USDT payment verified · subscription activated</p><p className="mt-1 text-xs">{invoice.activation?.message || 'Your crypto payment was verified and your subscription is active.'}</p><button type="button" onClick={acknowledgeSuccess} className="mt-4 w-full rounded-xl bg-emerald-300 px-4 py-3 text-sm font-bold text-slate-950 hover:bg-emerald-200">Close confirmation</button>
+          {invoice.status === 'ACTIVATED' ? <div className="rounded-xl border border-emerald-400/30 bg-emerald-400/10 p-4 text-sm text-emerald-100"><p className="font-bold">USDT payment verified · purchase delivered</p><p className="mt-1 text-xs">{invoice.activation?.message || 'Your crypto payment was verified and your purchase is ready.'}</p><button type="button" onClick={acknowledgeSuccess} className="mt-4 w-full rounded-xl bg-emerald-300 px-4 py-3 text-sm font-bold text-slate-950 hover:bg-emerald-200">Close confirmation</button>
             {enabled && listAvailable ? <button type="button" onClick={createInvoice} className="mt-2 w-full rounded-xl border border-emerald-300/40 px-4 py-2.5 text-sm font-semibold text-emerald-100 hover:bg-emerald-300/10">Start a new invoice</button> : <p className="mt-3 text-xs text-emerald-100/70">A new invoice for another period is currently unavailable.</p>}</div> :
             expired ? <div className="rounded-xl border border-rose-400/30 bg-rose-400/10 p-4 text-sm text-rose-100"><p className="font-bold">Invoice expired</p><p className="mt-1 text-xs">This invoice can no longer be used. Create a fresh invoice to renew the payment request.</p></div> :
             (!termsValid || !protocolValid) ? null :

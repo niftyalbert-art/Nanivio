@@ -1,8 +1,10 @@
 import { protectedBillingRequest } from './billingClient';
 
 export type CryptoPurchase = {
-  purpose: 'SUBSCRIPTION' | 'MALVI_SUBSCRIPTION';
-  planTier: string;
+  purpose: 'SUBSCRIPTION' | 'MALVI_SUBSCRIPTION' | 'COMMUNICATION_TOPUP' | 'COMMUNICATION_MINUTES';
+  planTier?: string;
+  packageId?: string;
+  amount?: number;
   billingCycle: 'MONTHLY' | 'ANNUAL';
   catalogVersion?: number;
 };
@@ -12,6 +14,7 @@ export type CryptoInvoice = {
   userId: string;
   purpose: CryptoPurchase['purpose'];
   planTier: string;
+  packageId?: string;
   billingCycle: CryptoPurchase['billingCycle'];
   planName: string;
   amount: string;
@@ -29,7 +32,7 @@ export type CryptoInvoice = {
 };
 
 export const cryptoBillingClient = {
-  config: (): Promise<{ enabled: boolean; eligible?: boolean; accessMode?: 'test' | 'public' | 'closed'; reason?: string }> =>
+  config: (): Promise<{ enabled: boolean; eligible?: boolean; supportedPurposes?: string[]; accessMode?: 'test' | 'public' | 'closed'; reason?: string }> =>
     protectedBillingRequest('/api/billing/crypto/config'),
   create: (purchase: CryptoPurchase): Promise<{ invoice: CryptoInvoice }> =>
     protectedBillingRequest('/api/billing/crypto/invoices', { method: 'POST', body: JSON.stringify(purchase) }),

@@ -24,7 +24,6 @@ import { MalviView } from './components/malvi/MalviView';
 import { MalviFloatingWidget } from './components/malvi/MalviFloatingWidget';
 import { MalviLiveAssistantProvider } from './components/malvi/MalviLiveAssistant';
 import { ErrorBoundary } from './components/common/ErrorBoundary';
-import { NanivioLandingPage } from './components/landing/NanivioLandingPage';
 import { BillingPaymentConfirmation } from './components/billing/BillingPaymentConfirmation';
 
 const MainLayout: React.FC = () => {
@@ -33,7 +32,7 @@ const MainLayout: React.FC = () => {
 
   return (
     <MalviLiveAssistantProvider>
-    <div className={`nanivio-app nv-theme-dark ${activeTab === 'chat' ? 'chat-app-shell h-[100dvh] max-h-[100dvh]' : 'min-h-[100dvh]'} flex flex-col selection:bg-amber-200 selection:text-slate-900 w-full max-w-full overflow-x-hidden relative`}>
+    <div className={`nanivio-app nv-theme-dark ${activeTab === 'chat' || activeTab === 'home' ? 'chat-app-shell h-[100dvh] max-h-[100dvh]' : 'min-h-[100dvh]'} flex flex-col selection:bg-amber-200 selection:text-slate-900 w-full max-w-full overflow-x-hidden relative`}>
       {!adminWorkspace && <Navbar compact={activeTab==='chat'} />}
 
       {/* Real-time Incoming Call Banner Overlay */}
@@ -46,7 +45,7 @@ const MainLayout: React.FC = () => {
         />
       )}
 
-      <main className={`nanivio-main ${adminWorkspace ? 'flex-1' : activeTab === 'chat' ? 'chat-main flex min-h-0 flex-1 flex-col overflow-hidden pb-[calc(4.5rem+env(safe-area-inset-bottom))]' : 'flex-1 pb-24 sm:pb-28'} w-full max-w-full overflow-x-hidden`}>
+      <main className={`nanivio-main ${adminWorkspace ? 'flex-1' : activeTab === 'chat' ? 'chat-main flex min-h-0 flex-1 flex-col overflow-hidden pb-[calc(4.5rem+env(safe-area-inset-bottom))]' : activeTab === 'home' ? 'home-main flex min-h-0 flex-1 overflow-hidden pb-[calc(4.5rem+env(safe-area-inset-bottom))]' : 'flex-1 pb-24 sm:pb-28'} w-full max-w-full overflow-x-hidden`}>
         <ErrorBoundary
           key={activeTab}
           fallbackTitle={`Nanivio ${activeTab.charAt(0).toUpperCase() + activeTab.slice(1)} Workspace`}
@@ -92,14 +91,12 @@ const AppOrchestrator: React.FC = () => {
     setIsAuthModalOpen,
     activeCelebrationEffect,
     clearCelebrationEffect,
-    setAuthMode,
   } = useNanivio();
-  const [showPublicAuth, setShowPublicAuth] = React.useState(() => typeof window !== 'undefined' && window.location.pathname === '/auth/callback');
   const [socialCallbackPending, setSocialCallbackPending] = React.useState(() => typeof window !== 'undefined' && window.location.pathname === '/auth/callback');
   const isAdminRoute = typeof window !== 'undefined' && window.location.pathname === '/admin';
   React.useEffect(() => {
-    if (!isAuthenticated && (showPublicAuth || isAdminRoute)) prepareNanivioSignature();
-  }, [isAuthenticated,showPublicAuth,isAdminRoute]);
+    if (!isAuthenticated) prepareNanivioSignature();
+  }, [isAuthenticated]);
 
   // Finish the selected provider even if another stored account is still
   // restoring. Never accidentally replace this callback with that dashboard.
@@ -127,35 +124,11 @@ const AppOrchestrator: React.FC = () => {
     );
   }
 
-  // Phase 3: Nanivio Authentication & Identity Entry
+  // Public app entry is authentication-first. The signature effect is only
+  // displayed by the successful-authentication branch above.
   if (!isAuthenticated) {
-    if (!showPublicAuth) {
-      return (
-        <NanivioLandingPage
-          onSignIn={() => {
-            setAuthMode('signin');
-            setShowPublicAuth(true);
-            window.scrollTo(0, 0);
-          }}
-          onGetStarted={() => {
-            setAuthMode('personal');
-            setShowPublicAuth(true);
-            window.scrollTo(0, 0);
-          }}
-        />
-      );
-    }
     return (
       <>
-        <div className="bg-[#121417] px-5 py-3">
-          <button
-            type="button"
-            onClick={() => setShowPublicAuth(false)}
-            className="inline-flex min-h-11 items-center gap-2 rounded-lg px-3 text-sm text-[#e2bb62] hover:bg-[#202329] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#e2bb62]"
-          >
-            <span aria-hidden="true">←</span> Back to Nanivio
-          </button>
-        </div>
         <NanivioAuthScreen onSuccess={() => setIsAuthModalOpen(false)} />
         <NewUserInstallPrompt />
       </>

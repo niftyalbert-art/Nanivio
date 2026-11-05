@@ -16,6 +16,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { useNanivio } from '../../context/NanivioContext';
 import { MalviSubscriptionPlan, MalviSubscriptionTier } from '../../types/billing';
 import { PaystackTopUpModal } from '../billing/PaystackTopUpModal';
+import { PaymentMethodButtons, type PaymentMethod } from '../billing/PaymentMethodButtons';
 
 interface MalviSubscriptionHubProps {
   isOpen: boolean;
@@ -49,6 +50,7 @@ export const MalviSubscriptionHub: React.FC<MalviSubscriptionHubProps> = ({
 
   // Paystack Modal State
   const [isPaystackOpen, setIsPaystackOpen] = useState<boolean>(false);
+  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('PAYSTACK');
   const [paystackTier, setPaystackTier] = useState<MalviSubscriptionTier>('malvi_premium');
   const [paystackAmount, setPaystackAmount] = useState<number>(0);
   const [isRefreshingPlans, setIsRefreshingPlans] = useState(false);
@@ -133,10 +135,7 @@ export const MalviSubscriptionHub: React.FC<MalviSubscriptionHubProps> = ({
         setIsProcessing(false);
       }
     } else {
-      // Direct user to Paystack checkout modal
-      setPaystackTier(plan.tier);
-      setPaystackAmount(price);
-      setIsPaystackOpen(true);
+      setErrorMessage(`Insufficient ${currency} Nanivio credit. Add or receive credit, or choose another payment method.`);
     }
   };
 
@@ -437,35 +436,24 @@ export const MalviSubscriptionHub: React.FC<MalviSubscriptionHubProps> = ({
                       </button>
                     ) : (
                       <>
-                        <button
-                        disabled={isProcessing || !canSelect}
-                          onClick={() => {
-                          if (price === null || price <= 0) {
+                        <PaymentMethodButtons disabled={isProcessing}
+                          disabledMethods={{ PAYSTACK: !canSelect, NANIVIO_CREDIT: !canSelect,
+                            USDT: !Number.isFinite(billingCycle === 'ANNUAL' ? plan.priceAnnualUSD : plan.priceMonthlyUSD) ||
+                              (billingCycle === 'ANNUAL' ? plan.priceAnnualUSD : plan.priceMonthlyUSD) <= 0 }}
+                          onSelect={(method) => {
+                          if (method === 'NANIVIO_CREDIT') { void handleSelectPlan(plan); return; }
+                          const checkoutPrice = method === 'USDT'
+                            ? billingCycle === 'ANNUAL' ? plan.priceAnnualUSD : plan.priceMonthlyUSD : price;
+                          if (checkoutPrice === null || !Number.isFinite(checkoutPrice) || checkoutPrice <= 0) {
                             setErrorMessage(`The ${currency} price or current exchange-rate quote is unavailable. Reload the plan catalogue before checkout.`);
                             return;
                           }
-                            setPaystackTier(plan.tier);
-                          setPaystackAmount(price);
-                            setIsPaystackOpen(true);
-                          }}
-                          className={`w-full py-2.5 rounded-xl font-bold text-xs transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
-                            plan.isPopular
-                              ? 'bg-gradient-to-r from-cyan-500 to-teal-400 hover:from-cyan-400 hover:to-teal-300 text-slate-950 shadow-md shadow-cyan-500/20'
-                              : 'bg-emerald-500 hover:bg-emerald-400 text-slate-950 shadow'
-                          }`}
-                        >
-                          <CreditCard className="w-3.5 h-3.5" />
-                          <span>Paystack or USDT</span>
-                        </button>
+                          setPaymentMethod(method);
+                          setPaystackTier(plan.tier);
+                          setPaystackAmount(checkoutPrice);
+                          setIsPaystackOpen(true);
+                          }} />
                         <div className="flex items-center gap-1.5">
-                          <button
-                            disabled={isProcessing || !canSelect}
-                            onClick={() => handleSelectPlan(plan)}
-                            className="flex-1 py-1.5 rounded-xl font-medium text-[11px] bg-slate-800 hover:bg-slate-700 text-slate-300 transition cursor-pointer"
-                            title="Pay using Nanivio credit balance for Malvi AI Ecosystem credit"
-                          >
-                            Malvi AI Ecosystem credit
-                          </button>
                           <button
                             type="button"
                             onClick={() => {
@@ -503,6 +491,7 @@ export const MalviSubscriptionHub: React.FC<MalviSubscriptionHubProps> = ({
       {isPaystackOpen && (
         <PaystackTopUpModal
           isOpen={isPaystackOpen}
+          initialPaymentMethod={paymentMethod}
           onClose={() => setIsPaystackOpen(false)}
           onSuccess={handlePaystackSuccess}
           defaultCurrency={currency}

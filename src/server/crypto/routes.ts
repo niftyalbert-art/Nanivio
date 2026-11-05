@@ -2,6 +2,7 @@ import type { Express, RequestHandler } from 'express';
 import { cryptoCommand, publicCryptoInvoice, activateCryptoInvoice } from './repository';
 import { TronReader, tronAddressHex, TRON_USDT_CONTRACT } from './tron';
 import { cryptoCheckoutAccess } from './access';
+import { buyCommunicationWithCredit } from './credit';
 
 type Dependencies = {
   user: RequestHandler; admin: RequestHandler;
@@ -9,6 +10,7 @@ type Dependencies = {
   quote: (input: Record<string, any>) => Promise<any>;
   command?: typeof cryptoCommand;
   startReconciler?: boolean;
+  creditPurchase?: typeof buyCommunicationWithCredit;
 };
 
 const reader = new TronReader();
@@ -42,7 +44,9 @@ async function checkInvoice(row: any, transactionId?: string, actorId = 'SYSTEM'
   try { return await work; } finally { inFlight.delete(key); }
 }
 
-async function availability(commandRpc = cryptoCommand) {
+async function availability(commandRpc = cryptoCommand): Promise<{
+  success: boolean; enabled: boolean; reason?: string; supportedPurposes?: string[];
+}> {
   if (process.env.TRON_USDT_ENABLED !== 'true') {
     return { success: true, enabled: false, reason: 'USDT checkout is not enabled. Paystack remains available.' };
   }
@@ -51,8 +55,8 @@ async function availability(commandRpc = cryptoCommand) {
     if (tronAddressHex(address) === '0'.repeat(40) || address === TRON_USDT_CONTRACT) {
       throw new Error('A spendable receiving wallet, not a burn/token contract address, is required.');
     }
-    await commandRpc('PREFLIGHT');
-    return { success: true, enabled: true };
+    const preflight = await commandRpc('PREFLIGHT');
+    return { success: true, enabled: true, supportedPurposes: preflight.paymentPurposes || ['SUBSCRIPTION', 'MALVI_SUBSCRIPTION'] };
   } catch {
     return { success: true, enabled: false, reason: 'USDT checkout needs a valid receiving wallet and database setup. No crypto payment should be sent yet.' };
   }
@@ -60,6 +64,23 @@ async function availability(commandRpc = cryptoCommand) {
 
 export function registerCryptoBillingRoutes(app: Express, dependencies: Dependencies) {
   const commandRpc = dependencies.command || cryptoCommand;
+  app.post('/api/billing/credit/communication-subscription', dependencies.user, async (req, res) => {
+    try {
+      if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(req.body?.requestId || '') ||
+          !['GHS', 'USD'].includes(req.body?.currency)) {
+        return res.status(400).json({ success: false, error: 'A purchase request and supported credit currency are required.' });
+      }
+      const quote = await dependencies.quote({
+        purpose: 'SUBSCRIPTION', planTier: req.body.planTier,
+        billingCycle: req.body.billingCycle, currency: req.body.currency,
+        amount: req.body.amount,
+      });
+      const result = await (dependencies.creditPurchase || buyCommunicationWithCredit)(dependencies.userId(req), req.body.requestId, quote);
+      res.json({ ...result, success: true });
+    } catch (error: any) {
+      res.status(400).json({ success: false, error: error.message });
+    }
+  });
   app.get('/api/billing/crypto/config', dependencies.user, async (req, res) => {
     const access = cryptoCheckoutAccess(dependencies.userId(req));
     if (!access.allowed) {
@@ -76,14 +97,26 @@ export function registerCryptoBillingRoutes(app: Express, dependencies: Dependen
     if (!ready.enabled) return res.status(503).json({ success: false, error: ready.reason });
     let purchase: any;
     try {
-      if (!['SUBSCRIPTION', 'MALVI_SUBSCRIPTION'].includes(req.body?.purpose)) {
-        throw new Error('USDT checkout is available for paid subscription plans only.');
+      if (!['SUBSCRIPTION', 'MALVI_SUBSCRIPTION', 'COMMUNICATION_TOPUP', 'COMMUNICATION_MINUTES'].includes(req.body?.purpose)) {
+        throw new Error('Unsupported USDT purchase.');
       }
+      if (!ready.supportedPurposes?.includes(req.body.purpose)) return res.status(503).json({
+        success: false, error: 'USDT top-ups and minute purchases need the expanded crypto database migration. No invoice was created; do not send funds yet.',
+      });
       // Ignore client prices, token addresses, wallet addresses, and benefits.
       purchase = await dependencies.quote({
         purpose: req.body.purpose, planTier: req.body.planTier,
         billingCycle: req.body.billingCycle, catalogVersion: req.body.catalogVersion, currency: 'USD',
+        ...(req.body.purpose === 'COMMUNICATION_TOPUP' ? { amount: req.body.amount } : {}),
+        ...(req.body.purpose === 'COMMUNICATION_MINUTES' ? { packageId: req.body.packageId } : {}),
       });
+      if (purchase.purpose === 'COMMUNICATION_TOPUP') {
+        purchase.amount = Math.round(purchase.amount * 100) / 100;
+        purchase.product = { id: 'nanivio-usd-credit', name: 'Nanivio credit top-up', creditAmountUSD: purchase.amount };
+      }
+      if (purchase.purpose === 'COMMUNICATION_MINUTES') purchase.product = {
+        ...purchase.product, name: `${purchase.product.minutes} Communication minutes`,
+      };
     } catch (error: any) {
       return res.status(400).json({ success: false, error: error.message });
     }

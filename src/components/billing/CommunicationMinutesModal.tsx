@@ -17,6 +17,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { useNanivio } from '../../context/NanivioContext';
 import { CommunicationMinutePackage } from '../../types/billing';
 import { PaystackTopUpModal } from './PaystackTopUpModal';
+import type { PaymentMethod } from './PaymentMethodButtons';
 
 interface CommunicationMinutesModalProps {
   isOpen: boolean;
@@ -44,6 +45,7 @@ export const CommunicationMinutesModal: React.FC<CommunicationMinutesModalProps>
 
   // Paystack Modal State if user opts or balance is insufficient
   const [isPaystackOpen, setIsPaystackOpen] = useState<boolean>(false);
+  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('PAYSTACK');
 
   if (!isOpen) return null;
   if (communicationMinutePackages.length === 0) return (
@@ -149,11 +151,7 @@ export const CommunicationMinutesModal: React.FC<CommunicationMinutesModalProps>
       if (onSuccess) onSuccess();
     } catch (err: any) {
       if (err.code === 'INSUFFICIENT_SERVICE_VALUE') {
-        // Automatically direct user to Paystack payment
-        setErrorMessage(err.message || 'Insufficient balance. Directing to Paystack payment gateway.');
-        setTimeout(() => {
-          setIsPaystackOpen(true);
-        }, 1000);
+        setErrorMessage(err.message || 'Insufficient Nanivio credit. Add or receive credit, or choose Paystack or USDT.');
       } else {
         setErrorMessage(err.message || 'Failed to complete minute package purchase');
       }
@@ -163,13 +161,14 @@ export const CommunicationMinutesModal: React.FC<CommunicationMinutesModalProps>
   };
 
   const handlePayViaPaystack = () => {
+    setPaymentMethod('PAYSTACK');
     setIsPaystackOpen(true);
   };
 
-  const handlePaystackSuccess = async () => {
-    setIsPaystackOpen(false);
+  const handlePaystackSuccess = async (source?: 'PAYSTACK' | 'CRYPTO') => {
+    if (source !== 'CRYPTO') setIsPaystackOpen(false);
     await refreshBilling();
-    onClose();
+    if (source !== 'CRYPTO') onClose();
     if (onSuccess) onSuccess();
   };
 
@@ -195,7 +194,7 @@ export const CommunicationMinutesModal: React.FC<CommunicationMinutesModalProps>
                 Select Your Communication Minutes
               </h2>
               <p className="text-xs sm:text-sm text-slate-400">
-                Directly credits your authoritative live meter. Pay with Nanivio credit balance or live Paystack payment.
+                Pay with Paystack, USDT on TRON, or Nanivio credit received from other users.
               </p>
             </div>
             <button
@@ -364,7 +363,7 @@ export const CommunicationMinutesModal: React.FC<CommunicationMinutesModalProps>
                   <Wallet className="w-4 h-4" />
                   <span>
                     {isBalanceSufficient
-                      ? `Activate with Nanivio credit (${currency === 'USD' ? `$${pkgCost.toFixed(2)}` : `GH₵ ${pkgCost.toFixed(2)}`})`
+                      ? `Nanivio credit · P2P (${currency === 'USD' ? `$${pkgCost.toFixed(2)}` : `GH₵ ${pkgCost.toFixed(2)}`})`
                       : 'Insufficient Nanivio credit'}
                   </span>
                 </button>
@@ -380,6 +379,7 @@ export const CommunicationMinutesModal: React.FC<CommunicationMinutesModalProps>
                   </span>
                   <ExternalLink className="w-3.5 h-3.5 ml-1 opacity-70" />
                 </button>
+                <button type="button" disabled={isProcessing} onClick={() => { setPaymentMethod('USDT'); setIsPaystackOpen(true); }} className="min-h-11 rounded-2xl border border-emerald-400/50 bg-slate-900 p-3 text-xs font-semibold text-emerald-200">USDT</button>
               </div>
 
               {/* Security & Verification Guarantee */}
@@ -399,6 +399,7 @@ export const CommunicationMinutesModal: React.FC<CommunicationMinutesModalProps>
       {isPaystackOpen && (
         <PaystackTopUpModal
           isOpen={isPaystackOpen}
+          initialPaymentMethod={paymentMethod}
           onClose={() => setIsPaystackOpen(false)}
           onSuccess={handlePaystackSuccess}
           defaultCurrency={currency}

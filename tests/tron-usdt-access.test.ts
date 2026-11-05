@@ -4,6 +4,7 @@ import express from 'express';
 import type { AddressInfo } from 'node:net';
 import { cryptoCheckoutAccess } from '../src/server/crypto/access.ts';
 import { registerCryptoBillingRoutes } from '../src/server/crypto/routes.ts';
+import { quotePaystackOrder } from '../src/server/paystackOrders.ts';
 
 test('owner-approved public checkout is the default; invalid modes and unauthenticated users are denied', () => {
   assert.equal(cryptoCheckoutAccess('ordinary', {}).allowed, true);
@@ -27,6 +28,15 @@ test('real HTTP routes enforce test access before quoting or writing and preserv
   const original = Object.fromEntries(keys.map(key => [key, process.env[key]]));
   const calls: string[] = [];
   let quotes = 0;
+  let expanded = false;
+  const created: any[] = [];
+  const creditPurchases: any[] = [];
+  const catalog = {
+    subscriptionPlans: [{ id:'premium',tier:'premium',name:'Premium',priceMonthlyUSD:9.99,
+      priceAnnualUSD:99.99,priceMonthlyGHS:100,priceAnnualGHS:1000,includedVoiceMinutes:60,includedLangpretationMinutes:120 }],
+    malviPlans: [],
+    communicationMinutePackages: [{ id:'pack-150',minutes:150,validityDays:60,priceUSD:8.99,priceGHS:130 }],
+  };
   const row = {
     id: '12345678-1234-1234-1234-123456789abc', user_id: 'ordinary',
     receiving_address: 'TJRabPrwbZy45sbavfcjinPJC18kjpRTv8', amount_units: '9987654',
@@ -44,11 +54,18 @@ test('real HTTP routes enforce test access before quoting or writing and preserv
     },
     admin: (_req, res) => { res.sendStatus(403); },
     userId: req => req.authUser.id,
-    quote: async () => { quotes++; return row.purchase; },
+    quote: async input => { quotes++; return quotePaystackOrder(input,catalog); },
+    creditPurchase: async (userId, requestId, quote) => {
+      creditPurchases.push({userId,requestId,quote});return {success:true};
+    },
     command: async (command, payload) => {
       calls.push(command);
-      if (command === 'PREFLIGHT') return { success: true };
-      if (command === 'CREATE') return { success: true, invoice: { ...row, user_id: payload?.userId, status: 'PENDING' } };
+      if (command === 'PREFLIGHT') return { success: true, ...(expanded ? {paymentPurposes:['SUBSCRIPTION','MALVI_SUBSCRIPTION','COMMUNICATION_TOPUP','COMMUNICATION_MINUTES']} : {}) };
+      if (command === 'CREATE') {
+        created.push(payload);
+        return { success: true, invoice: { ...row, amount_units:String(Math.round((payload.purchase as {amount:number}).amount*1e6)-1),
+          purchase:payload?.purchase,user_id: payload?.userId, status: 'PENDING' } };
+      }
       if (command === 'LIST') return { success: true, invoices: [row] };
       if (command === 'GET') return { success: true, invoice: row };
       throw new Error('Unexpected database operation');
@@ -110,6 +127,38 @@ test('real HTTP routes enforce test access before quoting or writing and preserv
     assert.equal((await request('/api/billing/crypto/invoices','ordinary',purchase)).status, 201);
     process.env.TRON_USDT_ACCESS_MODE = 'public';
     assert.equal((await request('/api/billing/crypto/invoices','ordinary',purchase)).status, 201);
+    const before = created.length;
+    assert.equal((await request('/api/billing/crypto/invoices','ordinary',{purpose:'COMMUNICATION_TOPUP',amount:10})).status,503);
+    assert.equal(created.length,before);
+    expanded=true;
+    const topupResponse = await request('/api/billing/crypto/invoices','ordinary',{
+      purpose:'COMMUNICATION_TOPUP',amount:10,currency:'GHS',userId:'someone-else',
+      product:{creditAmountUSD:99999},metadata:{trusted:true},
+    });
+    assert.equal(topupResponse.status,201,await topupResponse.text());
+    assert.equal(created.at(-1).userId,'ordinary');
+    assert.equal(created.at(-1).purchase.currency,'USD');
+    assert.equal(created.at(-1).purchase.product.creditAmountUSD,10);
+    assert.equal((await request('/api/billing/crypto/invoices','ordinary',{
+      purpose:'COMMUNICATION_MINUTES',packageId:'pack-150',minutes:99999,amount:0.01,
+    })).status,201);
+    assert.equal(created.at(-1).purchase.amount,8.99);
+    assert.equal(created.at(-1).purchase.product.minutes,150);
+    assert.equal(created.at(-1).purchase.product.validityDays,60);
+    const afterValid=created.length;
+    for (const body of [
+      {purpose:'COMMUNICATION_TOPUP',amount:-1},{purpose:'COMMUNICATION_TOPUP',amount:0.001},
+      {purpose:'COMMUNICATION_MINUTES',packageId:'missing'},
+    ]) assert.notEqual((await request('/api/billing/crypto/invoices','ordinary',body)).status,201);
+    assert.equal(created.length,afterValid);
+    const creditRequest={requestId:'11111111-2222-4333-8444-555555555555',planTier:'premium',billingCycle:'MONTHLY',currency:'USD',amount:9.99,userId:'somebody-else'};
+    assert.equal((await request('/api/billing/credit/communication-subscription',undefined,creditRequest)).status,401);
+    assert.equal((await request('/api/billing/credit/communication-subscription','ordinary',{...creditRequest,requestId:'bad'})).status,400);
+    assert.equal(creditPurchases.length,0);
+    assert.equal((await request('/api/billing/credit/communication-subscription','ordinary',creditRequest)).status,200);
+    assert.equal(creditPurchases[0].userId,'ordinary');
+    assert.equal(creditPurchases[0].quote.amount,9.99);
+    assert.equal(creditPurchases[0].quote.product.periodDays,30);
   } finally {
     for (const key of keys) {
       if (original[key] === undefined) delete process.env[key];

@@ -24,11 +24,13 @@ import { useNanivio } from '../../context/NanivioContext';
 
 interface UniversalFlowTracerProps {
   onOpenPaystackModal: () => void;
+  onOpenUSDTModal?: () => void;
   onOpenTransferModal: () => void;
 }
 
 export const UniversalFlowTracer: React.FC<UniversalFlowTracerProps> = ({
   onOpenPaystackModal,
+  onOpenUSDTModal,
   onOpenTransferModal,
 }) => {
   const { billingSummary, refreshBilling } = useNanivio();
@@ -41,32 +43,32 @@ export const UniversalFlowTracer: React.FC<UniversalFlowTracerProps> = ({
     {
       step: 1,
       id: 'paystack',
-      title: 'Paystack Rail',
-      subtitle: 'Initialization & Reference',
+      title: 'Choose payment',
+      subtitle: 'Paystack · USDT · Nanivio credit',
       icon: CreditCard,
       color: 'text-amber-400',
       bgColor: 'bg-amber-500/10 border-amber-500/30',
-      description: 'Server creates NV-PSTK transaction with HMAC SHA-512 security.',
+      description: 'Choose an independent payment method and review its purchase details.',
     },
     {
       step: 2,
       id: 'verified',
       title: 'Verified Payment',
-      subtitle: 'Webhook & Server Verification',
+      subtitle: 'Server-side verification',
       icon: ShieldCheck,
       color: 'text-emerald-400',
       bgColor: 'bg-emerald-500/10 border-emerald-500/30',
-      description: 'Cryptographic confirmation via Paystack API before crediting.',
+      description: 'Verify Paystack, a confirmed TRON USDT receipt, or an atomic Nanivio credit debit before delivery.',
     },
     {
       step: 3,
       id: 'account_value',
-      title: 'Nanivio Account Value',
-      subtitle: 'Communication Balance Wallet',
+      title: 'Nanivio service benefits',
+      subtitle: 'Credit, minutes or subscription',
       icon: Layers,
       color: 'text-blue-400',
       bgColor: 'bg-blue-500/10 border-blue-500/30',
-      description: 'Direct credit to Communication Wallet in double-entry ledger.',
+      description: 'Apply the purchased service credit, minutes or plan benefits to the verified account.',
     },
     {
       step: 4,
@@ -204,8 +206,9 @@ export const UniversalFlowTracer: React.FC<UniversalFlowTracerProps> = ({
             className="px-3 py-2 rounded-xl bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 border border-emerald-500/40 text-xs font-bold transition flex items-center gap-1.5"
           >
             <CreditCard className="w-3.5 h-3.5" />
-            <span>Paystack Top-Up</span>
+            <span>Paystack</span>
           </button>
+          <button type="button" disabled={!onOpenUSDTModal} onClick={onOpenUSDTModal} className="min-h-11 rounded-xl border border-emerald-400/50 bg-emerald-500/10 px-3 py-2 text-xs font-semibold text-emerald-200 disabled:opacity-50">USDT</button>
           <button
             type="button"
             onClick={onOpenTransferModal}

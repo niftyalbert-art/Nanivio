@@ -129,8 +129,12 @@ export const SubscriptionPlansModal: React.FC<SubscriptionPlansModalProps> = ({
                       : 'bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-slate-950 shadow-md shadow-emerald-500/20'
                   }`}
                 >
-                  {isCurrent ? 'Current Plan' : activatingTier === plan.tier ? 'Selecting…' : Number(plan.priceMonthlyGHS) > 0 ? 'Pay with Paystack' : 'Select free plan'}
+                  {isCurrent ? 'Current Plan' : activatingTier === plan.tier ? 'Selecting…' : Number(plan.priceMonthlyGHS) > 0 ? 'Paystack' : 'Select free plan'}
                 </button>
+                {!isCurrent && (Number(plan.priceMonthlyGHS) > 0 || Number(plan.priceMonthlyUSD) > 0) && <div className="mt-2 grid grid-cols-2 gap-2">
+                  <button type="button" disabled={activatingTier !== null} onClick={() => { openBillingWithPlan(plan.tier, 'SUBSCRIPTION', 'MONTHLY', 'USDT'); onClose(); }} className="min-h-11 rounded-xl border border-emerald-400/50 p-2 text-xs font-semibold text-emerald-200">USDT</button>
+                  <button type="button" disabled={activatingTier !== null} onClick={() => { openBillingWithPlan(plan.tier, 'SUBSCRIPTION', 'MONTHLY', 'NANIVIO_CREDIT'); onClose(); }} className="min-h-11 rounded-xl border border-cyan-400/30 p-2 text-xs font-semibold text-cyan-100">Nanivio credit · P2P</button>
+                </div>}
               </div>
             );
           })}
