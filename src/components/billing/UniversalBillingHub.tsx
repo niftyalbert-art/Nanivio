@@ -44,7 +44,7 @@ import {
 } from '../../types/billing';
 import type { MalviSubscriptionPlan } from '../../types/billing';
 import { billingClient } from '../../lib/billingClient';
-import { billingNumber, formatBillingAmount } from '../../lib/billingPresentation';
+import { billingNumber, formatBillingAmount, communicationCreditBalance, billingAllowanceDisplay } from '../../lib/billingPresentation';
 import { PaystackTopUpModal } from './PaystackTopUpModal';
 import type { PaymentMethod } from './PaymentMethodButtons';
 import { CommunicationCreditCheckout } from './CommunicationCreditCheckout';
@@ -73,6 +73,7 @@ export const UniversalBillingHub: React.FC = () => {
   const {
     authUser,
     billingSummary,
+    billingSyncError,
     billingPlans,
     userInvoices,
     userDisputes,
@@ -418,11 +419,20 @@ export const UniversalBillingHub: React.FC = () => {
     }
   };
 
-  const currentSub = billingSummary?.subscription;
-  const communicationWallet = billingSummary?.accounts?.communicationAccount?.wallets?.find(w => w.currency === 'GHS');
-  const fintechWallet = billingSummary?.accounts?.fintechAccount?.wallets?.find(w => w.currency === 'GHS');
-  const communicationAvailable = communicationWallet?.available ?? (billingSummary ? 0 : undefined);
-  const fintechAvailable = fintechWallet?.available ?? (billingSummary ? 0 : undefined);
+  const confirmedSummary = !billingSyncError && billingSummary?.success && billingSummary.userId === authUser?.id ? billingSummary : null;
+  const currentSub = confirmedSummary?.subscription;
+  const communicationWallet = confirmedSummary?.accounts?.communicationAccount?.wallets?.find(w => w.currency === 'GHS');
+  const communicationAvailable = communicationCreditBalance(confirmedSummary, authUser?.id ?? '');
+  const communicationReserved = communicationWallet ? communicationWallet.reserved : communicationAvailable === undefined ? undefined : 0;
+  const usdAvailable = communicationCreditBalance(confirmedSummary, authUser?.id ?? '', 'USD');
+  const langpretationAllowance = billingAllowanceDisplay(currentSub?.langpretationMinutesRemaining, currentSub?.langpretationMinutesQuota);
+  const callingQuota = billingNumber(currentSub?.voiceMinutesQuota);
+  const callingUsed = billingNumber(currentSub?.voiceMinutesUsed);
+  const callingAllowance = billingAllowanceDisplay(
+    callingQuota !== undefined && callingUsed !== undefined && callingUsed >= 0
+      ? Math.max(0, callingQuota - callingUsed) : undefined,
+    callingQuota,
+  );
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col font-sans pb-16 w-full max-w-full overflow-x-hidden">
@@ -527,8 +537,8 @@ export const UniversalBillingHub: React.FC = () => {
             {/* Quick Financial Operations Bar */}
             <div className="p-4 rounded-2xl bg-slate-900 border border-slate-800 flex flex-wrap items-center justify-between gap-3">
               <div className="flex items-center gap-2">
-                <span className="text-xs font-bold text-slate-300 uppercase tracking-wider">Financial Operations:</span>
-                <span className="text-[11px] text-slate-400">Direct wallet funding and instant value transfers</span>
+                <span className="text-xs font-bold text-slate-300 uppercase tracking-wider">Billing &amp; service credit:</span>
+                <span className="text-[11px] text-slate-400">Top up service credit, buy add-ons, or transfer Nanivio credit</span>
               </div>
               <div className="flex flex-wrap items-center gap-2">
                 <button
@@ -574,7 +584,7 @@ export const UniversalBillingHub: React.FC = () => {
               </div>
             </div>
 
-            {/* Separated Account Value Cards (Communication vs Fintech) */}
+            {/* Nanivio service credit and P2P credit transfers, not bank funds. */}
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
               {/* Primary Communication Balance */}
               <div className="p-5 rounded-2xl bg-gradient-to-br from-slate-900 to-slate-950 border border-emerald-500/30 relative overflow-hidden">
@@ -593,7 +603,7 @@ export const UniversalBillingHub: React.FC = () => {
                     : undefined
                 )}</p>
                 <div className="mt-3 flex items-center justify-between text-[11px] text-slate-400 border-t border-slate-800/80 pt-2.5">
-                  <span>Reserved: GH₵ {formatBillingAmount(communicationWallet?.reserved ?? (billingSummary ? 0 : undefined))}</span>
+                  <span>Reserved: GH₵ {formatBillingAmount(communicationReserved)}</span>
                   <button
                     onClick={() => setIsPaystackModalOpen(true)}
                     className="text-emerald-400 font-bold hover:underline"
@@ -604,19 +614,19 @@ export const UniversalBillingHub: React.FC = () => {
                 </div>
               </div>
 
-              {/* Primary Fintech Balance */}
+              {/* P2P Nanivio service credit */}
               <div className="p-5 rounded-2xl bg-gradient-to-br from-slate-900 to-slate-950 border border-blue-500/30 relative overflow-hidden">
                 <div className="flex items-center justify-between text-xs text-slate-400 mb-2">
-                  <span className="font-semibold uppercase tracking-wider text-blue-400">Fintech Value</span>
+                  <span className="font-semibold uppercase tracking-wider text-blue-400">P2P Nanivio credit</span>
                   <span className="font-mono text-[10px] px-2 py-0.5 rounded bg-blue-500/20 text-blue-300 border border-blue-500/30">
-                    Banking &amp; MoMo
+                    Service credit
                   </span>
                 </div>
                 <div className="text-2xl font-black text-slate-100 font-mono tracking-tight">
-                  GH₵ {formatBillingAmount(fintechAvailable)}
+                  Credit for Nanivio services
                 </div>
                 <div className="mt-3 flex items-center justify-between text-[11px] text-slate-400 border-t border-slate-800/80 pt-2.5">
-                  <span>Withdrawable: GH₵ {formatBillingAmount(fintechAvailable)}</span>
+                  <span>Transfer service credit, not cash or bank funds.</span>
                   <button
                     onClick={() => {
                       setTransferModalMode('P2P');
@@ -624,7 +634,7 @@ export const UniversalBillingHub: React.FC = () => {
                     }}
                     className="text-blue-400 font-bold hover:underline"
                   >
-                    Send &rarr;
+                    Send credit &rarr;
                   </button>
                 </div>
               </div>
@@ -632,15 +642,15 @@ export const UniversalBillingHub: React.FC = () => {
               {/* USD Multi-Currency Balance */}
               <div className="p-5 rounded-2xl bg-slate-900 border border-slate-800/80 relative overflow-hidden">
                 <div className="flex items-center justify-between text-xs text-slate-400 mb-2">
-                  <span className="font-semibold uppercase tracking-wider">USD Balance</span>
+                  <span className="font-semibold uppercase tracking-wider">USD service credit</span>
                   <span className="font-mono text-[10px] px-2 py-0.5 rounded bg-slate-800 text-slate-300">$ USD</span>
                 </div>
                 <div className="text-2xl font-black text-slate-100 font-mono tracking-tight">
-                  $ {formatBillingAmount(billingSummary?.wallets?.find((w) => w.currency === 'USD')?.available ?? (billingSummary ? 0 : undefined))}
+                  $ {formatBillingAmount(usdAvailable)}
                 </div>
                 <div className="mt-3 flex items-center justify-between text-[11px] text-slate-400 border-t border-slate-800/60 pt-2.5">
-                  <span>International Billing</span>
-                  <span className="text-slate-500">Auto-convert</span>
+                  <span>Nanivio services</span>
+                  <span className="text-slate-500">Not withdrawable cash</span>
                 </div>
               </div>
 
@@ -701,17 +711,14 @@ export const UniversalBillingHub: React.FC = () => {
                     <div className="flex justify-between text-xs mb-1.5 font-medium">
                       <span className="text-slate-300">Langpretation Minutes</span>
                       <span className="font-mono text-emerald-400">
-                        {currentSub?.langpretationMinutesRemaining} / {currentSub?.langpretationMinutesQuota} min
+                        {langpretationAllowance.label}
                       </span>
                     </div>
                     <div className="w-full h-2 rounded-full bg-slate-800 overflow-hidden">
                       <div
                         className="h-full bg-gradient-to-r from-emerald-500 to-teal-400 rounded-full"
                         style={{
-                          width: `${Math.min(
-                            100,
-                            ((currentSub?.langpretationMinutesRemaining || 0) / (currentSub?.langpretationMinutesQuota || 1)) * 100
-                          )}%`,
+                          width: `${langpretationAllowance.percentRemaining}%`,
                         }}
                       />
                     </div>
@@ -719,43 +726,25 @@ export const UniversalBillingHub: React.FC = () => {
 
                   <div>
                     <div className="flex justify-between text-xs mb-1.5 font-medium">
-                      <span className="text-slate-300">Voice Calling Quota</span>
+                      <span className="text-slate-300">Paid plan calling minutes</span>
                       <span className="font-mono text-indigo-400">
-                        {Math.max(0, (currentSub?.voiceMinutesQuota || 500) - (currentSub?.voiceMinutesUsed || 84))} / {currentSub?.voiceMinutesQuota || 500} min
+                        {callingAllowance.label}
                       </span>
                     </div>
                     <div className="w-full h-2 rounded-full bg-slate-800 overflow-hidden">
                       <div
                         className="h-full bg-indigo-500 rounded-full"
                         style={{
-                          width: `${Math.max(
-                            10,
-                            100 - ((currentSub?.voiceMinutesUsed || 84) / (currentSub?.voiceMinutesQuota || 500)) * 100
-                          )}%`,
+                          width: `${callingAllowance.percentRemaining}%`,
                         }}
                       />
                     </div>
                   </div>
 
-                  <div>
-                    <div className="flex justify-between text-xs mb-1.5 font-medium">
-                      <span className="text-slate-300">Malvi AI Requests</span>
-                      <span className="font-mono text-amber-400">
-                        {Math.max(0, (currentSub?.malviUnitsQuota || 500) - (currentSub?.malviUnitsUsed || 62))} / {currentSub?.malviUnitsQuota || 500} reqs
-                      </span>
-                    </div>
-                    <div className="w-full h-2 rounded-full bg-slate-800 overflow-hidden">
-                      <div
-                        className="h-full bg-amber-500 rounded-full"
-                        style={{
-                          width: `${Math.max(
-                            10,
-                            100 - ((currentSub?.malviUnitsUsed || 62) / (currentSub?.malviUnitsQuota || 500)) * 100
-                          )}%`,
-                        }}
-                      />
-                    </div>
-                  </div>
+                  <p className="text-xs leading-relaxed text-slate-400">
+                    Trial and add-on balances are shown in Communication access above. Malvi has separate voice and avatar allowances.
+                    {' '}<button type="button" onClick={() => setActiveSubTab('malvi')} className="font-semibold text-amber-300 hover:underline">View Malvi allowances</button>
+                  </p>
                 </div>
 
                 <div className="pt-2">
@@ -988,7 +977,7 @@ export const UniversalBillingHub: React.FC = () => {
               </div>
             )}
             <p className="text-xs text-slate-400">
-              Paid plans activate only after Paystack confirms payment. The selected allowance lasts for the purchased term. Renewal is manual; automatic charges are not enabled.
+              Paid plans activate after verified Paystack payment, confirmed TRON USDT payment, or a successful Nanivio credit debit. Annual purchases include twelve monthly allowance allocations. Renewal is manual; automatic charges are not enabled.
             </p>
 
             {/* Plans Grid */}
@@ -1365,7 +1354,6 @@ export const UniversalBillingHub: React.FC = () => {
                     { id: 'COMMUNICATION', label: '1:1 Video/Voice' },
                     { id: 'LANGPRETATION', label: 'Langpretation' },
                     { id: 'EXPERT_SERVICE', label: 'Doctor/Legal Expert' },
-                    { id: 'FINTECH_TRANSFER', label: 'MoMo Remittance' },
                   ].map((s) => (
                     <button
                       key={s.id}
@@ -1386,13 +1374,13 @@ export const UniversalBillingHub: React.FC = () => {
               <div className="space-y-2">
                 <div className="flex justify-between text-xs font-semibold text-slate-300">
                   <span>Estimated Duration / Quantity:</span>
-                  <span className="font-mono text-emerald-400">{calcMinutes} {calcService === 'FINTECH_TRANSFER' ? 'Amount (GHS)' : 'Minutes'}</span>
+                  <span className="font-mono text-emerald-400">{calcMinutes} Minutes</span>
                 </div>
                 <input
                   type="range"
                   min="1"
-                  max={calcService === 'FINTECH_TRANSFER' ? 5000 : 120}
-                  step={calcService === 'FINTECH_TRANSFER' ? 50 : 1}
+                  max={120}
+                  step={1}
                   value={calcMinutes}
                   onChange={(e) => setCalcMinutes(Number(e.target.value))}
                   className="w-full accent-emerald-500 bg-slate-950 h-2 rounded-lg cursor-pointer"
@@ -2002,7 +1990,7 @@ export const UniversalBillingHub: React.FC = () => {
         }}
       />
 
-      {/* Peer-to-Peer & Internal Transfer Modal */}
+      {/* Peer-to-peer Nanivio service credit only; no legacy cash balances. */}
       <TransferValueModal
         isOpen={isTransferModalOpen}
         onClose={() => setIsTransferModalOpen(false)}
@@ -2010,8 +1998,8 @@ export const UniversalBillingHub: React.FC = () => {
           refreshBilling();
         }}
         defaultMode={transferModalMode}
+        creditsOnly
         communicationBalance={billingNumber(communicationAvailable) ?? 0}
-        fintechBalance={billingNumber(fintechAvailable) ?? 0}
         currency="GHS"
       />
     </div>

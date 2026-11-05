@@ -2,6 +2,7 @@ import {
   BALANCED_PLANS, BALANCED_PACKS, SUBSCRIPTION_PRICING_VERSION,
   pricingPurchaseSnapshot, TRANSLATION_UNITS_PER_MINUTE,
 } from './subscriptionPricing.ts';
+import { MALVI_VOICE_DESCRIPTION } from './malviPlanCatalog';
 
 /**
  * A one-way catalogue cutover. Existing entitlement rows are not catalogue
@@ -55,6 +56,12 @@ export function balancedMalviPlans(plans: any[], alreadyCurrent = false) {
     billingTerms.limits.avatarSeconds = avatar * 60;
     return {
       ...template, name: approved.name, priceMonthlyUSD: monthly,
+      description: template.tier === 'malvi_voice' && template.description === 'A separate voice-only plan. Set its price and allowance before publishing.'
+        ? MALVI_VOICE_DESCRIPTION : template.description,
+      langpretationCapabilities: template.tier === 'malvi_voice' && template.langpretationCapabilities === 'Set the included translation features'
+        ? 'Text questions and supported language assistance' : template.langpretationCapabilities,
+      aiInteractionCapabilities: template.tier === 'malvi_voice' && template.aiInteractionCapabilities === 'Set the included assistance features'
+        ? 'Conversational assistance and everyday questions' : template.aiInteractionCapabilities,
       priceAnnualUSD: alreadyCurrent ? template.priceAnnualUSD : approved.annualCents / 100,
       voiceInteractionMinutesLimit: voice, videoInteractionMinutesLimit: avatar,
       // Voice is now a configured paid offer, not the former zero-price draft.

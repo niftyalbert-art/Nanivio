@@ -28,6 +28,7 @@ export const MALVI_CATALOG_TIERS: MalviSubscriptionTier[] = [
 // Customer voice delivery now has a separate, metered no-avatar route.
 // The server still verifies runtime database setup before first publication.
 export const MALVI_VOICE_PLAN_PUBLISHABLE = true;
+export const MALVI_VOICE_DESCRIPTION = 'Voice-only conversations with Malvi, with a separate monthly allowance and no live avatar.';
 
 export class MalviCatalogError extends Error {
   constructor(public status: number, public code: string, message: string) { super(message); }
@@ -43,10 +44,10 @@ export function initialMalviCatalog(legacy: MalviSubscriptionPlan[]): MalviCatal
   }));
   plans.splice(1, 0, {
     id: 'malvi_voice', tier: 'malvi_voice', name: 'Malvi Voice', tagline: 'Voice-only companion',
-    description: 'A separate voice-only plan. Set its price and allowance before publishing.',
+    description: MALVI_VOICE_DESCRIPTION,
     priceMonthlyUSD: 0, priceAnnualUSD: 0, videoInteractionMinutesLimit: 0, voiceInteractionMinutesLimit: 0,
-    voiceCapabilities: 'Voice conversations with Malvi', langpretationCapabilities: 'Set the included translation features',
-    aiInteractionCapabilities: 'Set the included assistance features', avatarInteractive: false, businessCollaboration: false,
+    voiceCapabilities: 'Voice conversations with Malvi', langpretationCapabilities: 'Text questions and supported language assistance',
+    aiInteractionCapabilities: 'Conversational assistance and everyday questions', avatarInteractive: false, businessCollaboration: false,
     capabilities: ['conversation', 'voice'],
     features: ['Voice conversations with Malvi', 'Text questions and translation assistance'], unavailableFeatures: ['Live video avatar'], status: 'DRAFT',
   });

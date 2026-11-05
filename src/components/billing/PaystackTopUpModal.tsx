@@ -13,6 +13,7 @@ import {
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { billingClient } from '../../lib/billingClient';
+import { malviCheckoutAllowanceText } from '../../lib/billingPresentation';
 import { useNanivio } from '../../context/NanivioContext';
 import { announcePaystackActivation, rememberPaystackReturn } from '../../lib/paystackReturn';
 import { PaymentReceipt } from './PaymentReceipt';
@@ -302,7 +303,7 @@ export const PaystackTopUpModal: React.FC<PaystackTopUpModalProps> = ({
                     <h3 className="font-bold text-white">{malviQuote.name} · {billingCycle === 'ANNUAL' ? 'Annual' : 'Monthly'}</h3>
                     <p>USD base price: <strong>${(billingCycle === 'ANNUAL' ? malviQuote.priceAnnualUSD : malviQuote.priceMonthlyUSD).toFixed(2)}</strong></p>
                     <p>Paystack will collect <strong>GHS {amount.toFixed(2)}</strong>. Your bank may apply its own currency conversion or fees.</p>
-                    <p>{malviQuote.voiceInteractionMinutesLimit ?? malviQuote.videoInteractionMinutesLimit} voice minutes · {malviQuote.videoInteractionMinutesLimit} video minutes per purchased term.</p>
+                    <p>{malviCheckoutAllowanceText(malviQuote.voiceInteractionMinutesLimit ?? malviQuote.videoInteractionMinutesLimit, malviQuote.videoInteractionMinutesLimit, billingCycle === 'ANNUAL' ? 'ANNUAL' : 'MONTHLY')}</p>
                     {catalogVersion !== undefined && catalogVersion !== malviQuote.catalogVersion && <p className="text-amber-200">The catalogue changed. Review these current terms before paying.</p>}
                     <p className="mt-2 text-[11px] text-slate-400">
                       1 USD = {malviQuote.currencyConversion!.rate.toFixed(5)} GHS · as of {new Date(malviQuote.currencyConversion!.asOf).toLocaleString()}.

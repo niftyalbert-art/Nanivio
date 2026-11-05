@@ -25,6 +25,30 @@ export function formatBillingAmount(value: unknown): string {
   });
 }
 
+/** Presentation only: never fill an unknown allowance with demonstration usage. */
+export function billingAllowanceDisplay(remaining: unknown, quota: unknown) {
+  const left = billingNumber(remaining), total = billingNumber(quota);
+  if (left === undefined || total === undefined || left < 0 || total < 0) {
+    return { label: 'Unavailable', percentRemaining: 0 };
+  }
+  const format = (value: number) => value.toLocaleString('en-US', { maximumFractionDigits: 2 });
+  return {
+    label: `${format(left)} / ${format(total)} min`,
+    percentRemaining: total > 0 ? Math.min(100, Math.max(0, left / total * 100)) : 0,
+  };
+}
+
+export function malviCheckoutAllowanceText(voice: unknown, avatar: unknown, cycle: 'MONTHLY' | 'ANNUAL'): string {
+  const voiceMinutes = billingNumber(voice), avatarMinutes = billingNumber(avatar);
+  if (voiceMinutes === undefined || avatarMinutes === undefined || voiceMinutes < 0 || avatarMinutes < 0) {
+    return 'Confirmed allowance unavailable. Reload the published plan before paying.';
+  }
+  const amounts = `${voiceMinutes} voice-only minutes · ${avatarMinutes} live avatar minutes`;
+  return cycle === 'ANNUAL'
+    ? `${amounts} per monthly allocation. Annual payment includes twelve monthly allocations.`
+    : `${amounts} per 30-day allowance allocation.`;
+}
+
 /** Read adapter only: database rows and canonical API rows share one display contract. */
 export function normalizeBillingTransaction(row: Record<string, unknown>): BillingTransaction {
   const normalized = { ...row };
