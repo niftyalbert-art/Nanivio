@@ -1,26 +1,25 @@
 import type { Express, RequestHandler } from 'express';
 import { communicationAccess, communicationCommand, CommunicationAccessError, type CommunicationPolicy } from './communicationAccess.ts';
+import { balancedCommunicationPlans } from '../lib/balancedCatalogue.ts';
+import { SUBSCRIPTION_PRICING_VERSION } from '../lib/subscriptionPricing.ts';
 
 const editable = ['priceMonthlyUSD','priceMonthlyGHS','priceAnnualUSD','priceAnnualGHS','includedVoiceMinutes','includedLangpretationMinutes'] as const;
 export function applyCommunicationCatalogue(config: CommunicationPolicy, plans: any[]) {
+  plans.splice(0, plans.length, ...balancedCommunicationPlans(plans, config));
   for (const plan of plans) {
     const override = config.plans?.find(entry => entry.id === plan.id);
-    if (override) for (const key of editable) if (typeof override[key] === 'number') plan[key] = override[key];
+    if ((config as any).pricingVersion === SUBSCRIPTION_PRICING_VERSION && override)
+      for (const key of editable) if (typeof override[key] === 'number') plan[key] = override[key];
     if (plan.tier === 'free') {
       plan.includedLangpretationMinutes = 0; plan.includedVoiceMinutes = 0;
       plan.features = ['Free ordinary chat and original voice notes', `${config.callTrialDays}-day calling trial from the first connected call`,
         `${config.liveTrialMinutes}-minute one-time live Langpretation trial`, 'Receiving ordinary calls is free'];
       plan.description = 'Free chat, an introductory calling period and a one-time live Langpretation trial';
-    } else {
-      const other=(plan.features||[]).filter((feature:string)=>!/\bminutes?\b|\bcharacters?\b|Langpretation|translated/i.test(feature));
-      plan.features=[...other,`${plan.includedVoiceMinutes} shared ordinary audio/video minutes per purchased term`,
-        `${plan.includedLangpretationMinutes} shared voice-note/live Langpretation minutes per purchased term`,
-        `${config.paidTextCharacters.toLocaleString('en-US')} text Langpretation characters per purchased term`];
     }
   }
   return plans;
 }
-export function registerCommunicationRoutes(app: Express, auth: RequestHandler, admin: RequestHandler, getPlans: () => any[]) {
+export function registerCommunicationRoutes(app: Express, auth: RequestHandler, admin: RequestHandler, getPlans: () => any[] | Promise<any[]>) {
   const reply = (res: any, error: unknown) => res.status(error instanceof CommunicationAccessError ? error.status : 503)
     .json({success:false,error:error instanceof CommunicationAccessError ? error.message : 'Communication settings could not be loaded or saved.'});
   app.get('/api/communication/access',auth,async(req,res)=>{
@@ -32,7 +31,7 @@ export function registerCommunicationRoutes(app: Express, auth: RequestHandler, 
     res.setHeader('Cache-Control','no-store');
     try {
       const config=await communicationAccess.policy();
-      res.json({success:true,policy:config,plans:applyCommunicationCatalogue(config,getPlans())});
+      res.json({success:true,policy:config,plans:applyCommunicationCatalogue(config,await getPlans())});
     } catch(error){reply(res,error);}
   });
   app.get('/api/admin/communication-policy/users/:userId',admin,async(req,res)=>{
@@ -54,10 +53,10 @@ export function registerCommunicationRoutes(app: Express, auth: RequestHandler, 
   });
   app.put('/api/admin/communication-policy',admin,async(req,res)=>{
     try {
-      const plans=getPlans();
+      const plans=await getPlans();
       const input=req.body?.policy, proposed=req.body?.plans;
       if (!input || !Array.isArray(proposed) || proposed.length>100) throw new CommunicationAccessError(400,'Enter a complete policy and valid plan list.');
-      const config: any={plans:[]};
+      const config: any={plans:[],pricingVersion:SUBSCRIPTION_PRICING_VERSION};
       for(const [key,min,max] of [['callTrialDays',0,365],['liveTrialMinutes',0,10000],['paidTextCharacters',0,10000000],['warningSeconds',1,600]] as const){
         const value=input[key];
         if(typeof value!=='number'||!Number.isFinite(value)||value<min||value>max||!Number.isInteger(value))throw new CommunicationAccessError(400,`Enter a whole number from ${min} to ${max} for ${key}.`);

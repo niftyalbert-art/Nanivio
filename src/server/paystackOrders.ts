@@ -1,3 +1,5 @@
+import type { PricingPurchaseSnapshot } from '../lib/subscriptionPricing.ts';
+import { validatePurchaseSnapshot } from '../lib/subscriptionPricing.ts';
 export const PAYSTACK_PURPOSES = ['COMMUNICATION_TOPUP', 'COMMUNICATION_MINUTES', 'SUBSCRIPTION', 'MALVI_SUBSCRIPTION'] as const;
 
 type PricedPlan = {
@@ -8,8 +10,9 @@ type PricedPlan = {
   videoInteractionMinutesLimit?: number;
   voiceInteractionMinutesLimit?: number;
   catalogVersion?: number;
+  billingTerms?: PricingPurchaseSnapshot;
 };
-type MinutePack = { id: string; minutes: number; priceGHS: number; priceUSD: number; validityDays?: number };
+type MinutePack = { id: string; name?: string; minutes: number; priceGHS: number; priceUSD: number; validityDays?: number; billingTerms?: PricingPurchaseSnapshot };
 type Catalog = { subscriptionPlans: PricedPlan[]; malviPlans: PricedPlan[]; communicationMinutePackages: MinutePack[] };
 
 export function quotePaystackOrder(input: Record<string, any>, catalog: Catalog) {
@@ -32,7 +35,8 @@ export function quotePaystackOrder(input: Record<string, any>, catalog: Catalog)
       amount = currency === 'USD' ? pack.priceUSD : pack.priceGHS;
       packageId = pack.id;
       if (input.minutes != null && Number(input.minutes) !== pack.minutes) throw new Error('Minute count does not match the selected package.');
-      product = { id: pack.id, minutes: pack.minutes, validityDays: pack.validityDays ?? 30 };
+      product = { id: pack.id, name: pack.name, minutes: pack.minutes, validityDays: pack.validityDays ?? 30,
+        ...(pack.billingTerms ? { billingTerms: structuredClone(pack.billingTerms) } : {}) };
     } else if (purpose === 'SUBSCRIPTION' || purpose === 'MALVI_SUBSCRIPTION') {
       const plans = purpose === 'SUBSCRIPTION' ? catalog.subscriptionPlans : catalog.malviPlans;
       const plan = plans.find(p => p.tier === input.planTier && p.isActive !== false);
@@ -52,12 +56,21 @@ export function quotePaystackOrder(input: Record<string, any>, catalog: Catalog)
         voiceQuota: plan.includedVoiceMinutes ?? 0,
         malviQuota: plan.includedMalviRequests ?? 0,
         videoMinutesAllowed: plan.videoInteractionMinutesLimit ?? 0,
+        ...(plan.billingTerms ? {
+          billingTerms: { ...structuredClone(plan.billingTerms), cycle: billingCycle,
+            allocations: billingCycle === 'ANNUAL' ? 12 : 1,
+            priceCentsUSD: Math.round((billingCycle === 'ANNUAL' ? plan.priceAnnualUSD : plan.priceMonthlyUSD) * 100) },
+          planSnapshot: structuredClone(plan),
+        } : {}),
         ...(purpose === 'MALVI_SUBSCRIPTION' ? {
           voiceMinutesAllowed: plan.voiceInteractionMinutesLimit ?? plan.videoInteractionMinutesLimit ?? 0,
           catalogVersion: plan.catalogVersion,
           planSnapshot: { ...plan },
         } : {}),
       };
+      if (product.billingTerms && product.planSnapshot) {
+        product.planSnapshot.billingTerms = structuredClone(product.billingTerms);
+      }
     } else throw new Error('Unsupported Paystack payment purpose.');
     if (input.amount != null && Number(input.amount) !== amount) throw new Error('Price changed or checkout amount does not match the configured product.');
   }
@@ -66,6 +79,7 @@ export function quotePaystackOrder(input: Record<string, any>, catalog: Catalog)
     || Math.abs(amount * 100 - Math.round(amount * 100)) > 0.000001) {
     throw new Error('A positive payment amount with at most two decimal places is required.');
   }
+  if (product?.billingTerms) validatePurchaseSnapshot(product.billingTerms);
   return { purpose, currency, billingCycle, amount, packageId, planTier, minutes: product?.minutes, product };
 }
 

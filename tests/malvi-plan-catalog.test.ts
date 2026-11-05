@@ -46,19 +46,20 @@ const body = (version: number, values: MalviCatalogPlan[] = plans()) => ({
 });
 const errorCode = (code: string) => (e: any) => e.code === code;
 
-test('initial catalogue preserves existing USD prices and allowances; Voice is an unsold draft', async () => {
+test('catalogue projects the approved replacement offers without rewriting stored history', async () => {
   const result = await service.adminRead();
   assert.equal(result.snapshot.version, 0);
   assert.equal(result.snapshot.plans.length, 5);
   assert.equal(result.snapshot.plans[1].tier, 'malvi_voice');
-  assert.equal(result.snapshot.plans[1].status, 'DRAFT');
-  assert.equal(result.snapshot.plans[1].priceMonthlyUSD, 0);
-  for (const legacy of billingDb.malviPlans) {
-    const plan = result.snapshot.plans.find(p => p.tier === legacy.tier)!;
-    assert.equal(plan.priceMonthlyUSD, legacy.priceMonthlyUSD);
-    assert.equal(plan.videoInteractionMinutesLimit, legacy.videoInteractionMinutesLimit);
+  assert.equal(result.snapshot.plans[1].status, 'PUBLISHED');
+  assert.equal(result.snapshot.plans[1].priceMonthlyUSD, 7.99);
+  for (const [tier,price,avatar] of [['malvi_basic',9.99,15],['malvi_premium',24.99,40],['malvi_business',79.99,120]] as const) {
+    const plan = result.snapshot.plans.find(p => p.tier === tier)!;
+    assert.equal(plan.priceMonthlyUSD, price);
+    assert.equal(plan.videoInteractionMinutesLimit, avatar);
   }
-  assert.equal((await service.published()).plans.some(p => p.tier === 'malvi_voice'), false);
+  assert.equal((await service.published()).plans.some(p => p.tier === 'malvi_voice'), true);
+  assert.equal((await service.read()).snapshot.plans[1].status,'DRAFT');
 });
 
 test('plan validation protects identities, prices, flags, free access and unpublished Voice delivery', () => {

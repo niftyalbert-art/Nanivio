@@ -37,7 +37,8 @@ export const CommunicationMinutesModal: React.FC<CommunicationMinutesModalProps>
     refreshBilling,
   } = useNanivio();
 
-  const [selectedPkgId, setSelectedPkgId] = useState<string>('comm_pkg_150');
+  const [selectedPkgId, setSelectedPkgId] = useState<string>('call_100');
+  const [purchaseRequestId, setPurchaseRequestId] = useState(() => crypto.randomUUID());
   const [currency, setCurrency] = useState<'GHS' | 'USD'>('GHS');
   const [isProcessing, setIsProcessing] = useState<boolean>(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -58,81 +59,16 @@ export const CommunicationMinutesModal: React.FC<CommunicationMinutesModalProps>
     </div>
   );
 
-  const packages: CommunicationMinutePackage[] =
-    communicationMinutePackages.length > 0
-      ? communicationMinutePackages
-      : [
-          {
-            id: 'comm_pkg_60',
-            name: 'Starter 60 Minutes',
-            minutes: 60,
-            priceUSD: 3.99,
-            priceGHS: 55.0,
-            description: 'Standard calling and speech translation for casual calling',
-            validityDays: 30,
-            features: [
-              '60 direct voice & video calling minutes',
-              'Valid on domestic and global lines',
-              'Instant balance credit upon settlement',
-            ],
-          },
-          {
-            id: 'comm_pkg_150',
-            name: 'Value 150 Minutes',
-            minutes: 150,
-            priceUSD: 8.99,
-            priceGHS: 130.0,
-            description: 'Popular communication pack for active weekly business and family connections',
-            validityDays: 30,
-            features: [
-              '150 crystal-clear WebRTC audio & video minutes',
-              'Priority route allocation',
-              'Rolls over with active plan renewal',
-            ],
-          },
-          {
-            id: 'comm_pkg_300',
-            name: 'Power 300 Minutes',
-            minutes: 300,
-            priceUSD: 16.99,
-            priceGHS: 245.0,
-            description: 'Substantial minutes allowance for cross-border trade, diaspora and consulting',
-            validityDays: 60,
-            features: [
-              '300 minutes valid for 60 full days',
-              'Low per-minute rate (GH₵ 0.81/min)',
-              'High definition group audio & video access',
-            ],
-          },
-          {
-            id: 'comm_pkg_600',
-            name: 'Executive 600 Minutes',
-            minutes: 600,
-            priceUSD: 29.99,
-            priceGHS: 430.0,
-            description: 'High-volume international communication pack for executives and regular traders',
-            validityDays: 90,
-            features: [
-              '600 minutes valid for 90 days',
-              'VIP carrier routing with lowest latency',
-              'Detailed call detail records (CDR)',
-            ],
-          },
-          {
-            id: 'comm_pkg_1500',
-            name: 'Enterprise 1,500 Minutes',
-            minutes: 1500,
-            priceUSD: 69.99,
-            priceGHS: 990.0,
-            description: 'Ultimate commercial minute bundle for organizations, call centers, and teams',
-            validityDays: 180,
-            features: [
-              '1,500 shared organization minutes',
-              'Valid for 180 days',
-              'Full AfCFTA trade corridor rate parity',
-            ],
-          },
-        ];
+  const packages: CommunicationMinutePackage[] = communicationMinutePackages;
+  if (!packages.length) return (
+    <div role="status" className="fixed inset-0 z-50 grid place-items-center bg-black/80">
+      <div className="rounded-xl bg-slate-900 p-6 text-white">
+        <p>Add-on prices could not be loaded. No old packages are offered.</p>
+        <button onClick={() => void refreshBilling()} className="mt-4 mr-4">Retry</button>
+        <button onClick={onClose}>Close</button>
+      </div>
+    </div>
+  );
 
   const selectedPkg = packages.find((p) => p.id === selectedPkgId) || packages[0];
   const pkgCost = currency === 'USD' ? selectedPkg.priceUSD : selectedPkg.priceGHS;
@@ -146,8 +82,9 @@ export const CommunicationMinutesModal: React.FC<CommunicationMinutesModalProps>
     setIsProcessing(true);
     setErrorMessage(null);
     try {
-      const res = await purchaseCommunicationMinutes(selectedPkg.id, 'SERVICE_VALUE', currency);
+      const res = await purchaseCommunicationMinutes(selectedPkg.id, 'SERVICE_VALUE', currency, purchaseRequestId, pkgCost);
       setSuccessResult(res);
+      setPurchaseRequestId(crypto.randomUUID());
       if (onSuccess) onSuccess();
     } catch (err: any) {
       if (err.code === 'INSUFFICIENT_SERVICE_VALUE') {
@@ -186,12 +123,12 @@ export const CommunicationMinutesModal: React.FC<CommunicationMinutesModalProps>
             <div className="space-y-1">
               <div className="flex items-center gap-2">
                 <span className="px-2.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 text-xs font-mono font-bold border border-emerald-500/30">
-                  Communication Minutes Pack
+                  Nanivio add-ons
                 </span>
                 <span className="text-xs text-slate-400 font-mono">Live Telecom &amp; Langpretation Quota</span>
               </div>
               <h2 className="text-xl sm:text-2xl font-black text-white">
-                Select Your Communication Minutes
+                Choose your add-on
               </h2>
               <p className="text-xs sm:text-sm text-slate-400">
                 Pay with Paystack, USDT on TRON, or Nanivio credit received from other users.
@@ -211,14 +148,14 @@ export const CommunicationMinutesModal: React.FC<CommunicationMinutesModalProps>
               <div className="w-16 h-16 rounded-full bg-emerald-500/20 border-2 border-emerald-400 text-emerald-400 flex items-center justify-center mx-auto shadow-xl shadow-emerald-500/30">
                 <Check className="w-8 h-8 stroke-[3]" />
               </div>
-              <h3 className="text-2xl font-black text-white">Minutes Successfully Activated!</h3>
+              <h3 className="text-2xl font-black text-white">Add-on activated</h3>
               <p className="text-sm text-slate-300 max-w-md mx-auto">
-                {successResult.message || `+${selectedPkg.minutes} Communication Minutes are now live and credited to your meter.`}
+                {successResult.message || `${selectedPkg.name} is now available on your account.`}
               </p>
               <div className="p-4 bg-slate-950 rounded-2xl border border-slate-800 max-w-sm mx-auto space-y-2 text-xs font-mono">
                 <div className="flex justify-between text-slate-400">
                   <span>Allowance Remaining:</span>
-                  <span className="text-emerald-400 font-bold">{successResult.allowance || selectedPkg.minutes} mins</span>
+                  <span className="text-emerald-400 font-bold">{selectedPkg.name}</span>
                 </div>
                 <div className="flex justify-between text-slate-400">
                   <span>Valid Period:</span>
@@ -276,7 +213,7 @@ export const CommunicationMinutesModal: React.FC<CommunicationMinutesModalProps>
                   return (
                     <div
                       key={pkg.id}
-                      onClick={() => setSelectedPkgId(pkg.id)}
+                      onClick={() => { setSelectedPkgId(pkg.id); setPurchaseRequestId(crypto.randomUUID()); }}
                       className={`p-4 rounded-2xl border flex flex-col justify-between space-y-3 cursor-pointer transition-all ${
                         isSelected
                           ? 'bg-emerald-950/40 border-emerald-500 shadow-lg shadow-emerald-500/20 ring-1 ring-emerald-500'
@@ -294,7 +231,7 @@ export const CommunicationMinutesModal: React.FC<CommunicationMinutesModalProps>
                         </div>
                         <div className="text-xl font-black text-emerald-400 font-mono">
                           +{pkg.minutes}{' '}
-                          <span className="text-xs font-normal text-slate-400">mins</span>
+                          <span className="text-xs font-normal text-slate-400">{(pkg as any).unitLabel || 'minutes'}</span>
                         </div>
                         <div className="text-sm font-bold text-white font-mono">
                           {priceDisplay}
@@ -305,7 +242,7 @@ export const CommunicationMinutesModal: React.FC<CommunicationMinutesModalProps>
                       </div>
 
                       <div className="pt-2 border-t border-slate-800/80 text-[10px] text-slate-400 space-y-1 font-mono">
-                        <div>Rate: {currency === 'USD' ? `$${(pkg.priceUSD / pkg.minutes).toFixed(2)}/min` : `GH₵ ${(pkg.priceGHS / pkg.minutes).toFixed(2)}/min`}</div>
+                        <div>{pkg.validityDays}-day validity · {(pkg as any).unitLabel || 'minutes'}</div>
                       </div>
                     </div>
                   );
@@ -407,6 +344,7 @@ export const CommunicationMinutesModal: React.FC<CommunicationMinutesModalProps>
           purpose="COMMUNICATION_MINUTES"
           packageId={selectedPkg.id}
           minutes={selectedPkg.minutes}
+          productName={selectedPkg.name}
         />
       )}
     </>

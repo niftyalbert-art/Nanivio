@@ -13,6 +13,23 @@ export function normalizedBillingEnabled(): boolean {
   return Boolean(process.env.SUPABASE_URL && process.env.SUPABASE_SERVICE_ROLE_KEY);
 }
 
+async function refreshBalancedTerms(userId: string) {
+  const { error } = await db().rpc('nanivio_refresh_balanced_terms', { p_user: userId });
+  // A pre-cutover database must still serve already-paid legacy benefits.
+  // New checkouts independently require the rollout readiness RPC.
+  if (error && !['PGRST202','42883'].includes(error.code)) throw new Error('Subscription allowances could not be refreshed.');
+}
+async function balancedAccess(userId: string) {
+  const { data, error } = await db().rpc('nanivio_balanced_usage', { action: 'ACCESS', payload: { userId } });
+  if (error && !['PGRST202','42883'].includes(error.code)) throw new Error('Purchased add-on balances could not be loaded.');
+  return error ? null : data;
+}
+async function balancedPackCommand(payload: Record<string, unknown>) {
+  const { data, error } = await db().rpc('nanivio_fulfill_balanced_pack', { payload });
+  if (error || !data?.success) throw new Error('The add-on could not be activated. Check payment history before retrying.');
+  return data;
+}
+
 export async function billingCommand(command: string, payload: Record<string, unknown>) {
   if (!normalizedBillingEnabled()) throw new Error('Normalized billing database is not configured.');
   const { data, error } = await db().rpc('nanivio_billing_command', { command_name: command, payload });
@@ -66,6 +83,7 @@ export async function getPersistentWallet(userId: string, accountType: string, c
 }
 
 export async function getPersistentSubscription(userId: string) {
+  await refreshBalancedTerms(userId);
   const database = db();
   const { data: active, error: activeError } = await database
     .from('nanivio_subscriptions')
@@ -148,10 +166,12 @@ export async function getPersistentInvoice(userId: string, invoiceId: string) {
   return byRowId.data || null;
 }
 export async function purchaseCommunicationMinutesPersistent(payload: Record<string, unknown>) {
+  if (payload.billingTerms) return balancedPackCommand({ ...payload, method: 'PAYSTACK' });
   return billingCommand('COMMUNICATION_MINUTES_PURCHASE', payload);
 }
 
 export async function purchaseCommunicationMinutesFromWalletPersistent(payload: Record<string, unknown>) {
+  if (payload.billingTerms) return balancedPackCommand({ ...payload, method: 'CREDIT' });
   return billingCommand('COMMUNICATION_MINUTES_FROM_WALLET', payload);
 }
 
@@ -203,6 +223,7 @@ export async function getPersistentUsageMeter(userId:string, subscription?: Awai
   return buildCommunicationMeter(userId, access, currentSubscription, Date.now(), trialSeconds / 60);
 }
 export async function getPersistentMalviSubscription(userId:string){
+  await refreshBalancedTerms(userId);
   const database=db(),now=new Date().toISOString();
   const current=await database.from('nanivio_malvi_subscriptions').select('*').eq('user_id',userId)
     .in('status',['ACTIVE','TRIAL']).lte('current_period_start',now).gt('current_period_end',now)
@@ -216,6 +237,21 @@ export async function getPersistentMalviSubscription(userId:string){
     data=latest.data;
   }
   if(!data) return null;
+  const packs = await balancedAccess(userId);
+  const voiceExtra = Number(packs?.remaining?.voiceSeconds || 0) / 60;
+  const avatarExtra = Number(packs?.remaining?.avatarSeconds || 0) / 60;
+  const voicePackQuota = Number(packs?.quota?.voiceSeconds || 0) / 60;
+  const avatarPackQuota = Number(packs?.quota?.avatarSeconds || 0) / 60;
+  let heldVoice = 0, heldAvatar = 0;
+  if (voicePackQuota || avatarPackQuota) {
+    const held = await db().from('nanivio_balanced_malvi_pack_leases').select('mode,seconds')
+      .eq('user_id',userId).eq('settled',false);
+    if (held.error) throw new Error('Live Malvi add-on reservations could not be loaded.');
+    for (const lease of held.data || []) {
+      if (lease.mode === 'voice') heldVoice += Number(lease.seconds)/60;
+      else heldAvatar += Number(lease.seconds)/60;
+    }
+  }
   return {
     id:data.subscription_id, userId:data.user_id, planId:data.plan_id, tier:data.tier, planName:data.plan_name,
     billingCycle:data.billing_cycle, status:data.status, startedAt:data.started_at?new Date(data.started_at).getTime():Date.now(),
@@ -225,10 +261,14 @@ export async function getPersistentMalviSubscription(userId:string){
     pricePaid:Number(data.price_paid||0), currency:data.currency,
     purchasedCapabilities: Array.isArray(data.capabilities)
       ? data.capabilities.filter((v: unknown): v is string => typeof v === 'string') : null,
-    videoMinutesAllowed:Number(data.video_minutes_allowed||0), videoMinutesUsed:Number(data.video_minutes_used||0),
-    videoMinutesRemaining:Math.max(0,Number(data.video_minutes_allowed||0)-Number(data.video_minutes_used||0)),
-    voiceMinutesAllowed:Number(data.voice_minutes_allowed||0), voiceMinutesUsed:Number(data.voice_minutes_used||0),
-    voiceMinutesRemaining:Math.max(0,Number(data.voice_minutes_allowed||0)-Number(data.voice_minutes_used||0)), autoRenew:Boolean(data.auto_renew ?? true),
+    subscriptionVideoMinutesAllowed:Math.max(0,Number(data.video_minutes_allowed||0)-heldAvatar),
+    subscriptionVoiceMinutesAllowed:Math.max(0,Number(data.voice_minutes_allowed||0)-heldVoice),
+    videoMinutesAllowed:Math.max(0,Number(data.video_minutes_allowed||0)-heldAvatar)+avatarPackQuota,
+    videoMinutesUsed:Math.max(0,Number(data.video_minutes_used||0)-heldAvatar)+avatarPackQuota-avatarExtra,
+    videoMinutesRemaining:Math.max(0,Number(data.video_minutes_allowed||0)-Number(data.video_minutes_used||0))+avatarExtra,
+    voiceMinutesAllowed:Math.max(0,Number(data.voice_minutes_allowed||0)-heldVoice)+voicePackQuota,
+    voiceMinutesUsed:Math.max(0,Number(data.voice_minutes_used||0)-heldVoice)+voicePackQuota-voiceExtra,
+    voiceMinutesRemaining:Math.max(0,Number(data.voice_minutes_allowed||0)-Number(data.voice_minutes_used||0))+voiceExtra, autoRenew:Boolean(data.auto_renew ?? true),
   };
 }
 
@@ -251,12 +291,25 @@ export async function ensureMalviEntitlement(userId:string){
   const {data:existing,error:ee}=await dbx.from('malvi_credit_ledger').select('id').eq('user_id',userId).eq('reference',reference).maybeSingle();
   if(ee) throw new Error(ee.message);
   if(!existing){
-    const amount=Math.max(0,Number(sub.videoMinutesAllowed||0),Number(sub.voiceMinutesAllowed||0));
+    const amount=Math.max(0,Number(sub.subscriptionVideoMinutesAllowed||0),Number(sub.subscriptionVoiceMinutesAllowed||0));
     if(amount>0) await creditMalviAccount(userId,amount,reference,'MALVI_SUBSCRIPTION','MALVI_MINUTES',{planId:sub.planId,tier:sub.tier,periodStart:sub.currentPeriodStart,periodEnd:sub.currentPeriodEnd});
   }
   return getMalviCreditAccount(userId);
 }
-export async function getMalviCreditAccount(userId:string){const dbx=db();const {data,error}=await dbx.from('malvi_credit_accounts').select('*').eq('user_id',userId).maybeSingle();if(error)throw new Error(error.message);if(data)return data;const {data:created,error:ce}=await dbx.from('malvi_credit_accounts').insert({user_id:userId,credit_balance:0}).select('*').single();if(ce)throw new Error(ce.message);return created;}
+export async function getMalviCreditAccount(userId:string){
+  const dbx=db();
+  const {data,error}=await dbx.from('malvi_credit_accounts').select('*').eq('user_id',userId).maybeSingle();
+  if(error)throw new Error(error.message);
+  let account=data;
+  if(!account){
+    const {data:created,error:ce}=await dbx.from('malvi_credit_accounts').insert({user_id:userId,credit_balance:0}).select('*').single();
+    if(ce)throw new Error(ce.message);
+    account=created;
+  }
+  const packs=await balancedAccess(userId);
+  return {...account,voiceAddonMinutes:Number(packs?.remaining?.voiceSeconds||0)/60,
+    avatarAddonMinutes:Number(packs?.remaining?.avatarSeconds||0)/60};
+}
 export async function creditMalviAccount(userId:string,amount:number,reference:string,source:string,creditType='MALVI_USAGE',metadata:any={}){if(!(amount>0))throw new Error('Credit amount must be positive.');const {data,error}=await db().rpc('nanivio_malvi_credit_command',{command_name:'CREDIT',payload:{userId,amount,reference,source,creditType,metadata}});if(error)throw new Error(error.message);return getMalviCreditAccount(userId);}
 export async function consumeMalviCredit(userId:string,amount:number,reference:string,source:string,creditType='MALVI_USAGE',metadata:any={}){if(!(amount>0))throw new Error('Usage amount must be positive.');const {data,error}=await db().rpc('nanivio_malvi_credit_command',{command_name:'DEBIT',payload:{userId,amount,reference,source,creditType,metadata}});if(error)throw new Error(error.message);return getMalviCreditAccount(userId);}
 export async function recordMalviUsagePersistent(userId:string,seconds:number,metadata:any={}){await ensureMalviEntitlement(userId);const credits=Math.max(0,Number((seconds/60).toFixed(6)));const ref=`malvi_usage_${crypto.randomUUID()}`;const account=await consumeMalviCredit(userId,credits,ref,'MALVI_USAGE','MALVI_MINUTES',metadata);const {error}=await db().from('nanivio_usage_events').insert({event_id:ref,user_id:userId,service:'MALVI_AI',session_id:metadata.sessionId||null,source_language:metadata.sourceLang||null,target_language:metadata.targetLang||null,provider:metadata.provider||'gemini',input_units:seconds,audio_seconds:seconds,credits_consumed:credits,status:'COMPLETED',metadata});if(error)throw new Error(error.message);return {success:true,creditsConsumed:credits,remainingCredit:Number(account.credit_balance)};}

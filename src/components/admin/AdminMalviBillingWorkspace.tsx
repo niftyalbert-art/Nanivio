@@ -1,10 +1,11 @@
 import React, { useState } from 'react';
-import { Calculator, Layers3, WalletCards } from 'lucide-react';
+import { Calculator, Layers3, WalletCards, ClipboardList } from 'lucide-react';
 import { AdminMalviCostCalculator } from './AdminMalviCostCalculator';
 import { AdminMalviPlanManager } from './AdminMalviPlanManager';
 import { AdminCryptoPayments } from '../billing/AdminCryptoPayments';
+import { AdminBalancedPricingReview } from './AdminBalancedPricingReview';
 
-type WorkspaceSection = 'plans' | 'calculator' | 'crypto';
+type WorkspaceSection = 'plans' | 'calculator' | 'crypto' | 'proposal';
 
 export const AdminMalviBillingWorkspace: React.FC = () => {
   const [section, setSection] = useState<WorkspaceSection>('plans');
@@ -12,6 +13,7 @@ export const AdminMalviBillingWorkspace: React.FC = () => {
     { id: 'plans', label: 'Plans', icon: Layers3 },
     { id: 'calculator', label: 'Cost calculator', icon: Calculator },
     { id: 'crypto', label: 'Crypto payments', icon: WalletCards },
+    { id: 'proposal', label: 'Pricing proposal', icon: ClipboardList },
   ];
 
   return (
@@ -28,11 +30,15 @@ export const AdminMalviBillingWorkspace: React.FC = () => {
             tabIndex={section === id ? 0 : -1}
             onClick={() => setSection(id)}
             onKeyDown={(event) => {
-              if (event.key === 'ArrowRight' || event.key === 'ArrowLeft') {
+              if (['ArrowRight', 'ArrowLeft', 'Home', 'End'].includes(event.key)) {
                 event.preventDefault();
-                const order: WorkspaceSection[] = ['plans', 'calculator', 'crypto'];
+                const order: WorkspaceSection[] = ['plans', 'calculator', 'crypto', 'proposal'];
                 const index = order.indexOf(section);
-                const next = order[(index + (event.key === 'ArrowRight' ? 1 : order.length - 1)) % order.length];
+                const next = event.key === 'Home'
+                  ? order[0]
+                  : event.key === 'End'
+                    ? order[order.length - 1]
+                    : order[(index + (event.key === 'ArrowRight' ? 1 : order.length - 1)) % order.length];
                 setSection(next);
                 document.getElementById(`malvi-billing-tab-${next}`)?.focus();
               }
@@ -51,6 +57,9 @@ export const AdminMalviBillingWorkspace: React.FC = () => {
       </div>
       <div id="malvi-billing-panel-crypto" role="tabpanel" aria-labelledby="malvi-billing-tab-crypto" hidden={section !== 'crypto'}>
         {section === 'crypto' && <AdminCryptoPayments />}
+      </div>
+      <div id="malvi-billing-panel-proposal" role="tabpanel" aria-labelledby="malvi-billing-tab-proposal" hidden={section !== 'proposal'}>
+        {section === 'proposal' && <AdminBalancedPricingReview />}
       </div>
     </section>
   );

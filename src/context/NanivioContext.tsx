@@ -358,7 +358,7 @@ interface NanivioContextType {
   setIsMalviHubOpen: (open: boolean) => void;
   isMinutesModalOpen: boolean;
   setIsMinutesModalOpen: (open: boolean) => void;
-  purchaseCommunicationMinutes: (packageId: string, paymentMethod?: 'SERVICE_VALUE' | 'PAYSTACK', currency?: string) => Promise<any>;
+  purchaseCommunicationMinutes: (packageId: string, paymentMethod?: 'SERVICE_VALUE' | 'PAYSTACK', currency?: string, requestId?: string, expectedAmount?: number) => Promise<any>;
   subscribeMalviPlan: (tier: MalviSubscriptionTier, cycle?: 'MONTHLY' | 'ANNUAL', paymentMethod?: 'SERVICE_VALUE' | 'PAYSTACK', currency?: string) => Promise<any>;
   recordLangpretationUsage: (channel: 'AUDIO_CALL' | 'VIDEO_CALL' | 'GROUP_AUDIO' | 'VOICE_NOTE' | 'TEXT_CHAT', minutes: number, sourceLang?: string, targetLang?: string, sessionId?: string) => Promise<any>;
   recordMalviVideoUsage: (seconds: number) => Promise<any>;
@@ -1638,9 +1638,11 @@ export const NanivioProvider: React.FC<{ children: React.ReactNode }> = ({ child
   const purchaseCommunicationMinutes = useCallback(async (
     packageId: string,
     paymentMethod: 'SERVICE_VALUE' | 'PAYSTACK' = 'SERVICE_VALUE',
-    currency: string = 'GHS'
+    currency: string = 'GHS',
+    requestId: string = crypto.randomUUID(),
+    expectedAmount?: number
   ): Promise<any> => {
-    const res = await billingClient.purchaseMinutePackage({ packageId, paymentMethod, currency });
+    const res = await billingClient.purchaseMinutePackage({ packageId, paymentMethod, currency, requestId, expectedAmount });
     await refreshBilling();
     try {
       confetti({ particleCount: 75, spread: 65, origin: { y: 0.6 } });

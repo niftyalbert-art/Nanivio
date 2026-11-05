@@ -11,8 +11,9 @@ const minutes = (seconds: unknown) => Number((nonnegative(seconds) / 60).toFixed
 export function buildCommunicationMeter(
   userId: string, access: CommunicationAccess, subscription: UserSubscriptionState | null, now = Date.now(), recordedTrialMinutes?: number,
 ): LangpretationMeterData {
+  const quota = access.translationQuotaMinutes ?? subscription?.langpretationMinutesQuota;
   const values: unknown[] = [access.policy.liveTrialMinutes, access.liveTrialSecondsRemaining, access.textCharactersRemaining,
-    ...(access.paid ? [access.translatedSecondsRemaining, subscription?.langpretationMinutesQuota] : [])];
+    ...(access.paid ? [access.translatedSecondsRemaining, quota] : [])];
   for (const value of values) {
     if (value == null || (typeof value === 'string' && !value.trim()) || !Number.isFinite(Number(value))) throw new Error('Communication allowance data is incomplete.');
   }
@@ -21,7 +22,7 @@ export function buildCommunicationMeter(
     ? Math.max(0, nonnegative(access.policy.liveTrialMinutes) - trialRemaining) : Number(nonnegative(recordedTrialMinutes).toFixed(4));
   // The current admin default is not an existing user's original grant.
   const trialQuota = trialRemaining + trialUsed;
-  const paidQuota = access.paid ? nonnegative(subscription?.langpretationMinutesQuota) : 0;
+  const paidQuota = access.paid ? nonnegative(quota) : 0;
   const paidRemaining = access.paid ? minutes(access.translatedSecondsRemaining) : 0;
   const used = trialUsed + Math.max(0, paidQuota - paidRemaining);
   const remaining = trialRemaining + paidRemaining;
@@ -41,7 +42,7 @@ export function buildCommunicationMeter(
     currentPeriodStart: access.paid ? nonnegative(subscription?.currentPeriodStart) : 0,
     currentPeriodEnd: access.paid && access.paidUntil ? Date.parse(access.paidUntil) : 0,
     tier: access.paid ? subscription?.tier || 'paid' : 'free',
-    planName: access.paid ? subscription?.planName || 'Communication plan'
+    planName: access.paid ? subscription?.planName || 'Communication add-ons'
       : trialRemaining > 0 ? 'Live Langpretation test' : 'Subscription required',
     channelBreakdown: { audioCalls: 0, videoCalls: 0, groupAudioCalls: 0, voiceNotes: 0, textChat: 0 },
   };

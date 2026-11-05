@@ -6,6 +6,7 @@ import test from 'node:test';
 import { PGlite } from '@electric-sql/pglite';
 import ts from 'typescript';
 import { quotePaystackOrder, validateVerifiedOrder } from '../src/server/paystackOrders.ts';
+import { pricingPurchaseSnapshot } from '../src/lib/subscriptionPricing.ts';
 import { assertLivePaystackPayment, paystackLiveConfigurationError } from '../src/server/paystackPaymentSafety.ts';
 import {verifyPaystackTransaction,paystackVerificationDiagnostic} from '../src/server/paystackVerification.ts';
 import {createPaystackReconciler} from '../src/server/paystackReconciliation.ts';
@@ -81,6 +82,11 @@ function system() {
       return Response.json({ status:true, data:provider.get(decodeURIComponent(url.split('/').at(-1)!)) });
     },
   };
+  // Legacy gateway fixtures retain original paid snapshots. New catalogue
+  // prices and SQL readiness have separate rollout coverage.
+  context.saleCatalogue = async (input: any) => input.purpose === 'MALVI_SUBSCRIPTION'
+    ? {...context.billingDb,malviPlans:(await context.malviCatalogService.published()).plans} : context.billingDb;
+  context.getServerSupabase = () => ({rpc:async()=>({data:{ready:true,pricingVersion:'balanced-2026-11'},error:null})});
   context.verifyPaystackTransaction=(reference:string,key:string)=>verifyPaystackTransaction(reference,key,{fetcher:context.fetch});
   context.paystackVerificationDiagnostic=paystackVerificationDiagnostic;
   const sandbox = vm.createContext(context);
@@ -89,6 +95,8 @@ function system() {
     return context.result;
   };
   context.fulfillPaystackOrder = compile(fulfill.getText(ast));
+  context.requireBalancedBillingSetup = compile(ast.statements.find(node =>
+    ts.isFunctionDeclaration(node) && node.name?.text === 'requireBalancedBillingSetup')!.getText(ast));
   const initialize = compile(handlerText('/api/paystack/initialize'));
   const verify = compile(handlerText('/api/paystack/verify/:reference'));
   const webhook = compile(handlerText('/api/paystack/webhook'));
@@ -102,6 +110,35 @@ function system() {
   return { context, plan, orders, deliveries, fulfilled, provider, initialize, verify, webhook, malviWallet, call,
     failOnce:()=>{ failNextDelivery=true; } };
 }
+
+test('new subscription checkout requires rollout setup before contacting the payment provider',async()=>{
+  const s=system();
+  s.context.billingDb.subscriptionPlans=[{...s.plan,id:'plan_individual_premium',tier:'individual_premium',
+    priceMonthlyUSD:14.99,priceAnnualUSD:159.99,includedVoiceMinutes:200,includedLangpretationMinutes:20,
+    billingTerms:pricingPurchaseSnapshot('plan_individual_premium')}];
+  s.context.getServerSupabase=()=>({rpc:async()=>({data:null,error:{code:'PGRST202'}})});
+  const res=await s.call(s.initialize,{authId:'buyer',body:{purpose:'SUBSCRIPTION',planTier:'individual_premium',currency:'USD'}});
+  assert.equal(res.code,400);
+  assert.match(res.body.error,/billing setup is required/);
+  assert.equal(s.provider.size,0);
+  assert.equal(s.orders.size,0);
+});
+test('actual new monthly and annual checkout handlers charge the approved price and fulfil the accepted snapshot',async()=>{
+  for(const billingCycle of ['MONTHLY','ANNUAL']) {
+    const s=system();
+    s.context.billingDb.subscriptionPlans=[{...s.plan,id:'plan_individual_premium',tier:'individual_premium',
+      priceMonthlyUSD:14.99,priceAnnualUSD:159.99,includedVoiceMinutes:200,includedLangpretationMinutes:20,
+      billingTerms:pricingPurchaseSnapshot('plan_individual_premium')}];
+    const res=await s.call(s.initialize,{authId:'buyer',body:{purpose:'SUBSCRIPTION',planTier:'individual_premium',currency:'USD',billingCycle}});
+    assert.equal(res.code,200,JSON.stringify(res.body));
+    const order=s.orders.get(res.body.reference);
+    assert.equal(order.amount,billingCycle==='ANNUAL'?159.99:14.99);
+    assert.equal(order.product.billingTerms.allocations,billingCycle==='ANNUAL'?12:1);
+    const verified=await s.call(s.verify,{authId:'buyer',params:{reference:res.body.reference}});
+    assert.equal(verified.code,200,JSON.stringify(verified.body));
+    assert.deepEqual(JSON.parse(JSON.stringify(s.deliveries[0].metadata.billingTerms)),order.product.billingTerms);
+  }
+});
 
 function checkout(purpose: typeof PAYSTACK_PURPOSES[number], currency = 'GHS', billingCycle = 'MONTHLY') {
   return { purpose, currency, billingCycle,

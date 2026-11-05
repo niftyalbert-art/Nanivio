@@ -9,6 +9,8 @@ import {
 } from '../lib/malviPlanCatalog';
 import type { MalviFxQuote } from '../lib/malviBillingCalculator';
 import type { MalviSubscriptionPlan } from '../types/billing';
+import { balancedMalviPlans } from '../lib/balancedCatalogue.ts';
+import { SUBSCRIPTION_PRICING_VERSION } from '../lib/subscriptionPricing.ts';
 
 interface CatalogDocument { schemaVersion: 1; snapshot: MalviCatalogSnapshot; history: MalviCatalogSnapshot[] }
 export interface CatalogRepository {
@@ -71,7 +73,12 @@ export function createMalviCatalogService(
     } catch { throw new MalviCatalogError(503, 'PLAN_CATALOG_INVALID', 'Saved plans could not be validated. They were not replaced with defaults. Contact a billing administrator.'); }
   }
   async function adminRead() {
-    try { return { ...await read(), storageAvailable: true, storageWarning: null }; }
+    try {
+      const doc = await read();
+      const plans = balancedMalviPlans(doc.snapshot.plans, doc.snapshot.pricingVersion === SUBSCRIPTION_PRICING_VERSION)
+        .map(({ billingTerms, pricingVersion, ...plan }) => plan);
+      return { ...doc, snapshot: { ...doc.snapshot, plans }, storageAvailable: true, storageWarning: null };
+    }
     catch (error) {
       if (error instanceof MalviCatalogError && error.code === 'PLAN_STORAGE_UNAVAILABLE') {
         return { schemaVersion: 1 as const, snapshot: initialMalviCatalog(legacy()), history: [],
@@ -107,6 +114,7 @@ export function createMalviCatalogService(
     }
     const snapshot: MalviCatalogSnapshot = {
       version: expectedVersion + 1, plans, savedAt: new Date().toISOString(), savedBy: actorId, reason: reason.trim(),
+      pricingVersion: SUBSCRIPTION_PRICING_VERSION,
     };
     const history = (previous.snapshot.version ? [previous.snapshot, ...previous.history] : previous.history).slice(0, 20);
     const document: CatalogDocument = { schemaVersion: 1, snapshot, history };
@@ -120,7 +128,8 @@ export function createMalviCatalogService(
       const quote = await loadFx();
       if (quote.rate > 0 && Number.isFinite(quote.rate) && Date.parse(quote.expiresAt) > Date.now()) fx = quote;
     } catch { /* USD plans remain readable, but no GHS amount is invented. */ }
-    const plans = doc.snapshot.plans.filter(p => p.status === 'PUBLISHED').map(p => {
+    const plans = balancedMalviPlans(doc.snapshot.plans, doc.snapshot.pricingVersion === SUBSCRIPTION_PRICING_VERSION)
+      .filter(p => p.status === 'PUBLISHED').map(p => {
       const { status, ...plan } = p;
       return {
         ...plan, isActive: true, catalogVersion: doc.snapshot.version,

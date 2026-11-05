@@ -574,6 +574,8 @@ export const billingClient = {
 
   async purchaseMinutePackage(params: {
     packageId: string;
+    requestId?: string;
+    expectedAmount?: number;
     currency?: string;
     paymentMethod?: 'SERVICE_VALUE' | 'PAYSTACK';
   }): Promise<{

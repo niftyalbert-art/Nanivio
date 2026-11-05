@@ -3,6 +3,9 @@ import http from "http";
 import path from "path";
 import crypto from "crypto";
 import { communicationAccess, CommunicationAccessError, withCommunicationUsage, type UsageReservation } from './src/server/communicationAccess.ts';
+import { createBalancedPricingRouter } from './src/server/subscriptionPricing.ts';
+import { balancedPacks } from './src/lib/balancedCatalogue.ts';
+import { publicFx as currentBillingFx } from './src/server/malviCostCalculator.ts';
 import { unavailableCommunicationMeter } from './src/server/langpretationMeter.ts';
 import { registerCommunicationRoutes, applyCommunicationCatalogue } from './src/server/communicationRoutes.ts';
 import { classifyCallTokenFailure } from './src/server/callTokenFailure.ts';
@@ -892,7 +895,7 @@ const EAST_AFRICAN_LANGUAGES = new Set(["sw", "lg"]);
 const INTERNATIONAL_LANGUAGES = new Set(["en", "fr", "es", "ar", "de", "it", "pt", "zh", "ja", "ko"]);
 
 // 1:1 Translation Endpoint via Live Multi-Provider Engine
-registerCommunicationRoutes(app, requireAuthenticatedUser, requireAdmin, () => billingDb.subscriptionPlans);
+registerCommunicationRoutes(app, requireAuthenticatedUser, requireAdmin, () => communicationSalePlans());
 app.post("/api/translate", requireAuthenticatedUser, async (req, res) => {
   let usage: UsageReservation | undefined;
   try {
@@ -2054,29 +2057,71 @@ const pendingPaystackOrders = new Map<string, {
   createdAt: number;
 }>();
 
+async function communicationSalePlans() {
+  const policy = await communicationAccess.policy();
+  const plans = applyCommunicationCatalogue(policy, billingDb.subscriptionPlans);
+  const fx = await currentBillingFx();
+  return plans.map(plan => ({ ...plan,
+    priceMonthlyGHS: (policy as any).pricingVersion === 'balanced-2026-11'
+      ? plan.priceMonthlyGHS : Math.round(plan.priceMonthlyUSD * fx.rate * 100) / 100,
+    priceAnnualGHS: (policy as any).pricingVersion === 'balanced-2026-11'
+      ? plan.priceAnnualGHS : Math.round(plan.priceAnnualUSD * fx.rate * 100) / 100,
+    currencyConversion: fx,
+  }));
+}
+async function communicationSalePacks() {
+  return balancedPacks((await currentBillingFx()).rate);
+}
+async function saleCatalogue(input: Record<string, any>) {
+  return {
+    subscriptionPlans: input.purpose === 'SUBSCRIPTION' ? await communicationSalePlans() : [],
+    malviPlans: input.purpose === 'MALVI_SUBSCRIPTION' ? (await malviCatalogService.published()).plans : [],
+    communicationMinutePackages: input.purpose === 'COMMUNICATION_MINUTES' ? await communicationSalePacks() : [],
+  };
+}
+async function requireBalancedBillingSetup(product: any, userId?: string) {
+  if (!product?.billingTerms) return;
+  const client = getServerSupabase();
+  if (!client) throw new Error('Persistent billing setup is required before starting payment.');
+  const { data, error } = await client.rpc('nanivio_balanced_billing_ready');
+  if (error || data?.ready !== true || data.pricingVersion !== product.billingTerms.pricingVersion) {
+    throw new Error('New billing setup is required. Ask an administrator to apply migrations 024 and 025 before starting payment. No payment was started.');
+  }
+  if (product.billingTerms.kind === 'pack' && product.billingTerms.limits.callSeconds > 0) {
+    const access = userId ? await communicationAccess.access(userId) : null;
+    if (!access || (!access.trialStartedAt && access.policy.callTrialDays > 0)
+      || (access.trialEndsAt && Date.parse(access.trialEndsAt) > Date.now()))
+      throw new Error('Ordinary calls are still free during your calling trial. Buy calling add-ons after the trial ends. No payment was started.');
+  }
+  if (product.billingTerms.kind === 'pack' && product.billingTerms.family === 'malvi') {
+    const sub = userId ? await getPersistentMalviSubscription(userId) : null;
+    const modeAllowed = product.billingTerms.limits.avatarSeconds > 0
+      ? Number(sub?.subscriptionVideoMinutesAllowed ?? sub?.videoMinutesAllowed) > 0
+      : Number(sub?.subscriptionVoiceMinutesAllowed ?? sub?.voiceMinutesAllowed) > 0;
+    if (!sub || sub.tier === 'free' || !['ACTIVE','TRIAL'].includes(sub.status)
+      || sub.currentPeriodEnd <= Date.now() || !modeAllowed)
+      throw new Error('This add-on requires an active paid Malvi plan with the matching voice or avatar feature. No payment was started.');
+  }
+}
+
 registerCryptoBillingRoutes(app, {
   user: requireAuthenticatedUser,
   admin: requireAdmin,
   userId: authenticatedUserId,
   quote: async input => {
-    if (input.purpose === 'SUBSCRIPTION') applyCommunicationCatalogue(await communicationAccess.policy(), billingDb.subscriptionPlans);
-    const catalog = input.purpose === 'MALVI_SUBSCRIPTION'
-      ? { ...billingDb, malviPlans: (await malviCatalogService.published()).plans }
-      : billingDb;
-    return quotePaystackOrder(input, catalog);
+    const quote = quotePaystackOrder(input, await saleCatalogue(input));
+    await requireBalancedBillingSetup(quote.product, input.billingUserId);
+    return quote;
   },
 });
 
 app.post("/api/paystack/initialize", requireAuthenticatedUser, async (req, res) => {
   try {
-    if (req.body?.purpose === 'SUBSCRIPTION') applyCommunicationCatalogue(await communicationAccess.policy(), billingDb.subscriptionPlans);
     const userId = authenticatedUserId(req);
     let quote: ReturnType<typeof quotePaystackOrder>;
     try {
-      const catalog = req.body.purpose === 'MALVI_SUBSCRIPTION'
-        ? { ...billingDb, malviPlans: (await malviCatalogService.published()).plans }
-        : billingDb;
-      quote = quotePaystackOrder(req.body, catalog);
+      quote = quotePaystackOrder(req.body, await saleCatalogue(req.body));
+      await requireBalancedBillingSetup(quote.product, userId);
     }
     catch (error: any) { return res.status(400).json({ success: false, error: error.message }); }
     const { amount, currency, purpose, packageId, planTier, billingCycle, minutes } = quote;
@@ -2205,6 +2250,7 @@ async function fulfillPaystackOrder({
           userId, minutes, price: verifiedAmount, currency: verifiedCurrency, paymentMethod: "Paystack Payment Gateway",
           referenceId: reference, transactionId: `tx_min_${reference}`, subscriptionId: `minutes_${userId}_${reference}`,
           validityDays,
+          billingTerms: order.product?.billingTerms,
           items: [{ description: `Nanivio Communication Minutes Pack (+${minutes} Mins)`, quantity: minutes, unit: "minute", unitPrice: verifiedAmount / minutes, subtotal: verifiedAmount, total: verifiedAmount }],
         })
       : billingDb.addCommunicationMinutes({ userId, packageId, minutes, pricePaid: verifiedAmount, currency: verifiedCurrency, paymentMethod: "Paystack Payment Gateway", referenceId: reference });
@@ -2222,7 +2268,7 @@ async function fulfillPaystackOrder({
       allowance: result.allowance,
       expiryDate: result.expiryDate,
       invoice: result.invoice,
-      message: `Paystack payment confirmed. +${minutes} Communication Minutes activated on your account.`,
+      message: result.message || `Paystack payment confirmed. +${minutes} Communication Minutes activated on your account.`,
     };
   }
 
@@ -2235,6 +2281,7 @@ async function fulfillPaystackOrder({
       tier: product.tier, planName: product.name, billingCycle: authoritativeOrder.billingCycle,
       price: verifiedAmount, currency: verifiedCurrency, periodDays: product.periodDays,
       langpretationQuota: product.langpretationQuota, voiceQuota: product.voiceQuota, malviQuota: product.malviQuota,
+      metadata: { billingTerms: product.billingTerms, planSnapshot: product.planSnapshot },
     });
     pendingPaystackOrders.delete(reference);
     await markPaystackOrderFulfilled(reference);
@@ -2392,18 +2439,16 @@ app.get("/api/paystack/verify/:reference", requireAuthenticatedUser, async (req,
 // ============================================================================
 
 // A. Communication Minute Packages
-app.get("/api/billing/communication-minute-packages", (_req, res) => {
-  res.json({
-    success: true,
-    packages: billingDb.communicationMinutePackages,
-  });
+app.get("/api/billing/communication-minute-packages", async (_req, res) => {
+  try { res.json({ success: true, packages: await communicationSalePacks() }); }
+  catch { res.status(503).json({ success: false, error: 'Current package prices could not be loaded. No old packages were substituted.' }); }
 });
 
 app.post("/api/billing/communication-minutes/purchase", requireAuthenticatedUser, async (req, res) => {
   try {
     const userId = authenticatedUserId(req);
     const { packageId, paymentMethod = "NANIVIO_CREDIT", currency = "GHS" } = req.body;
-    const pkg = billingDb.communicationMinutePackages.find((p) => p.id === packageId);
+    const pkg = (await communicationSalePacks()).find((p) => p.id === packageId);
     if (!pkg) return res.status(404).json({ error:"Communication minute package not found" });
     if (!normalizedBillingEnabled()) return res.status(503).json({ success:false, error:"Persistent billing database is required for communication-minute purchases." });
     const price = currency === "USD" ? pkg.priceUSD : pkg.priceGHS;
@@ -2412,7 +2457,13 @@ app.post("/api/billing/communication-minutes/purchase", requireAuthenticatedUser
     }
     if (paymentMethod !== "NANIVIO_CREDIT") return res.status(503).json({ success:false, error:"This purchase route only supports Nanivio credit. Use Paystack checkout for external payment." });
     const now=Date.now();
-    const result=await purchaseCommunicationMinutesFromWalletPersistent({ userId, packageId:pkg.id, subscriptionId:`minutes_${userId}_${now}_${crypto.randomBytes(4).toString("hex")}`, minutes:pkg.minutes, price, currency, validityDays:pkg.validityDays || 30, paymentMethod:"Nanivio credit", referenceId:`REF-NV-MIN-${now}-${crypto.randomBytes(4).toString("hex")}`, transactionId:`tx_min_${crypto.randomBytes(8).toString("hex")}`, items:[{description:`${pkg.minutes} Communication Minutes`,quantity:1,unit:"package",unitPrice:price,subtotal:price,total:price}] });
+    await requireBalancedBillingSetup({ billingTerms: pkg.billingTerms }, userId);
+    if (req.body.expectedAmount !== price)
+      return res.status(409).json({success:false,error:'The add-on price changed. Refresh billing before paying; no credit was debited.'});
+    const requestId = req.body.requestId;
+    if (typeof requestId !== 'string' || !/^[a-f0-9]{8}-(?:[a-f0-9]{4}-){3}[a-f0-9]{12}$/i.test(requestId))
+      return res.status(400).json({success:false,error:'Refresh the purchase window before paying. A purchase request ID is required.'});
+    const result=await purchaseCommunicationMinutesFromWalletPersistent({ userId, packageId:pkg.id, subscriptionId:`minutes_${userId}_${requestId}`, minutes:pkg.minutes, price, currency, billingTerms:pkg.billingTerms,validityDays:pkg.validityDays || 30, paymentMethod:"Nanivio credit", referenceId:`credit_pack_${userId}_${requestId}`, transactionId:`tx_pack_${userId}_${requestId}`, items:[{description:pkg.name,quantity:1,unit:"package",unitPrice:price,subtotal:price,total:price}] });
     return res.json({success:true,result});
   } catch(error:any){ return res.status(400).json({success:false,error:error.message||"Communication-minute purchase failed"}); }
 });
@@ -2451,7 +2502,9 @@ app.post("/api/billing/malvi-subscription/change", requireAuthenticatedUser, asy
       return res.json({success:true,result:{subscription:existing,unchanged:true},message:"Your existing Malvi allowance and expiry were preserved. Free selection does not restart a trial."});
     }
     const now=Date.now();
-    const result=await activateMalviSubscriptionFromWalletPersistent({userId,tier,billingCycle,price,currency,paymentMethod:"Nanivio credit",planId:plan.id,planName:plan.name,videoMinutesAllowed:plan.videoInteractionMinutesLimit,voiceMinutesAllowed:plan.voiceInteractionMinutesLimit,referenceId:`REF-NV-MALVI-${now}-${crypto.randomBytes(4).toString("hex")}`,transactionId:`tx_malvi_${crypto.randomBytes(8).toString("hex")}`,metadata:{source:"malvi_subscription",catalogVersion:plan.catalogVersion,planSnapshot:plan}});
+    const quote = quotePaystackOrder({purpose:'MALVI_SUBSCRIPTION',planTier:tier,billingCycle,currency,catalogVersion:plan.catalogVersion},{malviPlans:[plan],subscriptionPlans:[],communicationMinutePackages:[]});
+    await requireBalancedBillingSetup(quote.product);
+    const result=await activateMalviSubscriptionFromWalletPersistent({userId,tier,billingCycle,price,currency,paymentMethod:"Nanivio credit",planId:plan.id,planName:plan.name,videoMinutesAllowed:plan.videoInteractionMinutesLimit,voiceMinutesAllowed:plan.voiceInteractionMinutesLimit,referenceId:`REF-NV-MALVI-${now}-${crypto.randomBytes(4).toString("hex")}`,transactionId:`tx_malvi_${crypto.randomBytes(8).toString("hex")}`,metadata:{source:"malvi_subscription",catalogVersion:plan.catalogVersion,billingTerms:quote.product.billingTerms,planSnapshot:quote.product.planSnapshot}});
     return res.json({success:true,result});
   }catch(error:any){return res.status(400).json({success:false,error:error.message||"Malvi subscription change failed"});}
 });
@@ -2741,7 +2794,7 @@ app.get("/api/billing/invoices/:invoiceId", requireAuthenticatedUser, async (req
 
 // 8. Subscription Plans & Upgrades
 app.get("/api/billing/plans", async (_req, res) => {
-  try { res.json({ success: true, plans: applyCommunicationCatalogue(await communicationAccess.policy(),billingDb.subscriptionPlans) }); }
+  try { res.setHeader('Cache-Control','no-store'); res.json({ success: true, plans: await communicationSalePlans() }); }
   catch { res.status(503).json({success:false,error:'Communication plans require administrator setup.'}); }
 });
 
@@ -2882,6 +2935,7 @@ app.get("/api/billing/business", requireAuthenticatedUser, (req, res) => {
 app.use("/api/admin/billing", requireAuthenticatedUser, requireBillingAdmin);
 app.use("/api/admin/billing/malvi-costs", createMalviCostRouter());
 app.use("/api/admin/billing/malvi-plans", createMalviPlanRouter());
+app.use("/api/admin/billing/pricing-proposal", createBalancedPricingRouter());
 app.use("/api/admin/billing/malvi-runtime", createMalviRuntimeRouter());
 
 // Admin Financial Overview

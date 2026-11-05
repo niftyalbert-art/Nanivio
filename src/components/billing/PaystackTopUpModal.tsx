@@ -30,6 +30,7 @@ interface PaystackTopUpModalProps {
   planTier?: string;
   billingCycle?: 'MONTHLY' | 'ANNUAL';
   minutes?: number;
+  productName?: string;
   catalogVersion?: number;
   initialPaymentMethod?: PaymentMethod;
 }
@@ -45,6 +46,7 @@ export const PaystackTopUpModal: React.FC<PaystackTopUpModalProps> = ({
   planTier,
   billingCycle = 'MONTHLY',
   minutes,
+  productName,
   catalogVersion,
   initialPaymentMethod = 'PAYSTACK',
 }) => {
@@ -232,7 +234,7 @@ export const PaystackTopUpModal: React.FC<PaystackTopUpModalProps> = ({
 
   const modalTitle =
     purpose === 'COMMUNICATION_MINUTES'
-      ? `Activate +${minutes || ''} Communication Minutes`
+      ? `Activate ${productName || `+${minutes || ''} Communication Minutes`}`
       : purpose === 'SUBSCRIPTION'
       ? `Activate Plan Subscription (${planTier || 'Premium'})`
       : purpose === 'MALVI_SUBSCRIPTION'

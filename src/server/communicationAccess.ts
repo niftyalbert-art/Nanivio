@@ -12,6 +12,7 @@ export interface CommunicationAccess {
   policy: Omit<CommunicationPolicy, 'plans'>; trialStartedAt: string | null; trialEndsAt: string | null;
   callSecondsRemaining: number | null; liveTrialSecondsRemaining: number; textCharactersRemaining: number;
   translatedSecondsRemaining: number; paid: boolean; paidUntil: string | null; sharedCallMinutes: number;
+  translationQuotaMinutes?: number;
 }
 export type UsageReservation = { eventId: string; amount: number; source: string; userId: string };
 

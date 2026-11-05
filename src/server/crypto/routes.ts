@@ -71,6 +71,7 @@ export function registerCryptoBillingRoutes(app: Express, dependencies: Dependen
         return res.status(400).json({ success: false, error: 'A purchase request and supported credit currency are required.' });
       }
       const quote = await dependencies.quote({
+        billingUserId: dependencies.userId(req),
         purpose: 'SUBSCRIPTION', planTier: req.body.planTier,
         billingCycle: req.body.billingCycle, currency: req.body.currency,
         amount: req.body.amount,
@@ -105,6 +106,7 @@ export function registerCryptoBillingRoutes(app: Express, dependencies: Dependen
       });
       // Ignore client prices, token addresses, wallet addresses, and benefits.
       purchase = await dependencies.quote({
+        billingUserId: dependencies.userId(req),
         purpose: req.body.purpose, planTier: req.body.planTier,
         billingCycle: req.body.billingCycle, catalogVersion: req.body.catalogVersion, currency: 'USD',
         ...(req.body.purpose === 'COMMUNICATION_TOPUP' ? { amount: req.body.amount } : {}),
@@ -115,7 +117,7 @@ export function registerCryptoBillingRoutes(app: Express, dependencies: Dependen
         purchase.product = { id: 'nanivio-usd-credit', name: 'Nanivio credit top-up', creditAmountUSD: purchase.amount };
       }
       if (purchase.purpose === 'COMMUNICATION_MINUTES') purchase.product = {
-        ...purchase.product, name: `${purchase.product.minutes} Communication minutes`,
+        ...purchase.product, name: purchase.product.name || `${purchase.product.minutes} Communication minutes`,
       };
     } catch (error: any) {
       return res.status(400).json({ success: false, error: error.message });

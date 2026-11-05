@@ -8,6 +8,7 @@ export type MalviCatalogPlan = Omit<MalviSubscriptionPlan, 'priceMonthlyGHS' | '
 };
 export interface MalviCatalogSnapshot {
   version: number;
+  pricingVersion?: string;
   plans: MalviCatalogPlan[];
   savedAt: string | null;
   savedBy: string | null;
