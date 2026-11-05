@@ -37,7 +37,11 @@ export interface BusinessRepository {
 export function businessRepository(): BusinessRepository {
   const db = getServerSupabase();
   if (!db) return unavailable();
-  const check = (error: unknown) => { if (error) unavailable(); };
+  const check = (error: unknown) => {
+    if (String((error as any)?.message || '').includes('STORAGE_QUOTA_EXCEEDED'))
+      fail(402, 'STORAGE_QUOTA_EXCEEDED', 'The workspace owner’s storage is full. Remove content or review the owner’s communication storage plan.');
+    if (error) unavailable();
+  };
   return {
     async list(user) {
       const { data, error } = await db.from(table).select('*').contains('member_ids', [user]).order('updated_at', { ascending: false }).limit(50).abortSignal(AbortSignal.timeout(5000));
@@ -121,13 +125,19 @@ export function createBusinessService(
   async function member(user: string, roomId: string) {
     const row = await repository().read(id(roomId));
     if (!row || !row.member_ids.includes(user)) fail(404, 'BUSINESS_ROOM_NOT_FOUND', 'Workspace not found.');
+    row!.document.ownerId = row!.owner_id;
     row!.document.copilotRtcUid = normalizeAgoraUid(`business-malvi:${row!.id}`);
     return row!;
   }
-  async function owned(user: string, roomId: string) { await authorize(user); return member(user, roomId); }
-  async function mutate(user: string, roomId: string, change: (room: BusinessRoom) => BusinessRoom) {
+  async function owned(user: string, roomId: string) {
+    const row = await member(user, roomId);
+    await authorize(row.owner_id);
+    return row;
+  }
+  async function mutate(user: string, roomId: string, change: (room: BusinessRoom) => BusinessRoom, cleanup = false) {
     for (let attempt = 0; attempt < 4; attempt++) {
-      const row = await owned(user, roomId), document = change(row.document);
+      const row = cleanup ? await member(user, roomId) : await owned(user, roomId);
+      const document = change(row.document);
       if (document === row.document) return document;
       document.version = row.version + 1; document.updatedAt = new Date().toISOString();
       if (await repository().replace(row, { ...row, version: document.version, document })) return document;
@@ -137,7 +147,7 @@ export function createBusinessService(
   const inFlight = new Set<string>();
   return {
     owned, member,
-    async list(user: string) { await authorize(user); return (await repository().list(user)).map(r => r.document); },
+    async list(user: string) { return (await repository().list(user)).map(r => r.document); },
     async create(user: string, name: string, topic: unknown, objective: unknown) {
       await authorize(user);
       if ((await repository().list(user)).length >= 50) fail(409, 'BUSINESS_ROOM_LIMIT', 'Up to 50 shared workspaces are supported.');
@@ -158,11 +168,11 @@ export function createBusinessService(
       return { code, expiresAt };
     },
     async join(user: string, name: string, code: unknown) {
-      await authorize(user);
       if (typeof code !== 'string' || !/^[a-f0-9]{36}$/.test(code)) fail(400, 'BUSINESS_INVITE_INVALID', 'This invitation is invalid or expired.');
       for (let attempt = 0; attempt < 4; attempt++) {
         const row = await repository().invitation(hash(code as string));
         if (!row || !row.invite_expires_at || Date.parse(row.invite_expires_at) <= Date.now()) fail(404, 'BUSINESS_INVITE_INVALID', 'This invitation is invalid or expired.');
+        await authorize(row!.owner_id);
         if (row!.member_ids.includes(user)) return row!.document;
         if (row!.member_ids.length >= 12) fail(409, 'BUSINESS_MEMBER_LIMIT', 'This workspace already has 12 participants.');
         const document = structuredClone(row!.document);
@@ -172,7 +182,9 @@ export function createBusinessService(
       }
       return fail(409, 'BUSINESS_CONFLICT', 'Workspace changed. Retry joining.');
     },
-    command: (user: string, roomId: string, command: BusinessCommand) => mutate(user, roomId, r => applyBusinessCommand(r, user, command)),
+    command: (user: string, roomId: string, command: BusinessCommand) => mutate(user, roomId,
+      r => applyBusinessCommand(r, user, command),
+      command.type === 'meeting' && command.open === false),
     noteCopilotFailure: (user: string, roomId: string) => mutate(user, roomId, room =>
       room.meetingOpen && room.copilotEnabled && !room.copilotPending
         ? { ...room, copilotError: 'Malvi could not complete the last shared question. Please ask again; no substitute answer was generated.' } : room),
@@ -195,7 +207,7 @@ export function createBusinessService(
             return { ...room, copilotError: null, copilotPending: { sourceId: automaticFor, token, expiresAt: Date.now() + 60000 } };
           });
         }
-        await claim(user);
+        await claim(row.owner_id);
         const source = structuredClone(row.document);
         const result = await generate(source, operation as 'analysis' | 'summary');
         const messageId = randomUUID();
@@ -314,7 +326,10 @@ export function createBusinessRouter(
     if (r.body?.cancel !== undefined && typeof r.body.cancel !== 'boolean') fail(400, 'BUSINESS_INPUT_INVALID', 'Invalid meeting cancellation.');
     // Once a media token is issued, only server-observed elapsed time can be
     // settled. A client cannot claim "cancelled" to obtain a free conference.
-    await media.finish(r.body.leaseId, false);
+    if (room.ownerId === u) {
+      await service.command(u, room.id, { type: 'meeting', open: false });
+      await media.finish(r.body.leaseId, false);
+    }
     return {};
   }));
   router.post('/:id/transcribe', run(async (r, u) => {

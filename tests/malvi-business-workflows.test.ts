@@ -36,6 +36,20 @@ function fixture() {
   }, async () => { claimCalls++; });
   return { rows, repository, service, stats: () => ({ modelCalls, claimCalls }), conflict: (n: number) => { conflicts = n; } };
 }
+test('a member uses the verified workspace owner plan and request budget, not a separate personal subscription',async()=>{
+  const f=fixture(), authorized:string[]=[],charged:string[]=[];
+  const service=createBusinessService(()=>f.repository,async (user:string):Promise<any>=>{
+    authorized.push(user);if(user!=='alice')throw new AssistantError(403,'MALVI_FEATURE_NOT_INCLUDED','No personal Business plan');
+  },async()=>({content:'Shared analysis',actions:[]}),async user=>{charged.push(user);});
+  const room=await service.create('alice','Alice','Team','Work together');
+  const invite=await service.invite('alice',room.id);
+  await service.join('guest','Guest',invite.code);
+  await service.command('guest',room.id,{type:'message',id:randomUUID(),kind:'idea',text:'Our shared idea'});
+  await service.assist('guest',room.id,'analysis');
+  assert.deepEqual(charged,['alice']);
+  assert.ok(authorized.every(owner=>owner==='alice'));
+  await assert.rejects(service.owned('outsider',room.id),/Workspace not found/);
+});
 test('tier capabilities distinguish trial, voice, basic, premium and Business', () => {
   for (const tier of ['free', 'malvi_voice', 'malvi_basic']) {
     assert.equal(planAllows(tier, 'voice'), true);

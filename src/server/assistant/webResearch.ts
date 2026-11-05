@@ -1,5 +1,6 @@
 import { GoogleGenAI } from '@google/genai';
 import { AssistantError } from './redisStore.ts';
+import { meteredWebResearch } from '../planEnforcement.ts';
 
 export const WEB_TOOL_NAME = 'research_public_web';
 export const WEB_TOOL = {
@@ -66,9 +67,17 @@ export function parseGroundedResearch(response: any) {
     results: verified ? results : [], citations: verified ? citations : [],
     searchSuggestions: verified && typeof metadata?.searchEntryPoint?.renderedContent === 'string'
       ? metadata.searchEntryPoint.renderedContent.slice(0,50000) : '',
-    verified, checkedAt: new Date().toISOString(),
+    verified, providerQueryCount: Array.isArray(metadata?.webSearchQueries) ? metadata.webSearchQueries.length : undefined,
+    checkedAt: new Date().toISOString(),
     limitation: 'Publicly indexed material only. No access to private social profiles, deleted posts or login-only content. Search results can be incomplete or wrong; corroborate consequential claims.',
   };
+}
+export async function researchAccountWeb(owner: string, args: unknown) {
+  // Validate before reserving or marking a dispatch as potentially billable.
+  validateWebQuery(args);
+  if (!process.env.GEMINI_API_KEY || process.env.MALVI_WEB_RESEARCH_ENABLED === 'false')
+    throw new AssistantError(503, 'RESEARCH_UNAVAILABLE', 'Public web research is not currently available.');
+  return meteredWebResearch(owner, () => researchPublicWeb(args), result => result.providerQueryCount);
 }
 export async function researchPublicWeb(args: unknown, generate?: (request: any) => Promise<any>) {
   const { query, scope } = validateWebQuery(args);

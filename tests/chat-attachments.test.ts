@@ -66,9 +66,12 @@ test('actual Stream upload checks membership first and transmits selected file b
     assert.equal(form.get('user'), JSON.stringify({ id: 'actor' }));
     return Response.json({ file: 'https://cdn.example/uploaded-report.pdf' });
   };
-  assert.equal(await uploadStreamAttachment('private_channel', 'actor', Buffer.from('selected file bytes'), 'report.pdf', 'application/pdf'),
+  const metering: string[] = [];
+  assert.equal(await uploadStreamAttachment('private_channel', 'actor', Buffer.from('selected file bytes'), 'report.pdf', 'application/pdf',
+    async (_name, action) => { metering.push(action); return { success: true }; }),
     'https://cdn.example/uploaded-report.pdf');
   assert.equal(calls.length, 2);
+  assert.deepEqual(metering,['RESERVE','COMPLETE']);
 });
 
 test('nonmembers cannot upload and provider rejections cannot masquerade as successful transfers', async t => {
@@ -83,7 +86,7 @@ test('nonmembers cannot upload and provider rejections cannot masquerade as succ
   globalThis.fetch = async url => String(url).includes('/members?')
     ? Response.json({ members: [{ user_id: 'actor' }] })
     : Response.json({ error: 'provider payload must not escape' }, { status: 503 });
-  await assert.rejects(uploadStreamAttachment('private_channel', 'actor', Buffer.from('fixture'), 'a.pdf', 'application/pdf'),
+  await assert.rejects(uploadStreamAttachment('private_channel', 'actor', Buffer.from('fixture'), 'a.pdf', 'application/pdf',async()=>({success:true})),
     error => error instanceof Error && error.message === 'Attachment upload failed. Please retry.');
 });
 

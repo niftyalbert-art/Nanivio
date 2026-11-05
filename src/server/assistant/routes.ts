@@ -11,7 +11,10 @@ import { assertMalviVoiceLanguage, malviVoiceSetup, parseMalviVoiceProvider } fr
 import { getManagedMalviVoice, saveManagedMalviVoice } from './managedVoice.ts';
 import { memoryQuery, readConversationMemory, setConversationMemory } from './conversationMemory.ts';
 import { validateVisionInput } from './visionInput.ts';
-import { claimResearch, researchPublicWeb } from './webResearch.ts';
+import { claimResearch, researchAccountWeb } from './webResearch.ts';
+import { planUsageCommand } from '../planEnforcement.ts';
+import { deleteStreamAttachment } from '../streamService.ts';
+import { StreamAccessError } from '../chatPrivacy.ts';
 import { analyzeAccountInput, validateMultimodalInput } from './multimodalInput.ts';
 import { researchPublicMedia } from './mediaResearch.ts';
 import { claimMalviRequest } from './liveUsage.ts';
@@ -73,12 +76,34 @@ export function registerAssistantRoutes(app: Express, auth: Auth, enabled: () =>
     await malviLiveBrainController.shareVision(userId(req), validId(req), image);
     res.json({ success: true });
   }));
+  app.get('/api/assistant/plan-usage', auth, run(async (req, res) => {
+    const user = userId(req);
+    const [storage, search] = await Promise.all([
+      planUsageCommand('nanivio_plan_storage', 'ACCESS', { userId: user }),
+      planUsageCommand('nanivio_paid_search', 'ACCESS', { userId: user }),
+    ]);
+    try { await requireMalviCapability(user, 'research'); search.canResearch = true; }
+    catch (error) {
+      if (error instanceof AssistantError && [402,403].includes(error.status)) search.canResearch = false;
+      else throw error;
+    }
+    res.setHeader('Cache-Control', 'no-store');
+    res.json({ success: true, userId: user, storage, search });
+  }));
+  app.delete('/api/stream/channels/:channelId/attachments/:objectId', auth, run(async (req, res) => {
+    try { await deleteStreamAttachment(req.params.channelId, userId(req), req.params.objectId); }
+    catch (error) {
+      if (error instanceof StreamAccessError) throw new AssistantError(error.status, 'STORAGE_DELETE_FAILED', error.message);
+      throw error;
+    }
+    res.json({ success: true });
+  }));
   app.post('/api/assistant/research', auth, run(async (req, res) => {
     if (!enabled()) throw new AssistantError(403, 'MALVI_DISABLED', 'Malvi is currently disabled.');
     await requireMalviCapability(userId(req), 'research');
     claimResearch(userId(req));
     await claimMalviRequest(userId(req), 'research');
-    res.json({ success: true, ...await researchPublicWeb(req.body) });
+    res.json({ success: true, ...await researchAccountWeb(userId(req), req.body) });
   }));
   app.post('/api/assistant/input', auth, run(async (req, res) => {
     if (!enabled()) throw new AssistantError(403, 'MALVI_DISABLED', 'Malvi is currently disabled.');

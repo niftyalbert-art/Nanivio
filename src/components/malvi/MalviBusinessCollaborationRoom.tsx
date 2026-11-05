@@ -236,30 +236,13 @@ export const MalviBusinessCollaborationRoom: React.FC<Props> = ({ onOpenSubscrip
     setRoom(null); setInviteCode(''); setError(''); setBusy('');
   };
 
-  if (!isBusiness) return (
-    <section className={`${card} overflow-hidden`}>
-      <div className="border-b border-[#dedbd3] bg-[#eeece4] px-5 py-4 sm:px-7">
-        <div className="flex items-center gap-3"><div className="grid h-10 w-10 place-items-center rounded-xl bg-[#344f49] text-[#fffdf7]"><ShieldCheck size={19}/></div>
-          <div><p className="text-xs font-semibold uppercase tracking-[.16em] text-[#72756e]">Malvi Business</p><h2 className="font-semibold text-[#292b2b]">Shared workspace</h2></div>
-        </div>
-      </div>
-      <div className="px-5 py-8 sm:px-7">
-        <div className="max-w-xl"><p className="text-sm font-semibold text-[#61756d]">Business plan feature</p>
-          <h3 className="mt-2 text-2xl font-semibold tracking-tight text-[#292b2b]">Work through decisions together.</h3>
-          <p className="mt-3 text-sm leading-6 text-[#696c66]">Shared rooms, team knowledge, assigned actions, AI analysis and live meetings are available with Malvi Business.</p>
-          <button type="button" onClick={onOpenSubscriptionHub} disabled={!onOpenSubscriptionHub} className={`${primary} mt-5`}>Explore Malvi Business</button>
-        </div>
-      </div>
-    </section>
-  );
-
   return (
     <section className={`${card} overflow-hidden text-[#292b2b]`}>
       <header className="flex flex-col gap-4 border-b border-[#dedbd3] bg-[#eeece4] px-4 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-6">
         <div className="flex items-center gap-3">
           {room && <button onClick={leaveRoom} className={`${secondary} !min-h-9 !px-2.5`} aria-label="Back to rooms"><ArrowLeft size={16}/></button>}
           <div className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-[#344f49] text-[#f8f6f0]"><MessageSquareText size={19}/></div>
-          <div><div className="flex flex-wrap items-center gap-2"><p className="text-xs font-semibold uppercase tracking-[.16em] text-[#72756e]">Malvi Business</p><span className="inline-flex items-center gap-1 rounded-full border border-[#b8c9bd] bg-[#e4ece4] px-2 py-0.5 text-[10px] font-semibold text-[#48675a]"><Check size={11}/> Active</span></div>
+          <div><div className="flex flex-wrap items-center gap-2"><p className="text-xs font-semibold uppercase tracking-[.16em] text-[#72756e]">Malvi Business</p><span className="inline-flex items-center gap-1 rounded-full border border-[#b8c9bd] bg-[#e4ece4] px-2 py-0.5 text-[10px] font-semibold text-[#48675a]"><Check size={11}/> {room ? 'Owner-funded workspace' : isBusiness ? 'Business plan' : 'Invited access'}</span></div>
             <h2 className="text-lg font-semibold tracking-tight">{room?.topic ?? 'Shared workspaces'}</h2></div>
         </div>
         {room && <div className="flex flex-wrap gap-2">
@@ -268,18 +251,22 @@ export const MalviBusinessCollaborationRoom: React.FC<Props> = ({ onOpenSubscrip
           <button className={primary} onClick={() => void runRoomMutation('summary', id => malviBusinessClient.assist(id, 'summary'))} disabled={!!busy}><Sparkles size={15}/> Summarize</button>
         </div>}
       </header>
+      {!isBusiness && <div className="border-b border-[#dedbd3] px-4 py-3 text-xs text-[#696c66] sm:px-6">
+        Join with an owner’s invitation. Shared workspace tools and meetings use the owner’s allowance; this does not upgrade your private Malvi access.
+        {' '}<button type="button" onClick={onOpenSubscriptionHub} disabled={!onOpenSubscriptionHub} className="font-semibold underline">Compare plans to create your own rooms</button>
+      </div>}
 
       {error && <div role="alert" className="mx-4 mt-4 flex items-center gap-2 rounded-xl border border-[#d7a49b] bg-[#f8e9e4] px-3 py-2.5 text-sm text-[#803f35] sm:mx-6"><span className="min-w-0 flex-1">{error}</span><button onClick={() => { const id = room?.id ?? selectedId.current; if (id) void selectRoom(id); else setLoadAttempt(value=>value+1); }} className="inline-flex items-center gap-1 rounded-lg px-2 py-1 text-xs font-semibold hover:bg-[#efd8d2]"><RefreshCw size={13}/>Retry</button><button aria-label="Dismiss error" onClick={() => setError('')}><X size={16}/></button></div>}
       {busy && <div className="flex items-center gap-2 px-5 pt-3 text-xs text-[#73766e]"><LoaderCircle size={14} className="animate-spin"/>{busy === 'open' ? 'Opening shared workspace…' : 'Saving to shared workspace…'}</div>}
 
       {!room ? <div className="grid gap-5 p-4 sm:p-6 lg:grid-cols-[minmax(0,1fr)_minmax(280px,.8fr)]">
         <div className="space-y-3">
-          <div className="flex items-center justify-between"><div><h3 className="font-semibold">Your rooms</h3><p className="mt-0.5 text-xs text-[#777971]">Shared with your Nanivio account</p></div><button className={primary} onClick={() => setShowCreate(value => !value)}><Plus size={15}/> New room</button></div>
+          <div className="flex items-center justify-between"><div><h3 className="font-semibold">Your rooms</h3><p className="mt-0.5 text-xs text-[#777971]">Shared with your Nanivio account</p></div><button className={primary} disabled={!isBusiness} title={!isBusiness ? 'Creating rooms requires your own Business plan. You can still join an invited workspace.' : undefined} onClick={() => setShowCreate(value => !value)}><Plus size={15}/> New room</button></div>
           {loading ? <div className="space-y-2" aria-label="Loading rooms">{[1,2,3].map((_,i)=><div key={i} className="h-[74px] animate-pulse rounded-xl bg-[#e9e6de]"/>)}</div> :
             rooms.length ? <div className="space-y-2">{rooms.map(item=><button key={item.id} onClick={() => void selectRoom(item.id)} className="flex w-full items-center justify-between gap-3 rounded-xl border border-[#dedbd3] bg-[#fffdf8] px-4 py-3 text-left transition hover:border-[#aabbb0] hover:bg-[#f4f3ec]">
               <span className="min-w-0"><span className="block truncate text-sm font-semibold">{item.topic}</span><span className="mt-1 block truncate text-xs text-[#777971]">{item.objective}</span></span><span className="flex shrink-0 items-center gap-1 text-xs text-[#72756e]"><Users size={14}/>{item.members.length}</span>
             </button>)}</div> : <div className="rounded-xl border border-dashed border-[#d2cec4] bg-[#f4f2eb] px-5 py-8 text-center"><MessageSquareText className="mx-auto text-[#687f74]" size={23}/><p className="mt-3 text-sm font-semibold">No shared rooms yet</p><p className="mt-1 text-xs text-[#777971]">Create a room or join a team with an invite code.</p></div>}
-          {showCreate && <form onSubmit={createRoom} className="space-y-3 rounded-xl border border-[#d8d4ca] bg-[#eeece4] p-4">
+          {showCreate && isBusiness && <form onSubmit={createRoom} className="space-y-3 rounded-xl border border-[#d8d4ca] bg-[#eeece4] p-4">
             <div className="flex items-center justify-between"><h4 className="text-sm font-semibold">Create a shared room</h4><button type="button" onClick={() => setShowCreate(false)} aria-label="Close form"><X size={16}/></button></div>
             <label className="block text-xs font-medium text-[#5e625c]">Topic<input className={`${input} mt-1`} value={topic} onChange={e=>setTopic(e.target.value)} maxLength={160} required placeholder="What are you working through?"/></label>
             <label className="block text-xs font-medium text-[#5e625c]">Objective<textarea className={`${input} mt-1 min-h-[76px] resize-y`} value={objective} onChange={e=>setObjective(e.target.value)} maxLength={1000} required placeholder="What should the team decide or accomplish?"/></label>

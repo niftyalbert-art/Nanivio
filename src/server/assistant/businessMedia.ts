@@ -20,32 +20,52 @@ export async function businessMediaLease(user: string, room: BusinessRoom, lease
   if (!database) return unavailable();
   const { data, error } = await database.from('nanivio_malvi_live_leases')
     .select('lease_id,user_id,mode,ends_at,settled_at,started_at')
-    .eq('lease_id', leaseId).eq('user_id', user).abortSignal(AbortSignal.timeout(5000)).maybeSingle();
+    .eq('lease_id', leaseId).eq('user_id', room.ownerId).abortSignal(AbortSignal.timeout(5000)).maybeSingle();
   if (error) return unavailable();
   if (!data || data.mode !== 'avatar' || (!allowSettled && (data.settled_at || Date.parse(data.ends_at) <= Date.now()))) {
     throw new AssistantError(402, 'BUSINESS_LEASE_EXPIRED', 'Your conference allowance has ended. Review Malvi billing before rejoining.');
   }
   return data;
 }
-export async function issueBusinessMedia(user: string, room: BusinessRoom, previous?: unknown) {
-  if (!process.env.AGORA_APP_ID || !process.env.AGORA_APP_CERTIFICATE) return unavailable();
-  let leaseId: string, endsAt: number;
+export async function issueBusinessMedia(user: string, room: BusinessRoom, previous?: unknown, services?: {
+  ready: () => boolean; database: typeof getServerSupabase; usage: typeof liveUsage; token: typeof generateAgoraRtcToken;
+}) {
+  if (!(services ? services.ready() : Boolean(process.env.AGORA_APP_ID && process.env.AGORA_APP_CERTIFICATE))) return unavailable();
+  const database = services?.database || getServerSupabase;
+  const usage = services?.usage || liveUsage;
+  const createToken = services?.token || generateAgoraRtcToken;
+  let leaseId: string, endsAt: number, created = false;
   if (previous !== undefined) {
     const lease = await businessMediaLease(user, room, previous);
     leaseId = lease.lease_id; endsAt = Date.parse(lease.ends_at);
   } else {
-    leaseId = `biz:${room.id}:${randomUUID()}`;
-    const seconds = await liveUsage.reserve(user, leaseId, 'avatar');
-    endsAt = Date.now() + seconds * 1000;
+    const db = database();
+    if (!db) return unavailable();
+    const existing = await db.from('nanivio_malvi_live_leases')
+      .select('lease_id,ends_at').eq('user_id', room.ownerId)
+      .like('lease_id', `biz:${room.id}:%`).is('settled_at', null)
+      .gt('ends_at', new Date().toISOString()).order('ends_at', { ascending: false }).limit(1)
+      .abortSignal(AbortSignal.timeout(5000)).maybeSingle();
+    if (existing.error) return unavailable();
+    if (existing.data) {
+      leaseId = existing.data.lease_id; endsAt = Date.parse(existing.data.ends_at);
+    } else {
+      if (user !== room.ownerId) throw new AssistantError(409, 'BUSINESS_HOST_NOT_CONNECTED', 'Ask the workspace owner to start the meeting first. Participants use the owner’s shared allowance.');
+      leaseId = `biz:${room.id}:${randomUUID()}`;
+      const seconds = await usage.reserve(room.ownerId, leaseId, 'avatar');
+      created = true;
+      endsAt = Date.now() + seconds * 1000;
+    }
   }
   try {
     const seconds = Math.floor((endsAt - Date.now()) / 1000);
     if (seconds < 1) throw new AssistantError(402, 'BUSINESS_LEASE_EXPIRED', 'This meeting allowance has ended.');
-    const token = generateAgoraRtcToken({ channelName: `nanivio_business_${room.id}`, uid: user, role: 'publisher',
+    const token = createToken({ channelName: `nanivio_business_${room.id}`, uid: user, role: 'publisher',
       expireTimeSeconds: seconds, minimumExpireSeconds: 1 });
     return { ...token, uid: token.agoraUid, leaseId, endsAt };
   } catch (error) {
-    if (previous === undefined) await liveUsage.finish(leaseId, true).catch(() => {});
+    // Never refund an existing shared lease when another viewer fails to join.
+    if (created) await usage.finish(leaseId, true).catch(() => {});
     throw error;
   }
 }
@@ -86,7 +106,7 @@ export async function transcribeBusinessAudio(user: string, room: BusinessRoom, 
   if (transcribing.size >= 250) throw new AssistantError(503, 'BUSINESS_TRANSCRIPTION_BUSY', 'Meeting transcription is busy.');
   transcribing.add(user);
   try {
-    await claimMalviRequest(user, 'analysis', Buffer.byteLength(input.data, 'base64'));
+    await claimMalviRequest(room.ownerId, 'analysis', Buffer.byteLength(input.data, 'base64'));
     const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
     const result = await ai.models.generateContent({
       model: process.env.MALVI_BUSINESS_MODEL || 'gemini-2.5-flash',
@@ -108,7 +128,7 @@ export async function translateBusinessText(user: string, room: BusinessRoom, me
   const message = room.messages.find(m => m.id === messageId);
   if (!message) throw new AssistantError(404, 'BUSINESS_MESSAGE_NOT_FOUND', 'Workspace message not found.');
   if (!process.env.GEMINI_API_KEY) throw new AssistantError(503, 'BUSINESS_TRANSLATION_REQUIRED', 'Meeting Langpretation is not configured.');
-  await claimMalviRequest(user, 'analysis');
+  await claimMalviRequest(room.ownerId, 'analysis');
   const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
   const result = await ai.models.generateContent({
     model: process.env.MALVI_BUSINESS_MODEL || 'gemini-2.5-flash',
@@ -141,7 +161,7 @@ export async function speakBusinessResponse(user: string, room: BusinessRoom, bo
   if (speaking.size >= 100) throw new AssistantError(503, 'BUSINESS_SPEECH_BUSY', 'Malvi speech is busy.');
   speaking.add(user);
   try {
-    await claimMalviRequest(user, 'analysis');
+    await claimMalviRequest(room.ownerId, 'analysis');
     const offset = body?.offset ?? 0;
     if (!Number.isInteger(offset) || offset < 0 || offset >= message.text.length) {
       throw new AssistantError(400, 'BUSINESS_SPEECH_OFFSET', 'Invalid speech continuation.');

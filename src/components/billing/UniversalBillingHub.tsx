@@ -46,6 +46,7 @@ import type { MalviSubscriptionPlan } from '../../types/billing';
 import { billingClient } from '../../lib/billingClient';
 import { billingNumber, formatBillingAmount, communicationCreditBalance, billingAllowanceDisplay } from '../../lib/billingPresentation';
 import { PaystackTopUpModal } from './PaystackTopUpModal';
+import { PlanResourceUsagePanel } from './PlanResourceUsagePanel';
 import type { PaymentMethod } from './PaymentMethodButtons';
 import { CommunicationCreditCheckout } from './CommunicationCreditCheckout';
 import { PaystackPaymentRecovery } from './PaystackPaymentRecovery';
@@ -534,6 +535,7 @@ export const UniversalBillingHub: React.FC = () => {
         {activeSubTab === 'overview' && (
           <div className="space-y-6">
             <CommunicationAccessPanel />
+            <PlanResourceUsagePanel />
             {/* Quick Financial Operations Bar */}
             <div className="p-4 rounded-2xl bg-slate-900 border border-slate-800 flex flex-wrap items-center justify-between gap-3">
               <div className="flex items-center gap-2">

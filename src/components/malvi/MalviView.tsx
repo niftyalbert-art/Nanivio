@@ -1029,6 +1029,7 @@ const MalviAccountWorkspace: React.FC<{ ownerId: string | null }> = ({ ownerId }
       {/* View Toggle: Companion vs Business Collaboration Room */}
       {activeSubTab === 'business' ? (
         <MalviBusinessCollaborationRoom
+          key={currentUser.id}
           onOpenSubscriptionHub={() => setIsSubscriptionHubOpen(true)}
         />
       ) : (

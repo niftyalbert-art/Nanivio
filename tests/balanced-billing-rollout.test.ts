@@ -192,5 +192,15 @@ test('real payment and usage SQL cuts over without rewriting legacy purchases', 
       assert.equal(Number((await db.query<any>('SELECT video_minutes_used FROM nanivio_malvi_subscriptions WHERE user_id=$1',[uid])).rows[0].video_minutes_used),15);
       assert.equal(Number((await db.query<any>('SELECT credit_balance FROM malvi_credit_accounts WHERE user_id=$1',[uid])).rows[0].credit_balance),20);
     });
+    await t.test('plan enforcement installs after the real rollout and preserves legacy paid terms',async()=>{
+      const enforcement=await readFile('migrations/026_plan_enforcement.sql','utf8');
+      await db.exec(enforcement);await db.exec(enforcement);
+      const storage=await rpc('nanivio_plan_storage',['ACCESS',{userId:'legacy'}]);
+      assert.equal(storage.legacyPaidTerm,true);
+      assert.equal(storage.capacityBytes,null);
+      assert.equal((await rpc('nanivio_paid_search',['ACCESS',{userId:'legacy'}])).legacy,true);
+      assert.deepEqual((await db.query("SELECT * FROM nanivio_subscriptions WHERE subscription_id='legacy'")).rows,old);
+      assert.equal((await db.query<{allowed:boolean}>("SELECT has_function_privilege('authenticated','nanivio_plan_storage(text,jsonb)','EXECUTE') allowed")).rows[0].allowed,false);
+    });
   } finally {await db.close();}
 });

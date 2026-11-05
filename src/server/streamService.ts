@@ -155,10 +155,19 @@ export async function requireStreamChannelMember(channelId: string, userId: stri
   return members.find((member: StreamChannelMember) => member.userId === userId)!;
 }
 
-export async function uploadStreamAttachment(channelId: string, userId: string, bytes: Buffer, fileName: string, mimeType: string) {
+export async function uploadStreamAttachment(channelId: string, userId: string, bytes: Buffer, fileName: string, mimeType: string,
+  meter?: typeof import('./planEnforcement.ts').planUsageCommand) {
   const { name, type } = validateChatUpload(bytes, fileName, mimeType);
   await requireStreamChannelMember(channelId, userId);
   const id = normalizeChannelId(channelId);
+  const { randomUUID } = await import('node:crypto');
+  const { planUsageCommand } = await import('./planEnforcement.ts');
+  const objectId = `chat:${randomUUID()}`;
+  const storage = async (action: string, fields: Record<string, unknown> = {}) => {
+    try { return await (meter || planUsageCommand)('nanivio_plan_storage', action, { userId, objectId, ...fields }); }
+    catch (error) { throw new StreamAccessError((error as Error).message, Number((error as any).status) || 503); }
+  };
+  await storage('RESERVE', { channelId: id, fileName: name, sizeBytes: bytes.length });
   const { apiKey, base } = cfg();
   const form = new FormData();
   form.append('file', new Blob([new Uint8Array(bytes)], { type }), name);
@@ -171,9 +180,28 @@ export async function uploadStreamAttachment(channelId: string, userId: string, 
   });
   const data = await response.json().catch(() => ({}));
   if (!response.ok || typeof data.file !== 'string' || !data.file.startsWith('https://')) {
+    // Definite provider rejection may release the reservation. A timeout or an
+    // unusable successful response remains pending for reconciliation, not free.
+    if (response.status >= 400 && response.status < 500) await storage('DELETE');
     throw new StreamAccessError('Attachment upload failed. Please retry.', 502);
   }
+  await storage('COMPLETE', { url: data.file });
   return data.file as string;
+}
+
+export async function deleteStreamAttachment(channelId: string, userId: string, objectId: string) {
+  await requireStreamChannelMember(channelId, userId);
+  const { planUsageCommand } = await import('./planEnforcement.ts');
+  const { object } = await planUsageCommand('nanivio_plan_storage', 'READ', { userId, objectId });
+  if (object.kind !== 'chat' || object.channel_id !== normalizeChannelId(channelId) || object.state !== 'STORED' || !object.url)
+    throw new StreamAccessError('This file cannot be deleted from this chat.', 409);
+  const { apiKey, base } = cfg();
+  const response = await fetch(`${base}/channels/messaging/${encodeURIComponent(object.channel_id)}/file?api_key=${encodeURIComponent(apiKey)}&url=${encodeURIComponent(object.url)}`, {
+    method: 'DELETE', headers: { 'Stream-Auth-Type': 'jwt', Authorization: signedToken({ server: true }) },
+    signal: AbortSignal.timeout(15000),
+  });
+  if (!response.ok) throw new StreamAccessError('File deletion was not confirmed. Its reserved storage was retained.', 502);
+  await planUsageCommand('nanivio_plan_storage', 'DELETE', { userId, objectId });
 }
 
 /** Fresh complete membership for private fan-out; no stale permission cache. */

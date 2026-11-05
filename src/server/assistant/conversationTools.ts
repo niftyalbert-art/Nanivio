@@ -1,6 +1,6 @@
 import { conversationMemoryContext, memoryQuery, readConversationMemory } from './conversationMemory.ts';
 import { MEMORY_TOOL_NAME } from './conversationMemory.ts';
-import { claimResearch, researchPublicWeb, WEB_TOOL_NAME } from './webResearch.ts';
+import { claimResearch, researchAccountWeb, WEB_TOOL_NAME } from './webResearch.ts';
 import { createReferenceToolRunner } from './referenceTools.ts';
 import { MEDIA_TOOL, researchPublicMedia } from './mediaResearch.ts';
 import { MAPS_TOOL, prepareDrivingRoute } from './mapTools.ts';
@@ -54,7 +54,7 @@ export function createConversationTools(owner: string, notify: (payload: Record<
         notify({ status: result.items.length ? 'complete' : 'empty', results: [], assets: { media: result.items, limitation: result.limitation } });
         return result;
       }
-      const result = await researchPublicWeb(args);
+      const result = await researchAccountWeb(owner, args);
       if (closed()) return { error: 'The conversation has ended.' };
       notify({ status: result.verified ? 'complete' : 'empty', ...result, unavailable: [] });
       return result;

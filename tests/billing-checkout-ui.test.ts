@@ -10,9 +10,9 @@ import { balancedMalviPlans } from '../src/lib/balancedCatalogue';
 import { initialMalviCatalog, MALVI_VOICE_DESCRIPTION } from '../src/lib/malviPlanCatalog';
 
 const fixtureKey = '__nanivioBillingRenderFixture';
-async function loadHub() {
+async function loadHub(resourcePanel = false) {
   const built = await build({
-    entryPoints:['src/components/billing/UniversalBillingHub.tsx'],
+    entryPoints:[resourcePanel ? 'src/components/billing/PlanResourceUsagePanel.tsx' : 'src/components/billing/UniversalBillingHub.tsx'],
     bundle:true, write:false, format:'cjs', platform:'node', packages:'external',
     plugins:[{
       name:'isolated-billing-context',
@@ -28,7 +28,7 @@ async function loadHub() {
   new Function('require','module','exports',built.outputFiles[0].text)(
     createRequire(import.meta.url),result,result.exports,
   );
-  return result.exports.UniversalBillingHub;
+  return result.exports[resourcePanel ? 'PlanResourceUsagePanel' : 'UniversalBillingHub'];
 }
 
 function fixture() {
@@ -130,7 +130,7 @@ test('communication purchase notice names all three methods and estimator offers
   assert.doesNotMatch(html,/only after Paystack confirms/);
   assert.doesNotMatch(renderHub(Hub,fixture(),'calculator'),/MoMo Remittance|Amount \(GHS\)/);
 });
-function renderHub(Hub: React.ComponentType, value: any, tab = 'overview') {
+function renderHub(Hub: React.ComponentType, value: any, tab: any = 'overview') {
   (globalThis as any)[fixtureKey]=value;
   const original=React.useState;
   let calls=0;
@@ -142,6 +142,29 @@ function renderHub(Hub: React.ComponentType, value: any, tab = 'overview') {
   try { return renderToStaticMarkup(React.createElement(Hub)); }
   finally { React.useState=original; delete (globalThis as any)[fixtureKey]; }
 }
+
+test('actual resource panel preserves confirmed zero and explicitly labels historical storage gaps',async()=>{
+  const Panel=await loadHub(true);
+  const state={owner:'fixture',data:{
+    storage:{usedBytes:0,capacityBytes:2e9,objects:[],legacyChatInventoryComplete:false},
+    search:{canResearch:true,legacy:false,remaining:{searchQueries:0},quota:{searchQueries:20}},
+  }};
+  const html=renderHub(Panel,fixture(),state);
+  assert.match(html,/0 GB \/ 2 GB/);
+  assert.match(html,/0 remaining \/ 20 per allocation/);
+  assert.match(html,/not a verified total for all historical files/);
+  assert.doesNotMatch(renderHub(Panel,fixture(),null),/0 GB \/ 2 GB/);
+});
+
+test('resource panel hides another account storage and keeps invited Business access distinct from private plans',async()=>{
+  const Panel=await loadHub(true);
+  const html=renderHub(Panel,fixture(),{owner:'another-user',data:{storage:{objects:[{name:'private-file.pdf'}]}}});
+  assert.doesNotMatch(html,/private-file/);assert.match(html,/Unavailable/);
+  const business=readFileSync('src/components/malvi/MalviBusinessCollaborationRoom.tsx','utf8');
+  assert.doesNotMatch(business,/if \(!isBusiness\) return/);
+  assert.match(business,/disabled=\{!isBusiness\}/);
+  assert.match(business,/does not upgrade your private Malvi access/);
+});
 
 test('amount formatting accepts database decimal strings without assuming a number-only toFixed method',()=>{
   assert.equal(formatBillingAmount('82.00'),'82.00');
