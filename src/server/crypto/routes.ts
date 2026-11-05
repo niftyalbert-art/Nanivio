@@ -1,11 +1,14 @@
 import type { Express, RequestHandler } from 'express';
 import { cryptoCommand, publicCryptoInvoice, activateCryptoInvoice } from './repository';
 import { TronReader, tronAddressHex, TRON_USDT_CONTRACT } from './tron';
+import { cryptoCheckoutAccess } from './access';
 
 type Dependencies = {
   user: RequestHandler; admin: RequestHandler;
   userId: (request: any) => string;
   quote: (input: Record<string, any>) => Promise<any>;
+  command?: typeof cryptoCommand;
+  startReconciler?: boolean;
 };
 
 const reader = new TronReader();
@@ -39,7 +42,7 @@ async function checkInvoice(row: any, transactionId?: string, actorId = 'SYSTEM'
   try { return await work; } finally { inFlight.delete(key); }
 }
 
-async function availability() {
+async function availability(commandRpc = cryptoCommand) {
   if (process.env.TRON_USDT_ENABLED !== 'true') {
     return { success: true, enabled: false, reason: 'USDT checkout is not enabled. Paystack remains available.' };
   }
@@ -48,7 +51,7 @@ async function availability() {
     if (tronAddressHex(address) === '0'.repeat(40) || address === TRON_USDT_CONTRACT) {
       throw new Error('A spendable receiving wallet, not a burn/token contract address, is required.');
     }
-    await cryptoCommand('PREFLIGHT');
+    await commandRpc('PREFLIGHT');
     return { success: true, enabled: true };
   } catch {
     return { success: true, enabled: false, reason: 'USDT checkout needs a valid receiving wallet and database setup. No crypto payment should be sent yet.' };
@@ -56,11 +59,20 @@ async function availability() {
 }
 
 export function registerCryptoBillingRoutes(app: Express, dependencies: Dependencies) {
-  app.get('/api/billing/crypto/config', dependencies.user, async (_req, res) => {
-    res.json(await availability());
+  const commandRpc = dependencies.command || cryptoCommand;
+  app.get('/api/billing/crypto/config', dependencies.user, async (req, res) => {
+    const access = cryptoCheckoutAccess(dependencies.userId(req));
+    if (!access.allowed) {
+      return res.json({ success: true, enabled: false, eligible: false, accessMode: access.mode, reason: access.reason });
+    }
+    res.json({ ...await availability(commandRpc), eligible: true, accessMode: access.mode });
   });
   app.post('/api/billing/crypto/invoices', dependencies.user, async (req, res) => {
-    const ready = await availability();
+    const access = cryptoCheckoutAccess(dependencies.userId(req));
+    if (!access.allowed) {
+      return res.status(403).json({ success: false, code: 'CRYPTO_CHECKOUT_RESTRICTED', error: access.reason });
+    }
+    const ready = await availability(commandRpc);
     if (!ready.enabled) return res.status(503).json({ success: false, error: ready.reason });
     let purchase: any;
     try {
@@ -76,7 +88,7 @@ export function registerCryptoBillingRoutes(app: Express, dependencies: Dependen
       return res.status(400).json({ success: false, error: error.message });
     }
     try {
-      const data = await cryptoCommand('CREATE', {
+      const data = await commandRpc('CREATE', {
         userId: dependencies.userId(req), purchase, receivingAddress: process.env.TRON_USDT_RECEIVING_ADDRESS,
       });
       res.status(201).json({ success: true, invoice: publicCryptoInvoice(data.invoice) });
@@ -86,14 +98,14 @@ export function registerCryptoBillingRoutes(app: Express, dependencies: Dependen
   });
   app.get('/api/billing/crypto/invoices', dependencies.user, async (req, res) => {
     try {
-      const data = await cryptoCommand('LIST', { userId: dependencies.userId(req) });
+      const data = await commandRpc('LIST', { userId: dependencies.userId(req) });
       res.json({ success: true, invoices: data.invoices.map(publicCryptoInvoice) });
     } catch (error: any) { res.status(503).json({ success: false, error: error.message }); }
   });
   app.get('/api/admin/billing/crypto/invoices', dependencies.admin, async (_req, res) => {
     try {
-      const data = await cryptoCommand('LIST');
-      res.json({ ...await availability(), invoices: data.invoices.map(publicCryptoInvoice) });
+      const data = await commandRpc('LIST');
+      res.json({ ...await availability(commandRpc), invoices: data.invoices.map(publicCryptoInvoice) });
     } catch (error: any) { res.status(503).json({ success: false, error: error.message }); }
   });
 
@@ -108,7 +120,7 @@ export function registerCryptoBillingRoutes(app: Express, dependencies: Dependen
         ? String((req as any).adminUser?.id || '')
         : dependencies.userId(req);
       if (!actor) return res.status(403).json({ success: false, error: 'An authenticated account is required to check payments.' });
-      const data = await cryptoCommand('GET', { id: req.params.id });
+      const data = await commandRpc('GET', { id: req.params.id });
       if (!admin && data.invoice.user_id !== actor) return res.status(404).json({ success: false, error: 'Invoice not found.' });
       if (data.invoice.status === 'ACTIVATED') return res.json({ success: true, invoice: publicCryptoInvoice(data.invoice) });
       const last = lastCheck.get(actor) || 0;
@@ -127,6 +139,7 @@ export function registerCryptoBillingRoutes(app: Express, dependencies: Dependen
   app.post('/api/billing/crypto/invoices/:id/check', dependencies.user, check(false));
   app.post('/api/admin/billing/crypto/invoices/:id/check', dependencies.admin, check(true));
 
+  if (dependencies.startReconciler === false) return;
   // Durable leases allow recovery even after the customer closes the page or
   // when checkout is disabled. Older invoices remain manually recoverable by txID.
   let running = false;
@@ -135,7 +148,7 @@ export function registerCryptoBillingRoutes(app: Express, dependencies: Dependen
     if (running) return;
     running = true;
     try {
-      const data = await cryptoCommand('QUEUE');
+      const data = await commandRpc('QUEUE');
       for (const invoice of data.invoices) {
         try { await checkInvoice(invoice); }
         catch {

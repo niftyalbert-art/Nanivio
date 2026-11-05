@@ -18,6 +18,7 @@ import { useNanivio } from '../../context/NanivioContext';
 import { announcePaystackActivation, rememberPaystackReturn } from '../../lib/paystackReturn';
 import { PaymentReceipt } from './PaymentReceipt';
 import { CryptoSubscriptionCheckout } from './CryptoSubscriptionCheckout';
+import { cryptoBillingClient } from '../../lib/cryptoBillingClient';
 
 interface PaystackTopUpModalProps {
   isOpen: boolean;
@@ -65,6 +66,33 @@ export const PaystackTopUpModal: React.FC<PaystackTopUpModalProps> = ({
   const [malviQuote, setMalviQuote] = useState<import('../../types/billing').MalviSubscriptionPlan | null>(null);
   const [malviQuoteLoading, setMalviQuoteLoading] = useState(false);
   const [cryptoCheckoutOpen, setCryptoCheckoutOpen] = useState(false);
+  const [cryptoAccess, setCryptoAccess] = useState<{ userId: string; recoveryOnly: boolean } | null>(null);
+  React.useEffect(() => {
+    setCryptoAccess(null);
+    setCryptoCheckoutOpen(false);
+    if (!isOpen || !authUser?.id || !['SUBSCRIPTION', 'MALVI_SUBSCRIPTION'].includes(purpose)) return;
+    let cancelled = false;
+    const userId = authUser.id;
+    void (async () => {
+      try {
+        const config = await cryptoBillingClient.config();
+        if (config.eligible === true) {
+          if (!cancelled) setCryptoAccess({ userId, recoveryOnly: false });
+          return;
+        }
+        // Restrict new checkout, not recovery of a previously issued invoice.
+        const { invoices } = await cryptoBillingClient.list();
+        if (!cancelled && invoices.some(invoice => invoice.purpose === purpose &&
+            invoice.planTier === planTier && invoice.billingCycle === billingCycle)) {
+          setCryptoAccess({ userId, recoveryOnly: true });
+        }
+      } catch {
+        // Optional crypto visibility must never block the existing Paystack flow.
+        if (!cancelled) setCryptoAccess(null);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [isOpen, authUser?.id, purpose, planTier, billingCycle]);
   React.useEffect(() => {
     if (!isOpen) return;
     let cancelled = false;
@@ -277,7 +305,7 @@ export const PaystackTopUpModal: React.FC<PaystackTopUpModalProps> = ({
 
         {/* Modal Body */}
         <div className="p-6 space-y-5">
-          {(purpose === 'SUBSCRIPTION' || purpose === 'MALVI_SUBSCRIPTION') && (
+          {cryptoAccess?.userId === authUser?.id && cryptoAccess !== null && (
             <div className="rounded-xl border border-slate-800 bg-slate-950/70 p-3">
               <p className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-slate-400">Choose payment method</p>
               <div className="grid grid-cols-2 gap-2">
@@ -285,10 +313,12 @@ export const PaystackTopUpModal: React.FC<PaystackTopUpModalProps> = ({
                   <CreditCard className="h-4 w-4" />Paystack
                 </div>
                 <button type="button" onClick={() => setCryptoCheckoutOpen(true)} className="flex min-h-10 items-center justify-center gap-2 rounded-lg border border-slate-700 bg-slate-900 px-3 text-xs font-bold text-slate-200 transition hover:border-emerald-400/60 hover:text-emerald-200">
-                  <WalletCards className="h-4 w-4" />USDT · TRON
+                  <WalletCards className="h-4 w-4" />{cryptoAccess.recoveryOnly ? 'View USDT payment' : 'USDT · TRON'}
                 </button>
               </div>
-              <p className="mt-2 text-[11px] text-slate-500">Paystack remains available. Crypto checkout is for subscriptions only.</p>
+              <p className="mt-2 text-[11px] text-slate-500">{cryptoAccess.recoveryOnly
+                ? 'View or check an existing USDT invoice. New crypto checkout is not available for this account.'
+                : 'Paystack remains available. Crypto checkout is for subscriptions only.'}</p>
             </div>
           )}
           {errorMessage && (
@@ -545,7 +575,7 @@ export const PaystackTopUpModal: React.FC<PaystackTopUpModalProps> = ({
       </motion.div>
       {(purpose === 'SUBSCRIPTION' || purpose === 'MALVI_SUBSCRIPTION') && planTier && (
         <CryptoSubscriptionCheckout
-          isOpen={cryptoCheckoutOpen}
+          isOpen={cryptoCheckoutOpen && cryptoAccess !== null && cryptoAccess.userId === authUser?.id}
           onClose={() => setCryptoCheckoutOpen(false)}
           onSuccess={() => onSuccess('CRYPTO')}
           purchase={{ purpose, planTier, billingCycle, catalogVersion }}

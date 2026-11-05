@@ -29,7 +29,7 @@ export type CryptoInvoice = {
 };
 
 export const cryptoBillingClient = {
-  config: (): Promise<{ enabled: boolean; reason?: string }> =>
+  config: (): Promise<{ enabled: boolean; eligible?: boolean; accessMode?: 'test' | 'public' | 'closed'; reason?: string }> =>
     protectedBillingRequest('/api/billing/crypto/config'),
   create: (purchase: CryptoPurchase): Promise<{ invoice: CryptoInvoice }> =>
     protectedBillingRequest('/api/billing/crypto/invoices', { method: 'POST', body: JSON.stringify(purchase) }),

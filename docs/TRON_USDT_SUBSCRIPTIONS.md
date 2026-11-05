@@ -17,13 +17,26 @@ balance top-ups and minute packs are not part of this payment rail.
    copies the currently installed paid-activation rules under a distinct TRON
    payment provider and never edits Paystack's original functions. Verify the
    whole SQL succeeds before accepting any payment.
-4. Configure `TRON_USDT_RECEIVING_ADDRESS` (the **public** address) and
-   `TRON_USDT_ENABLED=true` on the actual application host. For a high-volume
+4. The owner approved public access while the first real-money purchase is
+   tested. Configure `TRON_USDT_RECEIVING_ADDRESS` (the **public** address),
+   `TRON_USDT_ACCESS_MODE=public` and `TRON_USDT_ENABLED=true` on the actual host.
+   This opens checkout to all authenticated eligible customers once wallet
+   format and database preflight pass. It is not a private test environment.
+   The global payment flag still defaults to disabled, and the server never
+   grants benefits without verified payment. Public access does not prove a
+   live payment has succeeded.
+   An optional `TRON_USDT_ACCESS_MODE=test` restricts only new purchases to
+   the immutable IDs in `TRON_USDT_TEST_USER_IDS`; an empty list in that mode
+   denies everyone. Do not configure test mode for this public rollout.
+   Unknown modes fail closed; an absent access-mode setting defaults to public.
+   Existing invoices remain recoverable by their owner regardless of mode.
+   For a high-volume
    installation, configure `TRONGRID_API_KEY` through the host's **secrets**
    interface. The key is optional for low-volume reads; a key never authorizes
    payment or custody. Do not add these values to source control. Replit
    development settings do not configure the separate Render deployment.
-5. Check `/api/billing/crypto/config` as an authenticated user; `enabled: true`
+5. Check `/api/billing/crypto/config` as an authenticated customer; `eligible: true`
+   (on releases with rollout metadata) confirms checkout access. `enabled: true`
    means the server sees the public receiving address and SQL preflight, **not**
    that the operator owns the wallet or that a live transfer has been tested.
    Run a carefully controlled small real-money end-to-end purchase only after
@@ -66,7 +79,7 @@ balance top-ups and minute packs are not part of this payment rail.
 
 `npm run lint && npm run build`
 
-`node --import tsx --test tests/tron-usdt-subscriptions.test.ts tests/paystack-flow.test.ts`
+`node --import tsx --test tests/tron-usdt-access.test.ts tests/tron-usdt-subscriptions.test.ts tests/paystack-flow.test.ts`
 
 Tests use a synthetic blockchain receipt and an isolated PostgreSQL fixture.
 They do not prove a real wallet deposit or a deployed Render purchase.
