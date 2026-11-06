@@ -10,6 +10,7 @@ import {
 import type { MalviFxQuote } from '../lib/malviBillingCalculator';
 import type { MalviSubscriptionPlan } from '../types/billing';
 import { balancedMalviPlans } from '../lib/balancedCatalogue.ts';
+import { malviCustomerCopy } from '../lib/malviCustomerCopy';
 import { SUBSCRIPTION_PRICING_VERSION } from '../lib/subscriptionPricing.ts';
 
 interface CatalogDocument { schemaVersion: 1; snapshot: MalviCatalogSnapshot; history: MalviCatalogSnapshot[] }
@@ -131,12 +132,12 @@ export function createMalviCatalogService(
     const plans = balancedMalviPlans(doc.snapshot.plans, doc.snapshot.pricingVersion === SUBSCRIPTION_PRICING_VERSION)
       .filter(p => p.status === 'PUBLISHED').map(p => {
       const { status, ...plan } = p;
-      return {
+      return malviCustomerCopy({
         ...plan, isActive: true, catalogVersion: doc.snapshot.version,
         currencyConversion: fx,
         priceMonthlyGHS: p.priceMonthlyUSD === 0 ? 0 : fx ? Math.round(p.priceMonthlyUSD * fx.rate * 100) / 100 : null,
         priceAnnualGHS: p.priceAnnualUSD === 0 ? 0 : fx ? Math.round(p.priceAnnualUSD * fx.rate * 100) / 100 : null,
-      };
+      });
     });
     return { plans, catalogVersion: doc.snapshot.version, fx,
       fxWarning: fx ? null : 'GHS conversion is unavailable. USD prices remain available.' };

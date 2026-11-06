@@ -61,7 +61,8 @@ test('checkout UI uses the signed-in customer and only verification activates pa
   assert.match(modal,/setAmount\(isMalvi \? 0 : initialAmount \?\? 50\)/);
   assert.match(modal,/billingClient\.getMalviPlans\(\)/);
   assert.match(modal,/metadata: purpose === 'MALVI_SUBSCRIPTION' \? \{ catalogVersion:/);
-  assert.match(hub,/Pay with Paystack/);
+  assert.match(hub,/id=\{`btn_plan_select_\$\{plan\.tier\}`\}/);
+  assert.match(hub,/price > 0 \? 'Paystack' : 'Select free plan'/);
   assert.match(server,/Paid communication plans require verified Paystack checkout/);
   assert.doesNotMatch(server,/durableOrder \|\| order/);
   assert.match(server,/activatePaystackSubscriptionPersistent\(\{ preflight:true \}\)/);

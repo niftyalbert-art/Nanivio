@@ -33,7 +33,7 @@ import { getLanguageByCode, getAllLanguages } from '../../i18n/languages';
 import { LangpretationIcon } from '../common/LangpretationIcon';
 import { PWAInstallButton } from '../common/PWAInstallButton';
 import { getAccountText } from '../../i18n/authTranslations';
-import { billingNumber, formatBillingAmount, communicationCreditBalance } from '../../lib/billingPresentation';
+import { billingNumber, formatBillingAmount, communicationCreditBalance, billingHistoryDisplay } from '../../lib/billingPresentation';
 import { AccountHomeSections } from '../home/AccountHomeSections';
 
 export const AccountView: React.FC = () => {
@@ -510,7 +510,7 @@ export const AccountView: React.FC = () => {
         </div>
 
         <p className="text-xs text-slate-400">
-          Selecting a communication plan assigns its listed Langpretation allowance immediately. This action does not charge a wallet, create an invoice, or start a payment.
+          Paid plans activate only after verified Paystack payment, confirmed TRON USDT payment, or a successful Nanivio credit debit. Review the selected plan and price before paying. Renewal is manual.
         </p>
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -588,29 +588,31 @@ export const AccountView: React.FC = () => {
 
         <div className="space-y-2">
           {billingSummary?.recentTransactions && billingSummary.recentTransactions.length > 0 ? (
-            billingSummary.recentTransactions.map((tx: any) => (
+            billingSummary.recentTransactions.map((row: any, index: number) => {
+              const tx = billingHistoryDisplay(row);
+              return (
               <div
-                key={tx.id}
+                key={tx.id || index}
                 className="p-3.5 rounded-2xl bg-slate-950 border border-slate-800/80 flex items-center justify-between gap-4 text-xs"
               >
                 <div className="flex items-center gap-3">
                   <div className={`w-8 h-8 rounded-xl flex items-center justify-center font-bold ${
-                    tx.type === 'TOPUP' ? 'bg-emerald-500/20 text-emerald-400' : 'bg-slate-800 text-slate-300'
+                    tx.isTopUp ? 'bg-emerald-500/20 text-emerald-400' : 'bg-slate-800 text-slate-300'
                   }`}>
-                    {tx.type === 'TOPUP' ? '+' : '–'}
+                    {tx.isTopUp ? '+' : '–'}
                   </div>
                   <div>
-                    <div className="font-semibold text-white">{tx.description}</div>
+                    <div className="font-semibold text-white">{tx.title}</div>
                     <div className="text-[11px] text-slate-500">
-                      {new Date(tx.timestamp).toLocaleDateString()} at {new Date(tx.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                      {tx.time}
                     </div>
                   </div>
                 </div>
-                <div className={`font-mono font-bold ${tx.type === 'TOPUP' ? 'text-emerald-400' : 'text-slate-300'}`}>
-                  {tx.type === 'TOPUP' ? '+' : '–'} GH₵ {formatBillingAmount(tx.amount)}
+                <div className={`font-mono font-bold ${tx.isTopUp ? 'text-emerald-400' : 'text-slate-300'}`}>
+                  {tx.isTopUp ? '+' : '–'} {tx.currency} {tx.amount}
                 </div>
               </div>
-            ))
+            ); })
           ) : (
             <div className="p-8 rounded-2xl bg-slate-950/80 border border-slate-800 text-center space-y-2">
               <History className="w-8 h-8 text-slate-600 mx-auto" />

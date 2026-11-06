@@ -44,7 +44,7 @@ import {
 } from '../../types/billing';
 import type { MalviSubscriptionPlan } from '../../types/billing';
 import { billingClient } from '../../lib/billingClient';
-import { billingNumber, formatBillingAmount, communicationCreditBalance, billingAllowanceDisplay } from '../../lib/billingPresentation';
+import { billingNumber, formatBillingAmount, communicationCreditBalance, billingAllowanceDisplay, formatBillingMinutes } from '../../lib/billingPresentation';
 import { PaystackTopUpModal } from './PaystackTopUpModal';
 import { PlanResourceUsagePanel } from './PlanResourceUsagePanel';
 import type { PaymentMethod } from './PaymentMethodButtons';
@@ -1142,8 +1142,8 @@ export const UniversalBillingHub: React.FC = () => {
                   </span>
                 </div>
                 <div className="flex flex-wrap gap-x-4 gap-y-1 text-slate-400 font-mono">
-                  <span>Video: <strong className="text-cyan-400">{malviSubscription?.videoMinutesRemaining ?? 0}/{malviSubscription?.videoMinutesAllowed ?? 0} mins</strong></span>
-                  <span>Voice: <strong className="text-cyan-300">{malviSubscription?.voiceMinutesRemaining ?? 0}/{malviSubscription?.voiceMinutesAllowed ?? 0} mins</strong></span>
+                  <span>Video: <strong className="text-cyan-400">{formatBillingMinutes(malviSubscription?.videoMinutesRemaining)}/{formatBillingMinutes(malviSubscription?.videoMinutesAllowed)} mins</strong></span>
+                  <span>Voice: <strong className="text-cyan-300">{formatBillingMinutes(malviSubscription?.voiceMinutesRemaining)}/{formatBillingMinutes(malviSubscription?.voiceMinutesAllowed)} mins</strong></span>
                 </div>
               </div>
             </div>

@@ -25,6 +25,32 @@ export function formatBillingAmount(value: unknown): string {
   });
 }
 
+export function formatBillingMinutes(value: unknown): string {
+  const number = billingNumber(value);
+  if (number === undefined || number < 0) return 'Unavailable';
+  if (number > 0 && number < 0.01) return '<0.01';
+  return number.toLocaleString('en-US', { maximumFractionDigits: 2 });
+}
+
+export function billingHistoryDisplay(row: Record<string, unknown>) {
+  const tx = normalizeBillingTransaction(row);
+  const rawDate = row.timestamp ?? tx.createdAt;
+  const timestamp = typeof rawDate === 'string' ? Date.parse(rawDate) : rawDate;
+  const date = typeof timestamp === 'number' && Number.isFinite(timestamp) ? new Date(timestamp) : null;
+  const time = date && Number.isFinite(date.getTime())
+    ? `${date.toLocaleDateString()} at ${date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`
+    : 'Date unavailable';
+  const kind = String(row.type || tx.serviceType || '');
+  return {
+    id: String(row.id || tx.transactionId || tx.referenceId || ''),
+    title: String(row.description || tx.notes || kind.replace(/_/g, ' ') || 'Nanivio service transaction'),
+    time,
+    amount: formatBillingAmount(row.amount ?? tx.total),
+    currency: String(tx.currency || 'Currency unavailable'),
+    isTopUp: /TOPUP|TOP_UP/.test(kind),
+  };
+}
+
 /** Presentation only: never fill an unknown allowance with demonstration usage. */
 export function billingAllowanceDisplay(remaining: unknown, quota: unknown) {
   const left = billingNumber(remaining), total = billingNumber(quota);

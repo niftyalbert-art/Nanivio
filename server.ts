@@ -1838,7 +1838,9 @@ app.post("/api/stream/channels/:channelId/messages", requireAuthenticatedUser, r
     });
 
     // Fresh provider membership determines private realtime recipients.
-    await broadcastStreamChatMessage(newMessage);
+    await broadcastStreamChatMessage(newMessage).catch(() => {
+      console.warn('Saved chat message could not notify live recipients; history remains available.');
+    });
 
     res.json({ success: true, message: newMessage });
   } catch (error: any) {

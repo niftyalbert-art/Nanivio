@@ -11,7 +11,7 @@ export interface StreamChatMessage {
   attachments?: Array<{ type: 'image' | 'audio' | 'file'; url: string; name?: string; size?: string }>;
   isVoiceNote?: boolean; voiceNoteDuration?: number; nanivio?: ReturnType<typeof import('./chatAttachments.ts').privateMessageMedia>;
 }
-export interface StreamChannelData { id: string; type: string; name: string; members: StreamChannelMember[]; custom?: Record<string, any>; lastMessage?: string; lastMessageAt?: number; updatedAt: number; unreadCount?: number; }
+export interface StreamChannelData { id: string; type: string; name: string; members: StreamChannelMember[]; custom?: Record<string, any>; lastMessage?: string; lastMessageAt?: number; lastMessageUserId?: string; updatedAt: number; unreadCount?: number; }
 export interface StreamEventLog { id: string; type: string; channelId?: string; userId?: string; payload: any; timestamp: number; }
 
 function cfg() {
@@ -96,7 +96,7 @@ function mapMember(member: any): StreamChannelMember {
 function mapChannel(snapshot: any): StreamChannelData {
   const channel = snapshot.channel || {};
   const creator = channel.created_by?.id || channel.created_by_id;
-  const message = snapshot.messages?.[0] || channel.last_message;
+  const message = snapshot.messages?.at(-1) || channel.last_message;
   return {
     id: channel.id, type: channel.type || 'messaging', name: channel.name || channel.id,
     members: Object.values(snapshot.members || {}).map(member => {
@@ -106,6 +106,7 @@ function mapChannel(snapshot: any): StreamChannelData {
     custom: { description: channel.description, isGroup: channel.isGroup, avatar: channel.avatar, createdBy: creator },
     updatedAt: channel.updated_at ? new Date(channel.updated_at).getTime() : Date.now(),
     lastMessage: message?.text,
+    lastMessageUserId: message?.user?.id || message?.user_id,
     lastMessageAt: message?.created_at ? new Date(message.created_at).getTime() : undefined,
   };
 }

@@ -58,6 +58,7 @@ export interface StreamChannelData {
   custom?: Record<string, any>;
   lastMessage?: string;
   lastMessageAt?: number;
+  lastMessageUserId?: string;
   updatedAt: number;
   unreadCount?: number;
 }
@@ -132,24 +133,24 @@ class NanivioStreamClient {
   public async fetchChannels(): Promise<StreamChannelData[]> {
     try {
       const res = await fetch('/api/stream/channels', { headers: streamHeaders() });
-      if (!res.ok) return [];
+      if (!res.ok) throw new ChatSendError(res.status === 401 ? 'session' : 'unavailable');
       const data = await res.json();
-      return data.channels || [];
+      if (!Array.isArray(data.channels)) throw new ChatSendError('unavailable');
+      return data.channels;
     } catch (e) {
-      console.warn('Failed to fetch Stream channels:', e);
-      return [];
+      throw e;
     }
   }
 
   public async fetchMessages(channelId: string): Promise<StreamChatMessage[]> {
     try {
       const res = await fetch(`/api/stream/channels/${encodeURIComponent(channelId)}/messages`, { headers: streamHeaders() });
-      if (!res.ok) return [];
+      if (!res.ok) throw new ChatSendError(res.status === 401 ? 'session' : 'unavailable');
       const data = await res.json();
-      return data.messages || [];
+      if (!Array.isArray(data.messages)) throw new ChatSendError('unavailable');
+      return data.messages;
     } catch (e) {
-      console.warn('Failed to fetch Stream messages:', e);
-      return [];
+      throw e;
     }
   }
 

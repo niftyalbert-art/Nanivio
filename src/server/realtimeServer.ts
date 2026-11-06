@@ -19,6 +19,7 @@ import * as persistentAuth from './persistentAuth.ts';
 import { channelRecipients, normalizeChannelId, StreamAccessError } from './chatPrivacy.ts';
 import { privateMessageMedia } from './chatAttachments.ts';
 import { confirmSavedChat } from './chatDelivery.ts';
+import { privateChatMessageEvent } from './chatMessageEvent';
 import { callKhayaEngine as khaya, callSunbirdEngine as sunbird } from './translationProviders.ts';
 import { translateWithProductionProviders as callProductionTranslation } from './translationRouter.ts';
 import { malviLiveBrainController } from './assistant/liveBrain.ts';
@@ -338,13 +339,9 @@ async function broadcastToChannel(channelId: string, event: any, excludeSocket?:
 }
 
 export async function broadcastStreamChatMessage(message: StreamChatMessage) {
-  await broadcastToChannel(message.channelId, {
-    type: 'chat:message',
-    payload: {
-      channelId: message.channelId,
-      message,
-    },
-  });
+  const channel = await getStreamChannel(message.channelId, message.userId);
+  if (!channel) throw new StreamAccessError('Private channel unavailable.', 404);
+  await broadcastToChannel(message.channelId, privateChatMessageEvent(message, channel));
 }
 
 export async function broadcastStreamReaction(channelId: string, message: StreamChatMessage) {

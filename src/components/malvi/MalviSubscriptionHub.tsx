@@ -1,5 +1,6 @@
 import { PaystackPaymentRecovery } from '../billing/PaystackPaymentRecovery';
 import React, { useState } from 'react';
+import { formatBillingMinutes } from '../../lib/billingPresentation';
 import {
   X,
   Sparkles,
@@ -205,7 +206,7 @@ export const MalviSubscriptionHub: React.FC<MalviSubscriptionHubProps> = ({
               <div>
                 <span className="text-slate-400">Video Interaction: </span>
                 <span className="font-bold text-emerald-400">
-                  {malviSubscription?.videoMinutesRemaining ?? 0} mins remaining
+                  {formatBillingMinutes(malviSubscription?.videoMinutesRemaining)} mins remaining
                 </span>
                 <span className="text-slate-500">
                   {' '}(of {malviSubscription?.videoMinutesAllowed ?? 0}m)
@@ -213,7 +214,7 @@ export const MalviSubscriptionHub: React.FC<MalviSubscriptionHubProps> = ({
               </div>
               <div>
                 <span className="text-slate-400">Voice Interaction: </span>
-                <span className="font-bold text-cyan-300">{malviSubscription?.voiceMinutesRemaining ?? 0} mins remaining</span>
+                <span className="font-bold text-cyan-300">{formatBillingMinutes(malviSubscription?.voiceMinutesRemaining)} mins remaining</span>
                 <span className="text-slate-500"> {' '}(of {malviSubscription?.voiceMinutesAllowed ?? 0}m)</span>
               </div>
               <div className="hidden sm:block text-slate-600">|</div>

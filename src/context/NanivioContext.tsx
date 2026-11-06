@@ -52,6 +52,7 @@ import { agoraClient, AgoraTelemetryStats } from '../lib/agoraClient';
 import { callMediaErrorMessage, callMediaFailureDetails, finishAnsweredCall } from '../lib/callMediaErrors';
 import { CallLifecycle } from '../lib/callLifecycle';
 import { streamClient, StreamClientState } from '../lib/streamClient';
+import { startChatHistorySync } from '../lib/chatHistorySync';
 import { linkedPrivateConversation, privateConversationChannel, publishPrivateMessage, restoredPrivateMessage } from '../lib/privateChat';
 import { durableChatMedia } from '../lib/chatAttachments';
 import { ownedChatSnapshot, readPrivateChatCache, writePrivateChatCache } from '../lib/privateChatStorage';
@@ -194,6 +195,7 @@ interface NanivioContextType {
   
   // Chat & Voice Notes (Powered by GetStream Chat)
   streamState: StreamClientState;
+  chatSyncError: string | null;
   conversations: Conversation[];
   activeConversationId: string;
   setActiveConversationId: (id: string) => void;
@@ -769,6 +771,9 @@ export const NanivioProvider: React.FC<{ children: React.ReactNode }> = ({ child
   const [messages, setMessages] = useState<Record<string, ChatMessage[]>>(() =>
     readPrivateChatCache(currentUser.id).messages);
   const [streamState, setStreamState] = useState<StreamClientState>(streamClient.getState());
+  const [channelSyncError, setChannelSyncError] = useState<string | null>(null);
+  const [messageSyncError, setMessageSyncError] = useState<string | null>(null);
+  const chatSyncError = messageSyncError || channelSyncError;
   const accountChats = chatOwnerId === currentUser.id
     ? ownedChatSnapshot(currentUser.id, { conversations, messages }) : { conversations: [], messages: {} };
 
@@ -780,6 +785,8 @@ export const NanivioProvider: React.FC<{ children: React.ReactNode }> = ({ child
     setActiveConversationId('');
     setReplyingToMessage(null);
     setChatNotificationToast(null);
+    setChannelSyncError(null);
+    setMessageSyncError(null);
     setChatOwnerId(currentUser.id);
   }, [currentUser.id, chatOwnerId]);
 
@@ -811,10 +818,11 @@ export const NanivioProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
   // Restore only provider-authorized conversations and their durable media.
   useEffect(() => {
-    if (!isAuthenticated || streamState.status !== 'CONNECTED' || chatOwnerId !== currentUser.id) return;
+    if (!isAuthenticated || chatOwnerId !== currentUser.id) return;
     const owner = currentUser.id;
     let cancelled = false;
-    streamClient.fetchChannels().then(channels => {
+    const stop = startChatHistorySync(async () => {
+      const channels = await streamClient.fetchChannels();
       if (cancelled || currentAccountIdRef.current !== owner) return;
       const accessible = channels.filter(channel => channel.members.some(member => member.userId === owner));
       setConversations(previous => {
@@ -825,30 +833,48 @@ export const NanivioProvider: React.FC<{ children: React.ReactNode }> = ({ child
             id: channel.id, title: channel.name, participants: [], unreadCount: channel.unreadCount || 0,
             isGroup: Boolean(channel.custom?.isGroup), lastMessage: channel.lastMessage, lastMessageTime: channel.lastMessageAt,
           };
-          const linked = linkedPrivateConversation(base, channel);
+          const hasNewerHistory = (channel.lastMessageAt ?? 0) >= (base.lastMessageTime ?? 0);
+          const latest = hasNewerHistory ? channel.lastMessageAt ?? base.lastMessageTime : base.lastMessageTime;
+          const incoming = !!channel.lastMessageUserId && channel.lastMessageUserId !== owner &&
+            (index < 0 || (channel.lastMessageAt ?? 0) > (base.lastMessageTime ?? 0));
+          const viewing = activeTabRef.current === 'chat' && activeConversationIdRef.current === base.id;
+          const linked = linkedPrivateConversation({
+            ...base, lastMessage: hasNewerHistory ? channel.lastMessage ?? base.lastMessage : base.lastMessage, lastMessageTime: latest,
+            unreadCount: viewing ? 0 : incoming ? Math.max(1, base.unreadCount || 0) : base.unreadCount,
+          }, channel);
           if (index >= 0) next[index] = linked; else next.push(linked);
         }
         return next;
       });
+      setChannelSyncError(null);
+    }, () => {
+      if (!cancelled && currentAccountIdRef.current === owner)
+        setChannelSyncError('Chat history could not refresh. Reconnecting automatically; your existing messages are kept.');
     });
-    return () => { cancelled = true; };
+    return () => { cancelled = true; stop(); };
   }, [isAuthenticated, currentUser.id, chatOwnerId, streamState.status]);
 
   const activePrivateChannel = conversations.find(conversation => conversation.id === activeConversationId)?.streamChannelId;
   useEffect(() => {
-    if (!isAuthenticated || streamState.status !== 'CONNECTED' || !activePrivateChannel) return;
+    if (!isAuthenticated || !activePrivateChannel || chatOwnerId !== currentUser.id) return;
     const owner = currentUser.id;
     let cancelled = false;
-    streamClient.fetchMessages(activePrivateChannel).then(saved => {
+    setMessageSyncError(null);
+    const stop = startChatHistorySync(async () => {
+      const saved = await streamClient.fetchMessages(activePrivateChannel);
       if (cancelled || currentAccountIdRef.current !== owner) return;
       setMessages(previous => {
         const merged = new Map<string, ChatMessage>((previous[activeConversationId] || []).map(message => [message.id, message]));
         saved.forEach(message => merged.set(message.id, restoredPrivateMessage(message)));
         return { ...previous, [activeConversationId]: [...merged.values()].sort((a, b) => a.timestamp - b.timestamp) };
       });
+      setMessageSyncError(null);
+    }, () => {
+      if (!cancelled && currentAccountIdRef.current === owner)
+        setMessageSyncError('This conversation could not refresh. Reconnecting automatically; your draft and messages are kept.');
     });
-    return () => { cancelled = true; };
-  }, [isAuthenticated, currentUser.id, streamState.status, activePrivateChannel, activeConversationId]);
+    return () => { cancelled = true; stop(); };
+  }, [isAuthenticated, currentUser.id, chatOwnerId, streamState.status, activePrivateChannel, activeConversationId]);
 
   // Subscription & Live Langpretation Meter State
   const [isSubscribed, setIsSubscribed] = useState<boolean>(false);
@@ -3519,6 +3545,7 @@ export const NanivioProvider: React.FC<{ children: React.ReactNode }> = ({ child
         processLiveSpeechUtterance,
 
         streamState,
+        chatSyncError,
         conversations: accountChats.conversations,
         activeConversationId,
         setActiveConversationId,

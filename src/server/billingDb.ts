@@ -962,7 +962,7 @@ export class BillingDatabase {
         isPopular: true,
         features: [
           'Interactive human-like AI companion / avatar on screen with natural interaction',
-          'Natural, continuous voice conversation with zero awkward pauses',
+          'Natural voice conversation, with response times dependent on provider and network conditions',
           'Real-time Langpretation assistance during supported voice and video calls',
           'Advanced conversational intelligence with rich, context-aware memory',
           'Personalized conversations adapting to your dialect & communication preferences',

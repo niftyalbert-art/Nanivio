@@ -65,6 +65,7 @@ export const StreamChatInterface: React.FC<StreamChatInterfaceProps> = ({ onCate
   const [inputText, setInputText] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [isSending, setIsSending] = useState(false);
+  const [historyError, setHistoryError] = useState(false);
   const [showInspector, setShowInspector] = useState(false);
   const [logs, setLogs] = useState<StreamEventLog[]>([]);
   const [isTypingRemote, setIsTypingRemote] = useState(false);
@@ -136,7 +137,9 @@ export const StreamChatInterface: React.FC<StreamChatInterfaceProps> = ({ onCate
   useEffect(() => {
     const interval = setInterval(() => {
       if (selectedChannelId) {
-        streamClient.fetchMessages(selectedChannelId).then(setMessages);
+        streamClient.fetchMessages(selectedChannelId).then(saved => {
+          setMessages(saved); setHistoryError(false);
+        }).catch(() => setHistoryError(true));
       }
       if (showInspector) {
         streamClient.fetchLogs().then(setLogs);
@@ -153,17 +156,20 @@ export const StreamChatInterface: React.FC<StreamChatInterfaceProps> = ({ onCate
 
   const loadChannels = async () => {
     setIsLoading(true);
-    const list = await streamClient.fetchChannels();
-    setChannels(list);
-    if (list.length > 0 && !selectedChannelId) {
-      setSelectedChannelId(list[0].id);
-    }
-    setIsLoading(false);
+    try {
+      const list = await streamClient.fetchChannels();
+      setChannels(list);
+      if (list.length > 0 && !selectedChannelId) setSelectedChannelId(list[0].id);
+      setHistoryError(false);
+    } catch { setHistoryError(true); }
+    finally { setIsLoading(false); }
   };
 
   const loadMessages = async (channelId: string) => {
-    const msgs = await streamClient.fetchMessages(channelId);
-    setMessages(msgs);
+    try {
+      const msgs = await streamClient.fetchMessages(channelId);
+      setMessages(msgs); setHistoryError(false);
+    } catch { setHistoryError(true); }
   };
 
   const handleSendMessage = async (e?: React.FormEvent) => {
@@ -257,6 +263,7 @@ export const StreamChatInterface: React.FC<StreamChatInterfaceProps> = ({ onCate
       {/* LEFT: Stream Channels Navigation */}
       {/* ------------------------------------------------------------- */}
       <div className="w-full md:w-80 bg-[#0c1424] border-r border-slate-800 flex flex-col shrink-0">
+        {historyError && <p role="status" className="m-3 rounded-xl border border-amber-500/40 p-3 text-xs text-amber-200">Chat history could not refresh. Existing messages are kept; retry when connected.</p>}
         {/* Brand & Status Header */}
         <div className="p-4 border-b border-slate-800 space-y-3">
           <div className="flex items-center justify-between">

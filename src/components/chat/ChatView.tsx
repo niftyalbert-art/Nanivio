@@ -115,6 +115,7 @@ export const ChatView: React.FC = () => {
     myLanguage,
     globalLangpretationEnabled,
     streamState,
+    chatSyncError,
     userSettings,
     blockUser,
     restrictUser,
@@ -502,6 +503,11 @@ export const ChatView: React.FC = () => {
         </div>
       )}
 
+      {chatSyncError && (
+        <p role="status" className="rounded-xl border border-amber-500/40 bg-amber-950/30 px-4 py-3 text-sm text-amber-100">
+          {chatSyncError}
+        </p>
+      )}
       {/* Conditionally Render Stream Chat Interface or Standard Chat View */}
       {activeTab === 'stream_channels' ? (
         <StreamChatInterface onCategorySelect={setActiveTab} />
