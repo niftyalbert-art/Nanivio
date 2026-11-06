@@ -99,6 +99,13 @@
   background-color: transparent;
   background-image: linear-gradient(to bottom, rgb(7 19 17 / 60%), transparent 50%, rgb(7 19 17 / 75%));
 }
+.malvi-live-avatar-video {
+  /* A fixed, restrained push-in makes the portrait read as head-and-shoulders
+     without changing the video element, its layout box, or its media ref. */
+  --malvi-live-avatar-zoom: 1.55;
+  transform: scale(var(--malvi-live-avatar-zoom));
+  transform-origin: 50% 42%;
+}
 
 :is(.nv-theme-dark, .nanivio-auth) [class*="bg-gradient-to-"][class*="from-[#0"] {
   background-image: none !important;
@@ -732,4 +739,156 @@
   }
   .nv-chat-workspace #btn-chat-attach-media { width: 2rem; height: 2rem; }
   .nv-chat-workspace .chat-composer > form > div { padding-left: .25rem; padding-right: .25rem; }
+}
+
+/* Calls use Nanivio's cyan / teal / violet identity on graphite and warm
+   charcoal surfaces. The video remains a panel, with captions and controls
+   kept in their own column/row rather than layered over Malvi. */
+.nv-calls-page {
+  --nv-brass: #58d2cd;
+  --call-cyan: #62d9d3;
+  --call-teal: #63cdb5;
+  --call-violet: #b9a5f2;
+  --call-sky: #79c9e6;
+  --call-lilac: #d0a8e8;
+}
+.nv-call-mark { border-color: #286866; background: #142625; color: var(--call-cyan); }
+.nv-call-tabs button { transition: background-color .16s ease, border-color .16s ease, color .16s ease; }
+.nv-call-tabs button:nth-child(1) svg { color: var(--call-cyan); }
+.nv-call-tabs button:nth-child(2) svg { color: var(--call-violet); }
+.nv-call-tabs button:nth-child(3) svg { color: var(--call-sky); }
+.nv-call-tabs button:nth-child(4) svg { color: var(--call-teal); }
+.nv-call-tabs button:nth-child(5) svg { color: var(--call-lilac); }
+.nv-call-tabs button:nth-child(1).is-active svg { color: var(--call-cyan); }
+.nv-call-tabs button:nth-child(2).is-active svg { color: var(--call-violet); }
+.nv-call-tabs button:nth-child(3).is-active svg { color: var(--call-sky); }
+.nv-call-tabs button:nth-child(4).is-active svg { color: var(--call-teal); }
+.nv-call-tabs button:nth-child(5).is-active svg { color: var(--call-lilac); }
+.nv-call-tabs button:hover:not(.is-active) { border-color: #39444a; background: #20262b; color: #f2f1ec; }
+.nv-call-tabs button.is-active { color: #f7f5ee; }
+.nv-call-tabs button:nth-child(1).is-active { border-color: #347e7b; background: #183130; }
+.nv-call-tabs button:nth-child(2).is-active { border-color: #685995; background: #282238; }
+.nv-call-tabs button:nth-child(3).is-active { border-color: #3f7486; background: #1b2d34; }
+.nv-call-tabs button:nth-child(4).is-active { border-color: #367b69; background: #193129; }
+.nv-call-tabs button:nth-child(5).is-active { border-color: #795d8a; background: #302339; }
+.nv-call-tabs button:focus-visible,
+.nv-calls-page button:focus-visible,
+.nv-dialer-panel button:focus-visible {
+  outline: 2px solid #8ce7e0;
+  outline-offset: 2px;
+}
+.nv-call-tabs button:disabled,
+.nv-calls-page button:disabled,
+.nv-dialer-panel button:disabled {
+  cursor: not-allowed;
+}
+.nv-mode-select button.is-active { border-color: #367f7b; background: #183230; color: var(--call-cyan); }
+.nv-mode-select button:nth-child(2).is-active { border-color: #695994; background: #29223a; color: var(--call-violet); }
+.nv-mode-select button:disabled { color: #9299a0; opacity: 1; background: #22272d; border-color: #343c44; }
+.nv-group-lookup button:disabled { border: 1px solid #41494f; background: #2b3137; color: #b1b8bd; opacity: 1; }
+.nv-group-contacts > button:hover:not(:disabled) { border-color: #4b7777; background: #1c2a2d; }
+.nv-group-contacts > button.is-selected { border-color: #4e9c95; background: #193331; }
+.nv-group-contacts > button:disabled { border-color: #363d43; background: #20242a; color: #a1a7ad; opacity: .72; }
+.nv-group-guests button:hover { background: #4a4030; color: #fff5d9; }
+.nv-group-launch:disabled { border: 1px solid #41494f; background: #2b3137; color: #b1b8bd; opacity: 1; }
+.nv-danger-quiet:hover { color: #ffd0c3; text-decoration: underline; text-underline-offset: .2rem; }
+
+.nv-recent-actions button,
+.nv-specialists-list article > button,
+.nv-history-row > button {
+  transition: background-color .16s ease, border-color .16s ease, color .16s ease;
+}
+.nv-recent-actions button:nth-child(1),
+.nv-specialists-list article > button { border-color: #316f6a; background: #192c2b; color: var(--call-cyan); }
+.nv-recent-actions button:nth-child(2) { border-color: #3c6f7d; background: #1b2a30; color: var(--call-sky); }
+.nv-recent-actions button:nth-child(3) { border-color: #65558d; background: #29233a; color: var(--call-violet); }
+.nv-specialists-list article > button:nth-of-type(2) { border-color: #3c6f7d; background: #1b2a30; color: var(--call-sky); }
+.nv-specialists-list article > button:nth-of-type(3) { border-color: #65558d; background: #29233a; color: var(--call-violet); }
+.nv-recent-actions button:hover:not(:disabled),
+.nv-specialists-list article > button:hover:not(:disabled) { border-color: #65c9c0; background: #24413e; color: #eafffb; }
+.nv-recent-actions button:nth-child(2):hover:not(:disabled) { border-color: #79c9e6; background: #233c45; }
+.nv-recent-actions button:nth-child(3):hover:not(:disabled) { border-color: #b9a5f2; background: #39304f; }
+.nv-specialists-list article > button:nth-of-type(2):hover:not(:disabled) { border-color: #79c9e6; background: #233c45; }
+.nv-specialists-list article > button:nth-of-type(3):hover:not(:disabled) { border-color: #b9a5f2; background: #39304f; }
+.nv-recent-actions button:disabled,
+.nv-specialists-list article > button:disabled {
+  border-color: #383f45;
+  background: #24292e;
+  color: #a1a8ad;
+  opacity: 1;
+}
+.nv-specialists-list article > button:disabled { color: #a1a8ad; }
+.nv-specialists-list article > button:hover:not(:disabled) { color: #eafffb; }
+.nv-calls-content .nv-specialists-list article > button { width: 42px; height: 42px; border-radius: .7rem; }
+.nv-calls-content .nv-specialists-list article > button svg { width: 17px; height: 17px; }
+
+.nv-dialer-panel .nv-dialer-heading-icon { border-color: #347e7b; background: #183130; color: var(--call-cyan); }
+.nv-dialer-keypad > div:first-child:focus-within { border-color: #58d2cd !important; box-shadow: 0 0 0 2px rgb(88 210 205 / 20%); }
+.nv-dialer-keypad .nv-dialer-pad-grid button {
+  border-color: #38444c !important;
+  background: #232a30 !important;
+  color: #f2f1ec !important;
+  transition: background-color .16s ease, border-color .16s ease, color .16s ease;
+}
+.nv-dialer-keypad .nv-dialer-pad-grid button:hover:not(:disabled) {
+  border-color: #52bdb8 !important;
+  background: #1e3938 !important;
+}
+.nv-dialer-keypad .nv-dialer-pad-grid button:active:not(:disabled) { background: #28514e !important; }
+.nv-dialer-keypad .nv-dialer-pad-grid button:disabled {
+  border-color: #353b40 !important;
+  background: #252a2e !important;
+  color: #a2a8ad !important;
+  opacity: 1;
+}
+.nv-dialer-keypad .nv-dialer-actions button {
+  border: 1px solid #4ba9a3 !important;
+  background: #67d8cf !important;
+  color: #102725 !important;
+  box-shadow: none !important;
+}
+.nv-dialer-keypad .nv-dialer-actions button:nth-child(2) {
+  border-color: #5688a0 !important;
+  background: #83cee4 !important;
+  color: #13252d !important;
+}
+.nv-dialer-keypad .nv-dialer-actions button:hover:not(:disabled) { background: #8be8de !important; }
+.nv-dialer-keypad .nv-dialer-actions button:nth-child(2):hover:not(:disabled) { background: #a1def0 !important; }
+.nv-dialer-keypad .nv-dialer-actions button:disabled {
+  border-color: #41484e !important;
+  background: #2a3036 !important;
+  color: #b0b7bd !important;
+}
+.nv-dialer-keypad .nv-dialer-actions button:disabled svg { color: #b0b7bd !important; }
+.nv-dialer-contacts > div:nth-child(2) button {
+  border: 1px solid #3b4750;
+  background: #283039;
+  color: #d7e4e5;
+}
+.nv-dialer-contacts > div:nth-child(2) > div > div > button:nth-child(1):hover:not(:disabled) { background: #1e3938; color: var(--call-cyan); }
+.nv-dialer-contacts > div:nth-child(2) > div > div > button:nth-child(2):hover:not(:disabled) { background: #1d3540; color: var(--call-sky); }
+.nv-dialer-contacts > div:nth-child(2) > div > div > button:nth-child(3):hover:not(:disabled) { background: #302642; color: var(--call-violet); }
+.nv-dialer-contacts > div:nth-child(2) button:disabled { border-color: #42494f; background: #2b3035; color: #b1b7bc; opacity: 1; }
+
+.malvi-live-avatar-video {
+  --malvi-live-avatar-zoom: 1.55;
+  transform-origin: 50% 40%;
+}
+@media (max-width: 639px) {
+  .malvi-live-layout { grid-template-rows: minmax(32dvh, 1fr) auto; }
+  .malvi-live-layout > .malvi-live-stage { min-height: 32dvh; }
+  .malvi-live-layout > aside { max-height: 48dvh; }
+  .malvi-live-avatar-video { --malvi-live-avatar-zoom: 1.65; }
+}
+@media (max-width: 767px) {
+  .nv-call-tabs button { min-height: 52px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .nv-call-tabs button,
+  .nv-recent-actions button,
+  .nv-specialists-list article > button,
+  .nv-history-row > button,
+  .nv-dialer-keypad .nv-dialer-pad-grid button {
+    transition: none;
+  }
 }

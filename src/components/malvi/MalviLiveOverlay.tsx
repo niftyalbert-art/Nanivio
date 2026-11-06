@@ -361,14 +361,14 @@ export const MalviLiveOverlay: React.FC<MalviLiveOverlayProps> = ({
 
         <main className={`grid min-h-0 flex-1 grid-cols-1 ${voiceOnly
           ? 'grid-rows-[minmax(0,1fr)_auto] min-[640px]:grid-rows-[minmax(0,1fr)_auto]'
-          : 'grid-rows-[minmax(0,1fr)_auto] min-[640px]:grid-rows-1 min-[640px]:grid-cols-[minmax(0,1fr)_clamp(15rem,26vw,21rem)]'}`}>
-          <section aria-label={voiceOnly ? 'Voice conversation' : 'Malvi video'} className="relative min-h-0 min-w-0 overflow-hidden bg-[#10201f]">
+          : 'malvi-live-layout grid-rows-[minmax(0,1fr)_auto] min-[640px]:grid-rows-1 min-[640px]:grid-cols-[minmax(0,1fr)_clamp(15rem,26vw,21rem)]'}`}>
+          <section aria-label={voiceOnly ? 'Voice conversation' : 'Malvi video'} className="malvi-live-stage relative min-h-0 min-w-0 overflow-hidden bg-[#10201f]">
             {!voiceOnly && <video
               ref={onVideoElement}
               autoPlay
               playsInline
               aria-label="Malvi live video"
-              className="absolute inset-0 h-full w-full object-contain object-center"
+              className="malvi-live-avatar-video absolute inset-0 h-full w-full object-contain object-center"
             />}
             {!voiceOnly && <div aria-hidden="true" className="malvi-live-media-shade pointer-events-none absolute inset-0" />}
 
