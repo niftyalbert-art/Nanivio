@@ -106,13 +106,16 @@
 
 /* Fill the portrait-first stage without stretching the source. Side edges
    may crop on narrow phones; keep the face above centre and controls below. */
-.malvi-live-video-dialog { background: #061117; }
+.malvi-live-video-dialog {
+  --malvi-live-action-reserve: calc(76px + env(safe-area-inset-bottom, 0px));
+  background: #061117;
+}
 .malvi-live-video-content { min-height: 100%; }
 .malvi-live-video-dialog .malvi-live-stage {
   width: 100%;
-  height: 90dvh;
-  min-height: 90dvh;
-  flex: 0 0 90dvh;
+  height: min(90dvh, calc(100dvh - var(--malvi-live-action-reserve, 76px)));
+  min-height: 0;
+  flex: 0 0 auto;
   background: #061117;
 }
 .malvi-live-video-dialog .malvi-live-avatar-video { transform: none; }
@@ -120,11 +123,78 @@
   object-fit: cover;
   object-position: 50% 35%;
 }
+.malvi-live-stage-overlay {
+  position: absolute;
+  z-index: 2;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  overflow: auto;
+  padding: 12px;
+  pointer-events: none;
+  overscroll-behavior: contain;
+}
+.malvi-live-stage-overlay > * {
+  width: min(100%, 30rem);
+  max-height: 100%;
+  overflow-y: auto;
+  pointer-events: auto;
+  border-color: rgb(93 204 201 / 48%);
+  background: #101d25;
+  box-shadow: 0 12px 32px rgb(0 0 0 / 42%);
+}
+.malvi-live-stage-overlay [data-testid="malvi-allowance-notice"] {
+  align-content: center;
+  padding: 14px 16px;
+  background: #111d25;
+}
+.malvi-live-subscription-card {
+  border: 1px solid rgb(93 204 201 / 48%);
+  border-radius: 16px;
+  padding: 18px;
+  color: #f1f3eb;
+}
+.malvi-live-primary-actions {
+  box-sizing: border-box;
+  display: flex;
+  flex: 0 0 var(--malvi-live-action-reserve);
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  height: var(--malvi-live-action-reserve);
+  padding: 8px 16px calc(8px + env(safe-area-inset-bottom, 0px));
+  border-bottom: 1px solid rgb(65 183 184 / 22%);
+  background: #111922;
+}
+.malvi-live-primary-actions button {
+  min-width: 0;
+  gap: .4rem;
+  padding-inline: .5rem;
+  font-size: .8125rem;
+  white-space: nowrap;
+}
+.malvi-live-primary-mic {
+  border: 1px solid #8de8dc;
+  background: #a8eee3;
+  color: #07343b;
+}
+.malvi-live-primary-mic:hover:not(:disabled) { background: #c1f5ed; }
+.malvi-live-primary-mic:disabled { border-color: #567477; background: #34464a; color: #d1dddf; }
+.malvi-live-primary-end {
+  border: 1px solid #8a76b8;
+  background: #332945;
+  color: #f0eaff;
+}
+.malvi-live-primary-end:hover { background: #44365b; }
 .malvi-live-video-details { color: #e7f2f4; }
 .malvi-live-video-details > header { border-bottom: 1px solid rgb(52 175 175 / 18%); }
 @media (max-width: 639px) {
   .malvi-live-video-details > header { flex-wrap: wrap; }
   .malvi-live-video-details > header > div:nth-child(2) { flex-wrap: wrap; justify-content: flex-end; }
+}
+@media (max-width: 380px) {
+  .malvi-live-primary-actions { gap: 7px; padding-right: 8px; padding-left: 8px; }
+  .malvi-live-primary-actions button { gap: .3rem; padding-inline: .3rem; font-size: .78rem; }
 }
 
 :is(.nv-theme-dark, .nanivio-auth) [class*="bg-gradient-to-"][class*="from-[#0"] {

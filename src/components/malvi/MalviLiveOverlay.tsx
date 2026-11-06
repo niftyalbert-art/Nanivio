@@ -299,6 +299,12 @@ export const MalviLiveOverlay: React.FC<MalviLiveOverlayProps> = ({
     connected: 'Connected',
     error: 'Connection issue',
   }[phase];
+  const allowanceSeconds = allowanceSecondsRemaining;
+  const showVideoAllowanceOverlay = !voiceOnly && !!onOpenBilling &&
+    (allowanceUnavailable || (typeof allowanceSeconds === 'number' &&
+      Number.isFinite(allowanceSeconds) && allowanceSeconds >= 0 && allowanceSeconds <= 60)) &&
+    (phase === 'connecting' || phase === 'connected');
+  const showSubscriptionOverlay = !voiceOnly && phase === 'error' && !!onSubscribe;
   const listeningState = !microphoneOn ? 'off' : inputState ?? 'listening';
   const listeningCopy = {
     off: 'Microphone off',
@@ -382,7 +388,64 @@ export const MalviLiveOverlay: React.FC<MalviLiveOverlayProps> = ({
                 />
               </div>
             )}
+            {showVideoAllowanceOverlay && (
+              <div className="malvi-live-stage-overlay" data-testid="malvi-stage-reminder" dir={usageCopy.direction}>
+                <MalviAllowanceNotice
+                  remainingSeconds={allowanceUnavailable ? null : allowanceSecondsRemaining ?? null}
+                  unavailable={allowanceUnavailable}
+                  onViewPlans={onOpenBilling!}
+                  languageCode={languageCode}
+                />
+              </div>
+            )}
+            {showSubscriptionOverlay && (
+              <div className="malvi-live-stage-overlay" data-testid="malvi-stage-subscription">
+                <section
+                  role="alert"
+                  aria-label={usageCopy.subscriptionTitle}
+                  dir={usageCopy.direction}
+                  className="malvi-live-subscription-card"
+                >
+                  <p className="font-semibold text-[#f1f3eb]">{usageCopy.subscriptionTitle}</p>
+                  <p className="mt-1 text-sm leading-relaxed text-[#d7e3e5]">{usageCopy.subscriptionBody}</p>
+                  <button
+                    type="button"
+                    onClick={onSubscribe}
+                    aria-label={usageCopy.subscribe === 'Subscribe' ? 'Subscribe to Malvi' : usageCopy.subscribe}
+                    className="mt-3 min-h-11 rounded-xl border border-[#73dcd5]/55 bg-[#173a42] px-4 py-2 font-semibold text-[#c7f4ee] transition-colors hover:bg-[#20525a] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#73e3dc]"
+                  >
+                    {usageCopy.subscribe}
+                  </button>
+                </section>
+              </div>
+            )}
           </section>
+
+          {!voiceOnly && (
+            <div className="malvi-live-primary-actions" role="group" aria-label="Primary live session actions">
+              <button
+                type="button"
+                data-malvi-primary-microphone
+                onClick={onToggleMicrophone}
+                disabled={!brainReady || phase !== 'connected'}
+                aria-pressed={microphoneOn}
+                aria-label={microphoneOn ? 'Pause microphone' : 'Start speaking'}
+                className="malvi-live-primary-mic inline-flex min-h-12 flex-1 items-center justify-center gap-2 rounded-xl px-4 text-[13px] font-semibold transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#73e3dc] disabled:cursor-not-allowed disabled:opacity-55"
+              >
+                {microphoneOn ? <MicOff size={18} /> : <Mic size={18} />}
+                <span>{microphoneOn ? 'Pause microphone' : 'Start speaking'}</span>
+              </button>
+              <button
+                ref={closeButtonRef}
+                type="button"
+                onClick={onClose}
+                aria-label="End session and close"
+                className="malvi-live-primary-end inline-flex min-h-12 flex-1 items-center justify-center gap-2 rounded-xl px-4 text-[13px] font-semibold transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#c8b5ef]"
+              >
+                <span>End session</span><X size={17} />
+              </button>
+            </div>
+          )}
 
           <aside className={`flex min-w-0 flex-col ${voiceOnly
             ? 'border-t border-white/10 bg-[#071311]/95'
@@ -401,18 +464,9 @@ export const MalviLiveOverlay: React.FC<MalviLiveOverlayProps> = ({
                     <span className="text-[#c3b6d9]">Idle session</span>
                     <span className="font-mono tabular-nums">{formatTime(secondsRemaining)}</span>
                   </div>
-                  <button
-                    ref={closeButtonRef}
-                    type="button"
-                    onClick={onClose}
-                    className="inline-flex min-h-11 items-center gap-2 rounded-full border border-[#43b9b4]/55 bg-[#12353b] px-3.5 text-xs font-medium text-white transition-colors hover:bg-[#1a4b50] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#74e0d4]"
-                    aria-label="End session and close"
-                  >
-                    <span>End session</span><X size={16} />
-                  </button>
                 </div>
               </header>
-              {(phase === 'connecting' || phase === 'connected') && onOpenBilling && (
+              {!showVideoAllowanceOverlay && (phase === 'connecting' || phase === 'connected') && onOpenBilling && (
                 <div className="shrink-0 px-4 pt-3 sm:px-7">
                   <MalviAllowanceNotice remainingSeconds={allowanceSecondsRemaining}
                     unavailable={allowanceUnavailable} onViewPlans={onOpenBilling} languageCode={languageCode} />
@@ -446,7 +500,7 @@ export const MalviLiveOverlay: React.FC<MalviLiveOverlayProps> = ({
             </div>
           )}
           <div role="group" aria-label="Conversation controls" className="flex w-full flex-wrap items-center justify-center gap-1.5">
-            <button
+            {voiceOnly && <button
               type="button"
               onClick={onToggleMicrophone}
               disabled={!brainReady || phase !== 'connected'}
@@ -455,7 +509,7 @@ export const MalviLiveOverlay: React.FC<MalviLiveOverlayProps> = ({
             >
               {microphoneOn ? <MicOff size={18} /> : <Mic size={18} />}
               {microphoneOn ? 'Turn microphone off' : brainReady ? 'Start talking' : 'Connecting Malvi’s brain…'}
-            </button>
+            </button>}
             <div className="flex flex-wrap items-center justify-center gap-1.5">
             <div className="flex items-center gap-2 rounded-full border border-white/15 bg-[#10201f]/65 px-3.5 py-2.5 text-xs text-[#f1f3eb] backdrop-blur-md sm:hidden">
               <span className="text-[#c0d1c8]/75">Idle session</span>
@@ -545,7 +599,7 @@ export const MalviLiveOverlay: React.FC<MalviLiveOverlayProps> = ({
             </details>
           )}
           </div>
-          {(phase === 'connecting' || phase === 'error' || microphoneError) && (
+          {(phase === 'connecting' || (phase === 'error' && !showSubscriptionOverlay) || microphoneError) && (
             <div
               role="region"
               aria-label="Session status and feedback"
@@ -563,7 +617,7 @@ export const MalviLiveOverlay: React.FC<MalviLiveOverlayProps> = ({
                   </span>
                 </div>
               )}
-              {phase === 'error' && (
+              {phase === 'error' && !showSubscriptionOverlay && (
                 <div role="alert" className="text-[#f0ded0]">
                   <p dir={onSubscribe ? usageCopy.direction : undefined} className="flex items-center justify-center gap-2 font-medium">
                     <AlertCircle size={15} className="shrink-0 text-[#e6c4a9]" />
