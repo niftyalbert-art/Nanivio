@@ -249,7 +249,8 @@ export const MalviLiveOverlay: React.FC<MalviLiveOverlayProps> = ({
     const previousFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     const previousOverflow = document.body.style.overflow;
     document.body.style.overflow = 'hidden';
-    closeButtonRef.current?.focus();
+    if (voiceOnly) closeButtonRef.current?.focus({ preventScroll: true });
+    else dialogRef.current?.focus({ preventScroll: true });
 
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === 'Escape') {
@@ -310,7 +311,9 @@ export const MalviLiveOverlay: React.FC<MalviLiveOverlayProps> = ({
   const meterBars = [0.16, 0.34, 0.53, 0.72, 0.91];
 
   return createPortal(
-    <div className="nv-theme-dark fixed inset-0 z-[100] isolate flex h-[100dvh] min-h-0 items-center justify-center overflow-hidden bg-[#071311] text-[#f1f3eb]">
+    <div className={`nv-theme-dark fixed inset-0 z-[100] isolate bg-[#071311] text-[#f1f3eb] ${voiceOnly
+      ? 'flex h-[100dvh] min-h-0 items-center justify-center overflow-hidden'
+      : 'malvi-live-video-dialog block h-[100dvh] overflow-x-hidden overflow-y-auto overscroll-contain'}`}>
       <div
         ref={dialogRef}
         role="dialog"
@@ -318,9 +321,9 @@ export const MalviLiveOverlay: React.FC<MalviLiveOverlayProps> = ({
         aria-labelledby="malvi-live-title"
         aria-describedby="malvi-live-disclosure"
         tabIndex={-1}
-        className="relative z-10 flex h-full min-h-0 w-full flex-col outline-none"
+        className={`relative z-10 flex w-full flex-col outline-none ${voiceOnly ? 'h-full min-h-0' : 'malvi-live-video-content min-h-full'}`}
       >
-        <header className="flex shrink-0 items-start justify-between gap-3 px-4 pt-[max(1rem,env(safe-area-inset-top))] sm:gap-4 sm:px-7 sm:pt-[max(1.75rem,env(safe-area-inset-top))] [@media(max-height:480px)]:pt-[max(0.25rem,env(safe-area-inset-top))]">
+        {voiceOnly && <header className="flex shrink-0 items-start justify-between gap-3 px-4 pt-[max(1rem,env(safe-area-inset-top))] sm:gap-4 sm:px-7 sm:pt-[max(1.75rem,env(safe-area-inset-top))] [@media(max-height:480px)]:pt-[max(0.25rem,env(safe-area-inset-top))]">
           <div className="flex items-center gap-3 rounded-2xl border border-white/15 bg-[#10201f]/65 px-3.5 py-2.5 backdrop-blur-md sm:px-4">
             <span className="grid h-10 w-10 place-items-center rounded-full border border-[#bad5c7]/35 bg-[#28453d] text-sm font-semibold text-[#e2eee4]">
               M
@@ -351,17 +354,17 @@ export const MalviLiveOverlay: React.FC<MalviLiveOverlayProps> = ({
               <X size={16} />
             </button>
           </div>
-        </header>
-        {(phase === 'connecting' || phase === 'connected') && onOpenBilling && (
+        </header>}
+        {voiceOnly && (phase === 'connecting' || phase === 'connected') && onOpenBilling && (
           <div className="shrink-0 px-4 pt-2 sm:px-7">
             <MalviAllowanceNotice remainingSeconds={allowanceSecondsRemaining}
               unavailable={allowanceUnavailable} onViewPlans={onOpenBilling} languageCode={languageCode} />
           </div>
         )}
 
-        <main className={`grid min-h-0 flex-1 grid-cols-1 ${voiceOnly
-          ? 'grid-rows-[minmax(0,1fr)_auto] min-[640px]:grid-rows-[minmax(0,1fr)_auto]'
-          : 'malvi-live-layout grid-rows-[minmax(0,1fr)_auto] min-[640px]:grid-rows-1 min-[640px]:grid-cols-[minmax(0,1fr)_clamp(15rem,26vw,21rem)]'}`}>
+        <main className={voiceOnly
+          ? 'grid min-h-0 flex-1 grid-cols-1 grid-rows-[minmax(0,1fr)_auto]'
+          : 'malvi-live-layout flex w-full flex-col'}>
           <section aria-label={voiceOnly ? 'Voice conversation' : 'Malvi video'} className="malvi-live-stage relative min-h-0 min-w-0 overflow-hidden bg-[#10201f]">
             {!voiceOnly && <video
               ref={onVideoElement}
@@ -370,8 +373,6 @@ export const MalviLiveOverlay: React.FC<MalviLiveOverlayProps> = ({
               aria-label="Malvi live video"
               className="malvi-live-avatar-video absolute inset-0 h-full w-full object-contain object-center"
             />}
-            {!voiceOnly && <div aria-hidden="true" className="malvi-live-media-shade pointer-events-none absolute inset-0" />}
-
             {!voiceOnly && (phase === 'connecting' || phase === 'error') && (
               <div className="absolute inset-0 overflow-hidden bg-[#172e2d]">
                 <img
@@ -379,16 +380,47 @@ export const MalviLiveOverlay: React.FC<MalviLiveOverlayProps> = ({
                   alt={phase === 'connecting' ? 'Malvi portrait preview while connecting' : 'Malvi portrait preview'}
                   className="absolute inset-0 h-full w-full object-contain object-center opacity-75"
                 />
-                <div className="absolute inset-0 bg-gradient-to-b from-[#10201f]/45 via-[#10201f]/15 to-[#081614]/80" />
               </div>
             )}
           </section>
 
-          <aside className={`flex min-h-0 min-w-0 flex-col overflow-hidden ${voiceOnly
+          <aside className={`flex min-w-0 flex-col ${voiceOnly
             ? 'border-t border-white/10 bg-[#071311]/95'
-            : 'border-t border-white/10 bg-[#071311]/95 min-[640px]:border-l min-[640px]:border-t-0'} max-h-[52dvh] ${voiceOnly ? 'sm:max-h-none' : 'min-[640px]:max-h-none'}`}>
+            : 'malvi-live-video-details border-t border-[#2aa9a6]/35 bg-[#091a20]' } ${voiceOnly ? 'min-h-0 max-h-[52dvh] overflow-hidden' : 'overflow-visible'}`}>
+            {!voiceOnly && <>
+              <header className="flex shrink-0 items-start justify-between gap-3 px-4 pt-5 sm:gap-4 sm:px-7 sm:pt-7">
+                <div className="flex items-center gap-3 rounded-2xl border border-[#2aa9a6]/35 bg-[#10252d] px-3.5 py-2.5 sm:px-4">
+                  <span className="grid h-10 w-10 place-items-center rounded-full border border-[#55c8c0]/45 bg-[#173a42] text-sm font-semibold text-[#b5f0e9]">M</span>
+                  <div>
+                    <h1 id="malvi-live-title" className="text-sm font-semibold tracking-wide text-white">Malvi <span className="font-normal text-[#a8d8d6]">· Nanivio</span></h1>
+                    <p id="malvi-live-disclosure" className="mt-0.5 text-[11px] text-[#b9d0d2]/80">AI assistant · {phase === 'connected' ? 'Live session connected' : phaseCopy}</p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-2 rounded-full border border-[#7758a8]/50 bg-[#211a31] px-3.5 py-2.5 text-xs text-[#eee8fa]">
+                    <span className="text-[#c3b6d9]">Idle session</span>
+                    <span className="font-mono tabular-nums">{formatTime(secondsRemaining)}</span>
+                  </div>
+                  <button
+                    ref={closeButtonRef}
+                    type="button"
+                    onClick={onClose}
+                    className="inline-flex min-h-11 items-center gap-2 rounded-full border border-[#43b9b4]/55 bg-[#12353b] px-3.5 text-xs font-medium text-white transition-colors hover:bg-[#1a4b50] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#74e0d4]"
+                    aria-label="End session and close"
+                  >
+                    <span>End session</span><X size={16} />
+                  </button>
+                </div>
+              </header>
+              {(phase === 'connecting' || phase === 'connected') && onOpenBilling && (
+                <div className="shrink-0 px-4 pt-3 sm:px-7">
+                  <MalviAllowanceNotice remainingSeconds={allowanceSecondsRemaining}
+                    unavailable={allowanceUnavailable} onViewPlans={onOpenBilling} languageCode={languageCode} />
+                </div>
+              )}
+            </>}
             {phase === 'connected' && (
-              <div aria-label="Conversation subtitles" className="grid h-[18dvh] min-h-[136px] max-h-[156px] w-full shrink-0 grid-cols-1 grid-rows-2 gap-1.5 px-4 pt-2 min-[900px]:h-[20dvh] min-[900px]:max-h-[180px] [@media(max-height:480px)]:h-[34dvh] [@media(max-height:480px)]:min-h-[130px] [@media(max-height:480px)]:max-h-[142px]">
+              <div aria-label="Conversation subtitles" className={`grid w-full shrink-0 grid-cols-1 grid-rows-2 gap-1.5 px-4 pt-3 ${voiceOnly ? 'h-[18dvh] min-h-[136px] max-h-[156px] min-[900px]:h-[20dvh] min-[900px]:max-h-[180px] [@media(max-height:480px)]:h-[34dvh] [@media(max-height:480px)]:min-h-[130px] [@media(max-height:480px)]:max-h-[142px]' : 'min-h-[132px] max-w-4xl self-center sm:px-7'}`}>
                 <div className="min-h-0">
                   {caption?.trim() && <MalviUserTranscript text={caption} speaker="malvi" compact contained label={`Malvi${approximateCaptions ? ' · approximate' : ''}`} ariaLabel={`Malvi live subtitles${speaking ? ', Malvi speaking' : ''}${approximateCaptions ? ', approximate captions' : ''}`} />}
                 </div>
@@ -398,7 +430,7 @@ export const MalviLiveOverlay: React.FC<MalviLiveOverlayProps> = ({
               </div>
             )}
 
-        <footer aria-label="Live session controls" className="flex max-h-[32dvh] min-h-0 shrink flex-col items-center gap-1 overflow-y-auto overscroll-contain px-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-1.5 sm:gap-3 sm:pb-[max(1.75rem,env(safe-area-inset-bottom))] [&>*]:shrink-0 sm:max-h-full sm:flex-1 [@media(max-height:480px)]:gap-0 [@media(max-height:480px)]:pt-0">
+        <footer aria-label="Live session controls" className={`flex flex-col items-center gap-2 px-4 pb-[max(1.5rem,env(safe-area-inset-bottom))] pt-2 sm:gap-3 sm:px-7 sm:pb-[max(2rem,env(safe-area-inset-bottom))] [&>*]:shrink-0 ${voiceOnly ? 'max-h-[32dvh] min-h-0 shrink overflow-y-auto overscroll-contain sm:max-h-full sm:flex-1 [@media(max-height:480px)]:gap-0 [@media(max-height:480px)]:pt-0' : 'w-full max-w-4xl self-center overflow-visible'}`}>
           {phase === 'connected' && (
             <div className="flex min-h-5 items-center justify-center gap-2.5 text-[11px] text-[#e0e8e2]/90 [@media(max-height:480px)]:min-h-5" aria-label={`Microphone status: ${listeningCopy}`}>
               <span aria-hidden="true" className="flex h-4 items-center gap-[3px]">

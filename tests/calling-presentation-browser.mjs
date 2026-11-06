@@ -26,11 +26,11 @@ const result = await build({
       root.unmount();root=createRoot(document.getElementById('fixture'));
       root.render(screen==='malvi'?<MalviLiveOverlay videoRef={{current:null}}
         onVideoElement={node=>{if(node)node.poster=MALVI_PROFILE;}} phase="connected" error={null}
-        secondsRemaining={180} allowanceSecondsRemaining={180} onClose={()=>{}}
+        secondsRemaining={180} allowanceSecondsRemaining={180} onClose={()=>{window.__ended=(window.__ended||0)+1;}}
         onInterrupt={()=>{}} onPlayAudio={()=>{}} audioBlocked={false}
         caption="Hello. How can I help you today?" userTranscript="Please explain Nanivio."
         brainReady microphoneOn microphoneError="" brainProvider="gemini"
-        onToggleMicrophone={()=>{}} references={[]} referenceStatus="" unavailableSources={[]}/>
+        onToggleMicrophone={()=>{window.__micToggles=(window.__micToggles||0)+1;}} references={[]} referenceStatus="" unavailableSources={[]}/>
         :<div className="nanivio-app nv-theme-dark"><CommunicationSpaceView/></div>);
     };
     window.show('calls');
@@ -73,18 +73,47 @@ try {
   for(const [width,height] of [[390,844],[360,640],[844,390],[1366,900]]){
     await page.command('Emulation.setDeviceMetricsOverride',{width,height,deviceScaleFactor:1,mobile:width<640});
     const layout=await page.evaluate(`(()=>{
+      const scroller=document.querySelector('.malvi-live-video-dialog');
+      scroller.scrollTop=0;
       const stage=document.querySelector('.malvi-live-stage').getBoundingClientRect();
       const aside=document.querySelector('.malvi-live-stage + aside').getBoundingClientRect();
+      const header=document.querySelector('.malvi-live-video-details > header').getBoundingClientRect();
+      const timer=document.querySelector('.malvi-live-video-details .font-mono').getBoundingClientRect();
       return {width:stage.width,height:stage.height,bottom:stage.bottom,asideTop:aside.top,
+        top:stage.top,headerTop:header.top,timerTop:timer.top,availableWidth:scroller.clientWidth,
         asideLeft:aside.left,right:stage.right,scroll:document.documentElement.scrollWidth,viewport:innerWidth,
         fit:getComputedStyle(document.querySelector('.malvi-live-avatar-video')).objectFit};
     })()`);
-    assert.ok(layout.width>180 && layout.height>120,`Meaningful stage ${width}x${height}`);
-    assert.ok(layout.bottom<=layout.asideTop+1 || layout.right<=layout.asideLeft+1,'Captions and controls do not overlay stage');
+    assert.ok(layout.width>=layout.availableWidth-1,`Portrait stage spans the scroll viewport width at ${width}x${height}: ${JSON.stringify(layout)}`);
+    assert.ok(layout.height>=height*0.9-1,`Video stage covers at least 90% of ${width}x${height}`);
+    assert.ok(Math.abs(layout.top)<=1,'Portrait stage starts at the top of the viewport');
+    assert.ok(layout.bottom<=layout.asideTop+1,'Entire captions and controls aside is below portrait');
+    assert.ok(layout.bottom<=layout.headerTop+1,'Malvi identity, timer, and end control are below portrait');
+    assert.ok(layout.bottom<=layout.timerTop+1,'Idle timer is below portrait');
     assert.ok(layout.scroll<=layout.viewport+1,'No horizontal overflow');
-    if(width===390)await page.screenshot('generated-artifacts/malvi-size-mobile.png');
+    assert.equal(layout.fit,'cover','Portrait fills the video stage without letterboxing or stretching');
+
+    const reachable=await page.evaluate(`(()=>{
+      const scroller=document.querySelector('.malvi-live-video-dialog');
+      const controls=['[aria-label="End session and close"]','[aria-label="Conversation controls"] button'];
+      return controls.map(selector=>{
+        const node=document.querySelector(selector);
+        node.scrollIntoView({block:'center'});
+        const rect=node.getBoundingClientRect();
+        return rect.top>=0 && rect.bottom<=innerHeight;
+      });
+    })()`);
+    assert.deepEqual(reachable,[true,true],`End and microphone controls are reachable by scrolling at ${width}x${height}`);
+    if(width===390){
+      await page.evaluate(`document.querySelector('.malvi-live-video-dialog').scrollTop=0`);
+      await page.screenshot('generated-artifacts/malvi-size-mobile.png');
+    }
     console.log(JSON.stringify({viewport:`${width}x${height}`,stageWidth:layout.width,stageHeight:layout.height,fit:layout.fit,passed:true}));
   }
+  await page.evaluate(`document.querySelector('[aria-label="End session and close"]').click()`);
+  assert.equal(await page.evaluate('window.__ended'),1,'End session button invokes the close handler');
+  await page.evaluate(`document.querySelector('[aria-label="Conversation controls"] button').click()`);
+  assert.equal(await page.evaluate('window.__micToggles'),1,'Microphone control invokes its handler');
   console.log('Calling tabs, contact action handler, and Malvi responsive presentation passed.');
 } finally {
   await browser.close();

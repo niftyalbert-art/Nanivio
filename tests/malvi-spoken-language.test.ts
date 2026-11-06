@@ -1,11 +1,50 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { LANGUAGE_TOOL, parseLanguageControl, SPOKEN_LANGUAGE_POLICY } from '../src/server/assistant/languageControl.ts';
+import { LANGUAGE_TOOL, createLanguageControlTool, parseLanguageControl, SPOKEN_LANGUAGE_POLICY } from '../src/server/assistant/languageControl.ts';
+import { MALVI_LANGUAGES } from '../src/lib/malviLanguages.ts';
+import { assertMalviVoiceLanguage, malviVoiceSetup } from '../src/server/assistant/malviVoiceConfig.ts';
 import { createGeminiReferenceBridge, createOpenAIReferenceBridge } from '../src/server/assistant/referenceToolBridges.ts';
 
 const available = (code: string) => {
   if (!['en', 'fr', 'ak', 'ar'].includes(code)) throw new Error('The selected voice does not support this language.');
 };
+test('every available catalogue language can be selected by code, name, native name and locale for each voice', () => {
+  for (const provider of ['gemini', 'elevenlabs'] as const) {
+    const supported = malviVoiceSetup({}, provider).supportedLanguages;
+    const tool = createLanguageControlTool(supported);
+    const expected = MALVI_LANGUAGES.filter(item => supported.includes(item.code));
+    assert.deepEqual(tool.parametersJsonSchema.properties.language.enum, expected.map(item => item.code));
+    assert.deepEqual(tool.parametersJsonSchema.properties.partnerLanguage.enum, [...expected.map(item => item.code), null]);
+    for (const item of expected) {
+      assert.ok(tool.description.includes(`${item.code}: ${item.name} / ${item.nativeName}`));
+      for (const value of [item.code, item.name, item.nativeName, item.locale]) {
+        const result = parseLanguageControl({mode:'conversation',language:value,partnerLanguage:null},
+          code => assertMalviVoiceLanguage(code, provider));
+        assert.equal(result.language.code, item.code, `${provider}: ${value}`);
+      }
+    }
+    for (const item of MALVI_LANGUAGES.filter(item => !supported.includes(item.code))) {
+      assert.ok(!tool.parametersJsonSchema.properties.language.enum.includes(item.code));
+      assert.throws(() => parseLanguageControl({mode:'conversation',language:item.name,partnerLanguage:null},
+        code => assertMalviVoiceLanguage(code, provider)), /not supported/);
+    }
+  }
+  assert.throws(() => createLanguageControlTool([]), /no available/);
+});
+test('spoken dialects are never silently substituted and voice identity stays fixed', () => {
+  const assertAll = () => {};
+  assert.equal(parseLanguageControl({mode:'conversation',language:'Akuapem Twi',partnerLanguage:null},assertAll).language.code,'tw-ak');
+  assert.equal(parseLanguageControl({mode:'conversation',language:'Twi (Akan)',partnerLanguage:null},assertAll).language.code,'ak');
+  assert.throws(() => parseLanguageControl({mode:'conversation',language:'Ghana',partnerLanguage:null},assertAll), /valid/);
+  for (const provider of ['gemini','elevenlabs'] as const) {
+    const before = malviVoiceSetup({},provider).voiceId;
+    for(const code of createLanguageControlTool(malviVoiceSetup({},provider).supportedLanguages).parametersJsonSchema.properties.language.enum) {
+      parseLanguageControl({mode:'conversation',language:code,partnerLanguage:null},language=>assertMalviVoiceLanguage(language,provider));
+      assert.equal(malviVoiceSetup({},provider).voiceId,before);
+    }
+  }
+  assert.match(SPOKEN_LANGUAGE_POLICY,/same signature female voice/);
+});
 test('spoken switches resolve registered available languages without an account preference change', () => {
   const result = parseLanguageControl({ mode: 'conversation', language: 'fr', partnerLanguage: null }, available);
   assert.equal(result.language.code, 'fr');

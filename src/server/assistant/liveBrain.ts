@@ -23,7 +23,7 @@ import { MAPS_TOOL } from './mapTools.ts';
 import { VISION_INSTRUCTION } from './visionInput.ts';
 import { AssistantError } from './redisStore.ts';
 import { getNanivioAppKnowledge } from './nanivioAppKnowledge.ts';
-import { LANGUAGE_TOOL, parseLanguageControl } from './languageControl.ts';
+import { createLanguageControlTool, parseLanguageControl } from './languageControl.ts';
 
 type BrainEvent = (type: string, payload: Record<string, unknown>) => void;
 type BrainConnection = {
@@ -278,7 +278,7 @@ async function connectGemini(
       },
       tools: [{ functionDeclarations: [{
         name: REFERENCE_TOOL_NAME, description: REFERENCE_TOOL_DESCRIPTION, parametersJsonSchema: REFERENCE_TOOL_PARAMETERS,
-      }, MEMORY_TOOL, WEB_TOOL, MEDIA_TOOL, MAPS_TOOL, LANGUAGE_TOOL] }],
+      }, MEMORY_TOOL, WEB_TOOL, MEDIA_TOOL, MAPS_TOOL, createLanguageControlTool(malviVoiceSetup(process.env, connection.speechProvider).supportedLanguages)] }],
     },
     callbacks: {
       onmessage(message) {
@@ -435,7 +435,7 @@ async function connectOpenAI(
             ...(process.env.MALVI_OPENAI_REASONING_MODEL ? { model: process.env.MALVI_OPENAI_REASONING_MODEL } : {}),
             instructions: buildMalviLiveInstructions(connection.language, connection.provider) + '\n' + connection.productKnowledge + conversationMemoryContext(connection.memory),
             tools: [{ type: 'function', name: REFERENCE_TOOL_NAME, description: REFERENCE_TOOL_DESCRIPTION, parameters: REFERENCE_TOOL_PARAMETERS, strict: true },
-              ...[MEMORY_TOOL, WEB_TOOL, MEDIA_TOOL, MAPS_TOOL, LANGUAGE_TOOL].map(tool => ({ type: 'function', name: tool.name, description: tool.description, parameters: tool.parametersJsonSchema, strict: true }))],
+              ...[MEMORY_TOOL, WEB_TOOL, MEDIA_TOOL, MAPS_TOOL, createLanguageControlTool(malviVoiceSetup(process.env, connection.speechProvider).supportedLanguages)].map(tool => ({ type: 'function', name: tool.name, description: tool.description, parameters: tool.parametersJsonSchema, strict: true }))],
             tool_choice: 'auto', parallel_tool_calls: false,
           },
         },
