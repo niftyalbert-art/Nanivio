@@ -61,8 +61,33 @@ export function createPalabraCallHandler(deps: {
       }
       if (!abort.signal.aborted) res.json({success:true,sourceLang,targetLang,...result});
     } catch (error) {
+      const stage = error instanceof SpeechProviderError && 'stage' in error
+        && typeof error.stage==='string'
+        && ['recognition','translation','synthesis'].includes(error.stage)
+        ? error.stage : undefined;
+      const speechError=error instanceof SpeechProviderError?error:undefined;
+      const upstreamStatus=speechError?.upstreamDiagnostic?.upstreamHttpStatus??speechError?.diagnostic?.upstreamHttpStatus;
+      const provider=speechError?.upstreamDiagnostic?.provider||(speechError?.diagnostic?'gemini':undefined);
+      const model=speechError?.diagnostic?.model;
+      const failure=speechError?.code==='SPEECH_SERVICE_LIMIT'?'limit':
+        speechError?.code==='SPEECH_SERVICE_CONFIGURATION'?'configuration':
+        speechError?.status===504?'timeout':speechError?.status===499?'cancelled':
+        speechError?.upstreamDiagnostic?.failure==='invalid_response'?'invalid_response':
+        speechError?.upstreamDiagnostic?.failure==='transport'||speechError?.diagnostic?.failure==='transport'
+          ?'transport':'unavailable';
       if (!abort.signal.aborted) res.status(error instanceof PalabraError || error instanceof SpeechProviderError ? error.status : 503).json({
-        success:false,error:error instanceof PalabraError || error instanceof SpeechProviderError ? error.message : 'Live translation is unavailable.'
+        diagnosticsVersion:1,
+        success:false,error:error instanceof PalabraError || error instanceof SpeechProviderError ? error.message : 'Live translation is unavailable.',
+        ...(error instanceof SpeechProviderError&&error.code?{code:error.code}:
+          stage?{code:`LIVE_SPEECH_${stage.toUpperCase()}_FAILED`}:{}),
+        ...(stage?{stage}:{}),
+        ...(stage?{support:{
+          failure,
+          ...(['gemini','khaya','sunbird'].includes(provider||'')?{provider}:{}),
+          ...(typeof upstreamStatus==='number'&&Number.isInteger(upstreamStatus)&&upstreamStatus>=100&&upstreamStatus<=599
+            ?{upstreamStatus}:{}),
+          ...(typeof model==='string'&&/^gemini-[a-zA-Z0-9.-]{1,80}$/.test(model)?{model}:{}),
+        }}:{})
       });
     } finally {
       release?.();

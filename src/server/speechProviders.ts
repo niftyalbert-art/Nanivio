@@ -3,8 +3,23 @@ import { LangpretationGeminiError, transcribeGeminiAudio, synthesizeGeminiAudio,
 
 export const SPEECH_LOCALES:Record<string,string>={en:'en-US',fr:'fr-FR',es:'es-ES',ar:'ar-SA',de:'de-DE',it:'it-IT',pt:'pt-BR',zh:'zh-CN',ja:'ja-JP',ko:'ko-KR'};
 const voices:Record<string,string>={en:'en-US-JennyNeural',fr:'fr-FR-DeniseNeural',es:'es-ES-ElviraNeural',ar:'ar-SA-ZariyahNeural',de:'de-DE-KatjaNeural',it:'it-IT-ElsaNeural',pt:'pt-BR-FranciscaNeural',zh:'zh-CN-XiaoxiaoNeural',ja:'ja-JP-NanamiNeural',ko:'ko-KR-SunHiNeural'};
+export type SpeechUpstreamDiagnostic={
+  provider:'khaya'|'sunbird';
+  operation:'recognition'|'translation'|'synthesis';
+  upstreamHttpStatus?:number;
+  failure:'limit'|'authentication'|'authorization'|'configuration'|'upstream'|'timeout'|'transport'|'invalid_response'|'cancelled';
+};
 export class SpeechProviderError extends Error {
-  constructor(public status:number,message:string,public diagnostic?:GeminiRequestDiagnostic){super(message);}
+  constructor(public status:number,message:string,public diagnostic?:GeminiRequestDiagnostic,
+    public upstreamDiagnostic?:SpeechUpstreamDiagnostic){super(message);}
+  get code(){
+    const failure=this.upstreamDiagnostic?.failure;
+    const status=this.diagnostic?.upstreamHttpStatus;
+    return failure==='limit'||status===429||this.diagnostic?.providerStatus==='RESOURCE_EXHAUSTED'
+      ?'SPEECH_SERVICE_LIMIT':
+      failure==='authentication'||failure==='authorization'||failure==='configuration'||status===401||status===403||status===404
+      ?'SPEECH_SERVICE_CONFIGURATION':undefined;
+  }
 }
 type SpeechOptions={provider?:'khaya';signal?:AbortSignal};
 export function speechConfigured(language:string,operation:'asr'|'tts',provider=speechProvider(language)):boolean {

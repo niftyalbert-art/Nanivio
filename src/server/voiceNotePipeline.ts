@@ -7,10 +7,16 @@ export class VoiceNoteProcessingError extends SpeechProviderError{
   constructor(public stage:VoiceNoteStage,cause:unknown){
     const status=cause instanceof SpeechProviderError?cause.status:502;
     const action={recognition:'recognizing your speech',translation:'translating your message',synthesis:'creating translated audio'}[stage];
-    super(status,status===499?'Voice-message translation was cancelled.':
+    super(status,cause instanceof SpeechProviderError&&cause.code==='SPEECH_SERVICE_LIMIT'
+      ?'Nanivio speech has reached a service limit. Nothing was sent. Please try again later.':
+      cause instanceof SpeechProviderError&&cause.code==='SPEECH_SERVICE_CONFIGURATION'
+      ?'Nanivio speech is temporarily unavailable. Nothing was sent. Please contact Nanivio support.':
+      status===499?'Voice-message translation was cancelled.':
       status===504||cause instanceof SpeechProviderError&&cause.diagnostic?.failure==='timeout'
         ?`Voice-message translation timed out while ${action}. Nothing was sent. Please try a shorter recording.`
-        :`Voice-message translation could not finish ${action}. Nothing was sent. Please try again later.`);
+        :`Voice-message translation could not finish ${action}. Nothing was sent. Please try again later.`,
+      cause instanceof SpeechProviderError?cause.diagnostic:undefined,
+      cause instanceof SpeechProviderError?cause.upstreamDiagnostic:undefined);
   }
 }
 
@@ -40,7 +46,16 @@ export async function processStagedVoiceNote(audio:Buffer,source:string,target:s
     }catch(cause){
       if(signal?.aborted)cause=new SpeechProviderError(499,'Voice-message processing stopped.');
       const error=new VoiceNoteProcessingError(name,cause);
-      console.warn('[Nanivio voice note]',{stage:name,status:error.status});
+      failedStage=name;
+      console.warn('[Nanivio voice note]',{stage:name,status:error.status,
+        ...(error.code?{code:error.code}:{}),
+        ...(error.diagnostic?{diagnostic:{
+          operation:error.diagnostic.operation,model:error.diagnostic.model,
+          upstreamHttpStatus:error.diagnostic.upstreamHttpStatus,
+          providerStatus:error.diagnostic.providerStatus,reason:error.diagnostic.reason,
+          failure:error.diagnostic.failure,
+        }}:{}),
+        ...(error.upstreamDiagnostic?{upstream:error.upstreamDiagnostic}:{})});
       throw error;
     }finally{
       stagesMs[name]=Math.max(0,Math.round(performance.now()-started));
@@ -49,7 +64,8 @@ export async function processStagedVoiceNote(audio:Buffer,source:string,target:s
   try{
     const recognized=await stage('recognition',()=>transcribeProviderAudio(audio,source,'audio/wav',options));
     const translated=await stage('translation',async()=>{
-      const result=await translateWithProductionProviders(recognized.text,source,target,deadline);
+      const result=await translateWithProductionProviders(recognized.text,source,target,deadline,
+        {preserveProviderErrors:true});
       if(!result?.text)throw new SpeechProviderError(503,'Translation is unavailable.');
       return result;
     });

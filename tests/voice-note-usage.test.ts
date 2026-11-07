@@ -80,11 +80,14 @@ test('message delivery cannot translate, synthesize or debit a processed voice n
   const server = readFileSync('server.ts', 'utf8');
   const route = server.slice(server.indexOf('app.post("/api/langpretation/voice-note/process-audio"'), server.indexOf('// Malvi production voice input:'));
   // Integrated international and staged specialist paths are mutually exclusive.
-  assert.equal((route.match(/await recordTranslatedVoiceNoteUsage\(/g) || []).length, 2);
+  // Both paths now commit the same previously reserved communication event.
+  assert.equal((route.match(/await communicationAccess\.commit\(reservation\)/g) || []).length, 2);
   const international=route.slice(route.indexOf('if(supportsPalabraPair'),route.indexOf('const result=await processStagedVoiceNote'));
-  assert.equal((international.match(/await recordTranslatedVoiceNoteUsage\(/g)||[]).length,1);
+  assert.equal((international.match(/await communicationAccess\.commit\(reservation\)/g)||[]).length,1);
   assert.match(international,/return res\.json/);
-  assert.match(route, /recordLangpretationUsagePersistent/);
+  assert.match(route,/communicationAccess\.reserve\(authenticatedUserId\(req\),'note',input\.seconds\)/);
+  assert.match(route,/finally\{if\(reservation\)await communicationAccess\.release\(reservation\)/);
+  assert.doesNotMatch(route,/recordTranslatedVoiceNoteUsage\(|recordLangpretationUsagePersistent\(/);
   const migration = readFileSync('migrations/007_communication_plan_entitlements.sql', 'utf8');
   assert.match(migration, /pg_advisory_xact_lock/);
   assert.match(migration, /WHERE event_id = v_event_id\s+AND user_id = p_user/);

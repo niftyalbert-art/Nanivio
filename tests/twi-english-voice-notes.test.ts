@@ -112,10 +112,10 @@ test('a response-body timeout reports the recognition stage and closes the unrea
   assert.equal(event.outcome,'timeout');assert.equal(event.failedStage,'recognition');
   assert.equal(event.status,504);assert.equal(event.stagesMs.translation,undefined);
 });
-test('cancellation before processing, unsupported dialect MT and excessive duration never spend credits',async()=>{
+test('cancellation before processing, unknown languages and excessive duration never spend credits',async()=>{
   const f=fixture(),abort=new AbortController();abort.abort();
   await assert.rejects(()=>f.api.processStagedVoiceNote(wav(),'en','ak',abort.signal),(error:any)=>error.status===499);
-  await assert.rejects(()=>f.api.processStagedVoiceNote(wav(),'tw-ak','en'),(error:any)=>error.status===422);
+  await assert.rejects(()=>f.api.processStagedVoiceNote(wav(),'xx','en'),/Unsupported language code/);
   await assert.rejects(()=>f.api.processStagedVoiceNote(wav(61),'en','ak'),(error:any)=>error.status===400);
   assert.equal(f.requests.length,0);
 });

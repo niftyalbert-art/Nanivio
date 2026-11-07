@@ -5,6 +5,38 @@ export interface ProviderTranslation {
   text: string;
   provider: string;
 }
+export type TranslationFailureReason='limit'|'authentication'|'authorization'|'configuration'|
+  'upstream'|'timeout'|'transport'|'invalid_response'|'cancelled';
+export class TranslationRequestError extends Error {
+  constructor(public status:number,public diagnostic:{
+    provider:'khaya'|'sunbird';operation:'translation';upstreamHttpStatus?:number;
+    failure:TranslationFailureReason;
+  }){super('Nanivio text translation could not complete.');}
+}
+
+async function quotaErrorHint(response:Response,signal:AbortSignal):Promise<boolean>{
+  if(!response.body)return false;
+  const reader=response.body.getReader(),parts:Buffer[]=[];
+  let size=0;
+  let abort!:()=>void;
+  const stopped=new Promise<never>((_,reject)=>{
+    abort=()=>{reject(signal.reason);void reader.cancel().catch(()=>{});};
+    signal.addEventListener('abort',abort,{once:true});
+  });
+  try{
+    if(signal.aborted)abort();
+    while(size<65536){
+      const {value,done}=await Promise.race([reader.read(),stopped]);
+      if(done)break;
+      parts.push(Buffer.from(value.subarray(0,65536-size)));
+      size+=value.length;
+    }
+    if(signal.aborted)throw signal.reason;
+    return /\b(quota|credits?|exceeded|capacity)\b|rate[\s_-]*limit/i.test(Buffer.concat(parts).toString('utf8'));
+  }finally{
+    signal.removeEventListener('abort',abort);void reader.cancel().catch(()=>{});
+  }
+}
 
 export function khayaLanguageCode(code: string, version2 = false): string {
   const codes: Record<string, string> = version2
@@ -66,54 +98,83 @@ async function requestTranslation(
   headers: Record<string, string>,
   body: Record<string, string>,
   signal?:AbortSignal,
+  preserveProviderErrors=false,
 ): Promise<ProviderTranslation | null> {
+  const deadline=AbortSignal.any([AbortSignal.timeout(10000),...(signal?[signal]:[])]);
   try {
-    const url = translationEndpoint(provider, endpoint);
+    let url:URL;
+    try{url=translationEndpoint(provider,endpoint);}
+    catch{throw new TranslationRequestError(503,{provider,operation:'translation',failure:'configuration'});}
     if (url.protocol !== 'https:') {
       console.warn('[Nanivio translation]', provider, 'invalid-endpoint');
-      return null;
+      throw new TranslationRequestError(503,{provider,operation:'translation',failure:'configuration'});
     }
     const response = await fetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', ...headers },
       body: JSON.stringify(body),
-      signal: AbortSignal.any([AbortSignal.timeout(10000),...(signal?[signal]:[])]),
+      signal: deadline,
       redirect: 'error',
     });
     if (!response.ok) {
       console.warn('[Nanivio translation]', provider, 'http-error', response.status);
-      return null;
+      const limited=response.status===429||preserveProviderErrors&&response.status===403&&await quotaErrorHint(response,deadline);
+      if(response.status!==403||!preserveProviderErrors)void response.body?.cancel().catch(()=>{});
+      const failure:TranslationFailureReason=limited?'limit':response.status===401?'authentication':
+        response.status===403?'authorization':response.status===404?'configuration':'upstream';
+      const status=limited||['authentication','authorization','configuration'].includes(failure)?503:
+        [502,503,504].includes(response.status)?response.status:502;
+      throw new TranslationRequestError(status,
+        {provider,operation:'translation',upstreamHttpStatus:response.status,failure});
     }
     const data = await response.json();
     const text = extractTranslation(data, provider);
     if (!text) {
       console.warn('[Nanivio translation]', provider, 'invalid-response', responseShape(data));
-      return null;
+      throw new TranslationRequestError(502,{provider,operation:'translation',
+        upstreamHttpStatus:response.status,failure:'invalid_response'});
     }
     return { text, provider: provider === 'khaya' ? 'khaya-ghana-nlp' : 'sunbird-makerere' };
   } catch (error) {
+    if(error instanceof TranslationRequestError){
+      if(preserveProviderErrors)throw error;
+      return null;
+    }
     const name = error instanceof Error ? error.name : '';
     const reason = name === 'TimeoutError' || name === 'AbortError'
       ? 'timeout' : name === 'SyntaxError' ? 'invalid-json' : 'request-failed';
     console.warn('[Nanivio translation]', provider, reason);
+    const timedOut=deadline.aborted||name==='TimeoutError'||name==='AbortError';
+    if(preserveProviderErrors)throw new TranslationRequestError(signal?.aborted?499:timedOut?504:502,{
+      provider,operation:'translation',failure:signal?.aborted?'cancelled':timedOut?'timeout':
+        name==='SyntaxError'?'invalid_response':'transport',
+    });
     return null;
   }
 }
 
-export async function callKhayaEngine(text: string, sourceLang: string, targetLang: string,signal?:AbortSignal): Promise<ProviderTranslation | null> {
+export async function callKhayaEngine(text: string, sourceLang: string, targetLang: string,signal?:AbortSignal,
+  preserveProviderErrors=false): Promise<ProviderTranslation | null> {
   const apiKey = process.env.KHAYA_API_KEY;
-  if (!apiKey) return null;
+  if (!apiKey) {
+    if(preserveProviderErrors)throw new TranslationRequestError(503,{provider:'khaya',operation:'translation',failure:'configuration'});
+    return null;
+  }
   const endpoint = process.env.KHAYA_TRANSLATION_URL || 'https://translation-api.ghananlp.org/v1/translate';
   const version2 = /\/v2(?:\/|$)/.test(endpoint);
   return requestTranslation('khaya', endpoint, { 'Ocp-Apim-Subscription-Key': apiKey }, {
     in: text,
     lang: `${khayaLanguageCode(sourceLang, version2)}-${khayaLanguageCode(targetLang, version2)}`,
-  },signal);
+  },signal,preserveProviderErrors);
 }
 
-export async function callSunbirdEngine(text: string, sourceLang: string, targetLang: string,signal?:AbortSignal): Promise<ProviderTranslation | null> {
+export async function callSunbirdEngine(text: string, sourceLang: string, targetLang: string,signal?:AbortSignal,
+  preserveProviderErrors=false): Promise<ProviderTranslation | null> {
   const apiKey = process.env.SUNBIRD_API_KEY;
-  if (!apiKey) return null;
+  if (!apiKey) {
+    if(preserveProviderErrors)throw new TranslationRequestError(503,{provider:'sunbird',operation:'translation',failure:'configuration'});
+    return null;
+  }
   return requestTranslation(
     'sunbird',
     process.env.SUNBIRD_TRANSLATION_URL || 'https://api.sunbird.ai/tasks/translate',
@@ -124,5 +185,6 @@ export async function callSunbirdEngine(text: string, sourceLang: string, target
       text,
     },
     signal,
+    preserveProviderErrors,
   );
 }

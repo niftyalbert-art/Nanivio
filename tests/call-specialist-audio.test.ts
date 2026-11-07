@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { EventEmitter } from 'node:events';
 import { createPalabraCallHandler, stagedCallPairConfigured } from '../src/server/palabraCallRoute';
 import { SpeechProviderError } from '../src/server/speechProviders';
+import { VoiceNoteProcessingError } from '../src/server/voiceNotePipeline';
 
 function wav() {
   const audio = Buffer.alloc(44 + 16000);
@@ -52,14 +53,22 @@ test('denied calls cannot invoke specialist recognition, translation, or synthes
   await f.handler(f.req, f.res);
   assert.equal(f.res.code, 503); assert.deepEqual(f.calls, []);
 });
+test('a malformed authenticated probe identifies the diagnostics release without invoking providers',async()=>{
+  const f=fixture();f.req.body={};
+  await f.handler(f.req,f.res);
+  assert.equal(f.res.code,400);
+  assert.equal(f.res.body.diagnosticsVersion,1);
+  assert.deepEqual(f.calls,[]);
+  assert.equal(f.res.body.support,undefined);
+});
 test('missing specialist configuration is explicit and never silently changes provider', async () => {
   const f = fixture({ stagedConfigured: () => false });
   await f.handler(f.req, f.res);
   assert.equal(f.res.code, 503); assert.deepEqual(f.calls, ['authorize']);
   assert.match(f.res.body.error, /not configured/);
 });
-test('unsupported dialect translation and same-language calls cannot spend speech credits', async () => {
-  for (const target of ['tw-ak', 'en']) {
+test('unknown languages and same-language calls cannot spend speech credits', async () => {
+  for (const target of ['xx', 'en']) {
     const f = fixture(); f.req.body.targetLang = target;
     await f.handler(f.req, f.res);
     assert.equal(f.res.code, 400); assert.deepEqual(f.calls, []);
@@ -70,6 +79,51 @@ test('specialist speech failures return a safe error rather than success or a sy
   await f.handler(f.req, f.res);
   assert.equal(f.res.code, 504); assert.equal(f.res.body.success, false);
   assert.equal(f.res.body.audioBase64, undefined);
+});
+test('live speech failures identify only the failed stage, without exposing provider metadata', async () => {
+  for (const stage of ['recognition','translation','synthesis'] as const) {
+    const cause = new SpeechProviderError(504,'private provider response',{
+      operation:'text',model:'private-model',apiVersion:'v1beta',failure:'timeout',
+    });
+    const error = new VoiceNoteProcessingError(stage,cause);
+    const f = fixture({stagedTranslate:async()=>{throw error;}});
+    await f.handler(f.req,f.res);
+    assert.equal(f.res.code,504);
+    assert.equal(f.res.body.success,false);
+    assert.equal(f.res.body.stage,stage);
+    assert.equal(f.res.body.code,`LIVE_SPEECH_${stage.toUpperCase()}_FAILED`);
+    assert.deepEqual(f.res.body.support,{failure:'timeout',provider:'gemini'});
+    assert.doesNotMatch(JSON.stringify(f.res.body),/private provider response|private-model/);
+    assert.equal(f.res.body.diagnostic,undefined);
+    assert.equal(f.res.body.audioBase64,undefined);
+  }
+});
+test('service-limit errors retain their actionable code together with the failed stage',async()=>{
+  const cause = new SpeechProviderError(503,'private response',undefined,{
+    provider:'khaya',operation:'recognition',upstreamHttpStatus:403,failure:'limit',
+  });
+  const f=fixture({stagedTranslate:async()=>{throw new VoiceNoteProcessingError('recognition',cause);}});
+  await f.handler(f.req,f.res);
+  assert.equal(f.res.code,503);
+  assert.equal(f.res.body.code,'SPEECH_SERVICE_LIMIT');
+  assert.equal(f.res.body.stage,'recognition');
+  assert.deepEqual(f.res.body.support,{failure:'limit',provider:'khaya',upstreamStatus:403});
+  assert.equal(f.res.body.upstreamDiagnostic,undefined);
+});
+test('live failure support metadata rejects unknown providers, arbitrary model values and extra fields',async()=>{
+  for(const model of ['gemini-fixture-model','https://private.invalid/key','private-provider-token']){
+    const error=new VoiceNoteProcessingError('recognition',new SpeechProviderError(503,'private response',{
+      model,operation:'text',apiVersion:'v1beta',upstreamHttpStatus:401,
+    }));
+    Object.assign(error.diagnostic!,{credentials:'private secret',text:'private conversation'});
+    const f=fixture({stagedTranslate:async()=>{throw error;}});
+    await f.handler(f.req,f.res);
+    assert.deepEqual(f.res.body.support,{
+      failure:'configuration',provider:'gemini',upstreamStatus:401,
+      ...(model==='gemini-fixture-model'?{model}:{}),
+    });
+    assert.doesNotMatch(JSON.stringify(f.res.body),/private secret|private conversation|private.invalid|private-provider-token/);
+  }
 });
 test('one specialist phrase per account is enforced and released after processing stops', async () => {
   let finish!:()=>void;
@@ -97,4 +151,6 @@ test('Twi–English combined readiness does not depend on Gemini credentials', t
   assert.equal(stagedCallPairConfigured('en', 'ak'), true);
   assert.equal(stagedCallPairConfigured('ak', 'en'), true);
   assert.equal(stagedCallPairConfigured('en', 'tw-ak'), false);
+  process.env.GEMINI_API_KEY='fixture-only';
+  assert.equal(stagedCallPairConfigured('en','tw-ak'),true);
 });
