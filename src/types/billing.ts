@@ -724,12 +724,11 @@ export interface PeerToPeerTransferResult {
   note?: string;
 }
 
-// ============================================================================
 // COMMUNICATION MINUTES PACKAGES & SEPARATE MALVI SUBSCRIPTION MODELS
-// ============================================================================
 
 export interface CommunicationMinutePackage {
   id: string;
+  isActive?: boolean;
   name: string;
   minutes: number;
   priceUSD: number;

@@ -152,6 +152,13 @@ export async function getPersistentInvoices(userId: string, limit = 50) {
   return data || [];
 }
 
+export async function getPersistentTransaction(userId: string, transactionId: string) {
+  const { data, error } = await db().from('nanivio_billing_transactions').select('*')
+    .eq('user_id', userId).eq('transaction_id', transactionId).maybeSingle();
+  if (error) throw new Error(`Unable to load transaction: ${error.message}`);
+  return data;
+}
+
 export async function getPersistentInvoice(userId: string, invoiceId: string) {
   // Filter by the authenticated owner in the database, not after loading a
   // different user's invoice. Accept both external invoice IDs and UUID row IDs.

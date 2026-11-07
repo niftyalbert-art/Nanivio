@@ -1575,9 +1575,14 @@ export const UniversalBillingHub: React.FC = () => {
                         View Full
                       </button>
                       <button
-                        onClick={() => {
-                          setDisputeTxId(inv.transactionReference);
-                          setIsDisputeModalOpen(true);
+                        onClick={async () => {
+                          try {
+                            const transactionId = await billingClient.getInvoiceTransactionId(inv);
+                            setDisputeTxId(transactionId);
+                            setIsDisputeModalOpen(true);
+                          } catch (error) {
+                            alert(error instanceof Error ? error.message : 'Unable to load the invoice transaction.');
+                          }
                         }}
                         className="px-3 py-1.5 rounded-lg bg-slate-950 hover:bg-rose-500/10 text-rose-400 border border-slate-800 hover:border-rose-500/30 text-xs font-medium transition"
                       >
@@ -1623,8 +1628,8 @@ export const UniversalBillingHub: React.FC = () => {
                     <div className="grid grid-cols-2 text-xs text-slate-300">
                       <div>
                         <span className="text-slate-500 uppercase font-semibold">Billed To:</span>
-                        <div className="font-bold text-slate-100">{selectedInvoice.customerName || 'Kwame Mensah'}</div>
-                        <div>{selectedInvoice.customerEmail || 'kwame@nanivio.tech'}</div>
+                        <div className="font-bold text-slate-100">{selectedInvoice.customerName || 'Customer name unavailable'}</div>
+                        <div>{selectedInvoice.customerEmail || 'Customer email unavailable'}</div>
                       </div>
                       <div className="text-right">
                         <span className="text-slate-500 uppercase font-semibold">Payment Method:</span>
@@ -1665,8 +1670,8 @@ export const UniversalBillingHub: React.FC = () => {
                           <span className="font-mono">{selectedInvoice.currency} {formatBillingAmount(selectedInvoice.subtotal)}</span>
                         </div>
                         <div className="flex justify-between text-slate-400">
-                          <span>VAT / Tax (0%):</span>
-                          <span className="font-mono">{selectedInvoice.currency} 0.00</span>
+                          <span>VAT / Tax:</span>
+                          <span className="font-mono">{selectedInvoice.currency} {formatBillingAmount(selectedInvoice.taxAmount)}</span>
                         </div>
                         <div className="flex justify-between font-bold text-slate-100 text-sm border-t border-slate-800 pt-2">
                           <span>Total Paid:</span>

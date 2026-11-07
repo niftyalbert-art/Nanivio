@@ -1,5 +1,5 @@
 import { authClient } from './authClient';
-import { normalizeBillingTransaction } from './billingPresentation';
+import { normalizeBillingTransaction, normalizeBillingInvoice, normalizeBillingDispute } from './billingPresentation';
 
 import {
   BillingTransaction,
@@ -384,18 +384,26 @@ export const billingClient = {
 
   // 6. Get Transactions
   async getTransactions(userId?: string, serviceType?: string): Promise<BillingTransaction[]> {
-    const url = new URL('/api/billing/transactions', window.location.origin);
-    if (userId) url.searchParams.append('userId', userId);
-    if (serviceType) url.searchParams.append('serviceType', serviceType);
-    const res = await fetch(url.toString());
-    const data = await res.json();
-    return data.transactions || [];
+    // The server derives ownership from the session, never the supplied user ID.
+    const query = serviceType ? `?${new URLSearchParams({ serviceType })}` : '';
+    const data = await protectedBillingRequest(`/api/billing/transactions${query}`);
+    return (data.transactions ?? []).map(normalizeBillingTransaction);
   },
 
   // 7. Get Invoices
   async getInvoices(userId?: string): Promise<BillingInvoice[]> {
     const data = await protectedBillingRequest('/api/billing/invoices');
-    return data.invoices || [];
+    return (data.invoices ?? []).map(normalizeBillingInvoice);
+  },
+
+  async getInvoiceTransactionId(invoice: BillingInvoice): Promise<string> {
+    const transactions = await billingClient.getTransactions();
+    const matches = transactions.filter(tx => tx.userId === invoice.userId
+      && tx.referenceId === invoice.transactionReference);
+    if (matches.length !== 1 || !matches[0].transactionId) {
+      throw new Error('The transaction for this invoice is unavailable. Contact support with the invoice number.');
+    }
+    return matches[0].transactionId;
   },
 
   // 8. Plans & Plan Upgrades
@@ -451,7 +459,7 @@ export const billingClient = {
 
   async getDisputes(userId?: string): Promise<BillingDispute[]> {
     const data = await protectedBillingRequest('/api/billing/disputes');
-    return data.disputes || [];
+    return (data.disputes ?? []).map(normalizeBillingDispute);
   },
 
   // 11. Provider & Business

@@ -28,11 +28,12 @@ test('mixed specialist routes select each English-pivot leg independently',()=>{
   assert.deepEqual(planTranslation('ak','ha').hops.map(h=>h.provider),['khaya','gemini']);
   assert.deepEqual(planTranslation('fr','ar').hops,[{source:'fr',target:'ar',provider:'gemini'}]);
 });
-test('distinct Akuapem MT is never silently substituted or advertised as supported',()=>{
-  assert.equal(planTranslation('en','tw-ak').supported,false);
-  assert.equal(planTranslation('tw-ak','en').supported,false);
+test('distinct Akuapem MT uses its explicit Gemini route without a generic Twi alias',()=>{
+  assert.equal(planTranslation('en','tw-ak').supported,true);
+  assert.equal(planTranslation('tw-ak','en').supported,true);
+  assert.deepEqual(planTranslation('en','tw-ak').hops,[{source:'en',target:'tw-ak',provider:'gemini'}]);
   assert.equal(planTranslation('tw-ak','tw-ak').supported,true);
-  assert.equal(buildUniversal18x18Matrix().filter(row=>row.status==='UNSUPPORTED').length,34);
+  assert.equal(buildUniversal18x18Matrix().filter(row=>row.status==='UNSUPPORTED').length,0);
 });
 test('unknown codes fail rather than falling back to English',()=>{
   assert.throws(()=>getLanguageCapability('unknown'),/Unsupported/);

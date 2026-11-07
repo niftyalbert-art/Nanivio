@@ -5,7 +5,7 @@ import { readFileSync } from 'node:fs';
 import { build } from 'esbuild';
 import React from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
-import { billingAllowanceDisplay, formatBillingAmount, malviCheckoutAllowanceText } from '../src/lib/billingPresentation';
+import { billingAllowanceDisplay, formatBillingAmount, malviCheckoutAllowanceText, normalizeBillingInvoice } from '../src/lib/billingPresentation';
 import { balancedMalviPlans } from '../src/lib/balancedCatalogue';
 import { initialMalviCatalog, MALVI_VOICE_DESCRIPTION } from '../src/lib/malviPlanCatalog';
 
@@ -130,14 +130,18 @@ test('communication purchase notice names all three methods and estimator offers
   assert.doesNotMatch(html,/only after Paystack confirms/);
   assert.doesNotMatch(renderHub(Hub,fixture(),'calculator'),/MoMo Remittance|Amount \(GHS\)/);
 });
-function renderHub(Hub: React.ComponentType, value: any, tab: any = 'overview') {
+function renderHub(Hub: React.ComponentType, value: any, tab: any = 'overview', selectedInvoice?: any) {
   (globalThis as any)[fixtureKey]=value;
   const original=React.useState;
   let calls=0;
   // Select a tab in the actual component without replacing any of its render code.
   React.useState=((initial: any)=>{
     const state=original(initial);
-    return ++calls===1 ? [tab,state[1]] : state;
+    calls++;
+    if (calls === 1) return [tab, state[1]];
+    // Ninth state belongs to the selected invoice; leave other dialogs untouched.
+    if (selectedInvoice && calls === 9) return [selectedInvoice, state[1]];
+    return state;
   }) as typeof React.useState;
   try { return renderToStaticMarkup(React.createElement(Hub)); }
   finally { React.useState=original; delete (globalThis as any)[fixtureKey]; }
@@ -195,6 +199,29 @@ test('actual Billing invoices tab renders decimal-string totals and missing nume
   const html=renderHub(Hub,value,'invoices');
   assert.match(html,/145\.00/);
   assert.match(html,/NV-FIXTURE/);
+});
+
+test('printable persisted invoices show actual tax and no fabricated customer identity', async () => {
+  const Hub = await loadHub();
+  for (const tax of ['2.50', '0', undefined]) {
+    const invoice = normalizeBillingInvoice({
+      id: 'storage', invoice_id: 'invoice', invoice_number: 'NV-PERSISTED',
+      user_id: 'fixture', transaction_reference: 'payment-ref',
+      issued_at: '2026-10-14T12:00:00Z', currency: 'GHS', status: 'PAID',
+      subtotal: '12.50', tax_amount: tax, total: tax === '2.50' ? '15.00' : '12.50',
+      items: [{ id: 'line', description: 'Persisted service', quantity: '1', unitPrice: '12.50', total: '12.50' }],
+    });
+    const value = fixture();
+    (value as any).userInvoices = [invoice];
+    const html = renderHub(Hub, value, 'invoices', invoice);
+    assert.match(html, /Customer name unavailable/);
+    assert.match(html, /Customer email unavailable/);
+    assert.doesNotMatch(html, /Kwame Mensah|kwame@nanivio\.tech|VAT \/ Tax \(0%\)/);
+    assert.match(html, /VAT \/ Tax:/);
+    assert.match(html, new RegExp(`VAT \\/ Tax:<\\/span><span[^>]*>GHS ${formatBillingAmount(tax).replace('.', '\\.')}`));
+    assert.match(html, /NV-PERSISTED/);
+    assert.match(html, /payment-ref/);
+  }
 });
 
 for (const path of [

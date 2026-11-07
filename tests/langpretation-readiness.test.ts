@@ -5,7 +5,7 @@ import { readFileSync } from 'node:fs';
 import vm from 'node:vm';
 import ts from 'typescript';
 import { getLanguageCapability } from '../src/lib/translator-engine/matrix/universal18Matrix.ts';
-import { supportsPalabraPair } from '../src/shared/palabraLanguages.ts';
+import { supportsPalabraPair, supportsPalabraLivePair } from '../src/shared/palabraLanguages.ts';
 
 const available = { active: () => true, speech: () => true, translation: () => true };
 
@@ -17,7 +17,7 @@ test('readiness covers all 324 unique directed combinations without claiming liv
   assert.equal(report.crossLanguage, 306);
   assert.equal(report.liveVerified, 0);
   assert.ok(report.pairs.every(p => p.liveVerified === false));
-  assert.equal(report.blocked, 34, 'distinct Akuapem MT is not silently replaced with generic Twi');
+  assert.equal(report.blocked, 0, 'explicit Akuapem MT is configured without a generic Twi alias');
   assert.ok(report.pairs.filter(p => !p.configured).every(p => p.source === 'tw-ak' || p.target === 'tw-ak'));
 });
 
@@ -73,6 +73,7 @@ async function requestReadiness(options: { rows?: { code: string; active: boolea
     speechConfigured: () => false,
     translationProviderConfigured: () => false,
     supportsPalabraPair,
+    supportsPalabraLivePair,
     palabraConfigured: () => false,
   });
   const handler = vm.runInContext(ts.transpile(`(${route.arguments.at(-1)!.getText(server)})`, {
@@ -90,6 +91,16 @@ async function requestReadiness(options: { rows?: { code: string; active: boolea
 test('readiness endpoint requires administrator authorization', () => {
   assert.ok(route);
   assert.equal(route.arguments[1].getText(server), 'requireAdmin');
+});
+
+test('live speech readiness uses live coverage, including Swahili, without widening recorded-note routing', () => {
+  const source = readFileSync(new URL('../server.ts', import.meta.url), 'utf8');
+  const section = source.slice(source.indexOf('app.get("/api/langpretation/speech-readiness"'),
+    source.indexOf('app.post("/api/langpretation/transcribe"'));
+  assert.match(section, /supportsPalabraLivePair\(language,target\)/);
+  assert.equal(supportsPalabraLivePair('sw', 'en'), true);
+  assert.equal(supportsPalabraLivePair('en', 'sw'), true);
+  assert.equal(supportsPalabraPair('sw', 'en'), false);
 });
 
 test('actual handler honors saved language disabling and returns all 324 directions', async () => {

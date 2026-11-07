@@ -1,4 +1,4 @@
-import type { BillingTransaction } from '../types/billing';
+import type { BillingTransaction, BillingInvoice, BillingDispute } from '../types/billing';
 import type { UserBillingSummaryResponse } from './billingClient';
 
 /** A known empty communication wallet is zero; another owner's/missing data is unknown. */
@@ -77,23 +77,69 @@ export function malviCheckoutAllowanceText(voice: unknown, avatar: unknown, cycl
 
 /** Read adapter only: database rows and canonical API rows share one display contract. */
 export function normalizeBillingTransaction(row: Record<string, unknown>): BillingTransaction {
-  const normalized = { ...row };
-  for (const name of [
+  const normalized = billingReadAliases(row, [
     'transaction_id', 'reference_id', 'user_id', 'service_type', 'usage_type',
     'unit_price', 'platform_fee', 'provider_fee', 'credit_applied', 'payment_method',
     'pricing_version_id', 'created_at', 'updated_at', 'completed_at',
-  ]) {
+  ]);
+  normalizeReadNumbers(normalized, [
+    'quantity', 'unitPrice', 'subtotal', 'platformFee', 'providerFee', 'tax',
+    'discount', 'creditApplied', 'total',
+  ]);
+  normalizeReadDates(normalized, ['createdAt', 'updatedAt', 'completedAt']);
+  return normalized as unknown as BillingTransaction;
+}
+
+/** Explicit schema aliases only; metadata is not an alternate financial source. */
+function billingReadAliases(row: Record<string, unknown>, aliases: string[]) {
+  const normalized = { ...row };
+  for (const name of aliases) {
     const camel = name.replace(/_([a-z])/g, (_, letter: string) => letter.toUpperCase());
     if (normalized[camel] == null && row[name] != null) normalized[camel] = row[name];
   }
-  for (const name of [
-    'quantity', 'unitPrice', 'subtotal', 'platformFee', 'providerFee', 'tax',
-    'discount', 'creditApplied', 'total',
-  ]) {
-    if (normalized[name] != null) normalized[name] = billingNumber(normalized[name]);
+  return normalized;
+}
+
+function normalizeReadNumbers(row: Record<string, unknown>, names: string[]) {
+  for (const name of names) row[name] = billingNumber(row[name]);
+}
+
+function normalizeReadDates(row: Record<string, unknown>, names: string[]) {
+  for (const name of names) {
+    const value = row[name];
+    const timestamp = typeof value === 'string' ? Date.parse(value) : value;
+    row[name] = typeof timestamp === 'number' && Number.isFinite(timestamp)
+      && Number.isFinite(new Date(timestamp).getTime()) ? timestamp : undefined;
   }
-  for (const name of ['createdAt', 'updatedAt', 'completedAt']) {
-    if (typeof normalized[name] === 'string') normalized[name] = Date.parse(normalized[name] as string);
-  }
-  return normalized as unknown as BillingTransaction;
+}
+
+export function normalizeBillingInvoice(row: Record<string, unknown>): BillingInvoice {
+  const normalized = billingReadAliases(row, [
+    'invoice_number', 'user_id', 'transaction_reference', 'tax_amount', 'platform_fee',
+    'discount_total', 'credit_total', 'payment_method', 'issued_at', 'paid_at', 'due_date',
+  ]);
+  // Persisted `id` is a storage UUID; invoice_id is the public invoice identifier.
+  normalized.id = row.invoiceId ?? row.invoice_id ?? row.id;
+  normalizeReadNumbers(normalized, [
+    'subtotal', 'taxRate', 'taxAmount', 'platformFee', 'discountTotal', 'creditTotal', 'total',
+  ]);
+  normalizeReadDates(normalized, ['issuedAt', 'paidAt', 'dueDate']);
+  normalized.items = Array.isArray(row.items) ? row.items.map(item => {
+    const result = billingReadAliases(item, ['service_type', 'unit_price']);
+    normalizeReadNumbers(result, ['quantity', 'unitPrice', 'subtotal', 'discount', 'total']);
+    return result;
+  }) : [];
+  return normalized as unknown as BillingInvoice;
+}
+
+export function normalizeBillingDispute(row: Record<string, unknown>): BillingDispute {
+  const normalized = billingReadAliases(row, [
+    'transaction_id', 'user_id', 'created_at', 'updated_at',
+  ]);
+  normalized.id = row.disputeId ?? row.dispute_id ?? row.id;
+  normalized.userExplanation = row.userExplanation ?? row.explanation;
+  normalized.adminResolution = row.adminResolution ?? row.resolution;
+  normalizeReadNumbers(normalized, ['amount', 'refundAmount']);
+  normalizeReadDates(normalized, ['createdAt', 'updatedAt', 'resolutionTimestamp']);
+  return normalized as unknown as BillingDispute;
 }

@@ -12,8 +12,7 @@ export function speechProvider(code: string): TranslationProvider {
 }
 export function mtProvider(code: string): TranslationProvider | null {
   requireLanguage(code);
-  // Separate Akuapem speech support does not establish a distinct MT contract.
-  if (code === 'tw-ak') return null;
+  // Explicit Akuapem translation uses Gemini, never an alias to generic Twi.
   return ['ak','fat','ee','gaa'].includes(code) ? 'khaya'
     : ['sw','lg'].includes(code) ? 'sunbird' : 'gemini';
 }

@@ -5,13 +5,13 @@ import vm from 'node:vm';
 import test from 'node:test';
 import { PGlite } from '@electric-sql/pglite';
 import ts from 'typescript';
-import { quotePaystackOrder, validateVerifiedOrder } from '../src/server/paystackOrders.ts';
 import { pricingPurchaseSnapshot } from '../src/lib/subscriptionPricing.ts';
 import { assertLivePaystackPayment, paystackLiveConfigurationError } from '../src/server/paystackPaymentSafety.ts';
 import {verifyPaystackTransaction,paystackVerificationDiagnostic} from '../src/server/paystackVerification.ts';
 import {createPaystackReconciler} from '../src/server/paystackReconciliation.ts';
 import {PAYSTACK_PURPOSES} from '../src/server/paystackOrders.ts';
 import { applyCommunicationCatalogue } from '../src/server/communicationRoutes.ts';
+import { quotePaystackOrder, validatePaystackOrderProduct, validateVerifiedOrder } from '../src/server/paystackOrders.ts';
 
 // Execute the actual production handlers with a stubbed gateway and isolated stores.
 // No real provider credential, network payment, or customer account is used.
@@ -48,7 +48,7 @@ function system() {
     return { success:true, alreadyFulfilled, subscription:{ planName:'Premium', videoMinutesAllowed:30 }, balanceAfter:payload.amount };
   };
   const context: any = {
-    Buffer, crypto, AbortSignal, quotePaystackOrder, validateVerifiedOrder,
+    Buffer, crypto, AbortSignal, quotePaystackOrder, validatePaystackOrderProduct, validateVerifiedOrder,
     applyCommunicationCatalogue,
     communicationAccess:{policy:async()=>({callTrialDays:30,liveTrialMinutes:3,paidTextCharacters:20000,warningSeconds:60,plans:[]})},
     assertLivePaystackPayment, paystackLiveConfigurationError,
@@ -178,10 +178,16 @@ for (const purpose of PAYSTACK_PURPOSES) {
   });
 }
 
-test('paid minute-package snapshot survives package deletion without changing purchased minutes or validity', async () => {
+test('paid minute-package delivery blocks deleted products and recovers without changing minutes or validity', async () => {
   const s = system();
   const init = await s.call(s.initialize, { authId: 'owner', body: checkout('COMMUNICATION_MINUTES') });
+  const packages = s.context.billingDb.communicationMinutePackages;
   s.context.billingDb.communicationMinutePackages = [];
+  const blocked = await s.call(s.verify, { authId: 'owner', params: { reference: init.body.reference } });
+  assert.equal(blocked.code,503);
+  assert.equal(blocked.body.code,'PAYMENT_ACTIVATION_PENDING');
+  assert.equal(s.deliveries.length,0);
+  s.context.billingDb.communicationMinutePackages = packages;
   const result = await s.call(s.verify, { authId: 'owner', params: { reference: init.body.reference } });
   assert.equal(result.body.success, true, JSON.stringify(result.body));
   assert.equal(s.deliveries[0].minutes, 60);
@@ -321,7 +327,7 @@ test('all billing routes commit usable benefits in PostgreSQL, roll back failed 
   } finally { await pg.close(); }
 });
 
-test('Malvi fulfilment honours purchased voice/video/name/price snapshots after catalogue edits or outages', async () => {
+test('Malvi first delivery blocks catalogue changes or outages and recovers the original voice/video terms', async () => {
   const s = system();
   s.plan.catalogVersion = 1;
   s.plan.voiceInteractionMinutesLimit = 80;
@@ -334,7 +340,18 @@ test('Malvi fulfilment honours purchased voice/video/name/price snapshots after 
   s.plan.voiceInteractionMinutesLimit = 1;
   s.plan.videoInteractionMinutesLimit = 0;
   s.plan.priceMonthlyGHS = 700;
+  const published = s.context.malviCatalogService.published;
+  const changed = await s.call(s.verify,{authId:'owner',params:{reference:init.body.reference}});
+  assert.equal(changed.code,503);
+  assert.equal(changed.body.code,'PAYMENT_ACTIVATION_PENDING');
+  assert.equal(s.deliveries.length,0);
   s.context.malviCatalogService.published = async () => { throw Error('fixture catalogue unavailable'); };
+  const unavailable = await s.call(s.verify,{authId:'owner',params:{reference:init.body.reference}});
+  assert.equal(unavailable.code,503);
+  assert.equal(s.deliveries.length,0);
+  Object.assign(s.plan,{name:'Premium',voiceInteractionMinutesLimit:80,
+    videoInteractionMinutesLimit:10,priceMonthlyGHS:145});
+  s.context.malviCatalogService.published = published;
   const verified = await s.call(s.verify,{authId:'owner',params:{reference:init.body.reference}});
   assert.equal(verified.code,200,JSON.stringify(verified.body));
   assert.equal(s.deliveries[0].planName,'Premium');
@@ -561,6 +578,52 @@ test('a failed signed webhook can retry and recover without duplicate value',asy
   assert.equal(s.deliveries.length,1);
 });
 
+test('altered checkout requests are rejected before an order or gateway charge is created', async()=>{
+  const s=system();
+  for (const body of [
+    { purpose:'COMMUNICATION_MINUTES', packageId:'pack', amount:0.01 },
+    { purpose:'COMMUNICATION_MINUTES', packageId:'pack', amount:55, minutes:60000 },
+    { purpose:'COMMUNICATION_MINUTES', packageId:'unknown', amount:55 },
+    { purpose:'COMMUNICATION_MINUTES', packageId:'pack', currency:'NGN', amount:55 },
+    { purpose:'MALVI_SUBSCRIPTION', planTier:'premium', amount:0.01 },
+    { purpose:'MALVI_SUBSCRIPTION', planTier:'premium', billingCycle:'ANNUAL', amount:145 },
+    { purpose:'MALVI_SUBSCRIPTION', planTier:'premium', billingCycle:'WEEKLY', amount:145 },
+    { purpose:'MALVI_SUBSCRIPTION', planTier:'premium', currency:'NGN', amount:145 },
+    { purpose:'MALVI_SUBSCRIPTION', planTier:'unknown', amount:145 },
+  ]) assert.equal((await s.call(s.initialize,{ authId:'owner', body })).code,400);
+  s.context.billingDb.communicationMinutePackages[0].isActive=false;
+  s.context.billingDb.malviPlans[0].isActive=false;
+  for (const body of [
+    { purpose:'COMMUNICATION_MINUTES', packageId:'pack', amount:55 },
+    { purpose:'MALVI_SUBSCRIPTION', planTier:'premium', amount:145 },
+  ]) assert.equal((await s.call(s.initialize,{ authId:'owner', body })).code,400);
+  assert.equal(s.orders.size,0);
+  assert.equal(s.provider.size,0);
+  assert.equal(s.deliveries.length,0);
+});
+
+test('persisted checkout values and delivery ignore client snapshots and survive a server restart',async()=>{
+  const s=system();
+  const init=await s.call(s.initialize,{ authId:'owner', body:{
+    purpose:'COMMUNICATION_MINUTES', packageId:'pack', amount:55,
+    userId:'attacker', email:'attacker@example.test',
+    product:{ id:'pack', minutes:999999, validityDays:999999 },
+  } });
+  const reference=init.body.reference;
+  const saved=s.orders.get(reference);
+  assert.equal(saved.userId,'owner');
+  assert.equal(saved.amount,55);
+  assert.equal(saved.minutes,60);
+  assert.equal(saved.product.minutes,60);
+  assert.equal(saved.product.validityDays,30);
+  s.context.pendingPaystackOrders.clear();
+  const verified=await s.call(s.verify,{ authId:'owner', params:{ reference } });
+  assert.equal(verified.code,200);
+  assert.equal(s.deliveries[0].minutes,60);
+  assert.equal(s.deliveries[0].price,55);
+  assert.equal(s.deliveries[0].validityDays,30);
+});
+
 test('test-mode credentials never open checkout or create an order', async () => {
   const s = system();
   s.context.process.env.PAYSTACK_SECRET_KEY = 'sk_test_fixture_only';
@@ -606,4 +669,117 @@ test('card and mobile money pending authorizations do not activate Malvi; comple
     assert.equal((await s.call(s.verify, { authId:'owner', params:{ reference } })).body.verified, true);
     assert.equal(s.deliveries.length, 1);
   }
+});
+
+test('untrusted legacy and changed persisted order values cannot deliver even when payment matches the intent',async()=>{
+  for (const change of [
+    (o:any)=>{ o.amount=1; },
+    (o:any)=>{ o.minutes=999999; },
+    (o:any)=>{ o.product.minutes=999999; },
+    (o:any)=>{ o.product.validityDays=999999; },
+    (o:any)=>{ delete o.product; o.amount=1; o.minutes=999999; },
+    (o:any)=>{ o.currency='NGN'; },
+  ]) {
+    const s=system();
+    const init=await s.call(s.initialize,{ authId:'owner', body:{ purpose:'COMMUNICATION_MINUTES', packageId:'pack', amount:55 } });
+    const reference=init.body.reference;
+    const order=s.orders.get(reference);
+    change(order);
+    Object.assign(s.provider.get(reference),{ amount:order.amount*100, currency:order.currency });
+    assert.equal((await s.call(s.verify,{ authId:'owner', params:{ reference } })).code,503);
+    assert.equal(s.deliveries.length,0);
+  }
+  for (const change of [
+    (o:any)=>{ o.amount=1; },
+    (o:any)=>{ o.product.videoMinutesAllowed=999999; },
+    (o:any)=>{ o.product.id='different-plan'; },
+    (o:any)=>{ delete o.product; o.amount=1; },
+    (o:any)=>{ o.billingCycle='ANNUAL'; },
+    (o:any)=>{ o.billingCycle='WEEKLY'; },
+    (o:any)=>{ o.currency='NGN'; },
+  ]) {
+    const s=system();
+    const init=await s.call(s.initialize,{ authId:'owner', body:{ purpose:'MALVI_SUBSCRIPTION', planTier:'premium', amount:145 } });
+    const reference=init.body.reference;
+    const order=s.orders.get(reference);
+    change(order);
+    Object.assign(s.provider.get(reference),{ amount:order.amount*100, currency:order.currency });
+    assert.equal((await s.call(s.verify,{ authId:'owner', params:{ reference } })).code,503);
+    assert.equal(s.deliveries.length,0);
+  }
+});
+
+for (const purpose of ['COMMUNICATION_MINUTES','MALVI_SUBSCRIPTION']) {
+  test(`${purpose} validates the live catalog before delivery but completed retries stay idempotent`,async()=>{
+    const s=system();
+    const init=await s.call(s.initialize,{ authId:'owner', body:{
+      purpose, packageId:'pack', planTier:'premium',
+    } });
+    const reference=init.body.reference;
+    const product=purpose==='COMMUNICATION_MINUTES'
+      ? s.context.billingDb.communicationMinutePackages[0] : s.context.billingDb.malviPlans[0];
+    product.isActive=false;
+    assert.equal((await s.call(s.verify,{ authId:'owner', params:{ reference } })).code,503);
+    assert.equal(s.deliveries.length,0);
+    product.isActive=true;
+    const priceKey=purpose==='COMMUNICATION_MINUTES'?'priceGHS':'priceMonthlyGHS';
+    const originalPrice=product[priceKey];
+    product[priceKey]=originalPrice+1;
+    assert.equal((await s.call(s.verify,{ authId:'owner', params:{ reference } })).code,503);
+    assert.equal(s.deliveries.length,0);
+    product[priceKey]=originalPrice;
+    assert.equal((await s.call(s.verify,{ authId:'owner', params:{ reference } })).code,200);
+    product.isActive=false;
+    const retry=await s.call(s.verify,{ authId:'owner', params:{ reference } });
+    assert.equal(retry.body.alreadyFulfilled,true);
+    assert.equal(s.deliveries.length,1);
+  });
+}
+
+test('Malvi annual USD checkout derives its price and entitlements from the catalog',async()=>{
+  const s=system();
+  const init=await s.call(s.initialize,{ authId:'owner', body:{
+    purpose:'MALVI_SUBSCRIPTION', planTier:'premium', billingCycle:'ANNUAL', currency:'USD',
+    product:{ videoMinutesAllowed:999999 },
+  } });
+  const reference=init.body.reference;
+  assert.equal(s.provider.get(reference).amount,9900);
+  assert.equal((await s.call(s.verify,{ authId:'owner', params:{ reference } })).code,200);
+  assert.equal(s.deliveries[0].price,99);
+  assert.equal(s.deliveries[0].billingCycle,'ANNUAL');
+  assert.equal(s.deliveries[0].videoMinutesAllowed,30);
+  assert.equal(s.deliveries[0].voiceMinutesAllowed,30);
+});
+
+test('delivery requires the durable order and exact provider amount/currency',async()=>{
+  for (const [change, expectedStatus] of [
+    [(s:any,r:string)=>s.orders.delete(r),403],
+    [(s:any,r:string)=>{ s.provider.get(r).amount=1; },503],
+    [(s:any,r:string)=>{ s.provider.get(r).amount=5500.4; },400],
+    [(s:any,r:string)=>{ s.provider.get(r).currency='USD'; },503],
+  ] as const) {
+    const s=system();
+    const init=await s.call(s.initialize,{ authId:'owner', body:{ purpose:'COMMUNICATION_MINUTES', packageId:'pack', amount:55 } });
+    const reference=init.body.reference;
+    change(s,reference);
+    assert.equal((await s.call(s.verify,{ authId:'owner', params:{ reference } })).code,expectedStatus);
+    assert.equal(s.deliveries.length,0);
+  }
+});
+
+test('a failed minute-pack webhook retries, then browser verification does not deliver again',async()=>{
+  const s=system();
+  const init=await s.call(s.initialize,{ authId:'owner', body:{ purpose:'COMMUNICATION_MINUTES', packageId:'pack' } });
+  const reference=init.body.reference;
+  const event={ event:'charge.success', data:{ ...s.provider.get(reference), id:456 } };
+  const rawBody=Buffer.from(JSON.stringify(event));
+  const signature=crypto.createHmac('sha512','sk_live_fixture_only').update(rawBody).digest('hex');
+  const req={ body:event, rawBody, headers:{ 'x-paystack-signature':signature } };
+  s.failOnce();
+  assert.equal((await s.call(s.webhook,req)).code,500);
+  assert.equal(s.deliveries.length,0);
+  assert.equal((await s.call(s.webhook,req)).code,200);
+  const retry=await s.call(s.verify,{ authId:'owner', params:{ reference } });
+  assert.equal(retry.body.alreadyFulfilled,true);
+  assert.equal(s.deliveries.length,1);
 });
