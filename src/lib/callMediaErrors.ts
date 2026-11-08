@@ -14,10 +14,13 @@ export class CallMediaSetupError extends Error {
 /** Deliberately omit messages, identities, channels and credentials from logs. */
 export function callMediaFailureDetails(error: unknown) {
   const setup = error instanceof CallMediaSetupError ? error : null;
-  const cause = (setup ? setup.original : error) as { code?: string; name?: string } | null;
-  const code = String(cause?.code || cause?.name || '');
+  const cause = (setup ? setup.original : error) as { code?: unknown; name?: unknown } | null;
   const known = /^(NOT_READABLE|NOT_ALLOWED|PERMISSION_DENIED|DEVICE_NOT_FOUND|NOT_FOUND|INVALID_TOKEN|TOKEN_EXPIRED|CAN_NOT_GET_GATEWAY_SERVER|NETWORK_TIMEOUT|NETWORK_ERROR|WEB_SECURITY_RESTRICT|UID_CONFLICT|INVALID_APP_ID|NotAllowedError|NotReadableError|NotFoundError|AbortError|TimeoutError|SyntaxError)$/;
-  return { stage: setup?.stage || 'unknown', code: known.test(code) ? code : 'UNCLASSIFIED',
+  // Native DOMExceptions also carry legacy numeric codes (20/23). An unknown
+  // code must not hide a known, safe name such as AbortError or TimeoutError.
+  const code=[cause?.code,cause?.name].find((value):value is string=>
+    typeof value==='string'&&known.test(value))||'UNCLASSIFIED';
+  return { stage: setup?.stage || 'unknown', code,
     ...(isCallTokenErrorCode(setup?.serviceCode) ? { supportCode: setup.serviceCode } : {}),
     ...(setup?.httpStatus ? { httpStatus: setup.httpStatus } : {}) };
 }

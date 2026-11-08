@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {build} from 'esbuild';
 import {createRequire} from 'node:module';
-import {CallMediaSetupError,callMediaErrorMessage} from '../src/lib/callMediaErrors';
+import {CallMediaSetupError,callMediaErrorMessage,callMediaFailureDetails} from '../src/lib/callMediaErrors';
 
 function deferred<T=void>(){
   let resolve!:(value:T)=>void;
@@ -11,7 +11,10 @@ function deferred<T=void>(){
 }
 async function fixture(t:any){
   const previousFetch=globalThis.fetch,previousStream=(globalThis as any).MediaStream;
-  const events:string[]=[],clients:any[]=[];
+  const events:string[]=[],clients:any[]=[],timings:any[]=[];
+  t.mock.method(console,'info',(...args:any[])=>{
+    if(args[0]==='[Nanivio call] Media setup timing')timings.push(args[1]);
+  });
   const track=(kind='audio')=>({
     getMediaStreamTrack:()=>({kind}),setEnabled:async()=>{},
     stop:()=>events.push(`${kind}:stop`),close:()=>events.push(`${kind}:close`),
@@ -53,7 +56,7 @@ async function fixture(t:any){
   new Function('require','module','exports',compiled.outputFiles[0].text)(
     createRequire(import.meta.url),module,module.exports);
   const client=module.exports.agoraClient;
-  return {client,sdk,clients,events,track};
+  return {client,sdk,clients,events,track,timings};
 }
 
 test('hangup immediately rejects a pending SDK join and disposes its late completion',async t=>{
@@ -201,6 +204,68 @@ test('an owned renewal request still aborts at its own request deadline',async t
     (error:any)=>error.name==='TimeoutError');
   await entered.promise;t.mock.timers.tick(15001);await rejected;
   assert.equal(signal?.aborted,true);assert.equal(client.token,null);
+});
+
+test('native browser numeric codes do not hide timeout and cancellation names',()=>{
+  for(const name of ['TimeoutError','AbortError']){
+    const original=new DOMException('private fixture',name);
+    assert.equal(typeof original.code,'number');
+    const details=callMediaFailureDetails(new CallMediaSetupError('registration',original));
+    assert.equal(details.code,name);assert.equal(details.stage,'registration');
+    assert.doesNotMatch(JSON.stringify(details),/private fixture/);
+  }
+  assert.equal(callMediaFailureDetails(new CallMediaSetupError('join',
+    {code:'NETWORK_ERROR',name:'TimeoutError'})).code,'NETWORK_ERROR');
+  assert.equal(callMediaFailureDetails(new CallMediaSetupError('join',
+    {code:'private-token',name:'TimeoutError'})).code,'TimeoutError');
+  assert.equal(callMediaFailureDetails({code:23,name:'unknown-private-name'}).code,'UNCLASSIFIED');
+});
+
+test('startup timings contain only bounded stage, outcome and monotonic duration',async t=>{
+  const {client,timings}=await fixture(t);
+  await client.joinChannel('private-channel','private-user','private-name','video');
+  assert.deepEqual(timings.map(item=>item.stage),
+    ['token','join','microphone','microphone','camera','camera','publish','registration']);
+  for(const item of timings){
+    assert.deepEqual(Object.keys(item).sort(),['elapsedMs','outcome','stage']);
+    assert.equal(item.outcome,'success');
+    assert.ok(Number.isInteger(item.elapsedMs)&&item.elapsedMs>=0);
+  }
+  assert.doesNotMatch(JSON.stringify(timings),/private|fixture-token|fixture-app|fixture-session/);
+  await client.leaveChannel();
+});
+
+test('token time is part of the shared deadline and an interrupted registration is classified as timeout',async t=>{
+  const {client,sdk,track,timings}=await fixture(t);
+  const tokenEntered=deferred(),joinEntered=deferred(),micEntered=deferred(),registered=deferred();
+  const token=deferred<Response>(),join=deferred(),mic=deferred<any>();
+  const base=globalThis.fetch;let registrationSignal:AbortSignal|undefined;
+  globalThis.fetch=async(input,init)=>{
+    if(String(input).endsWith('/token')){tokenEntered.resolve();return token.promise;}
+    if(String(input).endsWith('/join')){
+      registrationSignal=init?.signal as AbortSignal;registered.resolve();
+      return new Promise<Response>(()=>{});
+    }
+    return base(input,init);
+  };
+  const create=sdk.createClient;
+  sdk.createClient=()=>{const rtc=create();rtc.join=()=>{joinEntered.resolve();return join.promise;};return rtc;};
+  sdk.createMicrophoneAudioTrack=()=>{micEntered.resolve();return mic.promise;};
+  t.mock.timers.enable({apis:['setTimeout']});
+  const rejected=assert.rejects(client.joinChannel('deadline','user','User','audio'),(error:any)=>{
+    assert.equal(error.stage,'registration');assert.equal(error.original.name,'TimeoutError');
+    assert.equal(callMediaFailureDetails(new CallMediaSetupError(error.stage,error.original)).code,'TimeoutError');
+    return true;
+  });
+  await tokenEntered.promise;t.mock.timers.tick(9000);
+  token.resolve(Response.json({token:'fixture-token',appId:'fixture-app',agoraUid:1}));
+  await joinEntered.promise;t.mock.timers.tick(9000);join.resolve();
+  await micEntered.promise;t.mock.timers.tick(8000);mic.resolve(track());
+  await registered.promise;t.mock.timers.tick(4001);await rejected;
+  assert.equal(registrationSignal?.aborted,true);
+  assert.equal(client.getStats().connectionState,'DISCONNECTED');
+  assert.equal(timings.find(item=>item.stage==='registration').outcome,'timeout');
+  assert.equal(timings.find(item=>item.stage==='token').outcome,'success');
 });
 
 test('cleanup failures cannot replace the original setup failure or leave devices registered',async t=>{

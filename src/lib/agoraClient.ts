@@ -11,7 +11,7 @@ import AgoraRTC, {
   IRemoteVideoTrack,
 } from 'agora-rtc-sdk-ng';
 import { authClient } from './authClient';
-import { CallMediaSetupError, type CallMediaStage } from './callMediaErrors';
+import { CallMediaSetupError, callMediaFailureDetails, type CallMediaStage } from './callMediaErrors';
 
 const MEDIA_SETUP_TIMEOUT_MS = 15000;
 const MEDIA_STARTUP_TIMEOUT_MS = 30000;
@@ -89,6 +89,8 @@ class NanivioAgoraClient {
     const cancelled = () => new CallMediaSetupError(stage,
       signal?.reason || new DOMException('Call media setup was cancelled.', 'AbortError'));
     if (generation !== this.mediaGeneration || signal?.aborted) throw cancelled();
+    const startedAt=performance.now();
+    let outcome:'success'|'timeout'|'cancelled'|'failed'='failed';
     let expired = false;
     let timer: ReturnType<typeof setTimeout> | undefined;
     let onAbort: (() => void) | undefined;
@@ -104,7 +106,7 @@ class NanivioAgoraClient {
       return value;
     });
     try {
-      return await Promise.race([pending, new Promise<never>((_, reject) => {
+      const result=await Promise.race([pending, new Promise<never>((_, reject) => {
         timer = setTimeout(() => {
           expired = true;
           const timeout = new Error('Call media setup timed out.');
@@ -115,9 +117,18 @@ class NanivioAgoraClient {
         onAbort = () => { expired = true; reject(cancelled()); };
         signal?.addEventListener('abort', onAbort, { once: true });
       })]);
+      outcome='success';
+      return result;
+    } catch(error) {
+      const {code}=callMediaFailureDetails(error);
+      outcome=code==='TimeoutError'?'timeout':code==='AbortError'?'cancelled':'failed';
+      throw error;
     } finally {
       if (timer) clearTimeout(timer);
       if (onAbort) signal?.removeEventListener('abort', onAbort);
+      console.info('[Nanivio call] Media setup timing',{
+        stage,elapsedMs:Math.max(0,Math.round(performance.now()-startedAt)),outcome,
+      });
     }
   }
 
