@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, useLayoutEffect, useRef, useCallback } from 'react';
 import confetti from 'canvas-confetti';
+import { isIncomingCallCaption } from '../shared/callCaption';
 import { useCallLanguageSync } from '../lib/useCallLanguageSync';
 import { prepareChatTranslation } from '../lib/chatTranslation';
 import { ChatSendError } from '../lib/chatSendFeedback';
@@ -1323,7 +1324,7 @@ export const NanivioProvider: React.FC<{ children: React.ReactNode }> = ({ child
     const unsubSpeechTranscript = realtimeClient.on('call:speech_transcript', (data) => {
       if (!data) return;
       setActiveCall((prev) => {
-        if (!prev) return null;
+        if (!isIncomingCallCaption(prev,data,currentUser.id)||!prev) return prev;
         return {
           ...prev,
           activeSpeakerId: data.speakerId,
@@ -1331,6 +1332,7 @@ export const NanivioProvider: React.FC<{ children: React.ReactNode }> = ({ child
             speakerId: data.speakerId,
             speakerName: data.speakerName || 'Caller',
             speakerLang: data.sourceLang,
+            textInSpeakerLang:data.originalText||'',
             textInReceiverLang: data.translatedText || data.originalText || '',
             timestamp: Date.now(),
           },
@@ -2421,9 +2423,11 @@ export const NanivioProvider: React.FC<{ children: React.ReactNode }> = ({ child
       }
       if(!stillCurrent())return;
 
-      // Update call receiver transcript display (ONLY in receiver's language!)
+      // Outgoing results are spoken to the other participant. They must not
+      // replace an incoming caption labelled with this user's listening language.
       setActiveCall(prev => {
         if (!prev || prev.id !== callId) return prev;
+        if(speakerId===currentUser.id)return {...prev,langpretationState:prev.langpretationEnabled?'ON':'OFF'};
         return {
           ...prev,
           currentTranscript: {

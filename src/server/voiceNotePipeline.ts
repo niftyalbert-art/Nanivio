@@ -25,7 +25,9 @@ export function twiEnglishVoiceNotePair(source:string,target:string){
   return source==='ak'&&target==='en'||source==='en'&&target==='ak';
 }
 
-export async function processStagedVoiceNote(audio:Buffer,source:string,target:string,signal?:AbortSignal){
+export type TranslatedSpeechCaption={transcript:string;translatedTranscript:string};
+export async function processStagedVoiceNote(audio:Buffer,source:string,target:string,signal?:AbortSignal,
+  onTranslated?:(caption:TranslatedSpeechCaption)=>void){
   if(!planTranslation(source,target).supported)throw new SpeechProviderError(422,'This voice-message language pair is not supported.');
   const duration=wavDurationSeconds(audio);
   if(!duration||duration>60)throw new SpeechProviderError(400,'Record a valid WAV voice message of up to 60 seconds.');
@@ -69,6 +71,9 @@ export async function processStagedVoiceNote(audio:Buffer,source:string,target:s
       if(!result?.text)throw new SpeechProviderError(503,'Translation is unavailable.');
       return result;
     });
+    // Live callers can see the authoritative translation while TTS is still
+    // processing. This is not an acknowledgement of audible delivery.
+    if(!deadline.aborted)onTranslated?.({transcript:recognized.text,translatedTranscript:translated.text});
     const synthesized=await stage('synthesis',()=>synthesizeProviderAudio(translated.text,target,options));
     outcome='success';
     status=200;

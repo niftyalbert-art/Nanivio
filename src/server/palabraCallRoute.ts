@@ -3,7 +3,7 @@ import { PalabraError, parsePalabraWav, palabraConfigured, translatePalabraAudio
 import { supportsPalabraPair } from '../shared/palabraLanguages.ts';
 import { reservePalabraCapacity } from './palabraCapacity.ts';
 import { planTranslation } from '../lib/translator-engine/languagePlan.ts';
-import { processStagedVoiceNote } from './voiceNotePipeline.ts';
+import { processStagedVoiceNote, type TranslatedSpeechCaption } from './voiceNotePipeline.ts';
 import { SpeechProviderError, speechConfigured } from './speechProviders.ts';
 import { translationProviderConfigured } from './translationRouter.ts';
 
@@ -27,9 +27,11 @@ export function createPalabraCallHandler(deps: {
   configured?: () => boolean;
   stagedTranslate?: typeof processStagedVoiceNote;
   stagedConfigured?: typeof stagedCallPairConfigured;
+  caption?:(userId:string,sessionId:string,source:string,target:string,caption:TranslatedSpeechCaption)=>void;
 }) {
   return async (req: Request, res: Response) => {
     const userId = deps.userId(req), abort = new AbortController();
+    const started=performance.now();
     let release:undefined|(()=>void);
     const cancel = () => abort.abort();
     req.once('aborted',cancel); res.once('close',cancel);
@@ -44,6 +46,13 @@ export function createPalabraCallHandler(deps: {
       const audio = Buffer.from(audioBase64,'base64'); parsePalabraWav(audio);
       await deps.authorize(userId,sessionId,sourceLang,targetLang);
       if (abort.signal.aborted) return;
+      let captionSent=false;
+      const caption=(value:TranslatedSpeechCaption)=>{
+        if(captionSent||abort.signal.aborted||!deps.caption)return;
+        captionSent=true;
+        try{deps.caption(userId,sessionId,sourceLang,targetLang,value);}
+        catch{console.warn('[Nanivio call] Caption delivery failed.');}
+      };
       let result;
       if (supportsPalabraPair(sourceLang, targetLang)) {
         if (!(deps.configured || palabraConfigured)()) throw new PalabraError(503,'Nanivio live translation is not configured.');
@@ -56,10 +65,17 @@ export function createPalabraCallHandler(deps: {
           throw new PalabraError(429, 'Speech Langpretation is busy. Wait for the current phrase to finish.');
         stagedSpeakers.add(userId);
         release = () => { stagedSpeakers.delete(userId); };
-        const spoken = await (deps.stagedTranslate || processStagedVoiceNote)(audio, sourceLang, targetLang, abort.signal);
+        const spoken = await (deps.stagedTranslate || processStagedVoiceNote)(audio, sourceLang, targetLang, abort.signal,
+          caption);
         result = { ...spoken, text: spoken.transcript, translatedText: spoken.translatedTranscript };
       }
-      if (!abort.signal.aborted) res.json({success:true,sourceLang,targetLang,...result});
+      if (!abort.signal.aborted) {
+        // Full-file providers have no early-caption callback. Deliver their
+        // authoritative text once, without starting another provider request.
+        caption({transcript:result.text,translatedTranscript:result.translatedText});
+        res.setHeader?.('Server-Timing',`langpretation;dur=${Math.max(0,Math.round(performance.now()-started))}`);
+        res.json({success:true,sourceLang,targetLang,...result});
+      }
     } catch (error) {
       const stage = error instanceof SpeechProviderError && 'stage' in error
         && typeof error.stage==='string'

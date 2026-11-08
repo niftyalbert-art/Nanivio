@@ -4,6 +4,7 @@ import { EventEmitter } from 'node:events';
 import { createPalabraCallHandler, stagedCallPairConfigured } from '../src/server/palabraCallRoute';
 import { SpeechProviderError } from '../src/server/speechProviders';
 import { VoiceNoteProcessingError } from '../src/server/voiceNotePipeline';
+import {buildPeerCallCaption,isIncomingCallCaption} from '../src/shared/callCaption';
 
 function wav() {
   const audio = Buffer.alloc(44 + 16000);
@@ -153,4 +154,105 @@ test('Twi–English combined readiness does not depend on Gemini credentials', t
   assert.equal(stagedCallPairConfigured('en', 'tw-ak'), false);
   process.env.GEMINI_API_KEY='fixture-only';
   assert.equal(stagedCallPairConfigured('en','tw-ak'),true);
+});
+test('only authorized provider-generated captions are exposed before spoken output',async()=>{
+  const captions:any[]=[],events:string[]=[];
+  const f=fixture({
+    authorize:async()=>{events.push('authorize');},
+    caption:(...args:any[])=>{events.push('caption');captions.push(args);},
+    stagedTranslate:async(_audio:Buffer,_source:string,_target:string,_signal:AbortSignal,onTranslated:any)=>{
+      onTranslated({transcript:'Original',translatedTranscript:'Translated'});
+      events.push('synthesis');
+      return {transcript:'Original',translatedTranscript:'Translated',audioBase64:wav().toString('base64')};
+    },
+  });
+  await f.handler(f.req,f.res);
+  assert.deepEqual(events,['authorize','caption','synthesis']);
+  assert.deepEqual(captions[0],['authenticated-speaker','connected-call','en','ak',
+    {transcript:'Original',translatedTranscript:'Translated'}]);
+});
+
+test('early captions precede the audio response and are delivered exactly once',async()=>{
+  let complete!:(value:any)=>void;
+  const captions:any[]=[];
+  const f=fixture({caption:(...args:any[])=>captions.push(args),
+    stagedTranslate:async(_audio:Buffer,_source:string,_target:string,_signal:AbortSignal,onTranslated:any)=>{
+      onTranslated({transcript:'Original',translatedTranscript:'Translated'});
+      return new Promise(resolve=>{complete=resolve;});
+    }});
+  const pending=f.handler(f.req,f.res);
+  await new Promise(resolve=>setImmediate(resolve));
+  assert.equal(captions.length,1);assert.equal(f.res.body,null);
+  complete({transcript:'Original',translatedTranscript:'Translated',audioBase64:wav().toString('base64')});
+  await pending;
+  assert.equal(captions.length,1);assert.equal(f.res.body.success,true);
+});
+test('full-file results also deliver one caption and expose only numeric overall server timing',async()=>{
+  const captions:any[]=[],headers:Record<string,string>={};
+  const f=fixture({caption:(...args:any[])=>captions.push(args)});
+  f.res.setHeader=(key:string,value:string)=>{headers[key]=value;};
+  await f.handler(f.req,f.res);
+  assert.equal(captions.length,1);
+  assert.equal(captions[0][4].translatedTranscript,'fixture translation');
+  assert.match(headers['Server-Timing'],/^langpretation;dur=\d+$/);
+  assert.equal(f.res.body.success,true);
+});
+test('caption transport errors do not discard successful translated audio or invoke providers again',async()=>{
+  let attempts=0;const warn=console.warn;console.warn=()=>{};
+  try{
+    const f=fixture({caption:()=>{attempts++;throw new Error('private transport detail');}});
+    await f.handler(f.req,f.res);
+    assert.equal(attempts,1);assert.equal(f.res.body.success,true);
+    assert.deepEqual(f.calls,['authorize','speech']);
+    assert.doesNotMatch(JSON.stringify(f.res.body),/private transport detail/);
+  }finally{console.warn=warn;}
+});
+test('disconnect during processing suppresses late captions and the audio response',async()=>{
+  let complete!:(value:any)=>void,onTranslated!:(value:any)=>void;
+  const captions:any[]=[];
+  const f=fixture({caption:(...args:any[])=>captions.push(args),
+    stagedTranslate:async(_a:Buffer,_s:string,_t:string,_signal:AbortSignal,callback:any)=>{
+      onTranslated=callback;return new Promise(resolve=>{complete=resolve;});
+    }});
+  const pending=f.handler(f.req,f.res);await new Promise(resolve=>setImmediate(resolve));
+  f.res.emit('close');
+  onTranslated({transcript:'Late',translatedTranscript:'Late translation'});
+  complete({transcript:'Late',translatedTranscript:'Late translation',audioBase64:wav().toString('base64')});
+  await pending;
+  assert.equal(captions.length,0);assert.equal(f.res.body,null);
+});
+test('simultaneous Arabic and Twi turns deliver only the other speaker’s caption in each listening language',async()=>{
+  const session={callId:'connected-call',status:'connected',participants:['arabic-speaker','twi-speaker']};
+  const view={id:session.callId,status:'connected',langpretationEnabled:true,
+    participants:[{id:'arabic-speaker',myLanguage:'ar'},{id:'twi-speaker',myLanguage:'ak'}]};
+  const received=new Map<string,any>();
+  const tasks=[['arabic-speaker','ar','ak','Twi translation'],['twi-speaker','ak','ar','ترجمة عربية']]
+    .map(([speaker,source,target,translated])=>{
+      const f=fixture({
+        userId:()=>speaker,
+        authorize:async(id:string,callId:string)=>{
+          assert.ok(session.participants.includes(id));assert.equal(callId,session.callId);
+        },
+        caption:(userId:string,callId:string,from:string,to:string,value:any)=>{
+          assert.equal(callId,session.callId);
+          const delivery=buildPeerCallCaption(session,userId,from,to,value);
+          assert.ok(delivery);
+          assert.equal(isIncomingCallCaption(view,delivery.payload,delivery.recipientId),true);
+          assert.notEqual(delivery.recipientId,userId);
+          received.set(delivery.recipientId,delivery.payload);
+        },
+        stagedTranslate:async(_a:Buffer,_s:string,_t:string,_signal:AbortSignal,onTranslated:any)=>{
+          const caption={transcript:'Original '+source,translatedTranscript:translated};
+          onTranslated(caption);
+          await new Promise(resolve=>setImmediate(resolve));
+          return {...caption,audioBase64:wav().toString('base64')};
+        },
+      });
+      f.req.body.sourceLang=source;f.req.body.targetLang=target;
+      return f.handler(f.req,f.res).then(()=>assert.equal(f.res.body.success,true));
+    });
+  await Promise.all(tasks);
+  assert.equal(received.size,2);
+  assert.equal(received.get('arabic-speaker').translatedText,'ترجمة عربية');
+  assert.equal(received.get('twi-speaker').translatedText,'Twi translation');
 });

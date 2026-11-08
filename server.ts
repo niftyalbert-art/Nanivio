@@ -9,7 +9,7 @@ import { publicFx as currentBillingFx } from './src/server/malviCostCalculator.t
 import { unavailableCommunicationMeter } from './src/server/langpretationMeter.ts';
 import { registerCommunicationRoutes, applyCommunicationCatalogue } from './src/server/communicationRoutes.ts';
 import { classifyCallTokenFailure } from './src/server/callTokenFailure.ts';
-import { authorizeSponsoredCall, markCallTranslationReady, communicationCall, communicationTokenSeconds } from './src/server/realtimeServer.ts';
+import { authorizeSponsoredCall, markCallTranslationReady, communicationCall, communicationTokenSeconds, publishCallSpeechCaption } from './src/server/realtimeServer.ts';
 import proxyaddr from "proxy-addr";
 import { GoogleGenAI, FunctionDeclaration, Type } from "@google/genai";
 import dotenv from "dotenv";
@@ -1406,7 +1406,7 @@ app.post("/api/langpretation/call/translate-audio",requireAuthenticatedUser,(req
   res.once('finish',()=>{if(res.statusCode<300)markCallTranslationReady(String(req.body?.sessionId||''));});
   next();
 },createPalabraCallHandler({
-  userId: authenticatedUserId,authorize:authorizeLiveLangpretation
+  userId: authenticatedUserId,authorize:authorizeLiveLangpretation,caption:publishCallSpeechCaption
 }));
 app.get("/api/langpretation/speech-readiness",requireAuthenticatedUser,(req,res)=>{
   try{

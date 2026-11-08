@@ -30,6 +30,7 @@ import { BusinessTranslationAudience, type BusinessTranslationAuthorization } fr
 import { normalizeAgoraUid } from './agoraService';
 import { PalabraError } from './palabraSpeech.ts';
 import { participantLanguage } from '../shared/participantLanguage.ts';
+import { buildPeerCallCaption } from '../shared/callCaption.ts';
 import { CommunicationCallMeter, CommunicationAccessError, withCommunicationUsage } from './communicationAccess.ts';
 import { SUPPORTED_LANGUAGES } from '../types';
 let langpretationGateway:PalabraLiveGateway|null=null;
@@ -94,6 +95,17 @@ const communicationMeter = new CommunicationCallMeter({
 });
 export function authorizeSponsoredCall(userId: string, callId: string) { communicationMeter.authorize(callId, userId); }
 export function markCallTranslationReady(callId: string) { communicationMeter.translationReady(callId); }
+/** Provider-generated captions only; client-supplied speech events stay disabled. */
+export function publishCallSpeechCaption(userId:string,callId:string,sourceLang:string,targetLang:string,
+  caption:{transcript:string;translatedTranscript:string}){
+  const call=activeCalls.get(callId);
+  if(!call||call.status!=='connected'||!call.participants.includes(userId))return;
+  try{authorizeSponsoredCall(userId,callId);}catch{return;}
+  const speaker=call.caller.id===userId?call.caller:
+    [...(clientsByUserId.get(userId)||[])][0];
+  const delivery=buildPeerCallCaption(call,userId,sourceLang,targetLang,caption,speaker?.name||'Caller');
+  if(delivery)sendToUser(delivery.recipientId,{type:'call:speech_transcript',payload:delivery.payload});
+}
 export async function communicationTokenSeconds(userId:string,channelName:string) {
   const call=[...activeCalls.values()].find(call=>call.channelName===channelName && call.status==='connected' && call.participants.includes(userId));
   if(!call)throw new CommunicationAccessError(409,'Connect this authorized call before requesting media.','CALL_NOT_READY');
