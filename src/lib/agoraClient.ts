@@ -13,6 +13,10 @@ import AgoraRTC, {
 import { authClient } from './authClient';
 import { CallMediaSetupError, type CallMediaStage } from './callMediaErrors';
 
+const MEDIA_SETUP_TIMEOUT_MS = 15000;
+const MEDIA_STARTUP_TIMEOUT_MS = 30000;
+const MEDIA_LEAVE_TIMEOUT_MS = 3000;
+
 export interface AgoraRtcConfig {
   appId: string;
   channelName: string;
@@ -68,6 +72,7 @@ class NanivioAgoraClient {
   private translationQueue:Promise<boolean>=Promise.resolve(true);
   private queuedTranslations=0;
   private mediaGeneration = 0;
+  private callAbort: AbortController | null = null;
   private remoteAudioMuted = false;
   private mediaReady = false;
   private previewGeneration: number | null = null;
@@ -76,13 +81,73 @@ class NanivioAgoraClient {
   private tokenRenewTimer:ReturnType<typeof setTimeout>|null=null;
   private communicationTokenExpiry=0;
 
+  private async setupStep<T>(
+    stage: CallMediaStage, operation: () => Promise<T>, generation: number,
+    releaseLate?: (value: T) => void,
+  ): Promise<T> {
+    const signal = this.callAbort?.signal;
+    const cancelled = () => new CallMediaSetupError(stage,
+      signal?.reason || new DOMException('Call media setup was cancelled.', 'AbortError'));
+    if (generation !== this.mediaGeneration || signal?.aborted) throw cancelled();
+    let expired = false;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    let onAbort: (() => void) | undefined;
+    console.info('[Nanivio call] Media setup step', stage);
+    const pending = Promise.resolve().then(() => {
+      if (generation !== this.mediaGeneration || signal?.aborted) throw cancelled();
+      return operation();
+    }).then(value => {
+      if (expired || generation !== this.mediaGeneration || signal?.aborted) {
+        try { releaseLate?.(value); } catch {}
+        throw cancelled();
+      }
+      return value;
+    });
+    try {
+      return await Promise.race([pending, new Promise<never>((_, reject) => {
+        timer = setTimeout(() => {
+          expired = true;
+          const timeout = new Error('Call media setup timed out.');
+          timeout.name = 'TimeoutError';
+          reject(new CallMediaSetupError(stage, timeout));
+        }, MEDIA_SETUP_TIMEOUT_MS);
+      }), new Promise<never>((_, reject) => {
+        onAbort = () => { expired = true; reject(cancelled()); };
+        signal?.addEventListener('abort', onAbort, { once: true });
+      })]);
+    } finally {
+      if (timer) clearTimeout(timer);
+      if (onAbort) signal?.removeEventListener('abort', onAbort);
+    }
+  }
+
+  private async leaveSdk(client: IAgoraRTCClient | null) {
+    if (!client) return;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    try {
+      await Promise.race([
+        Promise.resolve().then(() => client.leave()).catch(() => {}),
+        new Promise<void>(resolve => { timer = setTimeout(resolve, MEDIA_LEAVE_TIMEOUT_MS); }),
+      ]);
+    } finally { if (timer) clearTimeout(timer); }
+  }
+
   constructor() {
     if (typeof window !== 'undefined') {
       
     }
   }
 
-  public async fetchToken(channelName: string, uid: string | number): Promise<{ token: string; appId: string; agoraUid?: number }> {
+  public async fetchToken(channelName: string, uid: string | number,
+    owner?: { generation: number; signal: AbortSignal }): Promise<{ token: string; appId: string; agoraUid?: number }> {
+    const request = new AbortController();
+    const onCancel = () => request.abort(owner?.signal.reason ||
+      new DOMException('Call was cancelled.', 'AbortError'));
+    if (owner?.signal.aborted) onCancel();
+    else owner?.signal.addEventListener('abort', onCancel, { once: true });
+    const timer = setTimeout(() => request.abort(
+      new DOMException('Call token request timed out.', 'TimeoutError')), MEDIA_SETUP_TIMEOUT_MS);
+    try {
     const token = authClient.getToken();
     const headers: Record<string, string> = { 'Content-Type': 'application/json' };
     if (token) {
@@ -92,9 +157,12 @@ class NanivioAgoraClient {
     const res = await fetch('/api/agora/token', {
       method: 'POST', headers,
       body: JSON.stringify({ channelName, uid, role: 'publisher', expireTimeSeconds: 3600 }),
-      signal: AbortSignal.timeout(15000),
+      signal: request.signal,
     });
     const data = await res.json().catch(() => ({}));
+    if (request.signal.aborted) throw request.signal.reason;
+    if (owner && owner.generation !== this.mediaGeneration)
+      throw new DOMException('Call was cancelled.', 'AbortError');
     if (!res.ok || !data.token || !data.appId || data.isMock) {
       throw new CallMediaSetupError('token',
         new Error(data.error || 'Production credentials/token are not configured.'), res.status,
@@ -103,64 +171,99 @@ class NanivioAgoraClient {
     this.token = data.token; this.appId = data.appId; this.agoraUid = data.agoraUid;
     this.communicationTokenExpiry=typeof data.communicationExpiresIn==='number'?Date.now()+data.communicationExpiresIn*1000:0;
     return { token: data.token, appId: data.appId, agoraUid: data.agoraUid };
+    } finally {
+      clearTimeout(timer);
+      owner?.signal.removeEventListener('abort', onCancel);
+    }
   }
 
   public async joinChannel(channelName: string, uid: string | number, userName: string, callType: 'audio' | 'video', _remotePeerId?: string, _isInitiator = false): Promise<AgoraTelemetryStats> {
     const pendingPreview = this.pendingPreview?.promise;
     const hadPreview = !!this.localStream || this.previewGeneration === this.mediaGeneration;
+    // A ready preview already owns the user's approved devices. Do not reopen
+    // them during answer; mobile capture can fail or stall during reacquisition.
+    const reusePreview = !pendingPreview && !this.client && !this.currentChannel && !!this.originalAudio;
+    const previewAudio = reusePreview ? this.originalAudio : null;
+    const previewVideo = reusePreview && callType === 'video' ? this.localVideo : null;
+    if (reusePreview) {
+      this.originalAudio = this.localAudio = null;
+      if (previewVideo) this.localVideo = null;
+    }
     if (!hadPreview) {
       this.isAudioMuted = false;
       this.isVideoOff = callType === 'audio';
     }
     if (callType === 'audio') this.isVideoOff = true;
+    const beforeLeave = this.mediaGeneration;
     await this.leaveChannel();
+    if (this.mediaGeneration !== beforeLeave + 1) {
+      for (const track of [previewAudio, previewVideo]) {
+        try { track?.stop(); } catch {}
+        try { track?.close(); } catch {}
+      }
+      const cancelled = new Error('Call was cancelled.');
+      cancelled.name = 'AbortError';
+      throw new CallMediaSetupError('join', cancelled);
+    }
     const generation = ++this.mediaGeneration;
+    const controller = new AbortController();
+    this.callAbort = controller;
+    const startupTimer = setTimeout(() => {
+      controller.abort(new DOMException('Call media setup timed out.', 'TimeoutError'));
+    }, MEDIA_STARTUP_TIMEOUT_MS);
     const stillCurrent = () => {
-      if (generation !== this.mediaGeneration) throw new Error('Call was cancelled.');
+      if (generation !== this.mediaGeneration || controller.signal.aborted)
+        throw controller.signal.reason || new DOMException('Call was cancelled.', 'AbortError');
     };
-    let audio: ILocalAudioTrack | null = null;
-    let video: ILocalVideoTrack | null = null;
+    let audio: ILocalAudioTrack | null = previewAudio;
+    let video: ILocalVideoTrack | null = previewVideo;
     let client: IAgoraRTCClient | null = null;
     let stage: CallMediaStage = 'token';
     try {
     // An unresolved getUserMedia request cannot be cancelled by stopping tracks.
     // Let its cancellation cleanup finish before reacquiring the same devices.
-    if (pendingPreview) await pendingPreview.catch(() => null);
+    if (pendingPreview) await this.setupStep('microphone', () => pendingPreview.catch(() => null), generation);
     stillCurrent();
     this.connectionState = 'CONNECTING';
     this.currentChannel = channelName; this.currentUid = uid;
     this.notifyStats();
 
-    const token = await this.fetchToken(channelName, uid);
+    const token = await this.setupStep(stage,
+      () => this.fetchToken(channelName, uid, { generation, signal: controller.signal }), generation);
     stillCurrent();
     const numericUid = token.agoraUid ?? this.agoraUid ?? 0;
     stage = 'join';
     this.client = AgoraRTC.createClient({ mode: 'rtc', codec: 'vp8' });
     client = this.client;
     this.registerClientEvents();
-    await this.client.join(token.appId, channelName, token.token, numericUid);
+    await this.setupStep(stage, () => client!.join(token.appId, channelName, token.token, numericUid), generation,
+      () => { void this.leaveSdk(client); });
     stillCurrent();
 
     stage = 'microphone';
-    audio = await AgoraRTC.createMicrophoneAudioTrack({
+    if (!audio) audio = await this.setupStep(stage, () => AgoraRTC.createMicrophoneAudioTrack({
       encoderConfig: 'speech_standard',
       AEC: true, ANS: true, AGC: true,
-    } as any);
+    } as any), generation, track => {
+      try { track.stop(); } catch {} try { track.close(); } catch {}
+    });
     stillCurrent();
     this.originalAudio = audio;
     this.localAudio = this.originalAudio;
-    await audio.setEnabled(!this.isAudioMuted);
+    await this.setupStep(stage, () => audio!.setEnabled(!this.isAudioMuted), generation);
     stillCurrent();
     if (callType === 'video') {
       stage = 'camera';
-      video = await AgoraRTC.createCameraVideoTrack();
+      if (!video) video = await this.setupStep(stage, () => AgoraRTC.createCameraVideoTrack(), generation,
+        track => { try { track.stop(); } catch {} try { track.close(); } catch {} });
       stillCurrent();
       this.localVideo = video;
-      await video.setEnabled(!this.isVideoOff);
+      await this.setupStep(stage, () => video!.setEnabled(!this.isVideoOff), generation);
       stillCurrent();
     }
     stage = 'publish';
-    await this.client.publish([this.localAudio, ...(this.localVideo ? [this.localVideo] : [])]);
+    await this.setupStep(stage, () => client!.publish([this.localAudio!, ...(this.localVideo ? [this.localVideo] : [])]), generation,
+      () => { void this.leaveSdk(client); });
     stillCurrent();
     this.rebuildLocalStream();
 
@@ -171,12 +274,12 @@ class NanivioAgoraClient {
       headers['x-nanivio-token'] = authToken;
     }
     stage = 'registration';
-    try {
+    await this.setupStep(stage, async () => {
       const joinResponse = await fetch('/api/agora/join', {
         method: 'POST',
         headers,
         body: JSON.stringify({ channelName, callType }),
-        signal: AbortSignal.timeout(15000),
+        signal: controller.signal,
       });
       let joinResult: any;
       try { joinResult = await joinResponse.json(); }
@@ -186,7 +289,7 @@ class NanivioAgoraClient {
         throw new CallMediaSetupError(stage,
           new Error(joinResult.error || 'The server did not register this call participant.'), joinResponse.status);
       }
-    } catch (error) { throw error; }
+    }, generation);
     this.mediaReady = true;
     this.scheduleCommunicationRenewal(client);
     this.connectionState = 'CONNECTED';
@@ -194,11 +297,13 @@ class NanivioAgoraClient {
     this.notifyStats();
     return this.getStats();
     } catch (error) {
-      audio?.stop(); audio?.close(); video?.stop(); video?.close();
+      for (const track of new Set([audio, video])) {
+        try { track?.stop(); } catch {} try { track?.close(); } catch {}
+      }
       if (generation === this.mediaGeneration) await this.leaveChannel();
-      else await client?.leave().catch(() => {});
+      else await this.leaveSdk(client);
       throw error instanceof CallMediaSetupError ? error : new CallMediaSetupError(stage, error);
-    }
+    } finally { clearTimeout(startupTimer); }
   }
 
   private registerClientEvents() {
@@ -240,13 +345,15 @@ class NanivioAgoraClient {
     if(this.tokenRenewTimer)clearTimeout(this.tokenRenewTimer);
     if(!this.communicationTokenExpiry||this.client!==client||!this.currentChannel||this.currentUid===null)return;
     const generation=this.mediaGeneration,channel=this.currentChannel,uid=this.currentUid;
+    const controller=this.callAbort;
+    if(!controller)return;
     const delay=retry?Math.min(5000,Math.max(1000,this.communicationTokenExpiry-Date.now()-1000))
       :Math.max(1000,Math.min(30000,this.communicationTokenExpiry-Date.now()-10000));
     this.tokenRenewTimer=setTimeout(async()=>{
       if(this.client!==client||this.mediaGeneration!==generation)return;
       const oldExpiry=this.communicationTokenExpiry;
       try{
-        const token=await this.fetchToken(channel,uid);
+        const token=await this.fetchToken(channel,uid,{generation,signal:controller.signal});
         if(this.client!==client||this.mediaGeneration!==generation)return;
         await client.renewToken(token.token);
         this.scheduleCommunicationRenewal(client);
@@ -440,12 +547,29 @@ class NanivioAgoraClient {
   public subscribeTelemetry(cb: (stats: AgoraTelemetryStats) => void) { this.listeners.add(cb); cb(this.getStats()); return () => this.listeners.delete(cb); }
 
   public async leaveChannel() {
+    this.callAbort?.abort(new DOMException('Call was cancelled.', 'AbortError'));
+    this.callAbort=null;
     if(this.tokenRenewTimer)clearTimeout(this.tokenRenewTimer);
     this.tokenRenewTimer=null;this.communicationTokenExpiry=0;
     this.mediaGeneration++;
     this.mediaReady = false;
     this.remoteAudioMuted = false;
-    if (this.currentChannel) {
+    const channel = this.currentChannel;
+    const client = this.client;
+    this.client = null;
+    // Release capture and notify the UI immediately, even if SDK leave stalls.
+    if(this.statsInterval)clearInterval(this.statsInterval);
+    this.statsInterval=null;
+    for (const track of new Set([this.localAudio, this.originalAudio, this.translatedAudio, this.localVideo])) {
+      try { track?.stop(); } catch {}
+      try { track?.close(); } catch {}
+    }
+    this.localAudio=null;this.originalAudio=null;this.translatedAudio=null;this.localVideo=null;
+    this.localStream=null;this.remoteStream=null;this.currentChannel=null;this.currentUid=null;
+    this.agoraUid=null;this.token=null;
+    this.connectionState='DISCONNECTED';
+    this.notifyLocalStream();this.notifyRemoteStream();this.notifyStats();
+    if (channel) {
       const token = authClient.getToken();
       const headers: Record<string, string> = { 'Content-Type': 'application/json' };
       if (token) {
@@ -455,15 +579,11 @@ class NanivioAgoraClient {
       fetch('/api/agora/leave', {
         method: 'POST',
         headers,
-        body: JSON.stringify({ channelName: this.currentChannel }),
+        body: JSON.stringify({ channelName: channel }),
+        signal: AbortSignal.timeout(5000),
       }).catch((error) => console.warn('[Agora] Server leave registration failed:', error));
     }
-    if (this.client) await this.client.leave().catch(()=>{});
-    this.localAudio?.stop(); this.localAudio?.close(); this.localVideo?.stop(); this.localVideo?.close(); this.translatedAudio?.stop(); this.translatedAudio?.close();
-    this.client = null; this.localAudio = null; this.localVideo = null; this.originalAudio = null; this.translatedAudio = null;
-    this.localStream = null; this.remoteStream = null; this.currentChannel = null; this.currentUid = null; this.agoraUid = null; this.token = null;
-    if (this.statsInterval) clearInterval(this.statsInterval); this.statsInterval = null;
-    this.connectionState = 'DISCONNECTED'; this.notifyLocalStream(); this.notifyRemoteStream(); this.notifyStats();
+    await this.leaveSdk(client);
   }
 
   public getStats(): AgoraTelemetryStats {

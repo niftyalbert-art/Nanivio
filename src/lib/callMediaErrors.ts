@@ -42,6 +42,17 @@ export function callMediaErrorMessage(error: unknown, type: 'audio' | 'video'): 
   if (setup?.stage === 'registration' && candidate?.name === 'SyntaxError') {
     return 'The call service returned an unreadable response. Reload Nanivio, then start a new call. Support code: CALL_RESPONSE_INVALID.';
   }
+  if (candidate?.name === 'TimeoutError' && setup) {
+    const messages: Record<CallMediaStage, string> = {
+      token: 'The call service did not respond in time. Check your connection, then start a new call.',
+      join: 'The call media service did not connect in time. Check your connection, VPN or firewall, then start a new call.',
+      microphone: 'Your microphone did not become ready in time. Check its permissions and close other apps using it, then call again.',
+      camera: 'Your camera did not become ready in time. Check its permissions or try an audio-only call.',
+      publish: 'Your device could not send call media in time. Check your connection, then start a new call.',
+      registration: 'The server did not finish registering this call in time. End it and start a new call.',
+    };
+    return messages[setup.stage];
+  }
   if (candidate?.name === 'AbortError' || candidate?.name === 'TimeoutError') {
     return 'The call connection request timed out or was interrupted. Check your connection, then start a new call.';
   }
