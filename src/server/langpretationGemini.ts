@@ -90,7 +90,7 @@ async function readGenerationBody(response:Response, max:number, signal:AbortSig
   }
 }
 
-/** One bounded request: no automatic retries, cross-provider fallback or raw error logging. */
+/** One shared deadline; at most one retry for HTTP 503, never cross-provider fallback. */
 async function generate(operation: 'text' | 'speech', contents: unknown[], generationConfig: Record<string, unknown>, instruction?: string, signal?:AbortSignal) {
   const key = process.env.GEMINI_API_KEY;
   if (!key) throw new LangpretationGeminiError(503, 'Nanivio language services are not configured.');
@@ -111,7 +111,7 @@ async function generate(operation: 'text' | 'speech', contents: unknown[], gener
   if (deadline.aborted) throw requestFailure(deadline.reason);
   let response: Response;
   try {
-    response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`, {
+    const request = () => fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`, {
       method: 'POST', redirect: 'error', signal: deadline,
       headers: { 'Content-Type': 'application/json', 'x-goog-api-key': key },
       body: JSON.stringify({
@@ -119,6 +119,23 @@ async function generate(operation: 'text' | 'speech', contents: unknown[], gener
         ...(instruction ? { systemInstruction: { parts: [{ text: instruction }] } } : {}),
       }),
     });
+    response = await request();
+    // Retry only an explicit transient rejection. Preserve the model, payload
+    // and original deadline; quota, auth and ambiguous network failures stop.
+    if (response.status === 503 && !deadline.aborted) {
+      void response.body?.cancel().catch(() => {});
+      await new Promise<void>((resolve, reject) => {
+        const abort = () => { clearTimeout(timer); reject(deadline.reason); };
+        const timer = setTimeout(() => {
+          deadline.removeEventListener('abort', abort);
+          resolve();
+        }, 200);
+        deadline.addEventListener('abort', abort, { once: true });
+        if (deadline.aborted) abort();
+      });
+      if (deadline.aborted) throw deadline.reason;
+      response = await request();
+    }
   } catch (error) {
     throw requestFailure(error);
   }

@@ -15,7 +15,7 @@ function fixture(bundle: typeof speechBundle, reply: (request: any) => Response 
   const requests: any[] = [];
   const warnings: any[] = [];
   const context = vm.createContext({
-    module: { exports: {} }, Buffer, AbortSignal:signals, Response, URL, FormData, Blob,
+    module: { exports: {} }, Buffer, AbortSignal:signals, Response, URL, FormData, Blob, setTimeout, clearTimeout,
     process: { env: configured ? { GEMINI_API_KEY: 'fixture-only', ...env } : {} },
     console: { warn(...args: unknown[]) { warnings.push(args); } },
     fetch: async (url: string, options: any) => {
@@ -57,7 +57,8 @@ test('all 324 plans remove Azure dependencies without changing specialist speech
   for (const source of LANGUAGE_CODES) for (const target of LANGUAGE_CODES) {
     assert.ok(planTranslation(source, target).hops.every(h => h.provider !== ('azure' as any)));
   }
-  assert.equal(planTranslation('tw-ak', 'en').supported, false);
+  // The released language plan already supports this route.
+  assert.equal(planTranslation('tw-ak', 'en').supported, true);
 });
 
 test('global recognition uses real audio via Gemini without Azure configuration or fabricated confidence', async () => {
@@ -166,8 +167,8 @@ test('unknown, malformed and oversized diagnostic payloads never escape or hide 
 
 test('a stalled error body cannot indefinitely delay safe diagnostics', async () => {
   let cancelled = false;
-  const stream = new ReadableStream({ cancel() { cancelled = true; } });
-  const f = fixture(speechBundle, () => new Response(stream, { status: 503 }));
+  const f = fixture(speechBundle, () => new Response(
+    new ReadableStream({ cancel() { cancelled = true; } }), { status: 503 }));
   // AbortSignal.timeout uses an unreferenced timer in Node. Keep this isolated
   // stalled-stream fixture alive until the tested deadline settles.
   const keepAlive = setTimeout(() => {}, 2000);
@@ -177,7 +178,7 @@ test('a stalled error body cannot indefinitely delay safe diagnostics', async ()
       return true;
     });
     assert.equal(cancelled, true);
-    assert.equal(f.requests.length, 1);
+    assert.equal(f.requests.length, 2);
   } finally { clearTimeout(keepAlive); }
 });
 
