@@ -538,6 +538,16 @@ export function setupRealtimeServer(httpServer: HttpServer,options?:{
               connectedAt: Date.now(),
             };
             for(const call of activeCalls.values()){
+              if (call.status === 'ringing' && isCallRecipient(call, currentUser) &&
+                Date.now() - call.startedAt < RING_TIMEOUT_MS) {
+                // Recover pending invitations when the receiver registers late,
+                // including saved contacts identified by their Nanivio number.
+                call.recipientId = currentUser.userId;
+                socket.send(JSON.stringify({ type: 'call:incoming', payload: {
+                  callId: call.callId, channelName: call.channelName, callType: call.callType,
+                  caller: call.caller, timestamp: call.startedAt,
+                } }));
+              }
               if(call.caller.id===currentUser.userId)call.caller.myLanguage=currentUser.myLanguage;
             }
 

@@ -66,7 +66,7 @@ async function fixture(t: any, expired: string[] = []) {
     };
     send('auth:presence',{token});
     await wait('auth:presence_ack');
-    return {send,wait,socket};
+    return {send,wait,socket,messages};
   }
   return {peer,canJoin:module.exports.canJoinAgoraCall,usage};
 }
@@ -125,6 +125,30 @@ test('legacy group invitations are blocked before quotas or ringing; ordinary ca
 });
 
 for(const type of ['audio','video']) {
+  test(`${type}: late receiver registration recovers an invitation addressed by Nanivio number`,async t=>{
+    const f=await fixture(t),a=await f.peer('caller');
+    const callId=`late-number-${type}`;
+    a.send('call:initiate',{callId,callType:type,recipientId:'old-contact-id',recipientNvId:'NV-0486222222'});
+    assert.equal((await a.wait('call:ringing',callId)).deliveredToLiveRecipient,false);
+    const outsider=await f.peer('outsider');
+    assert.equal(outsider.messages.some(m=>m.type==='call:incoming'),false);
+    const b=await f.peer('receiver');
+    assert.equal((await b.wait('call:incoming',callId)).callType,type);
+    b.send('call:accept',{callId});
+    await a.wait('call:accepted',callId);await b.wait('call:connected',callId);
+    a.send('call:end',{callId});
+    await a.wait('call:ended',callId);await b.wait('call:ended',callId);
+  });
+  test(`${type}: a cancelled invitation is never replayed to a late receiver`,async t=>{
+    const f=await fixture(t),a=await f.peer('caller');
+    const callId=`cancelled-late-${type}`;
+    a.send('call:initiate',{callId,callType:type,recipientId:'old-contact-id',recipientNvId:'NV-0486222222'});
+    await a.wait('call:ringing',callId);
+    a.send('call:end',{callId});await a.wait('call:ended',callId);
+    const b=await f.peer('receiver');
+    assert.equal(b.messages.some(m=>m.type==='call:incoming'),false);
+    assert.equal(f.canJoin('receiver-id','0486222222',`nanivio_call_${callId}`),false);
+  });
   test(`${type}: caller cancellation reaches a receiver dialled through a stale contact ID`,async t=>{
     const f=await fixture(t),a=await f.peer('caller'),b=await f.peer('receiver');
     const callId=`fallback-${type}`,channelName=`nanivio_call_${callId}`;
