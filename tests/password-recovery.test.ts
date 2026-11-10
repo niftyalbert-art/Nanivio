@@ -38,8 +38,8 @@ async function fixture(t: any) {
     async owner(authId: string) { return active && authId === 'fixture-auth' ? 'fixture-owner' : null; },
   };
   registerPasswordRecoveryRoutes(app, {
-    origin, store, find: async identifier => identifier === 'fixture@example.test'
-      ? { id: 'fixture-owner', email: identifier, accountStatus: active ? 'ACTIVE' : 'DEACTIVATED' } : null,
+    origin, store, find: async identifier => ['fixture@example.test','+233200000001','0486000001'].includes(identifier)
+      ? { id: 'fixture-owner', email: 'fixture@example.test', accountStatus: active ? 'ACTIVE' : 'DEACTIVATED' } : null,
     provider: () => ({
       async send(_email, _challenge, redirect) { calls.push('send'); assert.equal(redirect, origin + '/reset-password'); if (failure === 'send') throw Error('private provider detail'); },
       async exchange(_code, verifier) { calls.push('exchange'); assert.ok(verifier.length >= 43); if (failure === 'exchange') throw Error('private detail'); return { authId: wrongOwner ? 'other-auth' : 'fixture-auth', token: 'fixture-provider-token', expiresIn: 3600 }; },
@@ -71,17 +71,65 @@ async function fixture(t: any) {
     setLimited: () => { limited = true; }, fail: (value: string) => { failure = value; }, mismatch: () => { wrongOwner = true; } };
 }
 
-test('known, unknown and inactive accounts get the same neutral recovery response without exposed identifiers', async t => {
+test('registered emails get instructions; unknown and inactive emails are declined without leaking account data', async t => {
   const f = await fixture(t);
   const known = await f.call('/api/auth/recovery', { identifier: 'fixture@example.test' });
   const unknown = await f.call('/api/auth/recovery', { identifier: 'unknown@example.test' });
   f.setActive(false);
   const inactive = await f.call('/api/auth/recovery', { identifier: 'fixture@example.test' });
-  assert.deepEqual(known.data, unknown.data); assert.deepEqual(unknown.data, inactive.data);
+  assert.equal(known.status, 200);
+  assert.match(known.data.message, /email address is registered/);
+  assert.match(known.data.message, /same browser/);
+  assert.equal(unknown.status, 404);
+  assert.equal(unknown.data.success, false);
+  assert.match(unknown.data.error, /not registered with Nanivio/);
+  assert.equal(inactive.status, 403);
+  assert.match(inactive.data.error, /recovery is unavailable/);
+  assert.equal(unknown.headers.getSetCookie().length, 0);
+  assert.equal(inactive.headers.getSetCookie().length, 0);
   assert.deepEqual(f.calls, ['send']);
   assert.equal(JSON.stringify(known.data).includes('fixture'), false);
   assert.match(known.headers.getSetCookie()[0], /HttpOnly/);
   assert.match(known.headers.getSetCookie()[0], /SameSite=Lax/);
+});
+test('email matching ignores case and whitespace while malformed email input never sends mail', async t => {
+  const f = await fixture(t);
+  assert.equal((await f.call('/api/auth/recovery', { identifier: '  FIXTURE@EXAMPLE.TEST  ' })).status, 200);
+  for (const identifier of ['fixture.example.test','fixture@@example.test','fixture@','fixture @example.test','fixture@example']) {
+    const result = await f.call('/api/auth/recovery', { identifier });
+    assert.equal(result.status, 400);
+    assert.equal(result.data.error, 'Please enter a valid email address.');
+  }
+  assert.deepEqual(f.calls, ['send']);
+});
+test('phone and NV-ID recovery retain neutral responses for known, unknown and inactive accounts', async t => {
+  const f = await fixture(t);
+  const known = await f.call('/api/auth/recovery', { identifier: '+233200000001' });
+  const nv = await f.call('/api/auth/recovery', { identifier: '0486000001' });
+  const unknown = await f.call('/api/auth/recovery', { identifier: '+233200000002' });
+  f.setActive(false);
+  const inactive = await f.call('/api/auth/recovery', { identifier: '+233200000001' });
+  assert.equal(known.status, 200);
+  for (const result of [nv,unknown,inactive]) {
+    assert.equal(result.status, 200);
+    assert.deepEqual(result.data, known.data);
+  }
+  assert.deepEqual(f.calls, ['send','send']);
+});
+test('request limits apply before revealing registration status for both known and unknown emails', async t => {
+  const f = await fixture(t); f.setLimited();
+  const known = await f.call('/api/auth/recovery', { identifier: 'fixture@example.test' });
+  const unknown = await f.call('/api/auth/recovery', { identifier: 'unknown@example.test' });
+  assert.equal(known.status, 429); assert.equal(unknown.status, 429);
+  assert.deepEqual(known.data, unknown.data); assert.deepEqual(f.calls, []);
+});
+test('rejecting an unknown email does not replace a valid pending recovery cookie', async t => {
+  const f = await fixture(t);
+  await f.call('/api/auth/recovery', { identifier: 'fixture@example.test' });
+  const pending = [...f.jar];
+  assert.equal((await f.call('/api/auth/recovery', { identifier: 'unknown@example.test' })).status, 404);
+  assert.deepEqual([...f.jar], pending);
+  assert.equal((await f.call('/api/auth/recovery/exchange', { code: 'fixture-email-code' })).status, 200);
 });
 test('recovery inputs, cross-origin requests, rate limits and unsupported tokens fail before a password update', async t => {
   const f = await fixture(t);
@@ -142,11 +190,16 @@ for (const failure of ['update','revoke']) test(`${failure} uncertainty never re
   assert.equal((await f.call('/api/auth/reset-password', { newPassword: 'fixture-new-password' }, { cookie })).status, 400);
   assert.equal(f.calls.filter(v => v === 'update').length, 1);
 });
-test('an email-provider rejection does not leak account existence or fall back to another sender', async t => {
+test('email-provider rejection never claims delivery, issues a recovery cookie, leaks provider details or falls back', async t => {
   const f = await fixture(t); f.fail('send');
   const known = await f.call('/api/auth/recovery', { identifier: 'fixture@example.test' });
   const unknown = await f.call('/api/auth/recovery', { identifier: 'unknown@example.test' });
-  assert.equal(known.status, 200); assert.deepEqual(known.data, unknown.data);
+  assert.equal(known.status, 503);
+  assert.equal(known.data.success, false);
+  assert.match(known.data.error, /couldn’t confirm sending/);
+  assert.equal(known.headers.getSetCookie().length, 0);
+  assert.equal(unknown.status, 404);
+  assert.equal(JSON.stringify(known.data).includes('private provider detail'), false);
   assert.equal(f.calls.filter(v => v === 'send').length, 1);
 });
 test('shared password epochs invalidate existing browser/native socket authority but preserve newer sessions and other owners', async () => {
@@ -215,6 +268,22 @@ test('frontend exchanges once, strips URL credentials and never persists usable 
   assert.doesNotMatch(source, /localStorage|sessionStorage/);
   const app = await readFile('src/App.tsx','utf8');
   assert.ok(app.indexOf('<PasswordResetPage') < app.indexOf('<NanivioProvider>',app.indexOf('export default function App')));
+});
+test('frontend preserves registration errors and hides non-JSON server failure details', async () => {
+  const bundle = await build({entryPoints:['src/lib/passwordRecovery.ts'],bundle:true,platform:'node',format:'cjs',write:false});
+  for (const response of [
+    new Response(JSON.stringify({success:false,error:'This email address is not registered with Nanivio.'}),{status:404}),
+    new Response('private upstream failure detail',{status:503}),
+  ]) {
+    const module={exports:{} as any};
+    new Function('module','exports','fetch',bundle.outputFiles[0].text)(module,module.exports,async()=>response);
+    await assert.rejects(module.exports.requestPasswordReset('fixture@example.test'),(error:any)=>{
+      assert.ok(error instanceof module.exports.PasswordRecoveryError);
+      assert.match(error.message,response.status===404?/not registered/:/Password recovery is unavailable/);
+      assert.equal(error.message.includes('private upstream'),false);
+      return true;
+    });
+  }
 });
 test('legacy bearer fragments and provider error URLs are scrubbed and refused before any exchange', async () => {
   const bundle = await build({entryPoints:['src/lib/passwordRecovery.ts'],bundle:true,platform:'node',format:'cjs',write:false});

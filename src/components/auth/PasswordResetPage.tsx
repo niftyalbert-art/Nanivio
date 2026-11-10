@@ -4,6 +4,7 @@ import { NanivioLogo } from '../common/NanivioLogo';
 import {
   completePasswordReset,
   initializePasswordRecovery,
+  PasswordRecoveryError,
   requestPasswordReset,
 } from '../../lib/passwordRecovery';
 import './nanivio-auth-luxury.css';
@@ -23,6 +24,7 @@ export const PasswordResetPage: React.FC = () => {
   const [pending, setPending] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
   const [requestError, setRequestError] = useState('');
+  const [requestMessage, setRequestMessage] = useState('');
   const mounted = useRef(false);
   const submitting = useRef(false);
 
@@ -89,6 +91,7 @@ export const PasswordResetPage: React.FC = () => {
     if (submitting.current) return;
     const cleanIdentifier = identifier.trim();
     setRequestError('');
+    setRequestMessage('');
     setErrorMessage('');
     if (!cleanIdentifier) {
       setRequestError('Enter the email, phone number, or NV ID linked to your account.');
@@ -98,11 +101,15 @@ export const PasswordResetPage: React.FC = () => {
     submitting.current = true;
     setPending(true);
     try {
-      await requestPasswordReset(cleanIdentifier);
-      if (mounted.current) setPageState('sent');
-    } catch {
+      const message = await requestPasswordReset(cleanIdentifier);
       if (mounted.current) {
-        setRequestError('We couldn’t process that request right now. Please try again in a moment.');
+        setRequestMessage(message);
+        setPageState('sent');
+      }
+    } catch (error) {
+      if (mounted.current) {
+        setPageState('request');
+        setRequestError(error instanceof PasswordRecoveryError ? error.message : 'We couldn’t process that request right now. Please try again in a moment.');
       }
     } finally {
       submitting.current = false;
@@ -268,7 +275,7 @@ export const PasswordResetPage: React.FC = () => {
                   <h1>{pageState === 'sent' ? 'Check your email' : 'Get back into Nanivio'}</h1>
                   <p>
                     {pageState === 'sent'
-                      ? 'If an account matches those details, we’ll send instructions to its recovery email.'
+                      ? 'Check the recovery instructions below.'
                       : 'Request a secure recovery link. Your conversations remain tied to your account.'}
                   </p>
                 </div>
@@ -283,7 +290,7 @@ export const PasswordResetPage: React.FC = () => {
                   <div role="status" aria-live="polite" className="mb-5 rounded-xl border border-emerald-500/30 bg-emerald-950/40 px-4 py-3.5 text-sm leading-6 text-emerald-200">
                     <p className="font-semibold text-emerald-100">Recovery request received</p>
                     <p className="mt-1 text-slate-300">
-                      Open the link from the same browser where you requested it. For your security, this page won’t reset your password until you open a fresh link.
+                      {requestMessage}
                     </p>
                   </div>
                 )}
@@ -325,7 +332,7 @@ export const PasswordResetPage: React.FC = () => {
                 </form>
 
                 <p className="mt-6 border-t border-slate-700 pt-5 text-xs leading-5 text-slate-400">
-                  We’ll respond the same way whether or not an account matches, to help keep accounts private.
+                  A registered email is required for email recovery. Never share your password or recovery link.
                 </p>
               </>
             )}

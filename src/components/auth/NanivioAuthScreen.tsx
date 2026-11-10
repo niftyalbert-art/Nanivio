@@ -18,6 +18,7 @@ import {
   Car,
   X,
 } from 'lucide-react';
+import { PasswordRecoveryError, requestPasswordReset } from '../../lib/passwordRecovery';
 import { useNanivio } from '../../context/NanivioContext';
 import { SUPPORTED_LANGUAGES, RideServiceTier } from '../../types';
 import { SupportedLanguageCode } from '../../types';
@@ -175,6 +176,7 @@ export const NanivioAuthScreen: React.FC<NanivioAuthScreenProps> = ({ onSuccess 
   const [isRecoveryOpen, setIsRecoveryOpen] = useState(false);
   const [recoveryId, setRecoveryId] = useState('');
   const [recoveryMessage, setRecoveryMessage] = useState<string | null>(null);
+  const [recoveryError, setRecoveryError] = useState(false);
 
   const clearMessages = () => {
     setErrorMessage(null);
@@ -456,21 +458,14 @@ const handleAdminSignIn = async (e: React.FormEvent) => {
   const handleRecoveryRequest = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!recoveryId.trim()) return;
+    setRecoveryMessage(null);
+    setRecoveryError(false);
     try {
       setIsLoading(true);
-      const res = await fetch('/api/auth/recovery', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ identifier: recoveryId.trim() }),
-      });
-      const data = await res.json();
-      if (data.success) {
-        setRecoveryMessage(data.message || 'Your recovery request was received. Follow the instructions provided by the service.');
-      } else {
-        setRecoveryMessage(data.error || 'Account not found.');
-      }
-    } catch {
-      setRecoveryMessage('Network error occurred during recovery.');
+      setRecoveryMessage(await requestPasswordReset(recoveryId.trim()));
+    } catch (error) {
+      setRecoveryError(true);
+      setRecoveryMessage(error instanceof PasswordRecoveryError ? error.message : 'We couldn’t process that request right now. Please try again in a moment.');
     } finally {
       setIsLoading(false);
     }
@@ -1785,7 +1780,7 @@ const handleAdminSignIn = async (e: React.FormEvent) => {
                 />
 
                 {recoveryMessage && (
-                  <div className="p-3 rounded-xl bg-slate-950 border border-emerald-500/30 text-xs text-emerald-300">
+                  <div role={recoveryError ? 'alert' : 'status'} className={`p-3 rounded-xl bg-slate-950 border text-xs ${recoveryError ? 'border-red-500/30 text-red-200' : 'border-emerald-500/30 text-emerald-300'}`}>
                     {recoveryMessage}
                   </div>
                 )}

@@ -4,7 +4,8 @@ import { createRecoveryProvider } from './passwordRecoveryProvider';
 import { passwordRecoveryStore } from './passwordRecoveryStore';
 import { recoveryCookie, clearRecoveryCookie } from './passwordRecoveryCookies';
 
-const MESSAGE = 'If an eligible account matches those details, password reset instructions will be sent to its email. Open the newest link in this same browser.';
+const MESSAGE = 'If these details match an active Nanivio account, check its registered email address for a password reset link. Open the newest link in the same browser.';
+const REGISTERED_EMAIL = 'Your email address is registered with Nanivio. Check your inbox or spam folder for a password reset link. Open the newest link in the same browser you used to request it.';
 const INVALID = 'This recovery link is invalid, expired or already used. Request a new link.';
 const id = () => crypto.randomBytes(32).toString('hex');
 export function registerPasswordRecoveryRoutes(app: Express, dependencies: {
@@ -39,12 +40,19 @@ export function registerPasswordRecoveryRoutes(app: Express, dependencies: {
     if (typeof identifier !== 'string' || !identifier.trim() || identifier.length > 254) {
       return res.status(400).json({ success: false, error: 'Enter your registered email, phone number or NV ID.' });
     }
+    const cleanIdentifier = identifier.trim();
+    const isEmail = cleanIdentifier.includes('@');
+    const validEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanIdentifier);
+    const phoneOrNvId = /^\+?[\d\s().-]+$/.test(cleanIdentifier) && /\d/.test(cleanIdentifier);
+    if ((isEmail && !validEmail) || (!isEmail && !phoneOrNvId)) {
+      return res.status(400).json({ success: false, error: 'Please enter a valid email address.' });
+    }
     try {
       const redirectTo = redirect(req), delivery = provider();
       await store.ready();
       const secret = process.env.SESSION_SECRET;
       if (!secret) throw Error('Security unavailable');
-      const user = await dependencies.find(identifier.trim());
+      const user = await dependencies.find(isEmail ? cleanIdentifier.toLowerCase() : cleanIdentifier);
       const eligible = user?.accountStatus === 'ACTIVE' ? user : null;
       const nonce = id(), verifier = crypto.randomBytes(48).toString('base64url'), expires = Date.now() + 15 * 60000;
       // Socket IP only; never trust an arbitrary caller's X-Forwarded-For header.
@@ -53,13 +61,24 @@ export function registerPasswordRecoveryRoutes(app: Express, dependencies: {
       if (!(await store.reserve(nonce, eligible?.id || null, ipHash, expires, subjectHash))) {
         return res.status(429).json({ success: false, error: 'Too many recovery attempts. Please try again later.' });
       }
+      // The owner approved public email-registration messages after reviewing
+      // the enumeration trade-off. Phone/NV-ID lookups remain neutral.
+      if (isEmail && !user) {
+        return res.status(404).json({ success: false, error: 'This email address is not registered with Nanivio. Please enter your registered email address or create an account.' });
+      }
+      if (isEmail && !eligible) {
+        return res.status(403).json({ success: false, error: 'This email address is registered, but password recovery is unavailable for this account. Please contact Nanivio support.' });
+      }
       if (eligible) {
         try { await delivery.send(eligible.email, crypto.createHash('sha256').update(verifier).digest('base64url'), redirectTo); }
-        catch { console.warn('[Password recovery] Email acceptance could not be confirmed.'); }
+        catch {
+          console.warn('[Password recovery] Email acceptance could not be confirmed.');
+          if (isEmail) return res.status(503).json({ success: false, error: 'We couldn’t confirm sending your password reset link. Please try again shortly.' });
+        }
       }
       recoveryCookie(req, res, 'pkce', { id: nonce, verifier, expires });
       clearRecoveryCookie(req, res, 'reset');
-      return res.json({ success: true, message: MESSAGE });
+      return res.json({ success: true, message: isEmail ? REGISTERED_EMAIL : MESSAGE });
     } catch {
       return res.status(503).json({ success: false, error: 'Password recovery is temporarily unavailable. Please try again later.' });
     }

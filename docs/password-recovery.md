@@ -33,8 +33,15 @@ Future deletion migration changes must preserve that wrapper integration.
 ## User flow
 
 - Forgot Password accepts the registered email, phone number or NV ID.
-- Eligible and unknown/inactive accounts receive the same neutral response.
-  Provider errors are not exposed as account-existence information.
+- The owner approved explicit email-registration messages after reviewing the
+  privacy trade-off: public recovery can reveal whether an email is registered.
+  Valid registered emails get recovery instructions after the provider accepts
+  the request. Unknown emails are rejected, malformed addresses get format
+  guidance, and inactive accounts get an unavailable-account message.
+- Phone-number/NV-ID requests retain neutral account-existence messages.
+  Email-provider failures are reported without exposing provider details or
+  claiming a link was sent. Shared request limits still apply before revealing
+  whether an email is registered.
 - The server generates a S256 PKCE verifier. Only the provider challenge and
   approved redirect go to Supabase; the verifier lives in an encrypted,
   purpose/host-bound HttpOnly cookie.

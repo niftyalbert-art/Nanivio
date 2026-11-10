@@ -1,12 +1,16 @@
 /** Recovery credentials stay in purpose-bound HttpOnly cookies, never app storage. */
+export class PasswordRecoveryError extends Error {}
+
 async function call(path: string, body?: object) {
   const response = await fetch(path, {
     method: body ? 'POST' : 'GET', credentials: 'same-origin', cache: 'no-store',
     headers: body ? { 'Content-Type': 'application/json' } : {},
     body: body ? JSON.stringify(body) : undefined,
   });
-  const data = await response.json();
-  if (!response.ok || data.success === false) throw new Error(data.error || 'Password recovery is unavailable. Please try again.');
+  const data = await response.json().catch(() => null);
+  if (!data || !response.ok || data.success === false) {
+    throw new PasswordRecoveryError(typeof data?.error === 'string' ? data.error : 'Password recovery is unavailable. Please try again.');
+  }
   return data;
 }
 let recovery: Promise<{ ready: boolean }> | undefined;
