@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { AccountDeletionRequest } from './AccountDeletionRequest';
 import {
   Settings,
   X,
@@ -41,16 +42,26 @@ export const SettingsModal: React.FC = () => {
     unrestrictUser,
     myLanguage,
     setIsLanguageModalOpen,
-    deleteAccount,
+    deactivateAccount,
+    authUser,
     signOut,
   } = useNanivio();
 
-  // Delete account confirmation states
+  // Deactivation does not erase the user's account data.
   const [deleteReason, setDeleteReason] = useState('switching_devices');
   const [deleteConfirmationText, setDeleteConfirmationText] = useState('');
   const [isDeleting, setIsDeleting] = useState(false);
   const [showDeleteStep2, setShowDeleteStep2] = useState(false);
+  const [deactivationError, setDeactivationError] = useState('');
   const [soundTestActive, setSoundTestActive] = useState(false);
+
+  React.useEffect(() => {
+    if (!isSettingsModalOpen) {
+      setShowDeleteStep2(false);
+      setDeleteConfirmationText('');
+      setDeactivationError('');
+    }
+  }, [isSettingsModalOpen]);
 
   if (!isSettingsModalOpen) return null;
 
@@ -76,13 +87,14 @@ export const SettingsModal: React.FC = () => {
   };
 
   const handleExecuteDeleteAccount = async () => {
-    if (deleteConfirmationText !== 'DELETE') return;
+    if (deleteConfirmationText !== 'DEACTIVATE' || isDeleting) return;
+    setDeactivationError('');
     setIsDeleting(true);
     try {
-      await deleteAccount(deleteReason);
+      await deactivateAccount(deleteReason);
       setIsSettingsModalOpen(false);
-    } catch (err) {
-      console.error('Delete account failed:', err);
+    } catch {
+      setDeactivationError('We could not complete this request. Reconnect and check your account before trying again.');
     } finally {
       setIsDeleting(false);
     }
@@ -120,7 +132,7 @@ export const SettingsModal: React.FC = () => {
             { id: 'theme', label: 'Theme', icon: Palette },
             { id: 'security', label: 'Security & Safety', icon: Shield },
             { id: 'about', label: 'About App', icon: Info },
-            { id: 'account', label: 'Account Deletion', icon: Trash2 },
+            { id: 'account', label: 'Account & Data', icon: Trash2 },
           ].map((tab) => {
             const Icon = tab.icon;
             const isActive = settingsActiveTab === tab.id;
@@ -755,23 +767,24 @@ export const SettingsModal: React.FC = () => {
             </div>
           )}
 
-          {/* TAB 7: ACCOUNT DELETION (DANGER ZONE) */}
+          {/* TAB 7: ACCOUNT DEACTIVATION (NOT DATA ERASURE) */}
           {settingsActiveTab === 'account' && (
             <div className="space-y-5">
+              <AccountDeletionRequest key={authUser?.id || 'signed-out'} initialEmail={authUser?.email || ''} />
               <div className="space-y-1">
                 <h4 className="text-sm font-bold text-rose-400 flex items-center gap-2">
                   <AlertTriangle className="w-4 h-4 text-rose-400" />
-                  <span>Permanent Account Deletion</span>
+                  <span>Account Deactivation</span>
                 </h4>
                 <p className="text-xs text-slate-400">
-                  Permanently delete your Nanivio identity, conversations, contact records, and wallet profiles.
+                  Disable access to your Nanivio account. This does not permanently delete your account or erase its associated data.
                 </p>
               </div>
 
               {!showDeleteStep2 ? (
                 <div className="p-4 rounded-2xl bg-rose-950/30 border border-rose-500/40 space-y-3">
                   <p className="text-xs text-rose-200 leading-relaxed">
-                    <strong>Warning:</strong> Deleting your account is irreversible. All your personal messages, contact records, Langpretation logs, and Nanivio ID will be deactivated immediately.
+                    <strong>Important:</strong> Deactivation disables account access and signs you out. Your profile, conversations, contacts, usage and billing records, and saved voice profile are not erased by this action. Use the separate verified deletion request above to request account-and-data removal.
                   </p>
 
                   <div className="space-y-2">
@@ -794,20 +807,22 @@ export const SettingsModal: React.FC = () => {
                     onClick={() => setShowDeleteStep2(true)}
                     className="px-4 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-500 text-white font-bold text-xs shadow transition-all"
                   >
-                    Proceed to Deletion Verification
+                    Continue to Deactivation Confirmation
                   </button>
                 </div>
               ) : (
                 <div className="p-4 rounded-2xl bg-rose-950/40 border border-rose-500/60 space-y-3">
-                  <p className="text-xs text-rose-200 font-bold">
-                    To confirm permanent deletion, type <span className="underline font-mono text-white">DELETE</span> in capital letters below:
-                  </p>
+                  <label htmlFor="account-deactivation-confirmation" className="block text-xs text-rose-200 font-bold">
+                    To confirm deactivation without data erasure, type <span className="underline font-mono text-white">DEACTIVATE</span> below:
+                  </label>
 
                   <input
+                    id="account-deactivation-confirmation"
                     type="text"
                     value={deleteConfirmationText}
                     onChange={(e) => setDeleteConfirmationText(e.target.value)}
-                    placeholder="Type DELETE"
+                    placeholder="Type DEACTIVATE"
+                    disabled={isDeleting}
                     className="w-full bg-slate-950 border border-rose-500/60 rounded-xl px-3.5 py-2.5 text-xs text-white font-mono placeholder-slate-600 focus:outline-none focus:border-rose-400"
                   />
 
@@ -821,14 +836,19 @@ export const SettingsModal: React.FC = () => {
                     </button>
                     <button
                       type="button"
-                      disabled={deleteConfirmationText !== 'DELETE' || isDeleting}
+                      disabled={deleteConfirmationText !== 'DEACTIVATE' || isDeleting}
                       onClick={handleExecuteDeleteAccount}
                       className="px-5 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-500 text-white font-bold text-xs disabled:opacity-40 shadow-lg shadow-rose-600/30"
                     >
-                      {isDeleting ? 'Deactivating...' : 'Permanently Delete My Account'}
+                      {isDeleting ? 'Deactivating...' : 'Deactivate My Account'}
                     </button>
                   </div>
                 </div>
+              )}
+              {deactivationError && (
+                <p role="alert" className="text-xs text-rose-200 border border-rose-500/40 rounded-xl p-3">
+                  {deactivationError}
+                </p>
               )}
             </div>
           )}

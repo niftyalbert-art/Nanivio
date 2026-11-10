@@ -105,6 +105,7 @@ import type {
   BusinessSignUpData,
 } from '../types/auth';
 import { authClient } from '../lib/authClient';
+import { requestAccountDeactivation } from '../lib/accountDeactivation';
 import { authenticatedFetch } from '../lib/authenticatedFetch';
 
 interface NanivioContextType {
@@ -244,7 +245,7 @@ interface NanivioContextType {
   updateUserSettings: (updates: Partial<UserSettings>) => void;
   userSecuritySessions: UserSecuritySession[];
   terminateOtherSessions: () => void;
-  deleteAccount: (reason?: string) => Promise<void>;
+  deactivateAccount: (reason?: string) => Promise<void>;
   blockUser: (userId: string) => void;
   unblockUser: (userId: string) => void;
   restrictUser: (userId: string) => void;
@@ -2557,19 +2558,8 @@ export const NanivioProvider: React.FC<{ children: React.ReactNode }> = ({ child
     if (shouldRestrict) restrictUser(report.targetId);
   }, [blockUser, restrictUser]);
 
-  const deleteAccount = useCallback(async (reason?: string) => {
-    try {
-      await fetch('/api/auth/account/delete', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          ...(authClient.getToken() ? { Authorization: `Bearer ${authClient.getToken()}` } : {}),
-        },
-        body: JSON.stringify({ reason }),
-      });
-    } catch (e) {
-      console.warn('Backend delete account error:', e);
-    }
+  const deactivateAccount = useCallback(async (reason?: string) => {
+    await requestAccountDeactivation(reason, authClient.getToken());
     await signOut();
   }, [signOut]);
 
@@ -3581,7 +3571,7 @@ export const NanivioProvider: React.FC<{ children: React.ReactNode }> = ({ child
         updateUserSettings,
         userSecuritySessions,
         terminateOtherSessions,
-        deleteAccount,
+        deactivateAccount,
         blockUser,
         unblockUser,
         restrictUser,

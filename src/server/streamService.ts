@@ -1,4 +1,5 @@
 import crypto from 'crypto';
+import { createStreamDeletionTransport } from './accountDeletionStream';
 import { validateChatUpload } from './chatAttachments.ts';
 import { canManageChannelMembers, canRemoveChannelMember, isChannelMember, normalizeChannelId, StreamAccessError } from './chatPrivacy.ts';
 
@@ -19,6 +20,9 @@ function cfg() {
   if (!apiKey || !secret) throw new StreamAccessError('Chat setup is incomplete.', 503, 'CHAT_CONFIGURATION_REQUIRED');
   return { apiKey, secret, base: (process.env.STREAM_API_BASE_URL || 'https://chat.stream-io-api.com').replace(/\/$/, '') };
 }
+
+// Server-only capability, not an HTTP route or an automatically started job.
+export const accountDeletionStreamTransport = createStreamDeletionTransport(streamRequest);
 
 function signedToken(payload: Record<string, unknown>) {
   const { secret } = cfg();
@@ -217,6 +221,19 @@ export async function getStreamChannelMembers(channelId: string): Promise<Stream
     if (page.length < 100) return members;
   }
   throw new StreamAccessError('Complete channel membership could not be verified.', 503);
+}
+
+/** Only the service-owned deletion worker may call this after SQL ownership
+ * and shared-file review. It intentionally does not impersonate an inactive
+ * member or bypass the ordinary user-facing attachment-delete permission. */
+export async function removeStreamFileForAccountDeletion(channelId: string, url: string) {
+  try {
+    await streamRequest(`/channels/messaging/${encodeURIComponent(normalizeChannelId(channelId))}/file?url=${encodeURIComponent(url)}`, 'DELETE');
+  } catch (error) {
+    // A known provider not-found response is retry-safe only alongside the
+    // independent post-delete CDN absence check in the deletion adapter.
+    if (!(error instanceof StreamAccessError) || error.status !== 404) throw error;
+  }
 }
 
 export function generateStreamUserToken(options: StreamUserTokenOptions) {

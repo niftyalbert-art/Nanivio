@@ -12,14 +12,28 @@ import { finishAnsweredCall } from '../src/lib/callMediaErrors';
 // Auth fixture exists only in this bundle; no app auth bypass or customer writes.
 async function fixture(t: any, expired: string[] = []) {
   const usage:any[]=[];
+  const activeAccounts = new Set(['caller-id','receiver-id','outsider-id']);
   const result = await build({
     entryPoints: ['src/server/realtimeServer.ts'], bundle: true, write: false,
     platform: 'node', format: 'cjs', packages: 'external',
     plugins: [{ name: 'isolated-auth', setup(b) {
       b.onResolve({ filter: /persistentAuth\.ts$/ }, () => ({ path: 'auth', namespace: 'fixture' }));
-      b.onResolve({filter:/supabaseServer\.ts$/},()=>({path:'database',namespace:'fixture'}));
+      b.onResolve({filter:/supabaseServer(?:\.ts)?$/},()=>({path:'database',namespace:'fixture'}));
       b.onLoad({ filter: /.*/, namespace: 'fixture' }, ({path}) => ({ loader: 'js', contents: path==='database'
-        ? 'export function getServerSupabase(){return {rpc:(name,args)=>__communicationRPC(name,args)}}'
+        ? `export function getServerSupabase(){return {
+          rpc:(name,args)=>__communicationRPC(name,args),
+          from:(table)=>{
+            if(table!=='nanivio_users')throw Error('Unexpected fixture table');
+            let ids=[];
+            const query={
+              select:()=>query,
+              in:(_column,values)=>{ids=values;return query},
+              eq:()=>query,
+              abortSignal:async()=>({data:ids.filter(__accountActive).map(id=>({id})),error:null}),
+            };
+            return query;
+          },
+        }}`
         : `
         export function adminFromToken(){return null}
         export async function persistentAuthConfigured(){return true}
@@ -31,14 +45,14 @@ async function fixture(t: any, expired: string[] = []) {
     } }],
   });
   const module = { exports: {} as any };
-  new Function('require','module','exports','__communicationRPC',result.outputFiles[0].text)(createRequire(import.meta.url),module,module.exports,
+  new Function('require','module','exports','__communicationRPC','__accountActive',result.outputFiles[0].text)(createRequire(import.meta.url),module,module.exports,
     async(_name:string,args:any)=>{
       usage.push(args);
       const ended=expired.includes(args.payload?.userId);
       return {data:{success:true,policy:{callTrialDays:30,warningSeconds:60},trialStartedAt:ended?'2020-01-01T00:00:00Z':null,
         trialEndsAt:ended?'2020-02-01T00:00:00Z':null,callSecondsRemaining:ended?0:null,sharedCallMinutes:0,
         liveTrialSecondsRemaining:180,translatedSecondsRemaining:0,amount:args.payload?.amount},error:null};
-    });
+    },(id:string)=>activeAccounts.has(id));
   const server = createServer();
   const wss = module.exports.setupRealtimeServer(server);
   await new Promise<void>(resolve => server.listen(0,'127.0.0.1',resolve));
@@ -68,8 +82,19 @@ async function fixture(t: any, expired: string[] = []) {
     await wait('auth:presence_ack');
     return {send,wait,socket,messages};
   }
-  return {peer,canJoin:module.exports.canJoinAgoraCall,usage};
+  return {peer,canJoin:module.exports.canJoinAgoraCall,usage,revoke:(id:string)=>activeAccounts.delete(id)};
 }
+
+test('account deactivation closes existing sockets and clears a ringing call without waiting for token expiry',async t=>{
+  const f=await fixture(t),a=await f.peer('caller'),b=await f.peer('receiver');
+  const callId='deletion-access-drain';
+  a.send('call:initiate',{callId,callType:'audio',recipientId:'receiver-id'});
+  await b.wait('call:incoming',callId);
+  f.revoke('caller-id');
+  const ended=await b.wait('call:ended',callId);
+  assert.equal(ended.reason,'PARTICIPANT_DISCONNECTED');
+  assert.equal(f.canJoin('caller-id','0486111111',`nanivio_call_${callId}`),false);
+});
 
 test('an expired recipient can answer free; only caller quota is reserved after both media connections',async t=>{
   const f=await fixture(t,['receiver-id']),a=await f.peer('caller'),b=await f.peer('receiver');

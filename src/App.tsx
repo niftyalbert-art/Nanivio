@@ -1,4 +1,5 @@
 import React from 'react';
+import { AccountDeletionPage } from './components/settings/AccountDeletionRequest';
 import { NanivioProvider, useNanivio } from './context/NanivioContext';
 import { NanivioCelebrationVideoEffect } from './components/common/NanivioCelebrationVideoEffect';
 import { prepareNanivioSignature } from './lib/nanivioSignatureMedia';
@@ -157,6 +158,9 @@ const AppOrchestrator: React.FC = () => {
 };
 
 export default function App() {
+  if (typeof window !== 'undefined' && window.location.pathname === '/delete-account') {
+    return <ErrorBoundary fallbackTitle="Nanivio account deletion"><AccountDeletionPage /></ErrorBoundary>;
+  }
   return (
     <ErrorBoundary fallbackTitle="Nanivio Platform Experience">
       <NanivioProvider>

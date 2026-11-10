@@ -1,4 +1,9 @@
 ﻿import express from "express";
+import { accountMayUseRoute } from './src/server/accountAccessPolicy';
+import { registerAccountAccessRoutes } from './src/server/accountAccessRoutes';
+import { registerAccountDeletionReview } from './src/server/accountDeletionReview';
+import { registerAccountDeletionRoutes } from './src/server/accountDeletionRoutes';
+import { PersistentDeletionRequests } from './src/server/accountDeletionRequests';
 import http from "http";
 import path from "path";
 import crypto from "crypto";
@@ -242,11 +247,12 @@ async function getAuthUser(req: express.Request) {
   if (adminTokenUser) return adminTokenUser;
   if (await persistentAuth.persistentAuthConfigured()) {
     const user = await persistentAuth.userFromToken(token);
-    if (user) return user;
+    if (accountMayUseRoute(user, req.method, req.path)) return user;
     return null;
   }
   if (process.env.NODE_ENV === 'production' || process.env.REQUIRE_PERSISTENT_AUTH === 'true') return null;
-  return authDb.validateSession(token);
+  const user = authDb.validateSession(token);
+  return accountMayUseRoute(user, req.method, req.path) ? user : null;
 }
 
 async function requireAdmin(req: express.Request, res: express.Response, next: express.NextFunction) {
@@ -587,20 +593,16 @@ app.post("/api/auth/profile/update", async (req, res) => {
   }
 });
 
-// 10. Delete / Deactivate Account
-app.post("/api/auth/account/delete", async (req, res) => {
-  try {
-    const user = await getAuthUser(req);
-    if (!user) {
-      return res.status(401).json({ success: false, error: "Unauthorized session." });
-    }
-    const { reason } = req.body;
-    await persistentAuth.deleteAccount(user.id);
-    return res.json({ success: true, message: "Account successfully deactivated and deleted." });
-  } catch (err: any) {
-    return res.status(400).json({ success: false, error: err.message || "Account deletion failed." });
-  }
+// Deactivation does not erase data. Verified erasure requests are separate.
+registerAccountAccessRoutes(app, {
+  getUser: getAuthUser,
+  deactivate: persistentAuth.deactivateAccount,
 });
+registerAccountDeletionRoutes(app, {
+  getUser: getAuthUser,
+  requests: new PersistentDeletionRequests(),
+});
+registerAccountDeletionReview(app, requireAdmin);
 
 // 11. Safety & Abuse Report Endpoint
 app.post("/api/safety/report", async (req, res) => {

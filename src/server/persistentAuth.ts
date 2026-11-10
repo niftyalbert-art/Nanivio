@@ -1,4 +1,5 @@
 import crypto from 'crypto';
+import { assertAccountMaySignIn } from './accountAccessPolicy';
 import { otpService } from './otpService';
 import { emailSignupService, emailSignupStore, normalizeSignupEmail } from './emailSignup';
 import { sanitizeApplication as sanitizeApplicationFields, publicApplicationProfile, redactApplicationSecrets } from './applicationPrivacy';
@@ -35,7 +36,7 @@ async function uniqueNvId(db:SupabaseClient){
   throw new Error('Unable to allocate a unique Nanivio number.');
 }
 function rowToUser(r:any):NanivioUser{
-  return { id:r.id, nvId:r.nv_id, role:r.role, adminSubRole:r.admin_sub_role||undefined, firstName:r.first_name, lastName:r.last_name, displayName:r.display_name, username:r.username||undefined, statusMessage:r.status_message||undefined, email:r.email||'', phoneNumber:r.phone||'', country:r.country||'', state:r.state||undefined, city:r.city||undefined, constituency:r.constituency||undefined, districtOrMunicipality:r.district_or_municipality||undefined, callingCode:r.calling_code||'', preferredLanguage:r.my_language||'en', avatar:r.avatar||'', onlineVisibility:r.online_visibility||'everyone', profilePhotoVisibility:r.profile_photo_visibility||'everyone', lastSeenVisibility:r.last_seen_visibility||'everyone', readReceiptsEnabled:r.read_receipts_enabled ?? true, accountStatus:r.status||'ACTIVE', verificationStatus:r.verification_status||'UNVERIFIED', createdAt:new Date(r.created_at).getTime(), updatedAt:new Date(r.updated_at).getTime(), lastLoginAt:r.last_login_at?new Date(r.last_login_at).getTime():undefined, expertProfileId:r.expert_profile_id||undefined, businessProfileId:r.business_profile_id||undefined, driverProfileId:r.driver_profile_id||undefined };
+  return { id:r.id, nvId:r.nv_id, role:r.role, adminSubRole:r.admin_sub_role||undefined, firstName:r.first_name, lastName:r.last_name, displayName:r.display_name, username:r.username||undefined, statusMessage:r.status_message||undefined, email:r.email||'', phoneNumber:r.phone||'', country:r.country||'', state:r.state||undefined, city:r.city||undefined, constituency:r.constituency||undefined, districtOrMunicipality:r.district_or_municipality||undefined, callingCode:r.calling_code||'', preferredLanguage:r.my_language||'en', avatar:r.avatar||'', onlineVisibility:r.online_visibility||'everyone', profilePhotoVisibility:r.profile_photo_visibility||'everyone', lastSeenVisibility:r.last_seen_visibility||'everyone', readReceiptsEnabled:r.read_receipts_enabled ?? true, accountStatus:r.status||'DEACTIVATED', verificationStatus:r.verification_status||'UNVERIFIED', createdAt:new Date(r.created_at).getTime(), updatedAt:new Date(r.updated_at).getTime(), lastLoginAt:r.last_login_at?new Date(r.last_login_at).getTime():undefined, expertProfileId:r.expert_profile_id||undefined, businessProfileId:r.business_profile_id||undefined, driverProfileId:r.driver_profile_id||undefined };
 }
 async function profileByAuthId(authId:string){ const {data,error}=await serverDb().from('nanivio_users').select('*').eq('auth_user_id',authId).maybeSingle(); if(error) throw new Error(error.message); return data?rowToUser(data):null; }
 
@@ -57,7 +58,10 @@ async function createProfile(authUserId:string, input:any, role:any, application
 async function issueSession(email:string,password:string,user:NanivioUser):Promise<AuthSession>{
   const {data,error}=await publicDb().auth.signInWithPassword({email,password});
   if(error||!data.session) throw new Error(error?.message||'Account was created, but a session could not be established. Please sign in.');
-  await serverDb().from('nanivio_users').update({last_login_at:new Date().toISOString(),updated_at:new Date().toISOString()}).eq('id',user.id);
+  const { data: active, error: activityError } = await serverDb().from('nanivio_users')
+    .update({last_login_at:new Date().toISOString(),updated_at:new Date().toISOString()})
+    .eq('id',user.id).eq('status','ACTIVE').select('id').maybeSingle();
+  if (activityError || !active) throw new Error('An active account could not be confirmed. No Nanivio session was issued.');
   return {token:data.session.access_token,user,expiresAt:Date.now()+data.session.expires_in*1000};
 }
 type SocialSignup = { token: string; provider: string } | undefined;
@@ -116,12 +120,18 @@ export async function signIn(identifier:string,password:string){
   else if(id.includes('@')) q=q.eq('email',id.toLowerCase());
   else q=q.eq('phone',cleanPhone(id));
   const {data,error}=await q.maybeSingle(); if(error) throw new Error(error.message); if(!data) throw new Error('No account found with this identifier.');
-  if(data.status==='SUSPENDED') throw new Error('This account has been suspended.');
+  assertAccountMaySignIn(data.status);
   const session=await issueSession(data.email,password,rowToUser(data)); return {user:session.user,session};
 }
 export async function userFromToken(token:string){ if(!token) return null; const pub=publicDb(); const {data,error}=await pub.auth.getUser(token); if(error||!data.user) return null; return profileByAuthId(data.user.id); }
 export async function updateProfile(userId:string,updates:any){ const db=serverDb(); const patch:any={updated_at:new Date().toISOString()}; const map:any={firstName:'first_name',lastName:'last_name',displayName:'display_name',phoneNumber:'phone',country:'country',state:'state',city:'city',callingCode:'calling_code',preferredLanguage:'my_language',avatar:'avatar',statusMessage:'status_message'}; for(const [k,v] of Object.entries(updates||{})){ if(map[k]&&typeof v!=='undefined') patch[map[k]]=v; } const {data,error}=await db.from('nanivio_users').update(patch).eq('id',userId).select('*').single(); if(error) throw new Error(error.message); return rowToUser(data); }
-export async function deleteAccount(userId:string){ const db=serverDb(); const {error}=await db.from('nanivio_users').update({status:'DEACTIVATED',updated_at:new Date().toISOString()}).eq('id',userId); if(error) throw new Error(error.message); }
+export async function deactivateAccount(userId: string) {
+  const db = serverDb();
+  const { data, error } = await db.from('nanivio_users')
+    .update({ status: 'DEACTIVATED', updated_at: new Date().toISOString() })
+    .eq('id', userId).select('id').maybeSingle();
+  if (error || !data) throw new Error('Account deactivation could not be confirmed.');
+}
 export async function findByNvId(nvId:string){ const {data,error}=await serverDb().from('nanivio_users').select('*').eq('nv_id',nvId.replace(/[^0-9]/g,'')).maybeSingle(); if(error) throw new Error(error.message); return data?rowToUser(data):null; }
 export async function findById(id:string){ const {data,error}=await serverDb().from('nanivio_users').select('*').eq('id',id).maybeSingle(); if(error) throw new Error(error.message); return data?rowToUser(data):null; }
 export async function findByIdentifier(identifier:string){ const id=identifier.trim(); const db=serverDb(); let q=db.from('nanivio_users').select('*').limit(1); if(id.includes('@'))q=q.eq('email',id.toLowerCase()); else if(/^0486\d{6}$/.test(id.replace(/[^0-9]/g,'')))q=q.eq('nv_id',id.replace(/[^0-9]/g,'')); else q=q.eq('phone',cleanPhone(id)); const {data,error}=await q.maybeSingle(); if(error)throw new Error(error.message); return data?rowToUser(data):null; }

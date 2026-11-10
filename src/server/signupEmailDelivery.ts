@@ -30,12 +30,15 @@ export function createSignupEmailSender(
   directFetch: typeof fetch = fetch,
   proxySend: ProxySend = connectorSend,
 ) {
-  return async (email: string, code: string) => {
+  return async (email: string, code: string, purpose: 'signup' | 'account-deletion' = 'signup') => {
     const current = env();
     const { from, transport } = configuration(current);
     const body = JSON.stringify({
-      from, to: [email], subject: 'Your Nanivio verification code',
-      text: `Your Nanivio email verification code is ${code}.\n\nIt expires in 10 minutes. Do not share this code. If you did not request it, you can ignore this email.`,
+      from, to: [email],
+      subject: purpose === 'account-deletion' ? 'Confirm your Nanivio account deletion request' : 'Your Nanivio verification code',
+      text: purpose === 'account-deletion'
+        ? `Your Nanivio account deletion request code is ${code}.\n\nUse it only if you intend to request permanent deletion of your account and personal data. Submitting the request does not immediately erase your data. The code expires in 10 minutes. Do not share it. If you did not request deletion, ignore this email; your account will not be deleted by this email.`
+        : `Your Nanivio email verification code is ${code}.\n\nIt expires in 10 minutes. Do not share this code. If you did not request it, you can ignore this email.`,
     });
     try {
       // Select one transport explicitly. Never retry through another transport:

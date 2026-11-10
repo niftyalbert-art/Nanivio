@@ -1,4 +1,5 @@
 import { WebSocketServer, WebSocket } from 'ws';
+import { accountAccessAuthority, type AccountLease } from './accountAccessAuthority';
 import type { Server as HttpServer } from 'http';
 import { GoogleGenAI } from '@google/genai';
 import {
@@ -408,6 +409,7 @@ export function setupRealtimeServer(httpServer: HttpServer,options?:{
   wss.on('connection', (socket: WebSocket) => {
     allSockets.add(socket);
     let currentUser: ConnectedUser | null = null;
+    let accountLease: AccountLease | null = null;
     let translationStreamId = '';
     const translationPeer={closed:false,send:(type:string,payload:any)=>{
       if (type === 'langpretation:ready' && !String(payload?.callId).startsWith('business:')) markCallTranslationReady(payload?.callId);
@@ -432,6 +434,7 @@ export function setupRealtimeServer(httpServer: HttpServer,options?:{
           const raw = data.toString();
           const parsed = JSON.parse(raw);
           const { type, payload } = parsed;
+          if (type !== 'auth:presence' && accountLease && !(await accountLease.allowed(type === 'langpretation:audio'))) return;
           if (typeof type === 'string' && type.startsWith('chat:') && typeof payload?.requestId === 'string') chatRequestId = payload.requestId;
 
         if (type !== 'auth:presence' && !currentUser) {
@@ -523,6 +526,14 @@ export function setupRealtimeServer(httpServer: HttpServer,options?:{
               return;
             }
 
+            accountLease?.dispose();
+            accountLease = null;
+            if (await persistentAuth.persistentAuthConfigured() && !persistentAuth.adminFromToken(payload?.token)) {
+              accountLease = accountAccessAuthority.watch(String(user.id), () => {
+                socket.close(4401, 'Account is not active');
+              });
+              if (!(await accountLease.allowed())) return;
+            }
             if (currentUser) removeConnectedUser(currentUser);
             const name = String(user.displayName || `${user.firstName || ''} ${user.lastName || ''}`.trim() || 'User');
             const nvId = String(user.nvId || '');
@@ -1101,6 +1112,7 @@ export function setupRealtimeServer(httpServer: HttpServer,options?:{
     });
 
     socket.on('close', () => {
+      accountLease?.dispose();
       businessAudience.remove(translationPeer);
       translationPeer.closed=true;langpretationGateway?.stop(translationPeer);
       clearInterval(pingInterval);

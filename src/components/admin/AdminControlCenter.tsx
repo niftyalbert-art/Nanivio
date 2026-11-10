@@ -41,6 +41,7 @@ import { AdminLangpretationManager } from './AdminLangpretationManager';
 import { AdminMalviBillingWorkspace } from './AdminMalviBillingWorkspace';
 import { AdminMalviOverview } from './AdminMalviOverview';
 import { AdminCommunicationPolicy } from './AdminCommunicationPolicy';
+import { AdminDeletionRequests } from './AdminDeletionRequests';
 
 export const AdminControlCenter: React.FC = () => {
   const {
@@ -61,7 +62,7 @@ export const AdminControlCenter: React.FC = () => {
     setActiveTab,
   } = useNanivio();
 
-  const [adminSubTab, setAdminSubTab] = useState<'launcher' | 'langpretation' | 'rides-maps' | 'users' | 'experts' | 'businesses' | 'drivers' | 'gateways' | 'audit' | 'switches' | 'malvi-billing'>('launcher');
+  const [adminSubTab, setAdminSubTab] = useState<'launcher' | 'langpretation' | 'rides-maps' | 'users' | 'experts' | 'businesses' | 'drivers' | 'gateways' | 'audit' | 'switches' | 'malvi-billing' | 'account-deletion'>('launcher');
   const [adminKeyInput, setAdminKeyInput] = useState('');
   const [keyError, setKeyError] = useState('');
   const [savedSuccess, setSavedSuccess] = useState(false);
@@ -355,6 +356,16 @@ export const AdminControlCenter: React.FC = () => {
           <span>Audit Logs &amp; Security</span>
         </button>
 
+        <button type="button" id="tab-admin-account-deletion"
+          onClick={() => setAdminSubTab('account-deletion')}
+          aria-pressed={adminSubTab === 'account-deletion'}
+          className={`px-4 py-2.5 rounded-2xl text-xs font-bold flex items-center gap-2 transition-all shrink-0 ${
+            adminSubTab === 'account-deletion' ? 'bg-amber-500 text-slate-950 shadow-md'
+              : 'bg-slate-900/80 text-slate-400 hover:text-white border border-slate-800'
+          }`}>
+          <ShieldAlert className="w-4 h-4" /><span>Account Deletion</span>
+        </button>
+
         <button
           id="tab-admin-switches"
           onClick={() => setAdminSubTab('switches')}
@@ -394,6 +405,7 @@ export const AdminControlCenter: React.FC = () => {
       {adminSubTab === 'drivers' && <AdminDriverQueue />}
       {adminSubTab === 'gateways' && <AdminPaymentGatewaysManager />}
       {adminSubTab === 'audit' && <AdminAuditTrail />}
+      {adminSubTab === 'account-deletion' && <AdminDeletionRequests key={authUser?.id || 'signed-out'} />}
       {adminSubTab === 'malvi-billing' && <AdminMalviBillingWorkspace />}
 
       {/* Existing Switches & Telemetry Tab */}
