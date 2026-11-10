@@ -69,7 +69,7 @@ export const EUROPEAN_AUTH_TRANSLATIONS: Record<string, AuthTranslations> = {
     recoveryTitle: 'Nanivio Account Recovery',
     recoverySubtitle: 'Enter your registered Email, Phone, or NV User ID to initiate recovery',
     recoveryInputLabel: 'Email, Phone Number, or NV ID',
-    recoveryBtn: 'Generate Recovery Code',
+    recoveryBtn: 'Send recovery link',
     recoveryCancel: 'Cancel',
     recoverySuccess: 'Recovery link generated securely',
   },

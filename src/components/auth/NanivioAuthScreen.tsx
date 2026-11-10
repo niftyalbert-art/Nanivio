@@ -16,6 +16,7 @@ import {
   Award,
   HelpCircle,
   Car,
+  X,
 } from 'lucide-react';
 import { useNanivio } from '../../context/NanivioContext';
 import { SUPPORTED_LANGUAGES, RideServiceTier } from '../../types';
@@ -1757,13 +1758,15 @@ const handleAdminSignIn = async (e: React.FormEvent) => {
                   <h3 className="text-sm font-bold text-white">{authTxt.recoveryTitle}</h3>
                 </div>
                 <button
+                  type="button"
+                  aria-label={authTxt.recoveryCancel}
                   onClick={() => {
                     setIsRecoveryOpen(false);
                     setRecoveryMessage(null);
                   }}
                   className="text-slate-400 hover:text-white text-xs px-2 py-1"
                 >
-                  âœ•
+                  <X className="w-4 h-4" aria-hidden="true" />
                 </button>
               </div>
 
