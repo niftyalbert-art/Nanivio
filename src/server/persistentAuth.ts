@@ -4,6 +4,7 @@ import { otpService } from './otpService';
 import { emailSignupService, emailSignupStore, normalizeSignupEmail } from './emailSignup';
 import { sanitizeApplication as sanitizeApplicationFields, publicApplicationProfile, redactApplicationSecrets } from './applicationPrivacy';
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
+import { passwordEpoch, tokenIssuedAtMs } from './passwordRecoveryStore';
 import type { NanivioUser, PersonalSignUpData, ExpertSignUpData, BusinessSignUpData, DriverSignUpData, AuthSession, ExpertApplication, BusinessApplication, DriverVerificationApplication } from '../types/auth';
 
 // Keep the main project's broad credential filtering and this task's cycle,
@@ -62,6 +63,9 @@ async function issueSession(email:string,password:string,user:NanivioUser):Promi
     .update({last_login_at:new Date().toISOString(),updated_at:new Date().toISOString()})
     .eq('id',user.id).eq('status','ACTIVE').select('id').maybeSingle();
   if (activityError || !active) throw new Error('An active account could not be confirmed. No Nanivio session was issued.');
+  const cutoff = await passwordEpoch(user.id);
+  if (cutoff && tokenIssuedAtMs(data.session.access_token) <= cutoff)
+    throw Error('Your password was just changed. Please sign in again in a moment.');
   return {token:data.session.access_token,user,expiresAt:Date.now()+data.session.expires_in*1000};
 }
 type SocialSignup = { token: string; provider: string } | undefined;
@@ -123,7 +127,15 @@ export async function signIn(identifier:string,password:string){
   assertAccountMaySignIn(data.status);
   const session=await issueSession(data.email,password,rowToUser(data)); return {user:session.user,session};
 }
-export async function userFromToken(token:string){ if(!token) return null; const pub=publicDb(); const {data,error}=await pub.auth.getUser(token); if(error||!data.user) return null; return profileByAuthId(data.user.id); }
+export async function userFromToken(token:string){
+  if(!token)return null;
+  const {data,error}=await publicDb().auth.getUser(token);
+  if(error||!data.user)return null;
+  const profile=await profileByAuthId(data.user.id);
+  if(!profile)return null;
+  const cutoff=await passwordEpoch(profile.id);
+  return cutoff && tokenIssuedAtMs(token)<=cutoff ? null : profile;
+}
 export async function updateProfile(userId:string,updates:any){ const db=serverDb(); const patch:any={updated_at:new Date().toISOString()}; const map:any={firstName:'first_name',lastName:'last_name',displayName:'display_name',phoneNumber:'phone',country:'country',state:'state',city:'city',callingCode:'calling_code',preferredLanguage:'my_language',avatar:'avatar',statusMessage:'status_message'}; for(const [k,v] of Object.entries(updates||{})){ if(map[k]&&typeof v!=='undefined') patch[map[k]]=v; } const {data,error}=await db.from('nanivio_users').update(patch).eq('id',userId).select('*').single(); if(error) throw new Error(error.message); return rowToUser(data); }
 export async function deactivateAccount(userId: string) {
   const db = serverDb();
@@ -135,17 +147,6 @@ export async function deactivateAccount(userId: string) {
 export async function findByNvId(nvId:string){ const {data,error}=await serverDb().from('nanivio_users').select('*').eq('nv_id',nvId.replace(/[^0-9]/g,'')).maybeSingle(); if(error) throw new Error(error.message); return data?rowToUser(data):null; }
 export async function findById(id:string){ const {data,error}=await serverDb().from('nanivio_users').select('*').eq('id',id).maybeSingle(); if(error) throw new Error(error.message); return data?rowToUser(data):null; }
 export async function findByIdentifier(identifier:string){ const id=identifier.trim(); const db=serverDb(); let q=db.from('nanivio_users').select('*').limit(1); if(id.includes('@'))q=q.eq('email',id.toLowerCase()); else if(/^0486\d{6}$/.test(id.replace(/[^0-9]/g,'')))q=q.eq('nv_id',id.replace(/[^0-9]/g,'')); else q=q.eq('phone',cleanPhone(id)); const {data,error}=await q.maybeSingle(); if(error)throw new Error(error.message); return data?rowToUser(data):null; }
-export async function requestPasswordRecovery(identifier:string){
-  const user=await findByIdentifier(identifier); if(!user) return {message:'If the account exists, a password reset email has been sent.',maskedEmail:''};
-  const email=user.email; const {error}=await publicDb().auth.resetPasswordForEmail(email,{redirectTo:process.env.PUBLIC_APP_URL?`${process.env.PUBLIC_APP_URL.replace(/\/$/,'')}/reset-password` : undefined}); if(error) throw new Error(error.message);
-  const masked=email.replace(/^(.{2}).*(@.*)$/,'$1••••$2'); return {message:'Password reset instructions have been sent to the email address on the account.',maskedEmail:masked};
-}
-export async function resetPasswordWithAccessToken(accessToken:string,newPassword:string){
-  if(!accessToken||newPassword.length<8) throw new Error('A valid recovery session and a password of at least 8 characters are required.');
-  const pub=publicDb(); const {data,error}=await pub.auth.getUser(accessToken); if(error||!data.user) throw new Error('Recovery session is invalid or expired.');
-  const {error:updateError}=await serverDb().auth.admin.updateUserById(data.user.id,{password:newPassword}); if(updateError) throw new Error(updateError.message);
-  return true;
-}
 
 export function createAdminSession(masterKey:string):AuthSession{
   const configured=process.env.ADMIN_MASTER_KEY; if(!configured||!masterKey||masterKey!==configured) throw new Error('Invalid administrative master authorization key.');

@@ -1,5 +1,6 @@
 import React from 'react';
 import { AccountDeletionPage } from './components/settings/AccountDeletionRequest';
+import { PasswordResetPage } from './components/auth/PasswordResetPage';
 import { NanivioProvider, useNanivio } from './context/NanivioContext';
 import { NanivioCelebrationVideoEffect } from './components/common/NanivioCelebrationVideoEffect';
 import { prepareNanivioSignature } from './lib/nanivioSignatureMedia';
@@ -158,6 +159,9 @@ const AppOrchestrator: React.FC = () => {
 };
 
 export default function App() {
+  if (typeof window !== 'undefined' && window.location.pathname.replace(/\/$/, '') === '/reset-password') {
+    return <ErrorBoundary fallbackTitle="Nanivio password recovery"><PasswordResetPage /></ErrorBoundary>;
+  }
   if (typeof window !== 'undefined' && window.location.pathname === '/delete-account') {
     return <ErrorBoundary fallbackTitle="Nanivio account deletion"><AccountDeletionPage /></ErrorBoundary>;
   }

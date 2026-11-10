@@ -286,7 +286,8 @@ export class AuthClient {
     const res = await fetch('/api/auth/reset-password', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ token, newPassword }),
+      // Only the purpose-bound HttpOnly recovery cookie authorizes this route.
+      body: JSON.stringify({ newPassword }),
     });
     const data = await res.json();
     if (!res.ok || !data.success) {

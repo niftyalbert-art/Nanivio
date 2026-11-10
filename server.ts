@@ -74,6 +74,7 @@ import { getPersistentInvoice, getPersistentTransaction } from "./src/server/nor
 import { normalizeBillingTransaction } from "./src/lib/billingPresentation.ts";
 import { authDb } from "./src/server/authDb.ts";
 import * as persistentAuth from "./src/server/persistentAuth.ts";
+import { registerPasswordRecoveryRoutes } from "./src/server/passwordRecoveryRoutes.ts";
 import { registerSocialAuthRoutes } from './src/server/socialAuth';
 import { productionStatus } from "./src/server/productionStatus.ts";
 import { uploadStreamAttachment } from "./src/server/streamService.ts";
@@ -549,34 +550,10 @@ app.get("/api/auth/session", async (req, res) => {
   return res.json({ success: true, user, authenticated: true });
 });
 
-// 7. Password Recovery Request
-app.post("/api/auth/recovery", async (req, res) => {
-  try {
-    const { identifier } = req.body;
-    if (!identifier) return res.status(400).json({ success: false, error: "Identifier is required." });
-    if (await persistentAuth.persistentAuthConfigured()) {
-      const result = await persistentAuth.requestPasswordRecovery(identifier);
-      return res.json({ success: true, ...result });
-    }
-    if (process.env.NODE_ENV === 'production' || process.env.REQUIRE_PERSISTENT_AUTH === 'true') return res.status(503).json({success:false,error:'Persistent authentication is required.'});
-    const result = authDb.requestPasswordRecovery(identifier);
-    return res.json({ success: true, ...result });
-  } catch (err: any) { return res.status(400).json({ success: false, error: err.message || "Account recovery failed." }); }
-});
-
-// 8. Password Reset with Token
-app.post("/api/auth/reset-password", async (req, res) => {
-  try {
-    const { token, accessToken, newPassword } = req.body;
-    if (!newPassword) return res.status(400).json({ success:false, error:'New password is required.' });
-    if (await persistentAuth.persistentAuthConfigured()) {
-      await persistentAuth.resetPasswordWithAccessToken(accessToken || token, newPassword);
-      return res.json({ success:true, message:'Password updated successfully. Please sign in.' });
-    }
-    if (process.env.NODE_ENV === 'production' || process.env.REQUIRE_PERSISTENT_AUTH === 'true') return res.status(503).json({success:false,error:'Persistent authentication is required.'});
-    if (!token) return res.status(400).json({ success:false, error:'Reset token is required.' });
-    authDb.resetPassword(token,newPassword); return res.json({success:true,message:'Password updated successfully. Please sign in.'});
-  } catch (err:any) { return res.status(400).json({success:false,error:err.message||'Password reset failed.'}); }
+// Recovery uses purpose-bound, single-use authority, never an ordinary login token.
+registerPasswordRecoveryRoutes(app, {
+  find: persistentAuth.findByIdentifier,
+  clientIp: req => proxyaddr(req, otpProxyTrust),
 });
 
 // 9. Update Profile (Preserves permanent NV User ID)

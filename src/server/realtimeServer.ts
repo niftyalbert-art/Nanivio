@@ -1,5 +1,6 @@
 import { WebSocketServer, WebSocket } from 'ws';
 import { accountAccessAuthority, type AccountLease } from './accountAccessAuthority';
+import { tokenIssuedAtMs } from './passwordRecoveryStore';
 import type { Server as HttpServer } from 'http';
 import { GoogleGenAI } from '@google/genai';
 import {
@@ -531,7 +532,7 @@ export function setupRealtimeServer(httpServer: HttpServer,options?:{
             if (await persistentAuth.persistentAuthConfigured() && !persistentAuth.adminFromToken(payload?.token)) {
               accountLease = accountAccessAuthority.watch(String(user.id), () => {
                 socket.close(4401, 'Account is not active');
-              });
+              }, tokenIssuedAtMs(String(payload?.token || '')));
               if (!(await accountLease.allowed())) return;
             }
             if (currentUser) removeConnectedUser(currentUser);

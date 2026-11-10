@@ -104,9 +104,10 @@ test('session issuance refuses a database outage or a concurrent deactivation', 
       update:()=>query,eq:(key: string,value: string)=>{filters.push([key,value]);return query;},
       select:()=>query,maybeSingle:async()=>result,
     };
-    const issue=new Function('serverDb','publicDb',`${code}; return issueSession;`)(
+    const issue=new Function('serverDb','publicDb','passwordEpoch','tokenIssuedAtMs',`${code}; return issueSession;`)(
       ()=>({from:()=>query}),
       ()=>({auth:{signInWithPassword:async()=>({data:{session:{access_token:'fixture-token',expires_in:3600}},error:null})}}),
+      async()=>0,()=>1000,
     );
     const attempt=issue('fixture@example.test','fixture-only-password',{id:'fixture'});
     if (result.data) assert.equal((await attempt).token,'fixture-token');

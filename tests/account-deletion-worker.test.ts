@@ -40,6 +40,7 @@ before(async()=>{
   await db.exec(await readFile('migrations/029_account_deletion_requests.sql','utf8'));
   await db.exec(await readFile('migrations/030_account_deletion_fulfillment.sql','utf8'));
   await db.exec(await readFile('migrations/031_account_deletion_local_cleanup.sql','utf8'));
+  await db.exec(await readFile('migrations/033_password_recovery.sql','utf8'));
 });
 after(()=>db.close());
 beforeEach(async()=>{
@@ -53,7 +54,11 @@ beforeEach(async()=>{
     INSERT INTO nanivio_malvi_messages VALUES('a-memory','owner-A','private memory'),('b-memory','owner-B','keep memory');
     INSERT INTO nanivio_invoices VALUES('a-invoice','owner-A',42),('b-invoice','owner-B',17);
     INSERT INTO fixture_shared_replies VALUES('other-reply','owner-B','Keep the other participant reply');
-    INSERT INTO nanivio_deletion_requests(id,owner_id) VALUES('${request}','owner-A');`);
+    INSERT INTO nanivio_deletion_requests(id,owner_id) VALUES('${request}','owner-A');
+    INSERT INTO nanivio_password_recovery(id,user_id,purpose,expires_at) VALUES
+      (repeat('a',64),'owner-A','reset',now()+interval '5 minutes'),
+      (repeat('b',64),'owner-B','reset',now()+interval '5 minutes');
+    INSERT INTO nanivio_password_epochs VALUES('owner-A',1),('owner-B',1);`);
 });
 const prepared=async()=>{
   await store.command(request,'PREPARE',undefined,undefined,policy);
@@ -61,6 +66,34 @@ const prepared=async()=>{
     VALUES($1,'nanivio_invoices','{"id":"a-invoice"}','tax_ghana','fixture-accountant-review','2026-11-10','2032-11-10T00:00:00Z')
     ON CONFLICT DO NOTHING`,[request]);
 };
+
+test('recovery grants consume atomically and persist only the target account password epoch',async()=>{
+  const id='a'.repeat(64);
+  assert.equal((await query('SELECT nanivio_consume_password_recovery($1,$2) result',[id,'pkce'])).rows[0].result,null);
+  const results=await Promise.all([1,2].map(()=>query('SELECT nanivio_consume_password_recovery($1,$2) result',[id,'reset'])));
+  assert.equal(results.filter(result=>result.rows[0].result==='owner-A').length,1);
+  assert.ok(Number((await query("SELECT not_before FROM nanivio_password_epochs WHERE user_id='owner-A'")).rows[0].not_before)>1);
+  assert.equal(Number((await query("SELECT not_before FROM nanivio_password_epochs WHERE user_id='owner-B'")).rows[0].not_before),1);
+});
+
+test('distributed recovery limits apply equally to known and unknown identifiers',async()=>{
+  for(const [owner,subject,start] of [['owner-A','c',1],[null,'d',5]] as const) {
+    for(let index=0;index<4;index++){
+      const value=await query("SELECT nanivio_reserve_password_recovery($1,$2,$3,now()+interval '15 minutes',$4) result",
+        [(start+index).toString(16).padStart(64,'0'),owner,'e'.repeat(64),subject.repeat(64)]);
+      assert.equal(value.rows[0].result,index<3);
+    }
+  }
+});
+
+test('expired recovery authority and inactive identities cannot issue a password epoch',async()=>{
+  await query("UPDATE nanivio_password_recovery SET expires_at=now()-interval '1 minute' WHERE user_id='owner-A'");
+  assert.equal((await query('SELECT nanivio_consume_password_recovery($1,$2) result',['a'.repeat(64),'reset'])).rows[0].result,null);
+  await query("UPDATE nanivio_users SET status='DEACTIVATED' WHERE id='owner-B'");
+  assert.equal((await query('SELECT nanivio_consume_password_recovery($1,$2) result',['b'.repeat(64),'reset'])).rows[0].result,null);
+  assert.equal(Number((await query("SELECT not_before FROM nanivio_password_epochs WHERE user_id='owner-B'")).rows[0].not_before),1);
+});
+
 function adapters() {
   const map:any=Object.fromEntries(DELETION_STEPS.map(step=>[step,{
     idempotent:true,run:async()=>({verified:true,receipt:{code:'FIXTURE_'+step.toUpperCase()}}),
@@ -83,6 +116,9 @@ function adapters() {
     assert.equal(row.email,null);assert.equal(row.phone,null);assert.equal(row.avatar,null);
     assert.equal(row.name,'Deleted account');assert.equal(row.status,'DEACTIVATED');
     assert.equal(row.auth_user_id,null);assert.ok(row.erased_at);
+    assert.equal((await query('SELECT count(*)::int n FROM nanivio_password_recovery WHERE user_id=$1',[ownerId])).rows[0].n,0);
+    assert.equal((await query('SELECT count(*)::int n FROM nanivio_password_epochs WHERE user_id=$1',[ownerId])).rows[0].n,0);
+    assert.equal((await query("SELECT count(*)::int n FROM nanivio_password_recovery WHERE user_id='owner-B'")).rows[0].n,1);
     assert.equal((await query('SELECT count(*)::int n FROM nanivio_contacts WHERE user_id=$1',[ownerId])).rows[0].n,0);
     return {verified:true,receipt:{code:'FIXTURE_ALL_RESOURCES_VERIFIED'}};
   }};

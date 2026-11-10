@@ -13,6 +13,7 @@ import { finishAnsweredCall } from '../src/lib/callMediaErrors';
 async function fixture(t: any, expired: string[] = []) {
   const usage:any[]=[];
   const activeAccounts = new Set(['caller-id','receiver-id','outsider-id']);
+  const passwordEpochs = new Map<string,number>();
   const result = await build({
     entryPoints: ['src/server/realtimeServer.ts'], bundle: true, write: false,
     platform: 'node', format: 'cjs', packages: 'external',
@@ -23,13 +24,15 @@ async function fixture(t: any, expired: string[] = []) {
         ? `export function getServerSupabase(){return {
           rpc:(name,args)=>__communicationRPC(name,args),
           from:(table)=>{
-            if(table!=='nanivio_users')throw Error('Unexpected fixture table');
+            if(!['nanivio_users','nanivio_password_epochs'].includes(table))throw Error('Unexpected fixture table');
             let ids=[];
             const query={
               select:()=>query,
               in:(_column,values)=>{ids=values;return query},
               eq:()=>query,
-              abortSignal:async()=>({data:ids.filter(__accountActive).map(id=>({id})),error:null}),
+              abortSignal:async()=>({data:table==='nanivio_password_epochs'
+                ?ids.filter(id=>__passwordEpoch(id)>0).map(id=>({user_id:id,not_before:__passwordEpoch(id)}))
+                :ids.filter(__accountActive).map(id=>({id})),error:null}),
             };
             return query;
           },
@@ -45,14 +48,14 @@ async function fixture(t: any, expired: string[] = []) {
     } }],
   });
   const module = { exports: {} as any };
-  new Function('require','module','exports','__communicationRPC','__accountActive',result.outputFiles[0].text)(createRequire(import.meta.url),module,module.exports,
+  new Function('require','module','exports','__communicationRPC','__accountActive','__passwordEpoch',result.outputFiles[0].text)(createRequire(import.meta.url),module,module.exports,
     async(_name:string,args:any)=>{
       usage.push(args);
       const ended=expired.includes(args.payload?.userId);
       return {data:{success:true,policy:{callTrialDays:30,warningSeconds:60},trialStartedAt:ended?'2020-01-01T00:00:00Z':null,
         trialEndsAt:ended?'2020-02-01T00:00:00Z':null,callSecondsRemaining:ended?0:null,sharedCallMinutes:0,
         liveTrialSecondsRemaining:180,translatedSecondsRemaining:0,amount:args.payload?.amount},error:null};
-    },(id:string)=>activeAccounts.has(id));
+    },(id:string)=>activeAccounts.has(id),(id:string)=>passwordEpochs.get(id)||0);
   const server = createServer();
   const wss = module.exports.setupRealtimeServer(server);
   await new Promise<void>(resolve => server.listen(0,'127.0.0.1',resolve));
@@ -82,8 +85,24 @@ async function fixture(t: any, expired: string[] = []) {
     await wait('auth:presence_ack');
     return {send,wait,socket,messages};
   }
-  return {peer,canJoin:module.exports.canJoinAgoraCall,usage,revoke:(id:string)=>activeAccounts.delete(id)};
+  return {peer,canJoin:module.exports.canJoinAgoraCall,usage,revoke:(id:string)=>activeAccounts.delete(id),
+    resetPassword:(id:string)=>passwordEpochs.set(id,Math.floor(Date.now()/1000))};
 }
+
+test('a shared password-reset epoch closes an existing authenticated socket and drains its ringing call',async t=>{
+  const f=await fixture(t),a=await f.peer('caller'),b=await f.peer('receiver');
+  const callId='password-reset-drain';
+  a.send('call:initiate',{callId,callType:'audio',recipientId:'receiver-id'});
+  await b.wait('call:incoming',callId);
+  const closed=once(a.socket,'close');
+  f.resetPassword('caller-id');
+  const ended=await b.wait('call:ended',callId);
+  assert.equal(ended.reason,'PARTICIPANT_DISCONNECTED');
+  const [code]=await closed;
+  assert.equal(code,4401);
+  assert.equal(b.socket.readyState,WebSocket.OPEN);
+  assert.equal(f.canJoin('caller-id','0486111111',`nanivio_call_${callId}`),false);
+});
 
 test('account deactivation closes existing sockets and clears a ringing call without waiting for token expiry',async t=>{
   const f=await fixture(t),a=await f.peer('caller'),b=await f.peer('receiver');
