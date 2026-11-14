@@ -34,7 +34,7 @@ class SpeechService {
         this.stopListening();onError?.(error);
       },options?.onAudio ? {...options,onAudio:async (audio,signal)=>{
         if(generation===this.generation&&!signal.aborted)await options.onAudio!(audio,signal);
-      }} : undefined);
+      }} : options);
       if(generation!==this.generation){recorder.stop();return false;}
       this.listening=started;return started;
     }catch(e){

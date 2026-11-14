@@ -190,6 +190,8 @@ interface NanivioContextType {
   declineIncomingCall: (callId?: string) => void;
   endCall: () => void;
   toggleCallLangpretation: () => void;
+  callTranslationRequest: {callId:string;requestId:string;sponsorId:string}|null;
+  respondToCallTranslationRequest: (accepted:boolean) => void;
   callBillingNotice: {message:string;subscriptionRequired?:boolean}|null;
   dismissCallBillingNotice: () => void;
   toggleCallMute: () => void;
@@ -1104,6 +1106,15 @@ export const NanivioProvider: React.FC<{ children: React.ReactNode }> = ({ child
   const activeTranslationCall = useRef(activeCall);
   activeTranslationCall.current = activeCall;
   const [incomingCall, setIncomingCall] = useState<IncomingCallEvent | null>(null);
+  useEffect(() => {
+    if (!incomingCall) return;
+    // A suspended/lost socket may miss call:ended. Bound local ringing by the
+    // original invite time; reconnecting must not restart a full ring period.
+    const timer = window.setTimeout(() => {
+      if (incomingCallRef.current?.callId === incomingCall.callId) declineIncomingCall(incomingCall.callId);
+    }, Math.max(0, incomingCall.timestamp + 60_000 - Date.now()));
+    return () => window.clearTimeout(timer);
+  }, [incomingCall?.callId]);
   const incomingCallRef = useRef(incomingCall);
   incomingCallRef.current = incomingCall;
   const callLifecycle = useRef(new CallLifecycle());
@@ -1139,6 +1150,13 @@ export const NanivioProvider: React.FC<{ children: React.ReactNode }> = ({ child
   const activeRingtoneRef = useRef<RingtoneHandle | null>(null);
   const incomingRingtoneRef = useRef<RingtoneHandle | null>(null);
   const [callBillingNotice,setCallBillingNotice]=useState<{message:string;subscriptionRequired?:boolean}|null>(null);
+  const [callTranslationRequest,setCallTranslationRequest]=useState<{callId:string;requestId:string;sponsorId:string}|null>(null);
+  const respondToCallTranslationRequest = (accepted:boolean) => {
+    if(!callTranslationRequest||activeTranslationCall.current?.id!==callTranslationRequest.callId)return;
+    if(!realtimeClient.send('call:langpretation_consent',{...callTranslationRequest,accepted}))
+      setCallBillingNotice({message:'Your permission could not be delivered. Langpretation has not started.'});
+    setCallTranslationRequest(previous=>previous?.requestId===callTranslationRequest.requestId?null:previous);
+  };
   useEffect(()=>{
     if(activeCall?.status==='connected'&&(agoraStats.hasRemoteMedia||agoraStats.hasRemoteParticipant))
       realtimeClient.send('call:media_ready',{callId:activeCall.id});
@@ -1146,9 +1164,10 @@ export const NanivioProvider: React.FC<{ children: React.ReactNode }> = ({ child
   useEffect(()=>{
     const offState=realtimeClient.on('call:langpretation',(payload:any)=>{
       if(activeTranslationCall.current?.id!==payload?.callId)return;
-      if(payload.enabled&&payload.sponsorId!==currentUser.id&&!window.confirm('Your partner wants to enable Langpretation for this call and cover its allowance. Allow your speech to be processed for Langpretation? Declining keeps the ordinary call available.')){
+      if(payload.enabled&&payload.consentGranted!==true){
         realtimeClient.send('call:langpretation',{callId:payload.callId,enabled:false});return;
       }
+      setCallTranslationRequest(null);
       if(!payload.enabled)agoraClient.restoreOriginalAudioTrack();
       setActiveCall(previous=>previous?.id===payload.callId?{...previous,langpretationEnabled:payload.enabled===true,langpretationState:payload.enabled?'ON':'OFF'}:previous);
       setCallBillingNotice({message:payload.message||'Call Langpretation updated.',subscriptionRequired:payload.subscriptionRequired});
@@ -1161,9 +1180,18 @@ export const NanivioProvider: React.FC<{ children: React.ReactNode }> = ({ child
         setPendingBillingAction({purpose:'SUBSCRIPTION',subTab:'plans'});setActiveTab('billing');
       }
     });
-    return()=>{offState();offNotice();offError();};
+    const offRequest=realtimeClient.on('call:langpretation_consent_request',(payload:any)=>{
+      if(activeTranslationCall.current?.id!==payload?.callId||
+        typeof payload.requestId!=='string'||typeof payload.sponsorId!=='string'||payload.sponsorId===currentUser.id)return;
+      setCallTranslationRequest({callId:payload.callId,requestId:payload.requestId,sponsorId:payload.sponsorId});
+    });
+    const offCancelled=realtimeClient.on('call:langpretation_consent_cancelled',(payload:any)=>{
+      setCallTranslationRequest(previous=>previous?.callId===payload?.callId&&previous.requestId===payload?.requestId?null:previous);
+    });
+    return()=>{offState();offNotice();offError();offRequest();offCancelled();};
   },[currentUser.id]);
   useEffect(()=>{setCallBillingNotice(null);},[activeCall?.id]);
+  useEffect(()=>{setCallTranslationRequest(previous=>previous?.callId===activeCall?.id?previous:null);},[activeCall?.id]);
 
   // A locally published track is not proof the other device joined. Do not
   // leave a call waiting forever if its peer failed during setup.
@@ -1184,8 +1212,10 @@ export const NanivioProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
   // Real-time WebSocket connection, presence tracking & call signaling setup
   useEffect(() => {
-    if (currentUser?.id) {
+    if (isAuthenticated && currentUser?.id) {
       realtimeClient.registerUser(currentUser);
+    } else {
+      realtimeClient.disconnect();
     }
 
     const unsubPresence = realtimeClient.on('presence_update', (users: RealtimeUser[]) => {
@@ -1203,9 +1233,22 @@ export const NanivioProvider: React.FC<{ children: React.ReactNode }> = ({ child
         setActiveCall(previous=>previous ? {...previous,host:updateLanguage(previous.host),participants:previous.participants.map(updateLanguage)} : previous);
       }
     });
+    const unsubParticipantAvatar = realtimeClient.on('participant_avatar', (photo: { userId: string; avatar: string }) => {
+      if (!photo?.userId || typeof photo.avatar !== 'string') return;
+      setIncomingCall(previous => previous?.caller.id === photo.userId
+        ? { ...previous, caller: { ...previous.caller, avatar: photo.avatar } } : previous);
+      setActiveCall(previous => previous && (previous.host.id === photo.userId
+        || previous.participants.some(person => person.id === photo.userId)) ? {
+        ...previous,
+        host: previous.host.id === photo.userId ? { ...previous.host, avatar: photo.avatar } : previous.host,
+        participants: previous.participants.map(person => person.id === photo.userId
+          ? { ...person, avatar: photo.avatar } : person),
+      } : previous);
+    });
 
     const unsubIncoming = realtimeClient.on('call:incoming', (data: IncomingCallEvent) => {
       if (!data || callLifecycle.current.hasEnded(data.callId)) return;
+      if (incomingCallRef.current?.callId === data.callId || data.timestamp + 60_000 <= Date.now()) return;
       incomingCallRef.current = data;
       setIncomingCall(data);
       if (incomingRingtoneRef.current) {
@@ -1415,6 +1458,7 @@ export const NanivioProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
     return () => {
       unsubPresence();
+      unsubParticipantAvatar();
       unsubIncoming();
       unsubAccepted();
       unsubDeclined();
@@ -1423,7 +1467,7 @@ export const NanivioProvider: React.FC<{ children: React.ReactNode }> = ({ child
       unsubSpeechTranscript();
       unsubChat();
     };
-  }, [currentUser]);
+  }, [currentUser, isAuthenticated]);
 
   // Subscribe to Agora telemetry & Stream client
   useEffect(() => {
@@ -1962,6 +2006,9 @@ export const NanivioProvider: React.FC<{ children: React.ReactNode }> = ({ child
       langpretationMinutesUsed: 0,
     };
 
+    // Claim the outgoing call before signaling: a fast answer can arrive
+    // before React commits setActiveCall, and must not be discarded as stale.
+    activeTranslationCall.current = newCall;
     setActiveCall(newCall);
     agoraClient.startLocalPreview(type).catch((error) => {
       if (/cancelled/i.test(String(error))) return;
@@ -2102,6 +2149,7 @@ export const NanivioProvider: React.FC<{ children: React.ReactNode }> = ({ child
       incomingRingtoneRef.current = null;
     }
     if (incomingCall) {
+      if (!callId || callId === incomingCall.callId) void agoraClient.leaveChannel();
       // Record missed / declined call in history
       const logItem: CallLogRecord = {
         id: `call_log_${Date.now()}`,
@@ -2489,7 +2537,14 @@ export const NanivioProvider: React.FC<{ children: React.ReactNode }> = ({ child
             : await NanivioTtsAudioGenerator.generateSpokenAudioBuffer(translatedText,receiverLanguage);
           if(!stillCurrent())return;
           if (audioBuf) {
-            if (!await agoraClient.injectTranslatedAudioToRemote(audioBuf)) throw new Error('Translated audio was not published.');
+            const scheduled=agoraClient.scheduleTranslatedAudioToRemote(audioBuf,()=>{
+              if(!stillCurrent())return;
+              realtimeClient.send('call:langpretation',{callId,enabled:false});
+              setActiveCall(prev=>prev?.id===callId?{...prev,langpretationState:'Error',
+                langpretationEnabled:false,
+                mediaError:'Translated audio could not be published. Restart Langpretation; the call remains connected.'}:prev);
+            });
+            if(!scheduled)throw new Error('Translated audio playback is falling behind. Pause and restart Langpretation.');
           }
         } catch (audioErr) {
           console.warn('Audio track injection notice:', audioErr);
@@ -3569,6 +3624,8 @@ export const NanivioProvider: React.FC<{ children: React.ReactNode }> = ({ child
         declineIncomingCall,
         endCall,
         toggleCallLangpretation,
+        callTranslationRequest,
+        respondToCallTranslationRequest,
         callBillingNotice,
         dismissCallBillingNotice:()=>setCallBillingNotice(null),
         toggleCallMute,

@@ -5,12 +5,14 @@
  */
 import { authClient } from './authClient';
 import { ChatSendError } from './chatSendFeedback';
+import { RealtimeAvatarCache, verifiedDirectoryAvatar, type AvatarSubject } from './realtimeAvatars';
 
 export interface RealtimeUser {
   userId: string;
   nvId: string;
   name: string;
   avatar?: string;
+  avatarRevision?: string;
   role: string;
   myLanguage: string;
   online?: boolean;
@@ -25,6 +27,7 @@ export interface IncomingCallEvent {
     name: string;
     nvId: string;
     avatar?: string;
+    avatarRevision?: string;
     myLanguage: string;
     initials?: string;
   };
@@ -53,15 +56,48 @@ class NanivioRealtimeClient {
   private listeners: Map<string, Set<EventCallback>> = new Map();
   private onlineUsers: RealtimeUser[] = [];
   private pendingCallEnds = new Map<string, { payload: any; userId: string; expiresAt: number }>();
-
-  constructor() {
-    if (typeof window !== 'undefined') {
-      // Auto-connect on startup
-      this.connect();
+  private connectionGeneration = 0;
+  private avatarOwner = '';
+  private avatars = new RealtimeAvatarCache(async (request, signal) => {
+    const token = authClient.getToken();
+    if (!token) throw new Error('PROFILE_PHOTO_UNAVAILABLE');
+    if (request.userId === this.currentUser?.userId && typeof this.currentUser.avatar === 'string') {
+      try {
+        return await verifiedDirectoryAvatar({
+          success: true, user: { id: request.userId, avatar: this.currentUser.avatar },
+        }, request);
+      } catch { /* A newer profile photo may need the directory response. */ }
+      if (signal.aborted) throw new DOMException('Photo load cancelled.', 'AbortError');
     }
+    // Reuse the existing directory and its access rules; no new public photo URL.
+    const response = await fetch(`/api/users/lookup?nvId=${encodeURIComponent(request.nvId)}`, {
+      credentials: 'include', signal, headers: { Authorization: `Bearer ${token}` }, priority: 'low',
+    } as RequestInit);
+    if (!response.ok) throw new Error('PROFILE_PHOTO_UNAVAILABLE');
+    return verifiedDirectoryAvatar(await response.json(), request);
+  }, (userId, avatar, avatarRevision) => {
+    let changed = false;
+    this.onlineUsers = this.onlineUsers.map(user => {
+      if (user.userId !== userId || user.avatarRevision !== avatarRevision) return user;
+      changed = true; return { ...user, avatar };
+    });
+    if (changed) this.emit('presence_update', this.onlineUsers);
+    // Photo completion must never replay an incoming/accepted call action.
+    this.emit('participant_avatar', { userId, avatar, avatarRevision });
+  }, userId => this.emit('participant_avatar_unavailable', { userId }));
+
+  private hydrateCallPhoto<T extends AvatarSubject>(person: T): T {
+    const known = this.onlineUsers.find(user => user.userId === (person.id || person.userId));
+    // A call snapshot can predate a newer presence/profile update.
+    if (known) {
+      const { avatar: _avatar, avatarRevision: _revision, ...identity } = person;
+      return this.avatars.hydrate({ ...identity, avatar: known.avatar, avatarRevision: known.avatarRevision } as T, known);
+    }
+    return this.avatars.hydrate(person);
   }
 
   public connect() {
+    if (!authClient.getToken() || !this.currentUser) return;
     if (this.socket && (this.socket.readyState === WebSocket.OPEN || this.socket.readyState === WebSocket.CONNECTING)) {
       return;
     }
@@ -93,7 +129,8 @@ class NanivioRealtimeClient {
         if (this.socket !== openingSocket) return;
         try {
           const parsed = JSON.parse(event.data);
-          const { type, payload } = parsed;
+          const { type } = parsed;
+          let { payload } = parsed;
           if (type === 'call:ended' && payload?.callId) this.pendingCallEnds.delete(payload.callId);
           // Retry hang-ups only after the socket has authenticated, never via
           // the generic one-shot 500ms queue that can silently drop them.
@@ -103,12 +140,18 @@ class NanivioRealtimeClient {
           }
 
           if (type === 'auth:presence_ack' || type === 'presence:update') {
-            if (payload?.activeOnlineUsers) {
-              this.onlineUsers = payload.activeOnlineUsers;
+            if (Array.isArray(payload?.activeOnlineUsers)) {
+              this.avatars.prune(new Set<string>(payload.activeOnlineUsers.map((user: RealtimeUser) => user.userId)));
+              this.onlineUsers = payload.activeOnlineUsers.map((user: RealtimeUser) =>
+                this.avatars.hydrate(user, this.onlineUsers.find(known => known.userId === user.userId)));
               this.emit('presence_update', this.onlineUsers);
             }
           }
 
+          if ((type === 'call:incoming' || type === 'call:connected') && payload?.caller)
+            payload = { ...payload, caller: this.hydrateCallPhoto(payload.caller) };
+          if (type === 'call:accepted' && payload?.responder)
+            payload = { ...payload, responder: this.hydrateCallPhoto(payload.responder) };
           this.emit(type, payload);
         } catch (e) {
           console.warn('Realtime client JSON parse error:', e);
@@ -116,11 +159,15 @@ class NanivioRealtimeClient {
       };
 
       const closingSocket = this.socket;
-      this.socket.onclose = () => {
+      this.socket.onclose = (event: CloseEvent) => {
         if (this.socket !== closingSocket) return;
         this.presenceReady = false;
         this.isConnecting = false;
         this.socket = null;
+        if (event?.code === 4401 || event?.code === 4403) {
+          this.disconnect();
+          return;
+        }
         this.emit('connection:lost', {});
         // Reconnect after 3 seconds
         if (!this.reconnectTimer) {
@@ -141,6 +188,7 @@ class NanivioRealtimeClient {
   }
 
   public send(type: string, payload: any) {
+    if (!authClient.getToken() || !this.currentUser) return false;
     if (this.socket && this.socket.readyState === WebSocket.OPEN) {
       // OPEN is not authenticated: wait for the presence acknowledgement so
       // the server does not discard brain startup during identity verification.
@@ -158,8 +206,10 @@ class NanivioRealtimeClient {
       if (type === 'malvi:brain_audio' || type.startsWith('nanivio:mic_') || type.startsWith('langpretation:')) return false;
       // Connect and queue
       this.connect();
+      const generation = this.connectionGeneration;
       setTimeout(() => {
-        if (this.socket && this.socket.readyState === WebSocket.OPEN) {
+        if (generation === this.connectionGeneration && authClient.getToken() && this.currentUser
+          && this.socket && this.socket.readyState === WebSocket.OPEN) {
           this.socket.send(JSON.stringify({ type, payload }));
         }
       }, 500);
@@ -174,9 +224,12 @@ class NanivioRealtimeClient {
     role?: string;
     myLanguage?: string;
   }) {
+    if (!authClient.getToken() || !user.id || user.id === 'unauthenticated') { this.disconnect(); return; }
     if (this.currentUser && this.currentUser.userId !== user.id) {
-      this.pendingCallEnds.clear();
-      this.presenceReady = false;
+      this.disconnect();
+    }
+    if (this.avatarOwner !== user.id) {
+      this.avatars.reset(user.id); this.avatarOwner = user.id;
     }
     this.currentUser = {
       userId: user.id,
@@ -189,10 +242,26 @@ class NanivioRealtimeClient {
     this.sendPresence();
   }
 
+  public disconnect() {
+    this.connectionGeneration++;
+    this.avatars.reset(); this.avatarOwner = '';
+    if (this.reconnectTimer) clearTimeout(this.reconnectTimer);
+    this.reconnectTimer = null;
+    const socket = this.socket;
+    this.socket = null;
+    this.currentUser = null;
+    this.presenceReady = false;
+    this.isConnecting = false;
+    this.pendingCallEnds.clear();
+    this.onlineUsers = [];
+    socket?.close(1000, 'Signed out');
+    this.emit('presence_update', []);
+  }
+
   private sendPresence() {
     const token = authClient.getToken();
     if (!token || !this.currentUser) return;
-    this.send('auth:presence', { ...this.currentUser, token });
+    this.send('auth:presence', { myLanguage: this.currentUser.myLanguage, token, avatarReferences: 1 });
   }
 
   // Calling Signaling Actions
@@ -208,7 +277,7 @@ class NanivioRealtimeClient {
       callId,
       channelName,
       callType,
-      caller,
+      caller: { id: caller?.id, nvId: caller?.nvId, name: caller?.name, myLanguage: caller?.myLanguage },
       recipientId,
       recipientNvId,
     });
@@ -218,7 +287,7 @@ class NanivioRealtimeClient {
     this.send('call:accept', {
       callId,
       channelName,
-      responder,
+      responder: { id: responder?.id, nvId: responder?.nvId, name: responder?.name, myLanguage: responder?.myLanguage },
       callerId,
     });
   }

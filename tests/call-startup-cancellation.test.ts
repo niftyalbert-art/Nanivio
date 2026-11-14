@@ -39,6 +39,7 @@ async function fixture(t:any){
     const path=String(input);
     if(path.endsWith('/token'))return Response.json({token:'fixture-token',appId:'fixture-app',agoraUid:1});
     if(path.endsWith('/join'))events.push('register');
+    if(path.endsWith('/leave'))events.push('unregister');
     return Response.json({success:true});
   };
   t.after(()=>{globalThis.fetch=previousFetch;(globalThis as any).MediaStream=previousStream;
@@ -66,10 +67,12 @@ test('hangup immediately rejects a pending SDK join and disposes its late comple
   const rejected=assert.rejects(client.joinChannel('cancelled','user','User','audio'),
     (error:any)=>error.stage==='join'&&error.original.name==='AbortError');
   await entered.promise;
+  await new Promise(resolve=>setImmediate(resolve));
   await client.leaveChannel();
   await rejected;
   assert.equal(client.getStats().connectionState,'DISCONNECTED');
-  assert.ok(!events.includes('register'));
+  assert.ok(events.includes('register'));
+  assert.ok(events.includes('unregister'));
   late.resolve();await new Promise(resolve=>setImmediate(resolve));
   assert.ok(events.filter(event=>event==='leave').length>=2);
 });
@@ -130,17 +133,19 @@ test('cancelling before queued startup begins never requests a token or creates 
 });
 
 for(const type of ['audio','video'] as const){
-  test(`${type} SDK startup expires before a delayed connection can register`,async t=>{
+  test(`${type} SDK startup expires and cleans up its parallel backend registration`,async t=>{
     const {client,sdk,events}=await fixture(t),entered=deferred(),late=deferred();
     const create=sdk.createClient;
     sdk.createClient=()=>{const rtc=create();rtc.join=()=>{entered.resolve();return late.promise;};return rtc;};
     t.mock.timers.enable({apis:['setTimeout']});
     const rejected=assert.rejects(client.joinChannel('slow','user','User',type),
       (error:any)=>error.stage==='join'&&error.original.name==='TimeoutError');
-    await entered.promise;t.mock.timers.tick(15001);await rejected;
+    await entered.promise;await new Promise(resolve=>setImmediate(resolve));
+    t.mock.timers.tick(15001);await rejected;
     late.resolve();await new Promise(resolve=>setImmediate(resolve));
     assert.equal(client.getStats().connectionState,'DISCONNECTED');
-    assert.ok(!events.includes('register'));
+    assert.ok(events.includes('register'));
+    assert.ok(events.includes('unregister'));
     assert.ok(events.filter(event=>event==='leave').length>=2);
   });
   test(`${type} answer reuses approved preview capture`,async t=>{
@@ -187,7 +192,8 @@ test('the complete video startup has a shared deadline across individually respo
   await cameraEntered.promise;t.mock.timers.tick(2001);await rejected;
   camera.resolve(track('video'));await new Promise(resolve=>setImmediate(resolve));
   assert.equal(client.getStats().connectionState,'DISCONNECTED');
-  assert.ok(!events.includes('register'));
+  assert.ok(events.includes('register'));
+  assert.ok(events.includes('unregister'));
   assert.ok(events.includes('video:close'));
 });
 
@@ -224,8 +230,9 @@ test('native browser numeric codes do not hide timeout and cancellation names',(
 test('startup timings contain only bounded stage, outcome and monotonic duration',async t=>{
   const {client,timings}=await fixture(t);
   await client.joinChannel('private-channel','private-user','private-name','video');
-  assert.deepEqual(timings.map(item=>item.stage),
-    ['token','join','microphone','microphone','camera','camera','publish','registration']);
+  assert.deepEqual(timings.filter(item=>item.stage!=='registration').map(item=>item.stage),
+    ['token','join','microphone','microphone','camera','camera','publish']);
+  assert.ok(timings.findIndex(item=>item.stage==='registration')<timings.findIndex(item=>item.stage==='microphone'));
   for(const item of timings){
     assert.deepEqual(Object.keys(item).sort(),['elapsedMs','outcome','stage']);
     assert.equal(item.outcome,'success');
@@ -235,7 +242,7 @@ test('startup timings contain only bounded stage, outcome and monotonic duration
   await client.leaveChannel();
 });
 
-test('token time is part of the shared deadline and an interrupted registration is classified as timeout',async t=>{
+test('parallel registration keeps its deadline and cannot open a microphone while stalled',async t=>{
   const {client,sdk,track,timings}=await fixture(t);
   const tokenEntered=deferred(),joinEntered=deferred(),micEntered=deferred(),registered=deferred();
   const token=deferred<Response>(),join=deferred(),mic=deferred<any>();
@@ -260,8 +267,8 @@ test('token time is part of the shared deadline and an interrupted registration 
   await tokenEntered.promise;t.mock.timers.tick(9000);
   token.resolve(Response.json({token:'fixture-token',appId:'fixture-app',agoraUid:1}));
   await joinEntered.promise;t.mock.timers.tick(9000);join.resolve();
-  await micEntered.promise;t.mock.timers.tick(8000);mic.resolve(track());
-  await registered.promise;t.mock.timers.tick(4001);await rejected;
+  await registered.promise;await new Promise(resolve=>setImmediate(resolve));
+  t.mock.timers.tick(6001);await rejected;
   assert.equal(registrationSignal?.aborted,true);
   assert.equal(client.getStats().connectionState,'DISCONNECTED');
   assert.equal(timings.find(item=>item.stage==='registration').outcome,'timeout');
@@ -277,7 +284,8 @@ test('cleanup failures cannot replace the original setup failure or leave device
   assert.ok(events.includes('audio:close'));
   assert.equal(client.getLocalStream(),null);
   assert.equal(client.getStats().connectionState,'DISCONNECTED');
-  assert.ok(!events.includes('register'));
+  assert.ok(events.includes('register'));
+  assert.ok(events.includes('unregister'));
 });
 
 test('timeout recovery text identifies the blocked stage without exposing provider details',()=>{

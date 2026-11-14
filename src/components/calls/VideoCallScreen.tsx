@@ -43,6 +43,8 @@ export const VideoCallScreen: React.FC<VideoCallScreenProps> = ({ onEndCall }) =
     messages,
     activeConversationId,
     toggleCallLangpretation,
+    callTranslationRequest,
+    respondToCallTranslationRequest,
     toggleCallMute,
     toggleCallVideo,
     myLanguage,
@@ -88,6 +90,16 @@ export const VideoCallScreen: React.FC<VideoCallScreenProps> = ({ onEndCall }) =
   const [inCallMalviExpanded, setInCallMalviExpanded] = useState(false);
   const callMoreRef = useRef<HTMLDivElement | null>(null);
   const languagePickerRef = useRef<HTMLDivElement | null>(null);
+  const translationConsentDialog=useRef<HTMLDialogElement|null>(null);
+  const [approvingTranslation,setApprovingTranslation]=useState(false);
+  const [translationConsentError,setTranslationConsentError]=useState('');
+  useEffect(()=>{
+    setTranslationConsentError('');
+    const dialog=translationConsentDialog.current;
+    if(callTranslationRequest?.callId===activeCall?.id){
+      if(dialog&&!dialog.open)dialog.showModal();
+    }else if(dialog?.open)dialog.close();
+  },[callTranslationRequest?.requestId,activeCall?.id]);
   const canAskMalvi = activeCall?.status === 'connected' && !!activeCall.channelName &&
     subscriptionHasCapability(malviSubscription, 'memory');
   const showInCallMalvi = canAskMalvi && inCallMalviExpanded;
@@ -130,9 +142,8 @@ export const VideoCallScreen: React.FC<VideoCallScreenProps> = ({ onEndCall }) =
       remoteActive:(active,voiceConsent)=>{setRemoteTranslationActive(active);setRemoteVoiceAdapting(active&&voiceConsent===true);}
     });
     liveTranslation.current=service;
-    // Chrome may already allow audio after joining. If not, Speaker is the
-    // explicit user gesture to unlock playback; never queue stale audio.
-    void service.unlock().catch(()=>{});
+    // Audio is unlocked by the Langpretation or approval button, not by an
+    // asynchronous call-state effect that phones may reject as autoplay.
     return ()=>{service.dispose();if(liveTranslation.current===service)liveTranslation.current=null;};
   },[activeCall?.id,currentUser.id]);
 
@@ -184,8 +195,6 @@ export const VideoCallScreen: React.FC<VideoCallScreenProps> = ({ onEndCall }) =
 
   async function startTranslation() {
     if(translationStarting.current)return;
-    // When invoked by a tap, prime audio before awaiting HTTP readiness.
-    void liveTranslation.current?.unlock().catch(error=>setSpeechStatus(error.message));
     const generation=translationGeneration.current;
     const current=()=>generation===translationGeneration.current;
     translationStarting.current=true;
@@ -202,6 +211,8 @@ export const VideoCallScreen: React.FC<VideoCallScreenProps> = ({ onEndCall }) =
         setSpeechStatus('Same language selected. Original call audio is used.');
         return;
       }
+      await unlockTranslationAudio();
+      if(!current())return;
       setSpeechStatus('Checking Langpretation setup…');
       await waitForCallTranslation(activeCall.id,hostLang.code,remoteLang.code,request.signal);
       if(!current())return;
@@ -211,7 +222,9 @@ export const VideoCallScreen: React.FC<VideoCallScreenProps> = ({ onEndCall }) =
           const started=await liveTranslation.current?.start(hostLang.code,remoteLang.code,voiceConsent,agoraClient.getLocalStream());
           if(!current())return;
           setIsListeningToSpeech(Boolean(started));
-          if(started)setSpeechStatus(voiceConsent?'Listening continuously. Voice preservation requested; allow about 10–20 seconds of speech.':supportsPalabraVoiceCloning(hostLang.code,remoteLang.code)?'Listening continuously.':'Listening continuously with a standard translated voice.');
+          if(started)setSpeechStatus(liveTranslation.current?.voiceMode==='saved'
+            ? 'Listening with your saved voice. Audio is AI-translated; similarity is not guaranteed.'
+            : voiceConsent?'Listening continuously. Voice preservation requested; allow about 10–20 seconds of speech.':supportsPalabraVoiceCloning(hostLang.code,remoteLang.code)?'Listening continuously.':'Listening continuously with a standard translated voice.');
         return;
       }
       setSpeechStatus('Starting speech Langpretation…');
@@ -229,6 +242,11 @@ export const VideoCallScreen: React.FC<VideoCallScreenProps> = ({ onEndCall }) =
         {
           targetLanguage:remoteLang.code,
           inputStream:agoraClient.getLocalStream() || undefined,
+          audioContext:agoraClient.getTranslationAudioContext() || undefined,
+          onBacklog:(seconds)=>{
+            if(!current())return;
+            if(seconds>0)setSpeechStatus(`Listening. ${Math.ceil(seconds)} seconds of speech awaiting Langpretation.`);
+          },
           onAudio:async (audioBase64, signal)=>{
             if(!current()||signal.aborted)return;
             setLangpretationStage('interpreting');setSpeechStatus('Langpretating your speech…');
@@ -262,6 +280,36 @@ export const VideoCallScreen: React.FC<VideoCallScreenProps> = ({ onEndCall }) =
     else if(translationPaused)setTranslationPaused(false);
     else await startTranslation();
   };
+
+  function unlockTranslationAudio() {
+    const pending=remoteLang&&supportsPalabraPair(hostLang.code,remoteLang.code)
+      ? liveTranslation.current?.unlock() || Promise.reject(new Error('Call audio is not ready.'))
+      : agoraClient.unlockTranslatedAudio();
+    let timer:ReturnType<typeof setTimeout>|undefined;
+    return Promise.race([pending,new Promise<never>((_,reject)=>{
+      timer=setTimeout(()=>reject(new Error('Audio did not unlock. Tap the audio control again.')),5000);
+    })]).finally(()=>{if(timer)clearTimeout(timer);});
+  }
+  async function requestLangpretation() {
+    if(activeCall?.langpretationEnabled){toggleCallLangpretation();return;}
+    if(!remoteLang){setSpeechStatus('Waiting for the other caller’s language setting.');return;}
+    if(hostLang.code===remoteLang.code){setSpeechStatus('Same language selected. Original call audio is used.');return;}
+    try{
+      if(!activeCall?.langpretationEnabled)await unlockTranslationAudio();
+      toggleCallLangpretation();
+    }catch(error){setSpeechStatus(error instanceof Error?error.message:'Enable audio before requesting Langpretation.');}
+  }
+  async function approveLangpretation() {
+    if(approvingTranslation)return;
+    setApprovingTranslation(true);
+    try {
+      // This begins synchronously in a trusted tap, before permission is sent
+      // and before either participant can open a paid translation session.
+      await unlockTranslationAudio();
+      respondToCallTranslationRequest(true);
+    }catch(error){setTranslationConsentError(error instanceof Error?error.message:'Enable audio before allowing Langpretation.');}
+    finally{setApprovingTranslation(false);}
+  }
 
   // Production Langpretation is driven by real microphone audio/ASR.
   // No canned/demo utterance generator is available in production.
@@ -337,7 +385,7 @@ export const VideoCallScreen: React.FC<VideoCallScreenProps> = ({ onEndCall }) =
     const nextSpeakerOn = !isSpeakerOn;
     agoraClient.setRemoteAudioMuted(!nextSpeakerOn||remoteTranslationActive);
     liveTranslation.current?.setMuted(!nextSpeakerOn||!autoVocalize);
-    if(nextSpeakerOn)void liveTranslation.current?.unlock().catch(error=>setSpeechStatus(error.message));
+    if(nextSpeakerOn)void unlockTranslationAudio().catch(error=>setSpeechStatus(error.message));
     setIsSpeakerOn(nextSpeakerOn);
   };
 
@@ -358,6 +406,19 @@ export const VideoCallScreen: React.FC<VideoCallScreenProps> = ({ onEndCall }) =
 
   return (
     <div className="fixed inset-0 z-50 bg-[#111814] text-white flex items-center justify-center p-0 overflow-hidden font-sans select-none animate-in fade-in duration-200">
+      <dialog ref={translationConsentDialog} id="call-translation-consent"
+        aria-labelledby="call-translation-consent-title"
+        className="m-auto w-[min(90vw,420px)] rounded-2xl border border-white/20 bg-[#17191c] p-6 text-white shadow-2xl backdrop:bg-black/70"
+        onCancel={event=>{event.preventDefault();respondToCallTranslationRequest(false);}}>
+        <h2 id="call-translation-consent-title" className="text-lg font-semibold">Allow Langpretation?</h2>
+        <p className="mt-3 text-sm text-white/75">Your partner will cover the Langpretation allowance. Allow your speech to be processed for translated captions and audio? Declining keeps your ordinary call available.</p>
+        {!remoteLang&&<p role="status" className="mt-3 text-sm">Waiting for your partner’s language setting…</p>}
+        {translationConsentError&&<p role="alert" className="mt-3 text-sm text-amber-200">{translationConsentError}</p>}
+        <div className="mt-5 flex flex-wrap gap-3">
+          <button autoFocus type="button" id="call-translation-decline" className="rounded-xl border border-white/20 px-4 py-3" onClick={()=>respondToCallTranslationRequest(false)}>Keep original call</button>
+          <button type="button" id="call-translation-approve" disabled={approvingTranslation||!remoteLang} className="rounded-xl bg-[#eee4d2] px-4 py-3 font-medium text-[#17191c] disabled:opacity-50" onClick={()=>void approveLangpretation()}>{approvingTranslation?'Enabling audio…':'Allow Langpretation'}</button>
+        </div>
+      </dialog>
       
       {/* ------------------------------------------------------------- */}
       {/* CALL STAGE WRAPPER: Occupies at least 90% of screen */}
@@ -401,7 +462,7 @@ export const VideoCallScreen: React.FC<VideoCallScreenProps> = ({ onEndCall }) =
           {activeCall?.langpretationEnabled && (
             <button type="button" className="min-h-10 rounded-full border border-white/20 px-3 py-2 text-xs font-semibold text-white"
               onClick={()=>{
-                void liveTranslation.current?.unlock().then(()=>{
+                void unlockTranslationAudio().then(()=>{
                   setIsSpeakerOn(true);
                   if(!isListeningToSpeech&&!isStartingTranslation)void startTranslation();
                   else setSpeechStatus('Translated audio enabled.');
@@ -632,7 +693,7 @@ export const VideoCallScreen: React.FC<VideoCallScreenProps> = ({ onEndCall }) =
                   id="call-action-langpretation"
                   type="button"
                   aria-label={isLangpretationOn ? 'Turn Langpretation off' : 'Turn Langpretation on'}
-                  onClick={toggleCallLangpretation}
+                  onClick={requestLangpretation}
                   className="relative hover:scale-105 active:scale-95 transition-transform"
                   title="Toggle Langpretation Real-Time Translation"
                 >
@@ -684,23 +745,27 @@ export const VideoCallScreen: React.FC<VideoCallScreenProps> = ({ onEndCall }) =
                   {speechStatus && <span role="status" className="max-w-[38vw] whitespace-normal text-[10px] text-amber-200">{speechStatus}</span>}
                 </div>
 
-                {remoteLang&&supportsPalabraVoiceCloning(hostLang.code,remoteLang.code)&&(
-                  <details className="order-last basis-full border-t border-white/10 pt-1 text-[10px] text-slate-200">
-                    <summary className="min-h-9 cursor-pointer py-2 font-semibold text-white/75">Voice options &amp; consent</summary>
+                {remoteLang&&(
+                  <section aria-label="Speaker voice and consent" className="order-last basis-full border-t border-white/10 pt-2 text-[10px] text-slate-200">
+                    <h3 className="font-semibold text-white/85">Your voice in Langpretation</h3>
                     <div className="space-y-1 pb-2">
                       <label className="flex min-h-10 items-center gap-2 cursor-pointer">
                         <input type="checkbox" checked={preserveMyVoice} onChange={e=>setPreserveMyVoice(e.target.checked)}
+                          disabled={!supportsPalabraVoiceCloning(hostLang.code,remoteLang.code)}
                           className="h-4 w-4 accent-amber-400" />
-                        <span>I allow my voice to be used for this call’s translation.</span>
+                        <span>If no saved voice is enabled, I am 18+ and allow AI to adapt my own voice for this call.</span>
                       </label>
-                      <p className="text-slate-400">Voice matching is experimental; initial speech may use a standard voice.</p>
+                      <p className="text-slate-400">{supportsPalabraVoiceCloning(hostLang.code,remoteLang.code)
+                        ? 'After you consent, voice adaptation runs automatically while you speak. It needs about 10–20 seconds of speech; initial audio may use a standard voice. Matching is experimental, not an exact or instant clone. Changing this option restarts translation.'
+                        : 'Your voice cannot currently be preserved for this language pair. Translation availability is checked separately; standard speech is not your cloned voice.'}</p>
+                      <p className="text-slate-400">One-time voice setup is in Account → Your voice. A ready, enabled saved voice is used automatically for supported pairs. Disable or delete it in Account to revoke that permission. This call checkbox alone never saves a permanent profile.</p>
                       <button type="button" className="min-h-9 underline text-amber-200" onClick={()=>{
-                        void liveTranslation.current?.unlock().then(()=>{setIsSpeakerOn(true);setSpeechStatus('Translated audio enabled.');})
+                        void unlockTranslationAudio().then(()=>{setIsSpeakerOn(true);setSpeechStatus('Translated audio enabled.');})
                           .catch(error=>setSpeechStatus(error.message));
                       }}>Enable translated audio</button>
-                      {remoteVoiceAdapting&&<p>The other speaker requested voice preservation. Voice matching is not verified.</p>}
+                      {remoteTranslationActive&&<p>AI-translated audio. {remoteVoiceAdapting?'The other speaker requested voice preservation; matching is not verified.':'A standard translated voice is in use.'}</p>}
                     </div>
-                  </details>
+                  </section>
                 )}
 
                 {/* Center: Language Pair Pill with dropdown */}

@@ -13,6 +13,8 @@ import AgoraRTC, {
 import { authClient } from './authClient';
 import { CallMediaSetupError, callMediaFailureDetails, type CallMediaStage } from './callMediaErrors';
 
+// Keep production browser logging bounded; retain SDK warnings and errors.
+AgoraRTC.setLogLevel?.(2);
 const MEDIA_SETUP_TIMEOUT_MS = 15000;
 const MEDIA_STARTUP_TIMEOUT_MS = 30000;
 const MEDIA_LEAVE_TIMEOUT_MS = 3000;
@@ -80,6 +82,19 @@ class NanivioAgoraClient {
   private cameraSwitchPending = false;
   private tokenRenewTimer:ReturnType<typeof setTimeout>|null=null;
   private communicationTokenExpiry=0;
+  private translationAudioContext:AudioContext|null=null;
+
+  /** Called directly by the user's Langpretation/consent tap, before HTTP work. */
+  public async unlockTranslatedAudio() {
+    if(!this.translationAudioContext||this.translationAudioContext.state==='closed')
+      this.translationAudioContext=NanivioAgoraClientAudioContext();
+    const context=this.translationAudioContext;
+    await context.resume();
+    if(this.translationAudioContext!==context||context.state!=='running')
+      throw new Error('Tap Langpretation again to enable translated audio.');
+  }
+  /** Borrowed by specialist microphone capture; leaveChannel owns disposal. */
+  public getTranslationAudioContext() { return this.translationAudioContext; }
 
   private async setupStep<T>(
     stage: CallMediaStage, operation: () => Promise<T>, generation: number,
@@ -247,8 +262,37 @@ class NanivioAgoraClient {
     this.client = AgoraRTC.createClient({ mode: 'rtc', codec: 'vp8' });
     client = this.client;
     this.registerClientEvents();
-    await this.setupStep(stage, () => client!.join(token.appId, channelName, token.token, numericUid), generation,
-      () => { void this.leaveSdk(client); });
+    const authToken = authClient.getToken();
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+    if (authToken) {
+      headers.Authorization = `Bearer ${authToken}`;
+      headers['x-nanivio-token'] = authToken;
+    }
+    // Admission is already server-owned. Confirm backend registration alongside
+    // the RTC handshake, not after it has spent most of the startup deadline.
+    // Neither publication nor CONNECTED is permitted until both have succeeded.
+    const registration = this.setupStep('registration', async () => {
+      try {
+        const response = await fetch('/api/agora/join', {
+          method: 'POST', headers, body: JSON.stringify({ channelName, callType }),
+          signal: controller.signal,
+        });
+        let result: any;
+        try { result = await response.json(); }
+        catch (error) { throw new CallMediaSetupError('registration', error, response.status); }
+        stillCurrent();
+        if (!response.ok || !result.success)
+          throw new CallMediaSetupError('registration',
+            new Error(result.error || 'The server did not register this call participant.'), response.status);
+      } catch (error) {
+        throw error instanceof CallMediaSetupError ? error : new CallMediaSetupError('registration', error);
+      }
+    }, generation);
+    await Promise.all([
+      registration,
+      this.setupStep(stage, () => client!.join(token.appId, channelName, token.token, numericUid), generation,
+        () => { void this.leaveSdk(client); }),
+    ]);
     stillCurrent();
 
     stage = 'microphone';
@@ -278,29 +322,6 @@ class NanivioAgoraClient {
     stillCurrent();
     this.rebuildLocalStream();
 
-    const authToken = authClient.getToken();
-    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-    if (authToken) {
-      headers.Authorization = `Bearer ${authToken}`;
-      headers['x-nanivio-token'] = authToken;
-    }
-    stage = 'registration';
-    await this.setupStep(stage, async () => {
-      const joinResponse = await fetch('/api/agora/join', {
-        method: 'POST',
-        headers,
-        body: JSON.stringify({ channelName, callType }),
-        signal: controller.signal,
-      });
-      let joinResult: any;
-      try { joinResult = await joinResponse.json(); }
-      catch (error) { throw new CallMediaSetupError(stage, error, joinResponse.status); }
-      stillCurrent();
-      if (!joinResponse.ok || !joinResult.success) {
-        throw new CallMediaSetupError(stage,
-          new Error(joinResult.error || 'The server did not register this call participant.'), joinResponse.status);
-      }
-    }, generation);
     this.mediaReady = true;
     this.scheduleCommunicationRenewal(client);
     this.connectionState = 'CONNECTED';
@@ -445,6 +466,19 @@ class NanivioAgoraClient {
     }
   }
 
+  /** Admit an ordered playback task without holding the recognition worker
+   * until all of the previous translated sentence has finished speaking.
+   * Acceptance is not a claim that the remote browser has played the audio.
+   */
+  public scheduleTranslatedAudioToRemote(audioBuffer:AudioBuffer,onError:()=>void):boolean{
+    const channel=this.currentChannel;
+    if(!channel||this.queuedTranslations>=2)return false;
+    void this.injectTranslatedAudioToRemote(audioBuffer).then(success=>{
+      if(!success&&this.currentChannel===channel)onError();
+    }).catch(()=>{if(this.currentChannel===channel)onError();});
+    return true;
+  }
+
   public async injectTranslatedAudioToRemote(audioBuffer: AudioBuffer): Promise<boolean> {
     const channel=this.currentChannel;
     if(!channel||this.queuedTranslations>=2)return false;
@@ -461,7 +495,9 @@ class NanivioAgoraClient {
     if (!this.client || !this.originalAudio || !audioBuffer) return false;
     let ctx:AudioContext|null=null;
     try {
-      ctx = NanivioAgoraClientAudioContext();
+      if(!this.translationAudioContext||this.translationAudioContext.state==='closed')
+        this.translationAudioContext=NanivioAgoraClientAudioContext();
+      ctx = this.translationAudioContext;
       await ctx.resume();
       if(this.currentChannel!==channel)return false;
       const destination = ctx.createMediaStreamDestination();
@@ -480,7 +516,7 @@ class NanivioAgoraClient {
       await new Promise<void>((resolve,reject)=>{source.onended=()=>resolve();try{source.start(0);}catch(error){reject(error);}});
       return true;
     } catch (err) { console.warn('[Agora] translated audio injection failed:', err); return false; }
-    finally{if(this.currentChannel===channel)await this.restoreOriginalAudioTrack();await ctx?.close().catch(()=>{});}
+    finally{if(this.currentChannel===channel)await this.restoreOriginalAudioTrack();}
   }
 
   public async restoreOriginalAudioTrack() {
@@ -560,6 +596,9 @@ class NanivioAgoraClient {
   public async leaveChannel() {
     this.callAbort?.abort(new DOMException('Call was cancelled.', 'AbortError'));
     this.callAbort=null;
+    const translationContext=this.translationAudioContext;
+    this.translationAudioContext=null;
+    if(translationContext)void translationContext.close().catch(()=>{});
     if(this.tokenRenewTimer)clearTimeout(this.tokenRenewTimer);
     this.tokenRenewTimer=null;this.communicationTokenExpiry=0;
     this.mediaGeneration++;

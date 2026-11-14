@@ -103,7 +103,7 @@ export class CommunicationCallMeter {
     try { await Promise.all(call.participants.map(user=>this.service.connected(user))); await this.tick(id); }
     catch { this.deps.end(id, 'Your calling allowance could not be confirmed. Please check billing.'); }
   }
-  async sponsor(id: string, actor: string, enabled: boolean) {
+  async sponsor(id: string, actor: string, enabled: boolean, stillApproved?: () => boolean) {
     const call = this.calls.get(id);
     if (!call || call.stopped || !call.connected || !call.participants.includes(actor)) throw new CommunicationAccessError(409, 'Connect both participants before enabling Langpretation.');
     if(call.changingSponsor)throw new CommunicationAccessError(409,'A Langpretation change is already being processed.');
@@ -117,7 +117,7 @@ export class CommunicationCallMeter {
       const version=call.sponsorVersion;
       try{
         const reservation=await this.service.reserve(actor,'live',5);
-        if(call.stopped||call.sponsorVersion!==version){await this.service.release(reservation);throw new CommunicationAccessError(409,'This Langpretation request has stopped.');}
+        if(call.stopped||call.sponsorVersion!==version||(stillApproved&&!stillApproved())){await this.service.release(reservation);throw new CommunicationAccessError(409,'This Langpretation request has stopped.');}
         call.translation=reservation;
       }finally{call.changingSponsor=false;}
       call.sponsor = actor; call.translationAt = 0; call.sponsoringAt = Date.now(); call.live = true;

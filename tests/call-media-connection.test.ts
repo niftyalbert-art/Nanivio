@@ -68,6 +68,102 @@ function fixture(fail: 'none' | 'token' | 'camera' | 'publish' | 'register' = 'n
   return events;
 }
 
+test('answering reuses ready preview devices instead of opening them twice', async t => {
+  const original = globalThis.fetch; t.after(() => { globalThis.fetch = original; });
+  const events = fixture(), client = await loadClient();
+  await client.startLocalPreview('video');
+  await client.joinChannel('preview-call', 'user', 'User', 'video');
+  assert.equal(events.filter(event => event === 'microphone').length, 1);
+  assert.equal(events.filter(event => event === 'camera').length, 1);
+  assert.equal(events.filter(event => event.endsWith(':close')).length, 0);
+  await client.leaveChannel();
+});
+
+test('specialist translated speech reuses a tap-unlocked audio context until hang-up',async t=>{
+  const previous=(globalThis as any).AudioContext, previousWindow=(globalThis as any).window, original=globalThis.fetch;
+  t.after(()=>{(globalThis as any).AudioContext=previous;globalThis.fetch=original;
+    if(previousWindow===undefined)delete (globalThis as any).window;else (globalThis as any).window=previousWindow;});
+  let created=0,closed=0;
+  (globalThis as any).AudioContext=class {
+    state='suspended';
+    constructor(){created++;}
+    async resume(){this.state='running';}
+    async close(){this.state='closed';closed++;}
+  };
+  (globalThis as any).window={AudioContext:(globalThis as any).AudioContext};
+  fixture();const client=await loadClient();
+  await client.unlockTranslatedAudio();await client.unlockTranslatedAudio();
+  assert.equal(created,1);
+  await client.leaveChannel();
+  assert.equal(closed,1);
+  await client.unlockTranslatedAudio();
+  assert.equal(created,2);
+  await client.leaveChannel();
+});
+
+test('an unresolved SDK join times out and a late completion is released', async t => {
+  const original = globalThis.fetch; t.after(() => { globalThis.fetch = original; });
+  const events = fixture(), client = await loadClient(), sdk = (globalThis as any).__rtcFixture.createClient();
+  let release!: () => void, entered!: () => void;
+  const started = new Promise<void>(resolve => { entered = resolve; });
+  sdk.join = () => { entered(); return new Promise<void>(resolve => { release = resolve; }); };
+  t.mock.timers.enable({apis:['setTimeout']});
+  const result = assert.rejects(client.joinChannel('timeout-call', 'user', 'User', 'audio'), (error: unknown) => {
+    assert.equal((error as any).stage, 'join');
+    assert.equal((error as any).original.name, 'TimeoutError'); return true;
+  });
+  await started;
+  await new Promise(resolve => setImmediate(resolve));
+  t.mock.timers.tick(15001);
+  await result;
+  assert.equal(client.getStats().connectionState, 'DISCONNECTED');
+  assert.ok(events.includes('register'));
+  assert.ok(!events.includes('rtc:publish'));
+  release(); await new Promise(resolve => setImmediate(resolve));
+  assert.ok(events.filter(event => event === 'rtc:leave').length >= 2);
+});
+
+test('a microphone delivered after a timeout is closed without being published', async t => {
+  const original = globalThis.fetch; t.after(() => { globalThis.fetch = original; });
+  const events = fixture(), client = await loadClient(), sdk = (globalThis as any).__rtcFixture;
+  let release!: (track: unknown) => void, entered!: () => void;
+  const started = new Promise<void>(resolve => { entered = resolve; });
+  sdk.createMicrophoneAudioTrack = () => {
+    entered(); return new Promise(resolve => { release = resolve; });
+  };
+  t.mock.timers.enable({apis:['setTimeout']});
+  const result = assert.rejects(client.joinChannel('late-device', 'user', 'User', 'audio'), (error: unknown) => {
+    assert.equal((error as any).stage, 'microphone');
+    assert.equal((error as any).original.name, 'TimeoutError'); return true;
+  });
+  await started; t.mock.timers.tick(15001); await result;
+  const closed: string[] = [];
+  release({stop:()=>closed.push('stop'),close:()=>closed.push('close')});
+  await new Promise(resolve => setImmediate(resolve));
+  assert.deepEqual(closed, ['stop','close']);
+  assert.ok(!events.includes('rtc:publish'));
+  assert.equal(client.getLocalStream(), null);
+});
+
+test('hang-up releases capture immediately and a late SDK leave cannot clear a new call', async t => {
+  const original = globalThis.fetch; t.after(() => { globalThis.fetch = original; });
+  const events = fixture(), client = await loadClient(), sdk = (globalThis as any).__rtcFixture;
+  await client.joinChannel('old-call', 'user', 'User', 'video');
+  const old = sdk.createClient();
+  old.leave = () => new Promise(() => {});
+  sdk.createClient = () => ({...old,leave:async()=>{}});
+  t.mock.timers.enable({apis:['setTimeout']});
+  const leaving = client.leaveChannel();
+  assert.equal(client.getLocalStream(), null);
+  assert.equal(client.getStats().connectionState, 'DISCONNECTED');
+  assert.ok(events.includes('audio:close') && events.includes('video:close'));
+  await client.joinChannel('new-call', 'user', 'User', 'audio');
+  t.mock.timers.tick(3001); await leaving;
+  assert.equal(client.getStats().channelName, 'new-call');
+  assert.equal(client.getStats().connectionState, 'CONNECTED');
+  await client.leaveChannel();
+});
+
 test('late-mounted call displays immediately receive existing local and remote media', async t => {
   const original = globalThis.fetch; t.after(() => { globalThis.fetch = original; });
   fixture(); const client = await loadClient();
@@ -134,7 +230,7 @@ for (const type of ['audio', 'video'] as const) {
     const result = await client.joinChannel('private-call', 'user', 'User', type);
     assert.equal(result.connectionState, 'CONNECTED'); assert.equal(result.hasLocalMedia, true);
     assert.equal(result.hasRemoteMedia, false);
-    assert.ok(events.indexOf('rtc:publish') < events.indexOf('register'));
+    assert.ok(events.indexOf('register') < events.indexOf('rtc:publish'));
     assert.equal(events.includes('camera'), type === 'video');
     assert.equal(states.at(-1), 'CONNECTED');
     client.setRemoteAudioMuted(true); assert.ok(events.includes('remote:volume:0'));
@@ -156,11 +252,62 @@ for (const failure of ['token', 'camera', 'publish', 'register'] as const) {
     });
     assert.equal(client.getStats().connectionState, 'DISCONNECTED');
     assert.equal(client.getLocalStream(), null);
-    if (failure !== 'token') assert.ok(events.includes('audio:close'));
-    if (failure === 'publish' || failure === 'register') assert.ok(events.includes('video:close'));
+    if (failure !== 'token' && failure !== 'register') assert.ok(events.includes('audio:close'));
+    if (failure === 'publish') assert.ok(events.includes('video:close'));
+    if (failure === 'register') {
+      assert.ok(!events.includes('microphone'));
+      assert.ok(!events.includes('rtc:publish'));
+    }
     assert.equal(states.includes('CONNECTED'), false);
   });
 }
+
+for (const callType of ['audio', 'video'] as const) {
+  for (const first of ['registration', 'rtc'] as const) {
+    test(`${callType} overlaps registration and RTC, with ${first} finishing first`, async t => {
+      const original = globalThis.fetch; t.after(() => { globalThis.fetch = original; });
+      const events = fixture(), baseFetch = globalThis.fetch;
+      const client = await loadClient(), sdk = (globalThis as any).__rtcFixture.createClient();
+      let register!: () => void, join!: () => void;
+      const registrationGate = new Promise<void>(resolve => { register = resolve; });
+      const joinGate = new Promise<void>(resolve => { join = resolve; });
+      let started = 0, bothStarted!: () => void;
+      const both = new Promise<void>(resolve => { bothStarted = resolve; });
+      const enter = () => { if (++started === 2) bothStarted(); };
+      sdk.join = async () => { enter(); await joinGate; };
+      globalThis.fetch = async (input, init) => {
+        if (String(input).endsWith('/join')) { enter(); await registrationGate; }
+        return baseFetch(input, init);
+      };
+      const pending = client.joinChannel('overlap-call', 'user', 'User', callType);
+      await both;
+      assert.equal(client.getStats().connectionState, 'CONNECTING');
+      (first === 'registration' ? register : join)();
+      await new Promise(resolve => setImmediate(resolve));
+      assert.ok(!events.includes('microphone'));
+      assert.ok(!events.includes('rtc:publish'));
+      (first === 'registration' ? join : register)();
+      await pending;
+      assert.equal(client.getStats().connectionState, 'CONNECTED');
+      assert.equal(events.filter(event => event === 'register').length, 1);
+      await client.leaveChannel();
+    });
+  }
+}
+
+test('registration denial cancels an outstanding RTC handshake before capturing or publishing', async t => {
+  const original = globalThis.fetch; t.after(() => { globalThis.fetch = original; });
+  const events = fixture('register'), client = await loadClient();
+  const sdk = (globalThis as any).__rtcFixture.createClient();
+  let release!: () => void;
+  sdk.join = () => new Promise<void>(resolve => { release = resolve; });
+  await assert.rejects(client.joinChannel('denied-overlap', 'user', 'User', 'video'),
+    (error: any) => error.stage === 'registration' && error.httpStatus === 503);
+  assert.ok(!events.includes('microphone')); assert.ok(!events.includes('rtc:publish'));
+  release(); await new Promise(resolve => setImmediate(resolve));
+  assert.equal(client.getStats().connectionState, 'DISCONNECTED');
+  assert.ok(events.includes('rtc:leave'));
+});
 
 for (const type of ['audio', 'video'] as const) {
   test(`${type} ringing preview immediately publishes local readiness, not a connected call`, async t => {
@@ -370,4 +517,41 @@ test('context does not fabricate support conversations or accept calls on a reci
   assert.doesNotMatch(force, /joinChannel|acceptCall|status: 'connected'/);
   assert.match(source, /await agoraClient\.joinChannel/);
   assert.match(source, /mediaError: callMediaErrorMessage\(error, type\)/);
+});
+
+test('admitting translated playback does not block recognition until speech ends',async()=>{
+  fixture();
+  const client=await loadClient();
+  client.currentChannel='active-call';
+  let finish!:(ok:boolean)=>void,started=0;
+  client.publishTranslatedAudio=async()=>{
+    started++;return new Promise<boolean>(resolve=>{finish=resolve;});
+  };
+  assert.equal(client.scheduleTranslatedAudioToRemote({duration:2},assert.fail),true);
+  for(let i=0;i<8&&!finish;i++)await Promise.resolve();
+  assert.equal(started,1);
+  assert.equal(client.scheduleTranslatedAudioToRemote({duration:2},assert.fail),true);
+  assert.equal(client.scheduleTranslatedAudioToRemote({duration:2},assert.fail),false,
+    'Playback queue stays bounded instead of hiding unlimited delay');
+  finish(true);
+  await new Promise(resolve=>setImmediate(resolve));
+  assert.equal(started,2);finish(true);
+  for(let i=0;i<8;i++)await Promise.resolve();
+});
+
+test('asynchronous translated publication failure is surfaced only to its current call',async()=>{
+  fixture();
+  const client=await loadClient();client.currentChannel='active-call';
+  let failures=0;
+  client.publishTranslatedAudio=async()=>false;
+  assert.equal(client.scheduleTranslatedAudioToRemote({duration:2},()=>{failures++;}),true);
+  for(let i=0;i<12;i++)await Promise.resolve();
+  assert.equal(failures,1);
+  let finish!:(ok:boolean)=>void;
+  client.publishTranslatedAudio=async()=>new Promise<boolean>(resolve=>{finish=resolve;});
+  client.scheduleTranslatedAudioToRemote({duration:2},()=>{failures++;});
+  for(let i=0;i<8&&!finish;i++)await Promise.resolve();
+  client.currentChannel='another-call';finish(false);
+  for(let i=0;i<12;i++)await Promise.resolve();
+  assert.equal(failures,1,'A late failure must not change the next call');
 });

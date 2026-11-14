@@ -1,6 +1,8 @@
+import { CallTranslationConsent } from './callTranslationConsent';
 import { WebSocketServer, WebSocket } from 'ws';
+import { tokenIssuedAtMs } from './passwordRecoveryStore.ts';
 import { accountAccessAuthority, type AccountLease } from './accountAccessAuthority';
-import { tokenIssuedAtMs } from './passwordRecoveryStore';
+import { avatarForSignaling, connectedAvatarForSignaling, callControlForClient } from './realtimeAvatars';
 import type { Server as HttpServer } from 'http';
 import { GoogleGenAI } from '@google/genai';
 import {
@@ -31,6 +33,8 @@ import { PalabraLiveGateway, type LangpretationAuthorizer } from './palabraLiveS
 import { BusinessTranslationAudience, type BusinessTranslationAuthorization } from './businessTranslationAudience';
 import { normalizeAgoraUid } from './agoraService';
 import { PalabraError } from './palabraSpeech.ts';
+import { RealtimeMediaLane } from './realtimeMediaLane.ts';
+import { LEGACY_PCM_BASE64_LENGTH } from '../shared/palabraLiveProtocol.ts';
 import { participantLanguage } from '../shared/participantLanguage.ts';
 import { buildPeerCallCaption } from '../shared/callCaption.ts';
 import { CommunicationCallMeter, CommunicationAccessError, withCommunicationUsage } from './communicationAccess.ts';
@@ -48,6 +52,8 @@ export interface ConnectedUser {
   nvId: string;
   name: string;
   avatar?: string;
+  avatarRevision?: string;
+  avatarReferences?: boolean;
   role: string;
   myLanguage: string;
   connectedAt: number;
@@ -62,6 +68,7 @@ export interface ActiveCallState {
     name: string;
     nvId: string;
     avatar?: string;
+    avatarRevision?: string;
     myLanguage: string;
     initials?: string;
   };
@@ -88,16 +95,27 @@ const communicationMeter = new CommunicationCallMeter({
   end: (id, reason) => finishCall(id, 'SYSTEM', reason),
   stopTranslation: id => { langpretationGateway?.endCall(id); },
   state: (id, payload) => {
+    if (payload.enabled === false) translationConsent.cancel(id);
     const call = activeCalls.get(id);
     for (const user of call?.participants || []) {
       if (!payload.recipientId || payload.recipientId === user)
-        sendToUser(user, { type: typeof payload.enabled === 'boolean' ? 'call:langpretation' : 'call:billing_notice', payload: { callId: id, ...payload } });
+        sendToUser(user, { type: typeof payload.enabled === 'boolean' ? 'call:langpretation' : 'call:billing_notice', payload: {
+          callId: id, ...payload,
+          ...(payload.enabled === true ? { consentGranted: translationConsent.hasConsent(id, payload.sponsorId) } : {}),
+        } });
     }
   },
 });
+const translationConsent = new CallTranslationConsent({
+  call: id => activeCalls.get(id),
+  send: (user, type, payload) => sendToUser(user, { type, payload }),
+  enable: (id, sponsor, current) => communicationMeter.sponsor(id, sponsor, true, current),
+});
 export function authorizeSponsoredCall(userId: string, callId: string) { communicationMeter.authorize(callId, userId); }
 export function markCallTranslationReady(callId: string) { communicationMeter.translationReady(callId); }
-/** Provider-generated captions only; client-supplied speech events stay disabled. */
+/** Only provider-generated text from an authorized specialist request may use
+ * this path. Deprecated client-supplied call:speech messages remain disabled.
+ */
 export function publishCallSpeechCaption(userId:string,callId:string,sourceLang:string,targetLang:string,
   caption:{transcript:string;translatedTranscript:string}){
   const call=activeCalls.get(callId);
@@ -125,6 +143,7 @@ function clearRingingTimer(callId: string) {
 function finishCall(callId: string, endedBy: string, reason?: string) {
   const call = activeCalls.get(callId);
   if (!call) return false;
+  translationConsent.cancel(callId);
   void communicationMeter.close(callId).catch(() => console.warn('Call usage finalization needs reconciliation.'));
   langpretationGateway?.endCall(callId);
   clearRingingTimer(callId);
@@ -241,13 +260,18 @@ function getAI(): GoogleGenAI | null {
 }
 
 function broadcastToAll(message: any, excludeSocket?: WebSocket) {
-  const jsonStr = JSON.stringify(message);
+  const variants = new Map<boolean, string>();
   // General presence/control events go only to authenticated sockets.
-  const authenticatedSockets = new Set([...clientsByUserId.values()].flatMap(users => [...users].map(user => user.socket)));
-  for (const client of authenticatedSockets) {
+  const authenticatedSockets = new Map([...clientsByUserId.values()].flatMap(users =>
+    [...users].map(user => [user.socket, user] as const)));
+  for (const [client, user] of authenticatedSockets) {
     if (client !== excludeSocket && client.readyState === WebSocket.OPEN) {
       try {
-        client.send(jsonStr);
+        const references = user.avatarReferences === true;
+        if (!variants.has(references)) variants.set(references, JSON.stringify(message.type === 'presence:update'
+          ? { ...message, payload: { ...message.payload,
+            activeOnlineUsers: getActiveConnectedUsersList({ compactAvatars: references }) } } : message));
+        client.send(variants.get(references)!);
       } catch (e) {
         console.warn('WebSocket broadcast error:', e);
       }
@@ -266,7 +290,7 @@ function cleanNumber(str: string): string {
 
 function sendToUser(userIdOrNvId: string, message: any): boolean {
   if (!userIdOrNvId) return false;
-  const jsonStr = JSON.stringify(message);
+  const variants = new Map<boolean, string>();
   let sent = false;
   const cleaned = cleanNumber(userIdOrNvId);
 
@@ -299,7 +323,10 @@ function sendToUser(userIdOrNvId: string, message: any): boolean {
   for (const client of targets) {
     if (client.socket.readyState === WebSocket.OPEN) {
       try {
-        client.socket.send(jsonStr);
+        const references = client.avatarReferences === true;
+        if (!variants.has(references))
+          variants.set(references, JSON.stringify(callControlForClient(message, references)));
+        client.socket.send(variants.get(references)!);
         sent = true;
       } catch (e) {
         console.warn('WebSocket send error:', e);
@@ -310,12 +337,13 @@ function sendToUser(userIdOrNvId: string, message: any): boolean {
   return sent;
 }
 
-export function getActiveConnectedUsersList() {
+export function getActiveConnectedUsersList({ compactAvatars = false }: { compactAvatars?: boolean } = {}) {
   const uniqueUsers: Array<{
     userId: string;
     nvId: string;
     name: string;
     avatar?: string;
+    avatarRevision?: string;
     role: string;
     myLanguage: string;
     online: boolean;
@@ -331,7 +359,7 @@ export function getActiveConnectedUsersList() {
           userId: u.userId,
           nvId: u.nvId,
           name: u.name,
-          avatar: u.avatar,
+          ...(compactAvatars ? connectedAvatarForSignaling(u) : { avatar: u.avatar }),
           role: u.role,
           myLanguage: u.myLanguage,
           online: true,
@@ -412,6 +440,7 @@ export function setupRealtimeServer(httpServer: HttpServer,options?:{
     let currentUser: ConnectedUser | null = null;
     let accountLease: AccountLease | null = null;
     let translationStreamId = '';
+    let translationCallId = '';
     const translationPeer={closed:false,send:(type:string,payload:any)=>{
       if (type === 'langpretation:ready' && !String(payload?.callId).startsWith('business:')) markCallTranslationReady(payload?.callId);
       if(type==='langpretation:stopped'&&payload?.message&&payload.streamId===translationStreamId&&!String(payload?.callId).startsWith('business:')&&currentUser)
@@ -419,6 +448,7 @@ export function setupRealtimeServer(httpServer: HttpServer,options?:{
       if(socket.readyState===WebSocket.OPEN&&socket.bufferedAmount<512000)socket.send(JSON.stringify({type,payload}));
     }};
     let messageChain: Promise<void> = Promise.resolve();
+    const translationAudioLane = new RealtimeMediaLane();
 
     // Heartbeat ping/pong
     const pingInterval = setInterval(() => {
@@ -428,14 +458,39 @@ export function setupRealtimeServer(httpServer: HttpServer,options?:{
     }, 25000);
 
     socket.on('message', (data: string) => {
+      let parsed: any;
+      try { parsed = JSON.parse(data.toString()); }
+      catch { console.warn('Invalid realtime message.'); return; }
+      if (parsed?.type === 'langpretation:audio') {
+        const identity = currentUser?.userId, streamId = translationStreamId;
+        if (!identity || !streamId || parsed.payload?.streamId !== streamId) return;
+        if (typeof parsed.payload.data !== 'string' || parsed.payload.data.length > LEGACY_PCM_BASE64_LENGTH) {
+          langpretationGateway?.stop(translationPeer, 'Invalid live microphone frame.');
+          return;
+        }
+        const current = () => socket.readyState === WebSocket.OPEN && !translationPeer.closed
+          && currentUser?.userId === identity && translationStreamId === streamId;
+        translationAudioLane.enqueue(async () => current()
+          && (!accountLease || await accountLease.allowed(true)) && current(),
+        () => { if (current()) langpretationGateway?.audio(translationPeer, parsed.payload); },
+        () => langpretationGateway?.stop(translationPeer,
+          'Live microphone delivery fell behind. Restart Langpretation; your ordinary call can continue.'));
+        return;
+      }
+      // A stop/new stream must also invalidate frames already awaiting a
+      // registry check, even if its control message is still queued.
+      if ((parsed?.type === 'langpretation:stop' && parsed.payload?.streamId === translationStreamId)
+        || (parsed?.type === 'call:hangup' && parsed.payload?.callId === translationCallId)) {
+        translationAudioLane.clear();
+        translationStreamId = '';
+      }
       messageChain = messageChain.then(async () => {
         let chatRequestId: string | undefined;
         try {
           if (socket.readyState !== WebSocket.OPEN) return;
-          const raw = data.toString();
-          const parsed = JSON.parse(raw);
           const { type, payload } = parsed;
           if (type !== 'auth:presence' && accountLease && !(await accountLease.allowed(type === 'langpretation:audio'))) return;
+          if (socket.readyState !== WebSocket.OPEN) return;
           if (typeof type === 'string' && type.startsWith('chat:') && typeof payload?.requestId === 'string') chatRequestId = payload.requestId;
 
         if (type !== 'auth:presence' && !currentUser) {
@@ -461,7 +516,9 @@ export function setupRealtimeServer(httpServer: HttpServer,options?:{
           case 'langpretation:business_leave':
             businessAudience.remove(translationPeer); langpretationGateway?.stop(translationPeer); break;
           case 'langpretation:start': {
+            translationAudioLane.clear();
             translationStreamId=String(payload?.streamId||'');
+            translationCallId=String(payload?.callId||'');
             try { await langpretationGateway!.start(translationPeer,currentUser!.userId,payload); }
             catch(error){translationPeer.send('langpretation:stopped',{
               callId:payload?.callId,streamId:payload?.streamId,
@@ -487,16 +544,33 @@ export function setupRealtimeServer(httpServer: HttpServer,options?:{
           }
           case 'call:langpretation': {
             try {
-              await communicationMeter.sponsor(String(payload?.callId), currentUser!.userId, payload?.enabled === true);
+              const id = String(payload?.callId);
+              if (payload?.enabled === true) translationConsent.request(id, currentUser!.userId);
+              else {
+                if (!activeCalls.get(id)?.participants.includes(currentUser!.userId))
+                  throw new CommunicationAccessError(403, 'This call is not available.');
+                translationConsent.cancel(id);
+                await communicationMeter.sponsor(id, currentUser!.userId, false);
+              }
             } catch (error) {
               socket.send(JSON.stringify({ type: 'call:billing_notice', payload: { callId: payload?.callId, subscriptionRequired: error instanceof CommunicationAccessError && error.status===402,
                 message: error instanceof Error ? error.message : 'Langpretation could not be enabled.' } }));
             }
             break;
           }
-          case 'langpretation:audio':
-            langpretationGateway?.audio(translationPeer,payload);break;
+          case 'call:langpretation_consent': {
+            try {
+              await translationConsent.respond(String(payload?.callId), String(payload?.requestId), currentUser!.userId, payload?.accepted === true);
+            } catch (error) {
+              socket.send(JSON.stringify({ type: 'call:billing_notice', payload: {
+                callId: payload?.callId,
+                message: error instanceof CommunicationAccessError ? error.message : 'Langpretation could not be enabled. Your ordinary call can continue.',
+              } }));
+            }
+            break;
+          }
           case 'langpretation:stop':
+            if (payload?.streamId === translationStreamId) translationStreamId = '';
             langpretationGateway?.stopStream(translationPeer,payload?.streamId);break;
           case 'langpretation:receiver_ready':
             if(canTranslateLiveCall(currentUser!.userId,payload?.callId)
@@ -535,6 +609,7 @@ export function setupRealtimeServer(httpServer: HttpServer,options?:{
               }, tokenIssuedAtMs(String(payload?.token || '')));
               if (!(await accountLease.allowed())) return;
             }
+
             if (currentUser) removeConnectedUser(currentUser);
             const name = String(user.displayName || `${user.firstName || ''} ${user.lastName || ''}`.trim() || 'User');
             const nvId = String(user.nvId || '');
@@ -545,6 +620,9 @@ export function setupRealtimeServer(httpServer: HttpServer,options?:{
               nvId,
               name,
               avatar: user.avatar || undefined,
+              avatarRevision: avatarForSignaling(user.avatar || undefined).avatarRevision,
+              // Representation hint only; identity and permissions remain server-owned.
+              avatarReferences: payload?.avatarReferences === 1,
               role: String(user.role || 'PERSONAL'),
               myLanguage: participantLanguage(payload?.myLanguage, user.preferredLanguage),
               connectedAt: Date.now(),
@@ -552,13 +630,14 @@ export function setupRealtimeServer(httpServer: HttpServer,options?:{
             for(const call of activeCalls.values()){
               if (call.status === 'ringing' && isCallRecipient(call, currentUser) &&
                 Date.now() - call.startedAt < RING_TIMEOUT_MS) {
-                // Recover pending invitations when the receiver registers late,
-                // including saved contacts identified by their Nanivio number.
+                // A saved contact ID may be stale while its Nanivio number
+                // still identifies this authenticated receiver. Canonicalize
+                // late delivery just like the already-online fallback does.
                 call.recipientId = currentUser.userId;
-                socket.send(JSON.stringify({ type: 'call:incoming', payload: {
+                socket.send(JSON.stringify(callControlForClient({ type: 'call:incoming', payload: {
                   callId: call.callId, channelName: call.channelName, callType: call.callType,
                   caller: call.caller, timestamp: call.startedAt,
-                } }));
+                } }, currentUser.avatarReferences === true)));
               }
               if(call.caller.id===currentUser.userId)call.caller.myLanguage=currentUser.myLanguage;
             }
@@ -588,7 +667,7 @@ export function setupRealtimeServer(httpServer: HttpServer,options?:{
                 type: 'auth:presence_ack',
                 payload: {
                   status: 'ONLINE',
-                  activeOnlineUsers: getActiveConnectedUsersList(),
+                  activeOnlineUsers: getActiveConnectedUsersList({ compactAvatars: currentUser.avatarReferences === true }),
                 },
               })
             );
@@ -597,7 +676,7 @@ export function setupRealtimeServer(httpServer: HttpServer,options?:{
             broadcastToAll({
               type: 'presence:update',
               payload: {
-                activeOnlineUsers: getActiveConnectedUsersList(),
+                activeOnlineUsers: getActiveConnectedUsersList({ compactAvatars: true }),
               },
             });
             break;
@@ -674,6 +753,7 @@ export function setupRealtimeServer(httpServer: HttpServer,options?:{
               name: currentUser.name,
               nvId: currentUser.nvId,
               avatar: currentUser.avatar,
+              avatarRevision: currentUser.avatarRevision,
               myLanguage: currentUser.myLanguage,
               initials: currentUser.name.slice(0, 2).toUpperCase(),
             };
@@ -817,6 +897,7 @@ export function setupRealtimeServer(httpServer: HttpServer,options?:{
               name: currentUser.name,
               nvId: currentUser.nvId,
               avatar: currentUser.avatar,
+              avatarRevision: currentUser.avatarRevision,
               myLanguage: currentUser.myLanguage,
               initials: currentUser.name.slice(0, 2).toUpperCase(),
             };
@@ -844,7 +925,7 @@ export function setupRealtimeServer(httpServer: HttpServer,options?:{
               },
             });
 
-            socket.send(JSON.stringify({
+            socket.send(JSON.stringify(callControlForClient({
               type: 'call:connected',
               payload: {
                 callId: callSession.callId,
@@ -853,7 +934,7 @@ export function setupRealtimeServer(httpServer: HttpServer,options?:{
                 caller: callSession.caller,
                 connectedAt: callSession.connectedAt,
               },
-            }));
+            }, currentUser.avatarReferences === true)));
             break;
           }
 
@@ -1113,6 +1194,7 @@ export function setupRealtimeServer(httpServer: HttpServer,options?:{
     });
 
     socket.on('close', () => {
+      translationAudioLane.clear();
       accountLease?.dispose();
       businessAudience.remove(translationPeer);
       translationPeer.closed=true;langpretationGateway?.stop(translationPeer);
@@ -1139,7 +1221,7 @@ export function setupRealtimeServer(httpServer: HttpServer,options?:{
         broadcastToAll({
           type: 'presence:update',
           payload: {
-            activeOnlineUsers: getActiveConnectedUsersList(),
+            activeOnlineUsers: getActiveConnectedUsersList({ compactAvatars: true }),
           },
         });
       }

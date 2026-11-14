@@ -10,13 +10,13 @@ import { finishAnsweredCall } from '../src/lib/callMediaErrors';
 
 // Actual signaling server and real WebSockets on an isolated HTTP server.
 // Auth fixture exists only in this bundle; no app auth bypass or customer writes.
-async function fixture(t: any, expired: string[] = []) {
+async function fixture(t: any, expired: string[] = [], photos: Record<string, string> = {}) {
   const usage:any[]=[];
   const activeAccounts = new Set(['caller-id','receiver-id','outsider-id']);
   const passwordEpochs = new Map<string,number>();
   const result = await build({
     entryPoints: ['src/server/realtimeServer.ts'], bundle: true, write: false,
-    platform: 'node', format: 'cjs', packages: 'external',
+    platform: 'node', format: 'cjs', packages: 'external', metafile: true,
     plugins: [{ name: 'isolated-auth', setup(b) {
       b.onResolve({ filter: /persistentAuth\.ts$/ }, () => ({ path: 'auth', namespace: 'fixture' }));
       b.onResolve({filter:/supabaseServer(?:\.ts)?$/},()=>({path:'database',namespace:'fixture'}));
@@ -43,19 +43,21 @@ async function fixture(t: any, expired: string[] = []) {
         export async function userFromToken(token){
           if(!['caller','receiver','outsider'].includes(token))return null;
           return {id:token+'-id',nvId:token==='receiver'?'0486222222':token==='caller'?'0486111111':'0486333333',
-            firstName:token,role:'PERSONAL',accountStatus:'ACTIVE',preferredLanguage:'en'};
+            firstName:token,role:'PERSONAL',accountStatus:'ACTIVE',preferredLanguage:'en',avatar:__profilePhoto(token)};
         }` }));
     } }],
   });
+  assert.ok(!Object.keys(result.metafile!.inputs).some(path => /src\/server\/(?:supabaseServer|persistentAuth)\.ts$/.test(path)),
+    'Offline call tests must not bundle real authentication or database adapters');
   const module = { exports: {} as any };
-  new Function('require','module','exports','__communicationRPC','__accountActive','__passwordEpoch',result.outputFiles[0].text)(createRequire(import.meta.url),module,module.exports,
+  new Function('require','module','exports','__communicationRPC','__accountActive','__passwordEpoch','__profilePhoto',result.outputFiles[0].text)(createRequire(import.meta.url),module,module.exports,
     async(_name:string,args:any)=>{
       usage.push(args);
       const ended=expired.includes(args.payload?.userId);
       return {data:{success:true,policy:{callTrialDays:30,warningSeconds:60},trialStartedAt:ended?'2020-01-01T00:00:00Z':null,
         trialEndsAt:ended?'2020-02-01T00:00:00Z':null,callSecondsRemaining:ended?0:null,sharedCallMinutes:0,
         liveTrialSecondsRemaining:180,translatedSecondsRemaining:0,amount:args.payload?.amount},error:null};
-    },(id:string)=>activeAccounts.has(id),(id:string)=>passwordEpochs.get(id)||0);
+    },(id:string)=>activeAccounts.has(id),(id:string)=>passwordEpochs.get(id)||0,(token:string)=>photos[token]);
   const server = createServer();
   const wss = module.exports.setupRealtimeServer(server);
   await new Promise<void>(resolve => server.listen(0,'127.0.0.1',resolve));
@@ -65,7 +67,7 @@ async function fixture(t: any, expired: string[] = []) {
     await new Promise<void>(resolve => wss.close(() => resolve()));
     await new Promise<void>(resolve => server.close(() => resolve()));
   });
-  async function peer(token: string) {
+  async function peer(token: string, compact = true) {
     const socket = new WebSocket(`ws://127.0.0.1:${(server.address() as any).port}/ws`);
     sockets.push(socket);
     const messages: any[] = [];
@@ -81,13 +83,81 @@ async function fixture(t: any, expired: string[] = []) {
       }
       throw new Error(`Missing ${type} for ${id||token}`);
     };
-    send('auth:presence',{token});
-    await wait('auth:presence_ack');
-    return {send,wait,socket,messages};
+    send('auth:presence',{token,avatarReferences:compact?1:undefined});
+    const presenceAck = await wait('auth:presence_ack');
+    return {send,wait,socket,messages,presenceAck};
   }
   return {peer,canJoin:module.exports.canJoinAgoraCall,usage,revoke:(id:string)=>activeAccounts.delete(id),
-    resetPassword:(id:string)=>passwordEpochs.set(id,Math.floor(Date.now()/1000))};
+    resetPassword:(id:string)=>passwordEpochs.set(id,Math.floor(Date.now()/1000)),
+    users:module.exports.getActiveConnectedUsersList};
 }
+
+test('large photos do not block compact call signaling and legacy clients keep their photos', async t => {
+  const photo='data:image/png;base64,'+'a'.repeat(663000);
+  const f=await fixture(t,[],{caller:photo,receiver:photo+'b'});
+  const a=await f.peer('caller'),b=await f.peer('receiver');
+  let presence=await a.wait('presence:update');
+  if(presence.activeOnlineUsers.length===1)presence=await a.wait('presence:update');
+  assert.equal(presence.activeOnlineUsers.length,2);
+  assert.ok(Buffer.byteLength(JSON.stringify(presence))<2048);
+  assert.ok(presence.activeOnlineUsers.every((user:any)=>!user.avatar&&/^[a-f0-9]{64}$/.test(user.avatarRevision)));
+  assert.equal(f.users().find((user:any)=>user.userId==='caller-id')?.avatar,photo);
+  a.send('call:initiate',{callId:'photo-control',recipientId:'receiver-id',callType:'audio'});
+  const incoming=await b.wait('call:incoming','photo-control');
+  assert.ok(Buffer.byteLength(JSON.stringify(incoming))<2048);
+  assert.equal(incoming.caller.avatar,undefined);
+  b.send('call:accept',{callId:'photo-control'});
+  const accepted=await a.wait('call:accepted','photo-control');
+  assert.equal(accepted.responder.avatar,undefined);
+  assert.match(accepted.responder.avatarRevision,/^[a-f0-9]{64}$/);
+  assert.ok(f.canJoin('receiver-id','0486222222',incoming.channelName));
+});
+
+test('legacy callers and recipients receive unchanged full-photo control events',async t=>{
+  const photo='data:image/png;base64,'+'l'.repeat(663000);
+  const f=await fixture(t,[],{caller:photo,receiver:photo});
+  const a=await f.peer('caller'),b=await f.peer('receiver',false);
+  assert.equal(b.presenceAck.activeOnlineUsers.find((user:any)=>user.userId==='caller-id')?.avatar,photo);
+  a.send('call:initiate',{callId:'legacy-photo',recipientId:'receiver-id',callType:'audio'});
+  const incoming=await b.wait('call:incoming','legacy-photo');
+  assert.equal(incoming.caller.avatar,photo);
+  b.send('call:accept',{callId:'legacy-photo'});
+  assert.equal((await b.wait('call:connected','legacy-photo')).caller.avatar,photo);
+  assert.equal((await a.wait('call:accepted','legacy-photo')).responder.avatar,undefined);
+  a.send('call:end',{callId:'legacy-photo'});
+  await a.wait('call:ended','legacy-photo');await b.wait('call:ended','legacy-photo');
+  b.send('call:initiate',{callId:'legacy-return',recipientId:'caller-id',callType:'audio'});
+  await a.wait('call:incoming','legacy-return');
+  a.send('call:accept',{callId:'legacy-return'});
+  assert.equal((await b.wait('call:accepted','legacy-return')).responder.avatar,photo);
+});
+
+test('listener permission precedes translated-call activation and allowance reservation',async t=>{
+  const f=await fixture(t),a=await f.peer('caller'),b=await f.peer('receiver');
+  const callId='permission-before-translation';
+  a.send('call:initiate',{callId,recipientId:'receiver-id',callType:'audio'});
+  await b.wait('call:incoming',callId);
+  b.send('call:accept',{callId});
+  await a.wait('call:accepted',callId);await b.wait('call:connected',callId);
+  a.send('call:media_ready',{callId});
+  a.send('call:language',{callId,language:'en'});
+  await a.wait('call:participant_language',callId);
+  b.messages.length=0;
+  b.send('call:media_ready',{callId});
+  b.send('call:language',{callId,language:'ak'});
+  await b.wait('call:participant_language',callId);
+  a.send('call:langpretation',{callId,enabled:true});
+  const request=await b.wait('call:langpretation_consent_request',callId);
+  assert.equal(f.usage.filter((entry:any)=>entry.action==='RESERVE'&&entry.payload.resource==='live').length,0);
+  assert.ok(!a.messages.some((message:any)=>message.type==='call:langpretation'&&message.payload.enabled));
+  b.send('call:langpretation_consent',{callId,requestId:request.requestId,accepted:true});
+  const enabled=await a.wait('call:langpretation',callId);
+  assert.equal(enabled.enabled,true);
+  assert.equal(enabled.consentGranted,true);
+  assert.equal(enabled.sponsorId,'caller-id');
+  assert.equal((await b.wait('call:langpretation',callId)).consentGranted,true);
+  assert.equal(f.usage.filter((entry:any)=>entry.action==='RESERVE'&&entry.payload.resource==='live').length,1);
+});
 
 test('a shared password-reset epoch closes an existing authenticated socket and drains its ringing call',async t=>{
   const f=await fixture(t),a=await f.peer('caller'),b=await f.peer('receiver');
@@ -264,7 +334,7 @@ test('hang-ups survive reconnect delay, expire safely and cannot cross accounts'
     entryPoints:['src/lib/realtimeClient.ts'],bundle:true,write:false,platform:'node',format:'cjs',packages:'external',
     plugins:[{name:'auth-stub',setup(b){
       b.onResolve({filter:/authClient$/},()=>({path:'auth',namespace:'fixture'}));
-      b.onLoad({filter:/.*/,namespace:'fixture'},()=>({contents:'export const authClient={getToken:()=>null}'}));
+      b.onLoad({filter:/.*/,namespace:'fixture'},()=>({contents:'export const authClient={getToken:()=>"authenticated-fixture"}'}));
     }}],
   });
   const module={exports:{} as any};
@@ -274,7 +344,8 @@ test('hang-ups survive reconnect delay, expire safely and cannot cross accounts'
   let reconnects=0;
   client.connect=()=>{reconnects++};
   client.registerUser({id:'caller-id',name:'Caller'});
-  client.socket={readyState:3,send:(raw:string)=>sent.push(JSON.parse(raw))};
+  reconnects=0;
+  client.socket={readyState:3,send:(raw:string)=>sent.push(JSON.parse(raw)),close(){this.readyState=3}};
   client.endCall('offline','channel','caller-id');
   assert.equal(reconnects,1);
   assert.equal(sent.length,0);

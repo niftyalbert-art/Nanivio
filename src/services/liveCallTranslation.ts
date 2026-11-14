@@ -76,6 +76,7 @@ export class TranslationPcmPlayer {
 }
 
 export class LiveCallTranslation {
+  voiceMode:'saved'|'adaptation'|'standard'='standard';
   private off:(()=>void)[]=[];
   private player=new TranslationPcmPlayer();
   private capture:MediaStream|null=null;
@@ -96,6 +97,7 @@ export class LiveCallTranslation {
     this.off.push(transport.on('langpretation:ready',p=>{
       if(p.callId!==callId||p.streamId!==this.streamId)return;
       this.frameSamples=p.audioFrameSamples===LIVE_PCM_FRAME_SAMPLES?LIVE_PCM_FRAME_SAMPLES:LEGACY_PCM_FRAME_SAMPLES;
+      this.voiceMode=p.voiceMode==='saved'?'saved':p.voiceConsent===true?'adaptation':'standard';
       this.ready=true;this.sequence=0;this.readyWait?.resolve();
       if(this.readyWait)clearTimeout(this.readyWait.timer);this.readyWait=null;
     }));
