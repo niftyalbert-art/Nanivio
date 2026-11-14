@@ -1,4 +1,5 @@
 ﻿import express from "express";
+import { callStartupTracing } from './src/server/callStartupTrace.ts';
 import { accountMayUseRoute } from './src/server/accountAccessPolicy';
 import { registerAccountAccessRoutes } from './src/server/accountAccessRoutes';
 import { registerAccountDeletionReview } from './src/server/accountDeletionReview';
@@ -1559,7 +1560,7 @@ app.get("/api/langpretation/azure-speech-token", requireAuthenticatedUser, async
   } catch (e:any) { res.status(500).json({error:e.message || 'Unable to issue Azure Speech token'}); }
 });
 
-app.post("/api/agora/token", requireAuthenticatedUser, async (req, res) => {
+app.post("/api/agora/token", callStartupTracing.begin('token'), requireAuthenticatedUser, callStartupTracing.authenticated, async (req, res) => {
   let stage: 'authorization' | 'allowance' | 'signing' = 'authorization';
   try {
     const { channelName: requestedChannel, expireTimeSeconds = 3600, role: requestedRole = "publisher" } = req.body;
@@ -1581,8 +1582,10 @@ app.post("/api/agora/token", requireAuthenticatedUser, async (req, res) => {
     }
 
     stage = 'allowance';
+    callStartupTracing.phase(res, 'allowance');
     const callTokenSeconds=channelName.startsWith('nanivio_call_')?await communicationTokenSeconds(userId,channelName):undefined;
     stage = 'signing';
+    callStartupTracing.phase(res, 'signing');
     const tokenData = generateAgoraRtcToken({
       channelName: channelName.trim(),
       uid: userId,
@@ -1605,7 +1608,7 @@ app.post("/api/agora/token", requireAuthenticatedUser, async (req, res) => {
   }
 });
 
-app.post("/api/agora/join", requireAuthenticatedUser, (req, res) => {
+app.post("/api/agora/join", callStartupTracing.begin('join'), requireAuthenticatedUser, callStartupTracing.authenticated, (req, res) => {
   try {
     const { channelName, callType = "video" } = req.body;
     if (typeof channelName !== 'string' || !channelName.trim() || channelName.length > 128) {
