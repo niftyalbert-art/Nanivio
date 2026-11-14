@@ -52,6 +52,7 @@ import { lookupNanivioUser, normalizeNanivioNumber } from '../utils/userLookup';
 import { agoraClient, AgoraTelemetryStats } from '../lib/agoraClient';
 import { callMediaErrorMessage, callMediaFailureDetails, finishAnsweredCall } from '../lib/callMediaErrors';
 import { CallLifecycle } from '../lib/callLifecycle';
+import { waitForCallAnswerConfirmation } from '../lib/callAnswerConfirmation';
 import { streamClient, StreamClientState } from '../lib/streamClient';
 import { startChatHistorySync } from '../lib/chatHistorySync';
 import { linkedPrivateConversation, privateConversationChannel, publishPrivateMessage, restoredPrivateMessage } from '../lib/privateChat';
@@ -1106,6 +1107,8 @@ export const NanivioProvider: React.FC<{ children: React.ReactNode }> = ({ child
   const incomingCallRef = useRef(incomingCall);
   incomingCallRef.current = incomingCall;
   const callLifecycle = useRef(new CallLifecycle());
+  const pendingCallAnswer = useRef<AbortController | null>(null);
+  useEffect(() => () => { pendingCallAnswer.current?.abort(); }, [currentUser.id, isAuthenticated]);
   const [onlineUsers, setOnlineUsers] = useState<RealtimeUser[]>([]);
   const [agoraStats, setAgoraStats] = useState<AgoraTelemetryStats>(agoraClient.getStats());
   const mediaControlPendingRef = useRef({ audio: false, video: false });
@@ -2003,7 +2006,7 @@ export const NanivioProvider: React.FC<{ children: React.ReactNode }> = ({ child
   };
 
   const acceptIncomingCall = (callId?: string) => {
-    if (!incomingCall) return;
+    if (!incomingCall || (callId && callId !== incomingCall.callId)) return;
 
     if (incomingRingtoneRef.current) {
       incomingRingtoneRef.current.stop();
@@ -2032,6 +2035,13 @@ export const NanivioProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
     setActiveCall(session);
 
+    pendingCallAnswer.current?.abort();
+    const confirmationController = new AbortController();
+    pendingCallAnswer.current = confirmationController;
+    const confirmation = waitForCallAnswerConfirmation(realtimeClient, {
+      callId: session.id, channelName: incomingCall.channelName,
+      callType: incomingCall.callType, signal: confirmationController.signal,
+    });
     // Send accept signal back to caller over WebSocket
     realtimeClient.acceptCall(
       incomingCall.callId,
@@ -2042,7 +2052,32 @@ export const NanivioProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
     // Mark connected, and initiate local billing, only after real media publication.
     void finishAnsweredCall(
-      () => connectCallMedia(session.id, incomingCall.channelName, incomingCall.callType, caller.id),
+      async () => {
+        try {
+          await confirmation;
+          if (confirmationController.signal.aborted || pendingCallAnswer.current !== confirmationController)
+            return false;
+        }
+        catch (error) {
+          if (currentAccountIdRef.current === currentUser.id && !callLifecycle.current.hasEnded(session.id)
+            && pendingCallAnswer.current === confirmationController) {
+            callLifecycle.current.end(session.id);
+            setActiveCall(previous => previous?.id === session.id ? {
+              ...previous, status: 'ended',
+              mediaError: error instanceof DOMException && error.name === 'TimeoutError'
+                ? 'The server did not confirm this call. Please try again.'
+                : 'This call ended before it could connect.',
+            } : previous);
+            realtimeClient.endCall(session.id, incomingCall.channelName, currentUser.id, caller.id);
+          }
+          return false;
+        } finally {
+          if (pendingCallAnswer.current === confirmationController) pendingCallAnswer.current = null;
+        }
+        if (currentAccountIdRef.current !== currentUser.id || callLifecycle.current.hasEnded(session.id))
+          return false;
+        return connectCallMedia(session.id, incomingCall.channelName, incomingCall.callType, caller.id);
+      },
       () => startBillingSession({
       sessionId: session.id,
       serviceType: session.isPaidServiceCall ? 'EXPERT_SERVICE' : 'COMMUNICATION',
@@ -2088,6 +2123,8 @@ export const NanivioProvider: React.FC<{ children: React.ReactNode }> = ({ child
   };
 
   const endCall = () => {
+    pendingCallAnswer.current?.abort();
+    pendingCallAnswer.current = null;
     if (activeCall) callLifecycle.current.end(activeCall.id);
     if (incomingCall) callLifecycle.current.end(incomingCall.callId);
     incomingCallRef.current = null;
