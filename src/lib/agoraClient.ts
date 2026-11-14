@@ -11,6 +11,8 @@ import AgoraRTC, {
   IRemoteVideoTrack,
 } from 'agora-rtc-sdk-ng';
 import { authClient } from './authClient';
+import { CallTranslationMixer } from './callTranslationMixer';
+import { callAudioOperation } from './callAudioOperation';
 import { CallMediaSetupError, callMediaFailureDetails, type CallMediaStage } from './callMediaErrors';
 
 // Keep production browser logging bounded; retain SDK warnings and errors.
@@ -83,6 +85,11 @@ class NanivioAgoraClient {
   private tokenRenewTimer:ReturnType<typeof setTimeout>|null=null;
   private communicationTokenExpiry=0;
   private translationAudioContext:AudioContext|null=null;
+  private translationMixer:CallTranslationMixer|null=null;
+  private translationPreparation:Promise<boolean>|null=null;
+  private translationRestoration:Promise<void>|null=null;
+  private translationEpoch=0;
+  private translationOriginalUnpublished=false;
 
   /** Called directly by the user's Langpretation/consent tap, before HTTP work. */
   public async unlockTranslatedAudio() {
@@ -410,7 +417,8 @@ class NanivioAgoraClient {
   }
   private rebuildLocalStream() {
     const tracks: MediaStreamTrack[] = [];
-    if (this.localAudio) tracks.push(this.localAudio.getMediaStreamTrack());
+    const microphone=this.originalAudio||this.localAudio;
+    if (microphone) tracks.push(microphone.getMediaStreamTrack());
     if (this.localVideo) tracks.push(this.localVideo.getMediaStreamTrack());
     this.localStream = tracks.length ? new MediaStream(tracks) : null;
     this.notifyLocalStream();
@@ -471,61 +479,130 @@ class NanivioAgoraClient {
    * Acceptance is not a claim that the remote browser has played the audio.
    */
   public scheduleTranslatedAudioToRemote(audioBuffer:AudioBuffer,onError:()=>void):boolean{
-    const channel=this.currentChannel;
+    const channel=this.currentChannel,epoch=this.translationEpoch;
     if(!channel||this.queuedTranslations>=2)return false;
     void this.injectTranslatedAudioToRemote(audioBuffer).then(success=>{
-      if(!success&&this.currentChannel===channel)onError();
-    }).catch(()=>{if(this.currentChannel===channel)onError();});
+      if(!success&&this.currentChannel===channel&&this.translationEpoch===epoch)onError();
+    }).catch(()=>{if(this.currentChannel===channel&&this.translationEpoch===epoch)onError();});
     return true;
   }
 
   public async injectTranslatedAudioToRemote(audioBuffer: AudioBuffer): Promise<boolean> {
-    const channel=this.currentChannel;
+    const channel=this.currentChannel,epoch=this.translationEpoch,generation=this.mediaGeneration;
     if(!channel||this.queuedTranslations>=2)return false;
     this.queuedTranslations++;
     const task=this.translationQueue.catch(()=>false).then(async()=>{
-      if(this.currentChannel!==channel)return false;
+      if(this.currentChannel!==channel||this.translationEpoch!==epoch||this.mediaGeneration!==generation)return false;
       return this.publishTranslatedAudio(audioBuffer,channel);
-    }).finally(()=>{this.queuedTranslations--;});
+    }).finally(()=>{
+      if(this.mediaGeneration===generation)this.queuedTranslations=Math.max(0,this.queuedTranslations-1);
+    });
     this.translationQueue=task;
     return task;
   }
 
-  private async publishTranslatedAudio(audioBuffer:AudioBuffer,channel:string):Promise<boolean>{
-    if (!this.client || !this.originalAudio || !audioBuffer) return false;
-    let ctx:AudioContext|null=null;
-    try {
-      if(!this.translationAudioContext||this.translationAudioContext.state==='closed')
-        this.translationAudioContext=NanivioAgoraClientAudioContext();
-      ctx = this.translationAudioContext;
-      await ctx.resume();
-      if(this.currentChannel!==channel)return false;
-      const destination = ctx.createMediaStreamDestination();
-      const source = ctx.createBufferSource(); source.buffer = audioBuffer;
-      const gain = ctx.createGain(); gain.gain.value = 1;
-      source.connect(gain); gain.connect(destination);
-      const streamTrack = destination.stream.getAudioTracks()[0];
-      if (!streamTrack) return false;
-      const custom = AgoraRTC.createCustomAudioTrack({ mediaStreamTrack: streamTrack, encoderConfig:'speech_standard' } as any);
-      await custom.setEnabled(!this.isAudioMuted);
-      if (this.localAudio) await this.client.unpublish(this.localAudio);
-      this.localAudio = custom;
-      await this.client.publish([custom]);
-      this.rebuildLocalStream();
-      this.translatedAudio = custom;
-      await new Promise<void>((resolve,reject)=>{source.onended=()=>resolve();try{source.start(0);}catch(error){reject(error);}});
-      return true;
-    } catch (err) { console.warn('[Agora] translated audio injection failed:', err); return false; }
-    finally{if(this.currentChannel===channel)await this.restoreOriginalAudioTrack();}
+  /** Negotiate the translated output once, before admitting microphone work. */
+  public prepareTranslatedAudio():Promise<boolean>{
+    if(this.translationRestoration)return Promise.resolve(false);
+    if(this.translationPreparation)return this.translationPreparation;
+    if(this.translationMixer&&this.localAudio===this.translatedAudio)return Promise.resolve(true);
+    const client=this.client,original=this.originalAudio,channel=this.currentChannel,generation=this.mediaGeneration;
+    if(!client||!original||!channel||!this.mediaReady||this.isAudioMuted)return Promise.resolve(false);
+    const epoch=this.translationEpoch;
+    const sameCall=()=>this.client===client&&this.currentChannel===channel&&this.mediaGeneration===generation;
+    const current=()=>sameCall()&&this.translationEpoch===epoch;
+    let mixer:CallTranslationMixer|null=null,custom:ILocalAudioTrack|null=null,ready=false;
+    // SDK operations cannot themselves be cancelled. Bound the wait and clean
+    // up late results using the captured client/track, never a replacement call.
+    const wait=(operation:()=>Promise<unknown>,late?:()=>void)=>callAudioOperation(operation,current,late);
+    const task=(async()=>{
+      try{
+        if(!this.translationAudioContext||this.translationAudioContext.state==='closed')
+          this.translationAudioContext=NanivioAgoraClientAudioContext();
+        const context=this.translationAudioContext;
+        await wait(()=>context.resume());
+        if(context.state!=='running')throw new Error('Tap Langpretation to enable call audio.');
+        const microphone=original.getMediaStreamTrack();
+        if(microphone.readyState!=='live')throw new Error('The call microphone is unavailable.');
+        mixer=new CallTranslationMixer(context,microphone);
+        if(!mixer.track)throw new Error('Translated audio output is unavailable.');
+        custom=AgoraRTC.createCustomAudioTrack({mediaStreamTrack:mixer.track,encoderConfig:'speech_standard'} as any);
+        this.translationMixer=mixer;this.translatedAudio=custom;
+        // setEnabled may replace/stop the browser track. A stable Web Audio
+        // destination must keep its track; setMuted only gates transmission.
+        await wait(()=>custom!.setMuted(this.isAudioMuted));
+        this.translationOriginalUnpublished=true;
+        await wait(()=>client.unpublish(original),()=>{
+          if(sameCall()&&this.localAudio===original)void client.publish([original]).catch(()=>{});
+        });
+        this.localAudio=custom;
+        await wait(()=>client.publish([custom!]),()=>{
+          void client.unpublish(custom!).catch(()=>{});
+        });
+        this.rebuildLocalStream();
+        ready=true;return true;
+      }catch{
+        if(current()){
+          if(custom)try{await wait(()=>client.unpublish(custom!));}catch{}
+          if(!current())return false;
+          this.localAudio=original;
+          if(this.translationOriginalUnpublished){
+            try{await wait(()=>client.publish([original]));if(current())this.translationOriginalUnpublished=false;}catch{}
+          }
+        }
+        return false;
+      }finally{
+        if(!ready){
+          mixer?.dispose();
+          try{custom?.stop();custom?.close();}catch{}
+          if(this.translationMixer===mixer)this.translationMixer=null;
+          if(this.translatedAudio===custom)this.translatedAudio=null;
+        }
+      }
+    })();
+    const tracked=task.finally(()=>{if(this.translationPreparation===tracked)this.translationPreparation=null;});
+    this.translationPreparation=tracked;
+    return tracked;
   }
 
-  public async restoreOriginalAudioTrack() {
-    if (!this.client || !this.originalAudio) return;
+  private async publishTranslatedAudio(audioBuffer:AudioBuffer,channel:string):Promise<boolean>{
+    const epoch=this.translationEpoch,generation=this.mediaGeneration;
+    if(!audioBuffer||this.currentChannel!==channel||!await this.prepareTranslatedAudio()
+      ||this.currentChannel!==channel||this.translationEpoch!==epoch||this.mediaGeneration!==generation)return false;
+    return this.translationMixer?.play(audioBuffer)??false;
+  }
+
+  public restoreOriginalAudioTrack():Promise<void>{
+    if(this.translationRestoration)return this.translationRestoration;
+    const task=this.restoreTranslationOutput();
+    const tracked=task.finally(()=>{if(this.translationRestoration===tracked)this.translationRestoration=null;});
+    this.translationRestoration=tracked;
+    return tracked;
+  }
+
+  private async restoreTranslationOutput() {
+    const client=this.client,original=this.originalAudio,generation=this.mediaGeneration;
+    if (!client || !original) return;
+    const epoch=++this.translationEpoch;
+    this.translationMixer?.dispose();this.translationMixer=null;
+    await this.translationPreparation;
+    if(this.client!==client||this.mediaGeneration!==generation)return;
+    if(this.localAudio===original&&!this.translatedAudio&&!this.translationOriginalUnpublished)return;
+    const current=()=>this.client===client&&this.mediaGeneration===generation
+      &&this.translationEpoch===epoch&&!this.translationMixer;
+    const wait=(operation:()=>Promise<unknown>,late?:()=>void)=>callAudioOperation(operation,current,late);
     try {
-      if (this.localAudio) await this.client.unpublish(this.localAudio).catch(()=>{});
-      this.localAudio = this.originalAudio;
-      this.originalAudio.setEnabled(!this.isAudioMuted);
-      await this.client.publish([this.originalAudio]);
+      const previous=this.localAudio;
+      if(previous&&previous!==original)await wait(()=>client.unpublish(previous)).catch(()=>{});
+      if(this.client!==client||this.mediaGeneration!==generation)return;
+      this.localAudio = original;
+      await wait(()=>original.setEnabled(!this.isAudioMuted));
+      await wait(()=>client.publish([original]),()=>{
+        if(this.client!==client||this.mediaGeneration!==generation||this.localAudio!==original)
+          void client.unpublish(original).catch(()=>{});
+      });
+      if(this.client!==client||this.mediaGeneration!==generation)return;
+      this.translationOriginalUnpublished=false;
       this.translatedAudio?.stop(); this.translatedAudio?.close(); this.translatedAudio = null;
       this.rebuildLocalStream();
     } catch (e) { console.warn('[Agora] restore original audio failed:', e); }
@@ -536,7 +613,11 @@ class NanivioAgoraClient {
     const previous = this.isAudioMuted;
     this.isAudioMuted = muted;
     try {
-      await this.localAudio?.setEnabled(!muted);
+      const preparing=Boolean(this.translationPreparation);
+      const targets=new Set([this.localAudio,preparing?this.translatedAudio:null]);
+      if(preparing&&muted)void this.restoreOriginalAudioTrack();
+      await Promise.all([...targets].map(track=>track===this.translatedAudio
+        ?track?.setMuted(muted):track?.setEnabled(!muted)));
       if (generation === this.mediaGeneration) this.rebuildLocalStream();
     } catch (error) {
       if (generation !== this.mediaGeneration) return;
@@ -596,6 +677,10 @@ class NanivioAgoraClient {
   public async leaveChannel() {
     this.callAbort?.abort(new DOMException('Call was cancelled.', 'AbortError'));
     this.callAbort=null;
+    ++this.translationEpoch;
+    this.translationMixer?.dispose();this.translationMixer=null;
+    this.translationPreparation=null;this.translationRestoration=null;this.translationOriginalUnpublished=false;
+    this.translationQueue=Promise.resolve(true);this.queuedTranslations=0;
     const translationContext=this.translationAudioContext;
     this.translationAudioContext=null;
     if(translationContext)void translationContext.close().catch(()=>{});

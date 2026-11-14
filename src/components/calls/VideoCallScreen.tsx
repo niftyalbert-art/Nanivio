@@ -227,6 +227,9 @@ export const VideoCallScreen: React.FC<VideoCallScreenProps> = ({ onEndCall }) =
             : voiceConsent?'Listening continuously. Voice preservation requested; allow about 10–20 seconds of speech.':supportsPalabraVoiceCloning(hostLang.code,remoteLang.code)?'Listening continuously.':'Listening continuously with a standard translated voice.');
         return;
       }
+      setSpeechStatus('Preparing translated call audio…');
+      if(!await agoraClient.prepareTranslatedAudio())throw new Error('Translated call audio could not start. Try restarting Langpretation.');
+      if(!current())return;
       setSpeechStatus('Starting speech Langpretation…');
 
       const started = await speechService.startListening(
