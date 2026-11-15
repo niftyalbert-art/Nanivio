@@ -107,7 +107,8 @@ export class LiveCallTranslation {
     }));
     this.off.push(transport.on('langpretation:remote_start',p=>{
       if(p.callId!==callId||p.speakerId===userId)return;
-      if(this.remoteStreamId!==p.streamId)this.player.begin(p.streamId);
+      if(this.remoteStreamId!==p.streamId)this.player.begin(p.streamId,
+        Number.isSafeInteger(p.sequence)&&p.sequence>=0?p.sequence:0);
       this.remoteStreamId=p.streamId;this.remoteSpeakerId=p.speakerId;
       this.remoteVoiceConsent=p.voiceConsent===true;
       // Readiness is not proof of audible translated media. Keep original call

@@ -32,12 +32,20 @@ function fixture() {
   };
   class Context {
     sampleRate = 48000; state = 'running'; currentTime = 0; destination = {};
+    starts: number[] = [];
     constructor() { contexts.push(this); }
     resume() { return Promise.resolve(); }
     close() { this.state = 'closed'; return Promise.resolve(); }
     createGain() { return { gain: { value: 1 }, connect() {}, disconnect() {} }; }
     createMediaStreamSource() { return { connect() {}, disconnect() {} }; }
     createScriptProcessor() { return { onaudioprocess: null, connect() {}, disconnect() {} }; }
+    createBuffer(_channels: number, samples: number, rate: number) {
+      return {duration:samples/rate,getChannelData:()=>new Float32Array(samples)};
+    }
+    createBufferSource() {
+      return {buffer:null,onended:null,connect(){},disconnect(){},stop(){},
+        start:(time:number)=>this.starts.push(time)};
+    }
   }
   const context = vm.createContext({
     module: { exports: {} }, transport, window: { AudioContext: Context },
@@ -62,6 +70,20 @@ function fixture() {
   const emit = (event: string, payload: any) => { for (const listener of listeners.get(event) || []) listener(payload); };
   return { service, contexts, sent, tracks, emit, errors };
 }
+
+test('reopened listener resumes at the announced sequence without accepting old chunks',async t=>{
+  const f=fixture();t.after(()=>f.service.dispose());await f.service.unlock();
+  const identity={callId:'call-one',streamId:'remote-123',speakerId:'speaker-B'};
+  f.emit('langpretation:remote_start',{...identity,sequence:12});await flush();
+  const data=Buffer.alloc(4800).toString('base64');
+  f.emit('langpretation:audio_out',{...identity,sequence:12,data});
+  f.emit('langpretation:remote_start',{...identity,sequence:12});await flush();
+  f.emit('langpretation:audio_out',{...identity,sequence:13,data});
+  assert.equal(f.contexts[0].starts.length,2);
+  assert.equal(f.errors.length,0);
+  f.emit('langpretation:audio_out',{...identity,sequence:11,data});
+  assert.equal(f.errors.length,1);
+});
 
 test('cancelled readiness cannot stop its replacement or accept stale readiness', async t => {
   const f = fixture(); t.after(() => f.service.dispose());

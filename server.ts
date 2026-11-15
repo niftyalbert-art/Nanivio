@@ -1569,6 +1569,9 @@ app.post("/api/agora/token", callStartupTracing.begin('token'), requireAuthentic
       return res.status(400).json({ error: "channelName is required" });
     }
     const channelName = requestedChannel.trim();
+    if (req.body.registerParticipant === true && !['audio', 'video'].includes(req.body.callType)) {
+      return res.status(400).json({ error: "A valid callType is required to register this participant." });
+    }
     const authUser = (req as any).authUser;
     const userId = authenticatedUserId(req);
     if (channelName.startsWith('nanivio_business_')) {
@@ -1596,9 +1599,24 @@ app.post("/api/agora/token", callStartupTracing.begin('token'), requireAuthentic
       ...(callTokenSeconds?{minimumExpireSeconds:1}:{}),
     });
 
+    // Reuse this request's authorization and allowance decision instead of
+    // requiring a second authenticated round trip before media may publish.
+    // Renewals and older clients retain their existing registration lifecycle.
+    const participantRegistered = req.body.registerParticipant === true;
+    if (participantRegistered) {
+      if (req.aborted || res.destroyed) return;
+      callStartupTracing.phase(res, 'registration');
+      registerAgoraParticipant(channelName, req.body.callType, {
+        uid: userId,
+        name: String(authUser?.displayName ||
+          `${authUser?.firstName || ''} ${authUser?.lastName || ''}`.trim() || authUser?.name || 'User'),
+        role: 'publisher',
+      });
+    }
     res.json({
       success: true,
       ...tokenData,
+      ...(participantRegistered ? { participantRegistered: true } : {}),
       ...(callTokenSeconds?{communicationExpiresIn:callTokenSeconds}:{}),
     });
   } catch (error: any) {

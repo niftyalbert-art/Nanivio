@@ -77,6 +77,59 @@ test('hangup immediately rejects a pending SDK join and disposes its late comple
   assert.ok(events.filter(event=>event==='leave').length>=2);
 });
 
+for (const callType of ['audio','video'] as const) {
+  test(`${callType} combined admission publishes without a second authenticated request`,async t=>{
+    const {client,events}=await fixture(t);
+    const requests:{path:string;body:any}[]=[];
+    globalThis.fetch=async (input,options)=>{
+      requests.push({path:String(input),body:JSON.parse(String(options?.body||'{}'))});
+      if(String(input).endsWith('/token'))return Response.json({
+        token:'fixture-token',appId:'fixture-app',agoraUid:1,participantRegistered:true,
+      });
+      if(String(input).endsWith('/join'))throw new Error('Redundant registration request');
+      if(String(input).endsWith('/leave'))events.push('unregister');
+      return Response.json({success:true});
+    };
+    const stats=await client.joinChannel('combined','user','User',callType);
+    assert.equal(stats.connectionState,'CONNECTED');
+    const token=requests.find(r=>r.path.endsWith('/token'))!;
+    assert.equal(token.body.registerParticipant,true);
+    assert.equal(token.body.callType,callType);
+    assert.equal(requests.some(r=>r.path.endsWith('/join')),false);
+    assert.equal(stats.hasLocalMedia,true);
+    await client.leaveChannel();
+  });
+}
+
+test('combined admission still waits for SDK success and unregisters on failure',async t=>{
+  const {client,sdk,events}=await fixture(t);
+  globalThis.fetch=async input=>{
+    if(String(input).endsWith('/token'))return Response.json({
+      token:'fixture-token',appId:'fixture-app',agoraUid:1,participantRegistered:true,
+    });
+    if(String(input).endsWith('/leave'))events.push('unregister');
+    return Response.json({success:true});
+  };
+  const create=sdk.createClient;
+  sdk.createClient=()=>{const rtc=create();rtc.join=async()=>{throw new Error('SDK unavailable');};return rtc;};
+  await assert.rejects(client.joinChannel('combined','user','User','audio'));
+  assert.equal(client.getStats().connectionState,'DISCONNECTED');
+  assert.equal(client.getStats().hasLocalMedia,false);
+  assert.ok(events.includes('unregister'));
+});
+
+test('token renewal does not request another participant registration',async t=>{
+  const {client}=await fixture(t);
+  let body:any;
+  globalThis.fetch=async (_input,options)=>{
+    body=JSON.parse(String(options?.body||'{}'));
+    return Response.json({token:'renewed',appId:'fixture-app'});
+  };
+  await client.fetchToken('existing','user');
+  assert.equal(body.registerParticipant,undefined);
+  assert.equal(body.callType,undefined);
+});
+
 test('cancelled token responses cannot overwrite the next call credentials or expiry',async t=>{
   const {client}=await fixture(t),entered=deferred(),old=deferred<Response>();
   const base=globalThis.fetch;let oldSignal:AbortSignal|undefined;

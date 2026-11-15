@@ -172,7 +172,7 @@ class NanivioAgoraClient {
   }
 
   public async fetchToken(channelName: string, uid: string | number,
-    owner?: { generation: number; signal: AbortSignal }): Promise<{ token: string; appId: string; agoraUid?: number }> {
+    owner?: { generation: number; signal: AbortSignal; callType?: 'audio' | 'video' }): Promise<{ token: string; appId: string; agoraUid?: number; participantRegistered: boolean }> {
     const request = new AbortController();
     const onCancel = () => request.abort(owner?.signal.reason ||
       new DOMException('Call was cancelled.', 'AbortError'));
@@ -189,7 +189,8 @@ class NanivioAgoraClient {
     }
     const res = await fetch('/api/agora/token', {
       method: 'POST', headers,
-      body: JSON.stringify({ channelName, uid, role: 'publisher', expireTimeSeconds: 3600 }),
+      body: JSON.stringify({ channelName, uid, role: 'publisher', expireTimeSeconds: 3600,
+        ...(owner?.callType ? { registerParticipant: true, callType: owner.callType } : {}) }),
       signal: request.signal,
     });
     const data = await res.json().catch(() => ({}));
@@ -203,7 +204,8 @@ class NanivioAgoraClient {
     }
     this.token = data.token; this.appId = data.appId; this.agoraUid = data.agoraUid;
     this.communicationTokenExpiry=typeof data.communicationExpiresIn==='number'?Date.now()+data.communicationExpiresIn*1000:0;
-    return { token: data.token, appId: data.appId, agoraUid: data.agoraUid };
+    return { token: data.token, appId: data.appId, agoraUid: data.agoraUid,
+      participantRegistered: data.participantRegistered === true };
     } finally {
       clearTimeout(timer);
       owner?.signal.removeEventListener('abort', onCancel);
@@ -262,7 +264,7 @@ class NanivioAgoraClient {
     this.notifyStats();
 
     const token = await this.setupStep(stage,
-      () => this.fetchToken(channelName, uid, { generation, signal: controller.signal }), generation);
+      () => this.fetchToken(channelName, uid, { generation, signal: controller.signal, callType }), generation);
     stillCurrent();
     const numericUid = token.agoraUid ?? this.agoraUid ?? 0;
     stage = 'join';
@@ -279,6 +281,9 @@ class NanivioAgoraClient {
     // the RTC handshake, not after it has spent most of the startup deadline.
     // Neither publication nor CONNECTED is permitted until both have succeeded.
     const registration = this.setupStep('registration', async () => {
+      // Updated servers register inside the already authenticated token request.
+      // A legacy response must still complete the separate registration path.
+      if (token.participantRegistered) return;
       try {
         const response = await fetch('/api/agora/join', {
           method: 'POST', headers, body: JSON.stringify({ channelName, callType }),
