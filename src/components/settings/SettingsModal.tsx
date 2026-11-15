@@ -36,6 +36,7 @@ export const SettingsModal: React.FC = () => {
     setSettingsActiveTab,
     userSettings,
     updateUserSettings,
+    settingsSaveStatus,
     userSecuritySessions,
     terminateOtherSessions,
     unblockUser,
@@ -153,8 +154,21 @@ export const SettingsModal: React.FC = () => {
           })}
         </div>
 
+        {settingsSaveStatus !== 'idle' && (
+          <p role={settingsSaveStatus === 'error' ? 'alert' : 'status'}
+            className={`px-4 py-2 text-xs font-semibold ${settingsSaveStatus === 'error' ? 'bg-rose-950/60 text-rose-200' : 'bg-slate-800 text-slate-200'}`}>
+            {settingsSaveStatus === 'loading' ? 'Loading saved settings. Please wait before making changes.'
+              : settingsSaveStatus === 'saving' ? 'Saving settings. Changes will appear once confirmed.'
+              : 'Settings could not be loaded or saved. Changes were not kept. Check your connection, then reopen Settings or try again.'}
+          </p>
+        )}
+        {/* Keep preference controls unchanged until the server confirms the last save. */}
+        <fieldset
+          disabled={['loading', 'saving'].includes(settingsSaveStatus) && ['privacy', 'notifications', 'data', 'theme'].includes(settingsActiveTab)}
+          className="min-h-0 flex-1 overflow-y-auto disabled:opacity-70"
+        >
         {/* Tab Body */}
-        <div className="p-4 sm:p-6 overflow-y-auto flex-1 space-y-6">
+        <div className="p-4 sm:p-6 space-y-6">
           {/* TAB 1: PRIVACY */}
           {settingsActiveTab === 'privacy' && (
             <div className="space-y-5">
@@ -952,6 +966,7 @@ export const SettingsModal: React.FC = () => {
             </div>
           )}
         </div>
+        </fieldset>
 
         {/* Footer */}
         <div className="p-4 border-t border-slate-800 bg-slate-900/80 flex items-center justify-between">

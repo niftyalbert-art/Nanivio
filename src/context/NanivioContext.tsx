@@ -57,6 +57,7 @@ import { streamClient, StreamClientState } from '../lib/streamClient';
 import { startChatHistorySync } from '../lib/chatHistorySync';
 import { linkedPrivateConversation, privateConversationChannel, publishPrivateMessage, restoredPrivateMessage } from '../lib/privateChat';
 import { durableChatMedia } from '../lib/chatAttachments';
+import { saveUserSettings } from '../lib/userSettingsPersistence';
 import { ownedChatSnapshot, readPrivateChatCache, writePrivateChatCache } from '../lib/privateChatStorage';
 import { realtimeClient, IncomingCallEvent, RealtimeUser } from '../lib/realtimeClient';
 import { buildMalviContextMemory } from '../lib/malviMemory';
@@ -246,6 +247,7 @@ interface NanivioContextType {
   // User Settings, Privacy & Safety
   userSettings: UserSettings;
   updateUserSettings: (updates: Partial<UserSettings>) => void;
+  settingsSaveStatus: 'loading' | 'idle' | 'saving' | 'error';
   userSecuritySessions: UserSecuritySession[];
   terminateOtherSessions: () => void;
   deactivateAccount: (reason?: string) => Promise<void>;
@@ -2568,27 +2570,77 @@ export const NanivioProvider: React.FC<{ children: React.ReactNode }> = ({ child
   // -------------------------------------------------------------
   // USER SETTINGS, PRIVACY, SAFETY & SESSIONS
   // -------------------------------------------------------------
-  const [userSettings, setUserSettings] = useState<UserSettings>(() => {
-    try {
-      const saved = localStorage.getItem('nanivio_user_settings');
-      if (saved) return JSON.parse(saved);
-    } catch {}
-    return INITIAL_USER_SETTINGS;
-  });
+  const [userSettings, setUserSettings] = useState<UserSettings>(INITIAL_USER_SETTINGS);
+  const [settingsSaveStatus, setSettingsSaveStatus] = useState<'loading' | 'idle' | 'saving' | 'error'>('loading');
+  const settingsOwner = useRef('');
+  const settingsAbort = useRef<AbortController | null>(null);
+  const settingsQueue = useRef<Promise<void>>(Promise.resolve());
+  const pendingSettings = useRef(0);
+  const desiredSettings = useRef<UserSettings>(INITIAL_USER_SETTINGS);
+  const confirmedSettings = useRef<UserSettings>(INITIAL_USER_SETTINGS);
 
   const updateUserSettings = useCallback((updates: Partial<UserSettings>) => {
-    setUserSettings(prev => {
-      const updated = { ...prev, ...updates, privacy:{...prev.privacy,...(updates.privacy||{})}, notifications:{...prev.notifications,...(updates.notifications||{})}, dataUsage:{...prev.dataUsage,...(updates.dataUsage||{})} };
-      const token=authClient.getToken();
-      fetch('/api/settings',{method:'PUT',headers:{'Content-Type':'application/json',...(token?{Authorization:`Bearer ${token}`}:{})},body:JSON.stringify(updated)}).catch(()=>{});
-      return updated;
+    if (!isAuthenticated || settingsSaveStatus === 'loading' || !settingsAbort.current) return;
+    const prev = desiredSettings.current;
+    const updated = { ...prev, ...updates, privacy:{...prev.privacy,...(updates.privacy||{})}, notifications:{...prev.notifications,...(updates.notifications||{})}, dataUsage:{...prev.dataUsage,...(updates.dataUsage||{})} };
+    desiredSettings.current = updated;
+    pendingSettings.current++;
+    setSettingsSaveStatus('saving');
+    const owner = settingsOwner.current, signal = settingsAbort.current.signal;
+    settingsQueue.current = settingsQueue.current.then(async () => {
+      if (owner !== settingsOwner.current || signal.aborted) return;
+      try {
+        const saved = await saveUserSettings(updated, authClient.getToken(), signal);
+        if (owner !== settingsOwner.current || signal.aborted) return;
+        confirmedSettings.current = saved;
+        if (--pendingSettings.current === 0) {
+          desiredSettings.current = saved;
+          setUserSettings(saved);
+          setSettingsSaveStatus('idle');
+        }
+      } catch {
+        if (owner !== settingsOwner.current || signal.aborted) return;
+        if (--pendingSettings.current === 0) {
+          desiredSettings.current = confirmedSettings.current;
+          setUserSettings(confirmedSettings.current);
+          setSettingsSaveStatus('error');
+        }
+      }
     });
-  }, []);
+  }, [isAuthenticated, settingsSaveStatus]);
 
   useEffect(()=>{
-    if(!isAuthenticated)return; const token=authClient.getToken();
-    fetch('/api/settings',{headers:token?{Authorization:`Bearer ${token}`}:{}}).then(r=>r.ok?r.json():Promise.reject(new Error('settings unavailable'))).then(d=>{if(d.settings)setUserSettings(d.settings);}).catch(()=>{});
-  },[isAuthenticated]);
+    settingsAbort.current?.abort();
+    const controller = new AbortController();
+    const owner = isAuthenticated ? currentUser.id : '';
+    settingsOwner.current = owner;
+    settingsAbort.current = isAuthenticated ? controller : null;
+    settingsQueue.current = Promise.resolve();
+    pendingSettings.current = 0;
+    desiredSettings.current = INITIAL_USER_SETTINGS;
+    confirmedSettings.current = INITIAL_USER_SETTINGS;
+    setUserSettings(INITIAL_USER_SETTINGS);
+    setSettingsSaveStatus(isAuthenticated ? 'loading' : 'idle');
+    if (isAuthenticated) {
+      const token = authClient.getToken();
+      fetch('/api/settings', { headers: token ? { Authorization: `Bearer ${token}` } : {}, signal: controller.signal })
+        .then(async response => {
+          if (!response.ok) throw new Error('Settings unavailable');
+          const result = await response.json();
+          if (result?.success !== true || !result.settings || typeof result.settings !== 'object')
+            throw new Error('Settings unavailable');
+          if (controller.signal.aborted || owner !== settingsOwner.current) return;
+          confirmedSettings.current = result.settings;
+          desiredSettings.current = result.settings;
+          setUserSettings(result.settings);
+          setSettingsSaveStatus('idle');
+        })
+        .catch(() => {
+          if (!controller.signal.aborted && owner === settingsOwner.current) setSettingsSaveStatus('error');
+        });
+    }
+    return () => controller.abort();
+  }, [isAuthenticated, currentUser.id]);
 
   const [userSecuritySessions, setUserSecuritySessions] = useState<UserSecuritySession[]>([]);
 
@@ -2599,38 +2651,38 @@ export const NanivioProvider: React.FC<{ children: React.ReactNode }> = ({ child
   const blockUser = useCallback((userId: string) => {
     updateUserSettings({
       privacy: {
-        ...userSettings.privacy,
-        blockedUsers: Array.from(new Set([...userSettings.privacy.blockedUsers, userId])),
+        ...desiredSettings.current.privacy,
+        blockedUsers: Array.from(new Set([...desiredSettings.current.privacy.blockedUsers, userId])),
       },
     });
-  }, [userSettings.privacy, updateUserSettings]);
+  }, [updateUserSettings]);
 
   const unblockUser = useCallback((userId: string) => {
     updateUserSettings({
       privacy: {
-        ...userSettings.privacy,
-        blockedUsers: userSettings.privacy.blockedUsers.filter(id => id !== userId),
+        ...desiredSettings.current.privacy,
+        blockedUsers: desiredSettings.current.privacy.blockedUsers.filter(id => id !== userId),
       },
     });
-  }, [userSettings.privacy, updateUserSettings]);
+  }, [updateUserSettings]);
 
   const restrictUser = useCallback((userId: string) => {
     updateUserSettings({
       privacy: {
-        ...userSettings.privacy,
-        restrictedUsers: Array.from(new Set([...userSettings.privacy.restrictedUsers, userId])),
+        ...desiredSettings.current.privacy,
+        restrictedUsers: Array.from(new Set([...desiredSettings.current.privacy.restrictedUsers, userId])),
       },
     });
-  }, [userSettings.privacy, updateUserSettings]);
+  }, [updateUserSettings]);
 
   const unrestrictUser = useCallback((userId: string) => {
     updateUserSettings({
       privacy: {
-        ...userSettings.privacy,
-        restrictedUsers: userSettings.privacy.restrictedUsers.filter(id => id !== userId),
+        ...desiredSettings.current.privacy,
+        restrictedUsers: desiredSettings.current.privacy.restrictedUsers.filter(id => id !== userId),
       },
     });
-  }, [userSettings.privacy, updateUserSettings]);
+  }, [updateUserSettings]);
 
   const submitSafetyReport = useCallback(async (
     report: Omit<SafetyReport, 'id' | 'timestamp'>,
@@ -3663,6 +3715,7 @@ export const NanivioProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
         userSettings,
         updateUserSettings,
+        settingsSaveStatus,
         userSecuritySessions,
         terminateOtherSessions,
         deactivateAccount,

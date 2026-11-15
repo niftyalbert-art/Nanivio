@@ -3,7 +3,6 @@ import React, { useState, useEffect, useRef } from 'react';
 import {
   Send,
   Sparkles,
-  Paperclip,
   Smile,
   Phone,
   Video,
@@ -72,11 +71,6 @@ export const StreamChatInterface: React.FC<StreamChatInterfaceProps> = ({ onCate
   const [showOriginalMap, setShowOriginalMap] = useState<Record<string, boolean>>({});
   const [isCreatingChannel, setIsCreatingChannel] = useState(false);
   const [newChannelName, setNewChannelName] = useState('');
-  const [attachmentSimulation, setAttachmentSimulation] = useState<{
-    name: string;
-    type: 'file' | 'image';
-    url: string;
-  } | null>(null);
 
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
 
@@ -174,24 +168,11 @@ export const StreamChatInterface: React.FC<StreamChatInterfaceProps> = ({ onCate
 
   const handleSendMessage = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
-    if (!inputText.trim() && !attachmentSimulation) return;
+    if (!inputText.trim()) return;
 
     const textToSend = inputText.trim();
     setInputText('');
     setIsSending(true);
-
-    const attachments = attachmentSimulation
-      ? [
-          {
-            type: attachmentSimulation.type as 'image' | 'file',
-            url: attachmentSimulation.url,
-            name: attachmentSimulation.name,
-            size: '240 KB',
-          },
-        ]
-      : undefined;
-
-    setAttachmentSimulation(null);
 
     // Determine target language (from receiver)
     const activeCh = channels.find((c) => c.id === selectedChannelId);
@@ -210,7 +191,6 @@ export const StreamChatInterface: React.FC<StreamChatInterfaceProps> = ({ onCate
       targetLang,
       createdAt: Date.now(),
       reactions: [],
-      attachments,
     };
     setMessages((prev) => [...prev, tempMsg]);
 
@@ -220,7 +200,7 @@ export const StreamChatInterface: React.FC<StreamChatInterfaceProps> = ({ onCate
       myLanguage,
       targetLang,
       currentUser.avatar,
-      attachments
+      undefined
     );
 
     if (created) {
@@ -580,39 +560,7 @@ export const StreamChatInterface: React.FC<StreamChatInterfaceProps> = ({ onCate
 
         {/* Input Bar */}
         <div className="p-3 border-t border-slate-800 bg-[#0c1424]/90 space-y-2">
-          {/* Attachment Preview Chip */}
-          {attachmentSimulation && (
-            <div className="flex items-center justify-between p-2 bg-slate-900 border border-purple-500/40 rounded-xl text-xs text-purple-300">
-              <div className="flex items-center gap-2">
-                <FileText className="w-4 h-4" />
-                <span>{attachmentSimulation.name}</span>
-              </div>
-              <button
-                onClick={() => setAttachmentSimulation(null)}
-                className="text-slate-400 hover:text-white"
-              >
-                <X className="w-3.5 h-3.5" />
-              </button>
-            </div>
-          )}
-
           <form onSubmit={handleSendMessage} className="flex items-center gap-2">
-            {/* Attachment Button */}
-            <button
-              type="button"
-              onClick={() => {
-                setAttachmentSimulation({
-                  name: 'Document_Attachment.pdf',
-                  type: 'file',
-                  url: 'https://example.com/docs/file.pdf',
-                });
-              }}
-              className="p-3 rounded-2xl bg-slate-900 hover:bg-slate-800 text-slate-400 hover:text-purple-300 border border-slate-700 transition-colors cursor-pointer"
-              title="Attach Document"
-            >
-              <Paperclip className="w-5 h-5 -rotate-45" />
-            </button>
-
             {/* Roomy Main Text Input */}
             <input
               type="text"
@@ -625,7 +573,7 @@ export const StreamChatInterface: React.FC<StreamChatInterfaceProps> = ({ onCate
             {/* Send Button */}
             <button
               type="submit"
-              disabled={(!inputText.trim() && !attachmentSimulation) || isSending}
+              disabled={!inputText.trim() || isSending}
               className="w-12 h-12 rounded-2xl bg-purple-600 hover:bg-purple-500 disabled:opacity-40 text-white font-bold transition-all shadow-md hover:scale-105 flex items-center justify-center shrink-0 cursor-pointer"
             >
               <Send className="w-5 h-5" />

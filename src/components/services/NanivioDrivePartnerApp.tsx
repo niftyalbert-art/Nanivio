@@ -435,16 +435,16 @@ export const NanivioDrivePartnerApp: React.FC<NanivioDrivePartnerAppProps> = ({
           </div>
         </div>
 
-        {/* Action Controls: SOS Emergency + Go Online Toggle */}
+        {/* Safety information and online status */}
         <div className="flex items-center gap-2">
-          {/* Emergency SOS Shield */}
+          {/* No in-app emergency dispatch is connected. */}
           <button
             onClick={() => setShowSafetyModal(true)}
             className="p-2.5 rounded-2xl bg-rose-500/20 hover:bg-rose-500/30 text-rose-400 border border-rose-500/40 font-bold text-xs flex items-center gap-1.5 transition-all cursor-pointer"
-            title="Driver Safety & SOS Shield"
+            title="Driver safety information"
           >
             <Shield className="w-4 h-4" />
-            <span className="hidden sm:inline">Safety SOS</span>
+            <span className="hidden sm:inline">Safety info</span>
           </button>
 
           {/* Go Online / Offline Toggle Button */}
@@ -1130,14 +1130,14 @@ export const NanivioDrivePartnerApp: React.FC<NanivioDrivePartnerAppProps> = ({
         </div>
       )}
 
-      {/* SAFETY SOS SHIELD MODAL (UBER SAFETY TOOLKIT) */}
+      {/* Safety information; no emergency dispatch or trip sharing is connected. */}
       {showSafetyModal && (
         <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
           <div className="max-w-md w-full p-5 rounded-3xl bg-slate-950 border border-rose-500/40 shadow-2xl space-y-4">
             <div className="flex items-center justify-between pb-2 border-b border-slate-800">
               <div className="flex items-center gap-2">
                 <Shield className="w-5 h-5 text-rose-400" />
-                <h3 className="text-sm font-black text-white">Nanivio Driver Safety Shield</h3>
+                <h3 className="text-sm font-black text-white">Driver safety information</h3>
               </div>
               <button
                 onClick={() => setShowSafetyModal(false)}
@@ -1147,26 +1147,20 @@ export const NanivioDrivePartnerApp: React.FC<NanivioDrivePartnerAppProps> = ({
               </button>
             </div>
 
-            <p className="text-xs text-slate-400">
-              Your safety is our highest priority. All Nanivio Drive trips are GPS tracked in real-time.
+            <p className="text-xs text-rose-200" role="alert">
+              Nanivio cannot dispatch emergency services or share a live trip from this screen. If you need urgent help, use your phone to contact local emergency services directly.
             </p>
 
             <div className="space-y-2">
-              <button
-                onClick={() => alert('Emergency SOS Alert Dispatched to Ghana Police & Nanivio Rapid Response.')}
-                className="w-full p-3.5 rounded-2xl bg-rose-600 hover:bg-rose-500 text-white font-black text-xs flex items-center justify-center gap-2 cursor-pointer shadow-lg shadow-rose-600/30"
-              >
+              <div className="w-full p-3.5 rounded-2xl bg-rose-950/40 border border-rose-500/30 text-rose-200 text-xs font-bold flex items-center gap-2">
                 <AlertTriangle className="w-4 h-4" />
-                <span>Trigger Emergency SOS (Police / Ambulance)</span>
-              </button>
+                <span>In-app emergency dispatch is unavailable</span>
+              </div>
 
-              <button
-                onClick={() => alert('Live Trip GPS Tracking Link copied to clipboard to share with family or fleet manager.')}
-                className="w-full p-3 rounded-xl bg-slate-900 hover:bg-slate-800 text-slate-200 text-xs font-bold flex items-center justify-center gap-2 border border-slate-700 cursor-pointer"
-              >
+              <div className="w-full p-3 rounded-xl bg-slate-900 text-slate-400 text-xs font-bold flex items-center gap-2 border border-slate-700">
                 <Share2 className="w-4 h-4 text-emerald-400" />
-                <span>Share Live Trip Link with Family</span>
-              </button>
+                <span>Live trip sharing is unavailable</span>
+              </div>
             </div>
           </div>
         </div>
