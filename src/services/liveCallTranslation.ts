@@ -201,7 +201,12 @@ export class LiveCallTranslation {
       await wait;
       return generation===this.generation&&this.ready;
     }catch(error){
-      this.stop();if(generation+1===this.generation)this.callbacks.error(error instanceof Error?error.message:'Microphone capture failed.');
+      // A cancelled readiness/unlock promise can reject after a replacement
+      // start has acquired capture. Only the owning attempt may stop it.
+      if(generation===this.generation){
+        this.stop();
+        this.callbacks.error(error instanceof Error?error.message:'Microphone capture failed.');
+      }
       return false;
     }
   }

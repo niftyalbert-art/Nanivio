@@ -32,7 +32,7 @@ function fixture() {
     terminate(){this.terminated=true;this.readyState=3;this.emit('close');}
   }
   const context=vm.createContext({
-    module:{exports:{}},Buffer,AbortController,MockSocket,process:{env:{PALABRA_API_KEY:'fixture-only-secret'}},
+    module:{exports:{}},Buffer,AbortController,MockSocket,performance,process:{env:{PALABRA_API_KEY:'fixture-only-secret'}},
     require:(name:string)=>{assert.equal(name,'node:crypto');return {randomUUID:()=> 'fixture-connection'};},
     console:{warn(){}},setTimeout:(fn:()=>void)=>{timeouts.set(++id,fn);return id;},
     clearTimeout:(i:number)=>timeouts.delete(i),
