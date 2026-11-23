@@ -132,7 +132,7 @@ test('Failed persistence of a started Anam session stops it before refund/releas
   assert.deepEqual(f.calls.slice(-3), [`anam-stop:${connection.sessionId}`, 'settle', 'release']);
 });
 
-test('SDK connection handoff requires an owned live Nanivio cookie session', async () => {
+test('SDK connection handoff requires an owned Nanivio cookie or bearer session', async () => {
   const app = express();
   app.use(express.json());
   const previous = liveAvatarService.owned;
@@ -144,8 +144,12 @@ test('SDK connection handoff requires an owned live Nanivio cookie session', asy
     return { avatarProvider: 'anam', anamConnection: connection } as any;
   };
   registerAssistantRoutes(app, (req, res, next) => {
-    assert.equal(req.headers.authorization, undefined, 'Anam bearer must not become Nanivio authentication');
-    if (req.headers.cookie !== 'fixture=session') return res.status(401).json({ success: false });
+    if (req.path.includes('/anam-bearer/')) {
+      if (req.headers.authorization !== 'Bearer fixture-nanivio') return res.status(401).json({ success: false });
+    } else {
+      assert.equal(req.headers.authorization, undefined, 'Anam bearer must not become Nanivio authentication');
+      if (req.headers.cookie !== 'fixture=session') return res.status(401).json({ success: false });
+    }
     (req as any).authUser = { id: 'fixture-owner' }; next();
   }, () => true, false);
   const server = app.listen(0, '127.0.0.1');
@@ -164,6 +168,15 @@ test('SDK connection handoff requires an owned live Nanivio cookie session', asy
     const crossOwner = await fetch(base + '/22222222-2222-4222-8222-222222222222/anam/v1/engine/session',
       { method: 'POST', headers: { Cookie: 'fixture=session' } });
     assert.equal(crossOwner.status, 404);
+    const bearerPath = path.replace('/anam/', '/anam-bearer/');
+    assert.equal((await fetch(base + bearerPath, { method: 'POST',
+      headers: { Authorization: 'Bearer fixture-anam' } })).status, 401);
+    const bearer = await fetch(base + bearerPath, { method: 'POST',
+      headers: { Authorization: 'Bearer fixture-nanivio' } });
+    assert.equal(bearer.status, 200);
+    assert.deepEqual(await bearer.json(), connection);
+    assert.equal((await fetch(base + '/22222222-2222-4222-8222-222222222222/anam-bearer/v1/engine/session',
+      { method: 'POST', headers: { Authorization: 'Bearer fixture-nanivio' } })).status, 404);
   } finally {
     liveAvatarService.owned = previous;
     await new Promise<void>(resolve => server.close(() => resolve()));

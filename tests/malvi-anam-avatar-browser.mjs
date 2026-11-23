@@ -8,7 +8,9 @@ import { launchBrowser } from '../scripts/live-call-checks/cdp.mjs';
 const bundle = await build({
   stdin: { resolveDir: process.cwd(), loader: 'ts', contents: `
     import {MalviAnamAvatarSession} from './src/lib/malviAnamAvatarSession';
+    import {authClient} from './src/lib/authClient';
     window.run=async()=>{
+      authClient.getToken=()=> 'nanivio-browser-cookie';
       const live=new MalviAnamAvatarSession('fixture-lease','fixture-token');
       let ready=0,closed=0;live.on('ready',()=>ready++);live.on('closed',()=>closed++);
       await live.start();
@@ -32,7 +34,13 @@ const bundle = await build({
       if(options.disableInputAudio!==true||options.api.retry.maxAttempts!==1||
         options.api.baseUrl!=='/api/assistant/session/fixture-lease/anam'||
         options.metrics.disableClientMetrics!==true)throw Error('Unsafe renderer configuration');
-      return {pairedAudioVideo:true,streamedUtterance:true,immediateLocalMute:true,
+      if(window.fixture.token!=='fixture-token')throw Error('Cookie mode lost its spent renderer token');
+      authClient.getToken=()=> 'fixture-nanivio-jwt';
+      new MalviAnamAvatarSession('fixture-lease','fixture-token');
+      if(window.fixture.token!=='fixture-nanivio-jwt'||
+        window.fixture.options.api.baseUrl!=='/api/assistant/session/fixture-lease/anam-bearer')
+        throw Error('Existing bearer sign-in cannot authenticate the handoff');
+      return {cookieAndBearerHandoff:true,pairedAudioVideo:true,streamedUtterance:true,immediateLocalMute:true,
         lateOutputRefused:true,stoppedTracks:true,providerRequests:0,liveLipSyncVerified:false};
     };` },
   bundle: true, format: 'iife', write: false,
@@ -44,7 +52,7 @@ const bundle = await build({
         export const AnamEvent={CONNECTION_CLOSED:'closed'};
         export function createClient(token,options){
           const listeners={};let streaming=false;
-          window.fixture={options,chunks:[],ends:0,interrupts:0,emitClosed:()=>listeners.closed?.()};
+          window.fixture={token,options,chunks:[],ends:0,interrupts:0,emitClosed:()=>listeners.closed?.()};
           return {
             addListener:(event,callback)=>listeners[event]=callback,
             getActiveSessionId:()=>streaming?'fixture-provider':null,isStreaming:()=>streaming,

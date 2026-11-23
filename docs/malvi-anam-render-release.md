@@ -2,7 +2,9 @@
 
 ## Status
 
-Prepared for review, not pushed or deployed. This is not a claim that live
+The initial release was pushed as `f138f3a`; the owner confirmed its Render
+deployment. A subsequent authentication compatibility correction is prepared
+locally and needs its own approval before push. This is not a claim that live
 Anam speech, lip synchronization or the entire Nanivio application is ready.
 
 The candidate is based directly on the confirmed remote
@@ -60,6 +62,28 @@ MALVI_AVATAR_PROVIDER=anam
 Do not remove the HeyGen credentials while that renderer remains selected.
 Anam does not replace `GEMINI_API_KEY`, the selected ElevenLabs setup, Redis or
 Supabase. No additional Anam brain, voice or translation key is required.
+
+### Authentication compatibility correction
+
+Read-only live checks confirmed healthy HTTP responses and selected HeyGen,
+configured Gemini voice, no missing Malvi settings, and voice availability.
+They also established that this release baseline uses bearer authentication,
+not the workspace's newer browser-cookie implementation.
+
+The correction gives the SDK separate same-origin handoffs for those two
+transports. Existing clients use their Nanivio bearer token only against the
+authenticated `anam-bearer` endpoint; cookie clients retain the original
+cookie-authenticated endpoint, which discards the SDK's spent Anam bearer.
+Both paths recheck session ownership and live access and only return the
+connection already registered by the backend. Neither starts a provider session.
+No browser-session migration is silently included.
+
+The corrected candidate passed a fresh frozen dependency installation,
+TypeScript, production build, 35 selected regression checks and the paired
+browser fixture for both authentication transports. The installed SDK's real
+REST client was also exercised with a synthetic credential to confirm that its
+authenticated request stays on the same-origin handoff, not Anam's REST API.
+These checks did not start paid provider sessions.
 
 Before any push, recheck that the remote still matches the candidate's parent.
 Use a non-forced update to `malvi-production-upgrade` only. Preserve all

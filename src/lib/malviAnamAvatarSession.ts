@@ -1,5 +1,7 @@
 import { createClient, AnamEvent } from '@anam-ai/js-sdk';
 import type { MalviAvatarRenderer } from './malviAvatarRenderer';
+import { authClient } from './authClient';
+import { BROWSER_SESSION_MARKER } from '../shared/browserSession';
 
 /** Render backend-produced speech on the same paired audio/video element. */
 export class MalviAnamAvatarSession implements MalviAvatarRenderer {
@@ -14,11 +16,15 @@ export class MalviAnamAvatarSession implements MalviAvatarRenderer {
   private emit(event: string) { for (const callback of this.listeners.get(event) || []) callback(); }
 
   constructor(id: string, token: string) {
-    this.client = createClient(token, {
+    const appToken = authClient.getToken();
+    const bearer = Boolean(appToken && appToken !== BROWSER_SESSION_MARKER);
+    // The SDK sends this credential only to our same-origin REST handoff.
+    // Anam's engine session was already created and registered server-side.
+    this.client = createClient(bearer ? appToken! : token, {
       disableInputAudio: true,
       // The server has already created, registered and bounded this session.
       // This endpoint returns its saved connection, never starts a second one.
-      api: { baseUrl: `/api/assistant/session/${encodeURIComponent(id)}/anam`,
+      api: { baseUrl: `/api/assistant/session/${encodeURIComponent(id)}/${bearer ? 'anam-bearer' : 'anam'}`,
         retry: { maxAttempts: 1 }, requestTimeoutMs: 10_000 },
       metrics: { disableClientMetrics: true },
     });

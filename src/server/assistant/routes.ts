@@ -211,19 +211,23 @@ export function registerAssistantRoutes(app: Express, auth: Auth, enabled: () =>
     if (!['input', 'interrupt'].includes(req.body?.kind)) throw new AssistantError(400, 'INPUT_REQUIRED', 'Only explicit user input may extend the idle deadline.');
     res.json({ success: true, ...await liveAvatarService.activity(userId(req), validId(req)) });
   }));
-  // The SDK sends its spent Anam token as Authorization. This browser-only
+  const anamHandoff = run(async (req, res) => {
+    if (!enabled()) throw new AssistantError(403, 'MALVI_DISABLED', 'Malvi is currently disabled.');
+    const record = await liveAvatarService.owned(userId(req), validId(req));
+    if (record.avatarProvider !== 'anam' || !record.anamConnection) {
+      throw new AssistantError(404, 'ANAM_SESSION_NOT_FOUND', 'This conversation has no Anam connection.');
+    }
+    res.json(record.anamConnection);
+  });
+  // Existing production/native clients use their Nanivio bearer credential.
+  // The SDK never contacts Anam's REST API with that credential.
+  app.post('/api/assistant/session/:id/anam-bearer/v1/engine/session', auth, anamHandoff);
+  // Cookie clients' SDK sends its spent Anam token as Authorization. This
   // connection handoff must instead authenticate Nanivio's HttpOnly cookie.
   // No token from the SDK is trusted and no provider request is made here.
   app.post('/api/assistant/session/:id/anam/v1/engine/session',
     (req, res, next) => { delete req.headers.authorization; return auth(req, res, next); },
-    run(async (req, res) => {
-      if (!enabled()) throw new AssistantError(403, 'MALVI_DISABLED', 'Malvi is currently disabled.');
-      const record = await liveAvatarService.owned(userId(req), validId(req));
-      if (record.avatarProvider !== 'anam' || !record.anamConnection) {
-        throw new AssistantError(404, 'ANAM_SESSION_NOT_FOUND', 'This conversation has no Anam connection.');
-      }
-      res.json(record.anamConnection);
-    }));
+    anamHandoff);
   app.get('/api/assistant/session/:id/clock', auth, run(async (req, res) => {
     const record = await liveAvatarService.owned(userId(req), validId(req));
     // A visibility/resume check is read-only and must never renew idle time.
