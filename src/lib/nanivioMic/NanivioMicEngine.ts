@@ -2,9 +2,15 @@ import {
   encodeNanivioMicFrame, isMicId, nanivioMicLevel, NANIVIO_MIC_EVENTS,
   NANIVIO_MIC_RATE, NANIVIO_MIC_SAMPLES, type NanivioMicStatus,
 } from '../../shared/nanivioMicProtocol';
+import { SustainedSpeechGate } from './SustainedSpeechGate';
+
+export interface NanivioMicProcessing {
+  echoCancellation: boolean | null;
+}
 
 export interface NanivioMicCapture {
-  start(onFrame: (pcm: ArrayBuffer) => void, onError: (message: string) => void, signal: AbortSignal): Promise<void>;
+  start(onFrame: (pcm: ArrayBuffer) => void, onError: (message: string) => void, signal: AbortSignal,
+    onProcessing?: (processing: NanivioMicProcessing) => void): Promise<void>;
   stop(): void;
 }
 export interface NanivioMicTransport {
@@ -15,11 +21,14 @@ export interface NanivioMicSnapshot {
   state: 'idle' | 'starting' | 'connecting' | 'listening' | 'hearing' | 'processing' | 'error';
   captureActive: boolean; serverReceiving: boolean; level: number;
   sentFrames: number; acknowledgedFrames: number; error: string;
+  echoCancellation: boolean | null;
+  warning: string;
 }
 interface Options {
   sessionId: string; streamId: string; capture: NanivioMicCapture; transport: NanivioMicTransport;
   onState: (state: NanivioMicSnapshot) => void;
   onSpeechStart?: () => void; onSpeechEnd?: () => void;
+  canInterrupt?: () => boolean; onBargeIn?: () => void;
   now?: () => number;
   startupTimeoutMs?: number; captureTimeoutMs?: number; deliveryTimeoutMs?: number;
 }
@@ -41,6 +50,8 @@ export class NanivioMicEngine {
   private processing = false;
   private lastSpeech = 0;
   private error = '';
+  private echoCancellation: boolean | null = null;
+  private speechGate = new SustainedSpeechGate();
   private controller = new AbortController();
   private unsubscribe: (() => void) | null = null;
   private timers = new Map<string, ReturnType<typeof setTimeout>>();
@@ -53,6 +64,9 @@ export class NanivioMicEngine {
         : !this.receiving ? 'connecting' : this.speaking ? 'hearing' : this.processing ? 'processing' : 'listening',
       captureActive: this.captureActive, serverReceiving: this.receiving, level: this.level,
       sentFrames: this.sequence, acknowledgedFrames: this.acknowledged, error: this.error,
+      echoCancellation: this.echoCancellation,
+      warning: this.captureActive && this.echoCancellation !== true
+        ? 'Echo cancellation could not be confirmed. Use headphones to reduce feedback; automatic local interruption is unavailable.' : '',
     });
   }
   private clearTimer(name: string) { clearTimeout(this.timers.get(name)); this.timers.delete(name); }
@@ -89,6 +103,11 @@ export class NanivioMicEngine {
       const audio = encodeNanivioMicFrame(pcm);
       this.deadline('capture', this.options.captureTimeoutMs ?? 4000, 'No microphone audio is arriving. Check microphone access and tap Start talking to retry.');
       this.level = nanivioMicLevel(pcm);
+      if (this.speechGate.update(this.level / 5, this.ready && this.captureActive
+        && this.echoCancellation === true && this.options.canInterrupt?.() === true)) {
+        this.options.onBargeIn?.();
+      }
+      if (!this.active) return; // A failed interruption may have closed capture.
       const now = this.options.now?.() ?? Date.now();
       // Level is RMS multiplied by five. Match the cloud's 0.009 RMS
       // speech floor so quieter words still receive listening feedback.
@@ -122,7 +141,11 @@ export class NanivioMicEngine {
       })) throw new Error('Nanivio Mic requires an active live connection.');
       // Invoked synchronously in the user gesture; do not wait for the gateway
       // before resuming the browser/OS capture context.
-      await this.options.capture.start(this.frame, message => this.fail(message), this.controller.signal);
+      await this.options.capture.start(this.frame, message => this.fail(message), this.controller.signal, processing => {
+        if (!this.active) return;
+        this.echoCancellation = processing.echoCancellation;
+        this.publish();
+      });
       if (!this.active) return;
       this.captureActive = true;
       this.deadline('capture', this.options.captureTimeoutMs ?? 4000, 'No microphone audio is arriving. Check microphone access and tap Start talking to retry.');
@@ -134,6 +157,7 @@ export class NanivioMicEngine {
   }
   private dispose() {
     this.active = false; this.captureActive = false; this.receiving = false; this.level = 0;
+    this.speechGate.reset();
     for (const timer of this.timers.values()) clearTimeout(timer);
     this.timers.clear();
     this.unsubscribe?.(); this.unsubscribe = null;

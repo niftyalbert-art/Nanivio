@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { encodeMalviMicrophoneFrame } from '../src/lib/malviMicrophone.ts';
 import { realtimeClient } from '../src/lib/realtimeClient.ts';
+import { authClient } from '../src/lib/authClient.ts';
 
 test('microphone thread transfers retain the exact PCM16 little-endian speech bytes', () => {
   const pcm = new ArrayBuffer(6400);
@@ -26,11 +27,18 @@ test('live microphone audio is sent immediately or rejected, never queued for re
   const state = realtimeClient as unknown as {
     socket: { readyState: number; send: (value: string) => void } | null;
     connect: () => void;
+    currentUser: any;
   };
   const originalSocket = state.socket;
   const originalConnect = state.connect;
+  const originalUser = state.currentUser;
+  const originalToken = authClient.getToken;
   const sent: string[] = [];
   try {
+    // Isolate frame scheduling inside an authenticated client fixture. This
+    // marker is not a server credential and never authorizes a live request.
+    authClient.getToken = () => 'nanivio-browser-cookie';
+    state.currentUser = { userId: 'microphone-fixture' };
     state.connect = () => { throw new Error('Do not reconnect or queue a live microphone frame'); };
     state.socket = { readyState: WebSocket.CLOSED, send: value => sent.push(value) };
     assert.equal(realtimeClient.send('malvi:brain_audio', { sessionId: 'fixture', audio: 'fixture' }), false);
@@ -41,5 +49,7 @@ test('live microphone audio is sent immediately or rejected, never queued for re
   } finally {
     state.socket = originalSocket;
     state.connect = originalConnect;
+    state.currentUser = originalUser;
+    authClient.getToken = originalToken;
   }
 });

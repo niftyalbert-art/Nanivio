@@ -39,6 +39,7 @@ type BrainConnection = {
   endAudio: () => void;
   close: () => void;
   closeProvider: () => void;
+  cancelGeneration: () => void;
   closed: boolean;
   lastActivityAt: number;
   idleTimer: ReturnType<typeof setTimeout> | null;
@@ -54,6 +55,7 @@ type BrainConnection = {
   openingSent: boolean;
   outputCharacters: number;
   outputGeneration: number;
+  interruptGeneration: number;
   startedAt: number;
   isFirstTurn: boolean;
   research: ReturnType<typeof createConversationTools>;
@@ -143,12 +145,12 @@ function acceptsOutput(connection: BrainConnection) {
   return connection.outputLanguage === connection.language;
 }
 
-async function refreshConversationActivity(connection: BrainConnection, activeUntil?: number) {
+async function refreshConversationActivity(connection: BrainConnection) {
   if (connection.closed) return;
   const now = Date.now();
-  if (activeUntil === undefined && now - connection.lastActivityAt < 1000) return;
+  if (now - connection.lastActivityAt < 1000) return;
   connection.lastActivityAt = now;
-  const activity = await liveAvatarService.activity(connection.owner, connection.sessionId, activeUntil);
+  const activity = await liveAvatarService.activity(connection.owner, connection.sessionId);
   if (connection.closed) return;
   send(connection.socket, 'malvi:brain_activity', {
     sessionId: connection.sessionId, ...activity,
@@ -161,8 +163,8 @@ async function refreshConversationActivity(connection: BrainConnection, activeUn
   });
 }
 
-function observeConversationActivity(connection: BrainConnection, activeUntil?: number) {
-  void refreshConversationActivity(connection, activeUntil).catch(() => {
+function observeConversationActivity(connection: BrainConnection) {
+  void refreshConversationActivity(connection).catch(() => {
     if (connection.closed) return;
     send(connection.socket, 'malvi:brain_error', {
       sessionId: connection.sessionId, message: 'The live session could not confirm its activity. End it and start a new conversation.',
@@ -198,8 +200,6 @@ async function flushAudio(socket: WebSocket, connection: BrainConnection, ended:
   });
   const pcm24k = audio.toString('base64');
   connection.playbackUntil = Math.max(Date.now(), connection.playbackUntil) + audio.length / 48;
-  await refreshConversationActivity(connection, connection.playbackUntil);
-  if (connection.closed || connection.language !== language || generation !== connection.outputGeneration) return;
   send(socket, 'malvi:brain_audio', {
     sessionId: connection.sessionId,
     language,
@@ -235,7 +235,6 @@ function flushNativeAudio(socket: WebSocket, connection: BrainConnection, ended 
     return;
   }
   connection.playbackUntil = Math.max(Date.now(), connection.playbackUntil) + audio.durationMs;
-  observeConversationActivity(connection, connection.playbackUntil);
   send(socket, 'malvi:brain_audio', {
     ...audio, sessionId: connection.sessionId, language: connection.language,
     sampleRate: 24000, format: 'pcm_s16le', channels: 1, ended,
@@ -261,7 +260,9 @@ async function connectGemini(
 ) {
   const provider = getLiveBrainProviderConfig().providers.gemini;
   const client = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY! });
-  const handleReferences = createGeminiReferenceBridge(connection.research, response => session.sendToolResponse(response), () => connection.closed);
+  const handleReferences = createGeminiReferenceBridge(
+    authorizedTools(connection), response => session.sendToolResponse(response),
+    () => connection.closed, () => connection.interruptGeneration);
   const session: Session = await client.live.connect({
     model: provider.model,
     config: {
@@ -286,11 +287,17 @@ async function connectGemini(
         void handleReferences(message).catch(() => onFailure('The reference tool response could not reach the selected brain.'));
         const serverContent = message.serverContent;
         if (serverContent?.interrupted) {
+          connection.interruptGeneration++;
           saveMemoryTurn(connection);
           connection.outputGeneration++;
           connection.speech.cancel(); connection.playbackUntil = 0;
           connection.nativeVoice.cancel();
-          connection.transcript = ''; connection.outputLanguage = null;
+          connection.transcript = '';
+          // The provider acknowledgement is the cancelled-generation boundary:
+          // its old output precedes this event. A separate turnComplete is not
+          // guaranteed here. Keep rejecting in-flight output until this ack,
+          // then allow the next response instead of discarding a whole new turn.
+          connection.outputLanguage = null;
           send(socket, 'malvi:brain_interrupted', { sessionId: connection.sessionId });
           return;
         }
@@ -343,6 +350,12 @@ async function connectGemini(
     session.sendRealtimeInput({ audio: { data: base64, mimeType: 'audio/pcm;rate=16000' } });
   };
   connection.endAudio = () => session.sendRealtimeInput({ audioStreamEnd: true });
+  // ClientContent interrupts current Gemini generation. Unlike a new completed
+  // user turn, this does not request another response or fabricate microphone input.
+  connection.cancelGeneration = () => session.sendClientContent({
+    turns: [{ role: 'user', parts: [{ text: 'I interrupted this response. Stop speaking and wait for my next input.' }] }],
+    turnComplete: false,
+  });
   connection.sendVision = image => {
     session.sendRealtimeInput({ video: image });
     session.sendClientContent({ turns: [{ role: 'user', parts: [{ text: VISION_INSTRUCTION }] }], turnComplete: true });
@@ -372,7 +385,9 @@ async function connectOpenAI(
 ) {
   const provider = getLiveBrainProviderConfig().providers.openai;
   const live = new LiveWS(new OpenAI({ apiKey: process.env.OPENAI_API_KEY!, maxRetries: 0 }));
-  const handleReferences = createOpenAIReferenceBridge(connection.research, event => live.send(event), () => connection.closed);
+  const handleReferences = createOpenAIReferenceBridge(
+    authorizedTools(connection), event => live.send(event),
+    () => connection.closed, () => connection.interruptGeneration);
   let started = false;
   let outputTimer: ReturnType<typeof setTimeout> | null = null;
   const scheduleSpeech = () => {
@@ -453,6 +468,9 @@ async function connectOpenAI(
     live.send({ type: 'session.input_audio.append', audio: pcm24k } as any);
   };
   connection.endAudio = () => {};
+  // This Live protocol has no documented response-cancel command. Fail closed
+  // rather than leave billable generation running behind a locally muted UI.
+  connection.cancelGeneration = () => onFailure('The conversation was interrupted and stopped. Start a new conversation when you are ready.');
   connection.changeLanguage = code => {
     live.send({
       type: 'session.instructions.append',
@@ -464,6 +482,17 @@ async function connectOpenAI(
     clearTimeout(timeout);
     if (outputTimer) clearTimeout(outputTimer);
     live.close();
+  };
+}
+
+function authorizedTools(connection: BrainConnection) {
+  return async (name: string | undefined, args: unknown) => {
+    const generation = connection.interruptGeneration;
+    // Provider arguments never select an account. Reauthorize the server-owned
+    // session before accessing memory or starting any external tool operation.
+    await liveAvatarService.owned(connection.owner, connection.sessionId);
+    if (connection.closed || generation !== connection.interruptGeneration) return { error: 'This request was cancelled.' };
+    return connection.research(name, args);
   };
 }
 
@@ -483,6 +512,7 @@ function createConnection(socket: WebSocket, userId: string, sessionId: string, 
     endAudio: () => {},
     closed: false,
     closeProvider: () => {},
+    cancelGeneration: () => {},
     close: () => {
       if (connection.closed) return;
       saveMemoryTurn(connection);
@@ -509,6 +539,7 @@ function createConnection(socket: WebSocket, userId: string, sessionId: string, 
     openingSent: false,
     outputCharacters: 0,
     outputGeneration: 0,
+    interruptGeneration: 0,
     startedAt: Date.now(),
     isFirstTurn: true,
     memory, memoryUser: '', memoryAssistant: '', memoryTurn: 0, memoryWrites: Promise.resolve(),
@@ -700,12 +731,9 @@ export const malviLiveBrainController = {
       send(socket, 'malvi:brain_error', { sessionId, message: 'The microphone audio frame was invalid.' });
       return false;
     }
-    if (hasSpeech(pcm) && (connection.speech.pending || connection.playbackUntil > now)) {
-      connection.outputGeneration++;
-      connection.speech.cancel();
-      connection.playbackUntil = 0;
-      send(socket, 'malvi:brain_interrupted', { sessionId });
-    }
+    // Do not cancel from a single RMS frame: noise and speaker echo can cross
+    // that threshold. The provider's VAD and the echo-processed client's
+    // sustained barge-in gate own interruption. Every frame still reaches ASR.
     if (hasSpeech(pcm) && Date.now() - connection.lastActivityAt > 1000) {
       try {
         await refreshConversationActivity(connection);
@@ -726,7 +754,14 @@ export const malviLiveBrainController = {
   interrupt(socket: WebSocket, userId: string, sessionId: string) {
     const connection = activeBySocket.get(socket)?.get(sessionId);
     if (!connection || connection.owner !== userId || connection.closed) return;
+    if (connection.outputLanguage === 'interrupted') {
+      // A duplicate client request must not inject another synthetic user turn
+      // or cancel the user's new input while provider acknowledgement is pending.
+      send(socket, 'malvi:brain_interrupted', { sessionId });
+      return;
+    }
     connection.outputGeneration++;
+    connection.interruptGeneration++;
     connection.speech.cancel();
     connection.nativeVoice.cancel();
     connection.playbackUntil = 0;
@@ -735,6 +770,11 @@ export const malviLiveBrainController = {
     // buffered chunks. The next complete turn resets this marker.
     connection.outputLanguage = 'interrupted';
     send(socket, 'malvi:brain_interrupted', { sessionId });
+    try { connection.cancelGeneration(); }
+    catch {
+      send(socket, 'malvi:brain_error', { sessionId, message: 'The interrupted conversation could not be stopped safely. Start a new conversation.' });
+      void this.stopSession(userId, sessionId);
+    }
   },
   async stopSession(userId: string, sessionId: string) {
     const connection = activeBySession.get(sessionId);

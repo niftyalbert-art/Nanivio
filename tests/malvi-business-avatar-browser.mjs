@@ -16,8 +16,10 @@ function Fixture(){
 root.render(<Fixture/>);`;
 const sdk = `
 export const SessionEvent={SESSION_STREAM_READY:'ready',SESSION_DISCONNECTED:'disconnected'};
+export const SessionMode={LITE:'LITE'};
+export const AgentEventsEnum={AVATAR_SPEAK_STARTED:'speech-start',AVATAR_SPEAK_ENDED:'speech-end'};
 export class MalviLiveAvatarSession{
- constructor(){this.events={};this.ctx=null;}
+ constructor(){this.events={};this.ctx=null;this.mode='LITE';this.voiceChat={start:async()=>{},stop:async()=>{}};}
  on(event,fn){this.events[event]=fn;}
  async start(){const canvas=document.createElement('canvas');canvas.width=100;canvas.height=100;
  canvas.getContext('2d').fillRect(0,0,100,100);this.ctx=new AudioContext();

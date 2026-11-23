@@ -5,8 +5,26 @@ import { malviVoiceSetup, parseMalviVoiceProvider } from '../src/server/assistan
 import { GeminiNativeVoice } from '../src/server/assistant/geminiNativeVoice.ts';
 import { applyMalviGeminiEffects } from '../src/server/assistant/geminiVoiceEffects.ts';
 import { estimatedMalviCaptionTrack, malviCaptionAt, MalviCaptionPlayer } from '../src/lib/malviSpeechTiming.ts';
-import { registerAssistantRoutes } from '../src/server/assistant/routes.ts';
-import { liveAvatarService } from '../src/server/assistant/liveAvatarService.ts';
+import * as avatarModule from '../src/server/assistant/liveAvatarService.ts';
+import { readFileSync } from 'node:fs';
+import { createRequire } from 'node:module';
+import ts from 'typescript';
+
+const { liveAvatarService } = avatarModule;
+// This suite exercises voice policy, not the persistent billing backend.
+// Real entitlement enforcement is covered by the runtime-access/allowance suites.
+const routesUrl = new URL('../src/server/assistant/routes.ts', import.meta.url);
+const routeRequire = createRequire(routesUrl);
+const routeModule = { exports: {} as any };
+const routeCode = ts.transpileModule(readFileSync(routesUrl, 'utf8'), {
+  compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, esModuleInterop: true },
+}).outputText;
+new Function('require', 'module', 'exports', routeCode)((name: string) => {
+  if (name === './planAccess.ts') return { requireMalviCapability: async () => {} };
+  if (name === './liveAvatarService.ts') return avatarModule;
+  return routeRequire(name);
+}, routeModule, routeModule.exports);
+const { registerAssistantRoutes } = routeModule.exports as typeof import('../src/server/assistant/routes.ts');
 
 test('voice defaults to the approved Gemini style, retains explicit ElevenLabs selection, and never requires its credentials in native mode', () => {
   assert.equal(malviVoiceSetup({}).provider, 'gemini');
@@ -95,7 +113,10 @@ test('only admins set the global voice; every new session uses server policy wit
   let managed: 'elevenlabs' | 'gemini' = 'elevenlabs';
   const policy = { get: async () => managed, save: async (provider: 'elevenlabs' | 'gemini') => { managed = provider; } };
   const app = express(); app.use(express.json());
-  registerAssistantRoutes(app, (req, _res, next) => { (req as any).authUser = { id: 'owner', role }; next(); }, () => true, false, policy);
+  // This route-contract test isolates entitlements from the external database.
+  // The real capability policy and SQL ownership are tested independently.
+  registerAssistantRoutes(app, (req, _res, next) => { (req as any).authUser = { id: 'owner', role }; next(); }, () => true, false, policy,
+    async () => ({}) as any);
   const server = app.listen(0, '127.0.0.1');
   await new Promise<void>(resolve => server.once('listening', resolve));
   const port = (server.address() as { port: number }).port;

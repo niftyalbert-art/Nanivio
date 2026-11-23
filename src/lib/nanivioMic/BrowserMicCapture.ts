@@ -1,5 +1,5 @@
 import { NANIVIO_MIC_BYTES } from '../../shared/nanivioMicProtocol';
-import type { NanivioMicCapture } from './NanivioMicEngine';
+import type { NanivioMicCapture, NanivioMicProcessing } from './NanivioMicEngine';
 
 export function browserMicStreamId(): string {
   if (!globalThis.crypto?.getRandomValues) throw new Error('This browser cannot securely start Nanivio Mic.');
@@ -19,7 +19,9 @@ export class BrowserMicCapture implements NanivioMicCapture {
   private silent: GainNode | null = null;
   private stopped = false;
   private removeAbort: (() => void) | null = null;
-  async start(onFrame: (pcm: ArrayBuffer) => void, onError: (message: string) => void, signal: AbortSignal) {
+  private removeDeviceListener: (() => void) | null = null;
+  async start(onFrame: (pcm: ArrayBuffer) => void, onError: (message: string) => void, signal: AbortSignal,
+    onProcessing?: (processing: NanivioMicProcessing) => void) {
     if (signal.aborted || this.stopped) return;
     if (!navigator.mediaDevices?.getUserMedia || typeof AudioContext === 'undefined' || !('audioWorklet' in AudioContext.prototype)) {
       throw new Error('This browser does not support Nanivio Mic audio capture. Use a current browser with microphone access.');
@@ -42,6 +44,12 @@ export class BrowserMicCapture implements NanivioMicCapture {
       });
       if (this.stopped) { stream.getTracks().forEach(track => track.stop()); return; }
       this.stream = stream;
+      const tracks = stream.getAudioTracks();
+      if (!tracks.length || tracks.some(track => track.readyState === 'ended')) {
+        throw new Error('No active microphone was found. Connect a microphone and choose Start speaking.');
+      }
+      const echoCancellation = tracks[0].getSettings().echoCancellation;
+      onProcessing?.({ echoCancellation: typeof echoCancellation === 'boolean' ? echoCancellation : null });
       await context.audioWorklet.addModule('/audio/nanivio-mic-processor.js?v=2');
       if (this.stopped) return;
       const source = this.source = context.createMediaStreamSource(stream);
@@ -63,12 +71,25 @@ export class BrowserMicCapture implements NanivioMicCapture {
         if (!this.stopped && context.state !== 'running') onError('Microphone audio was paused by your browser. Tap Start talking to resume.');
       };
       stream.getAudioTracks().forEach(track => {
-        const interrupted = () => { if (!this.stopped) onError('Microphone capture was interrupted. Tap Start talking to resume.'); };
+        const interrupted = () => { if (!this.stopped) onError('Your microphone was disconnected, muted or changed. Check your device and choose Start speaking to reconnect it.'); };
         track.onended = interrupted; track.onmute = interrupted;
       });
+      const deviceChanged = () => {
+        if (!this.stopped && tracks.some(track => track.readyState === 'ended')) {
+          onError('The active microphone is no longer available. Choose Start speaking to use your current device.');
+        }
+      };
+      navigator.mediaDevices.addEventListener?.('devicechange', deviceChanged);
+      this.removeDeviceListener = () => navigator.mediaDevices.removeEventListener?.('devicechange', deviceChanged);
       source.connect(processor); processor.connect(silent); silent.connect(context.destination);
     } catch (error) {
       this.stop();
+      if (error instanceof Error && ['NotAllowedError', 'SecurityError'].includes(error.name)) {
+        throw new Error('Microphone access was denied. Allow microphone access in your browser, then choose Start speaking.');
+      }
+      if (error instanceof Error && ['NotFoundError', 'NotReadableError', 'OverconstrainedError'].includes(error.name)) {
+        throw new Error('Your microphone is missing, busy or unavailable. Check your device and choose Start speaking to retry.');
+      }
       throw error;
     }
   }
@@ -76,6 +97,7 @@ export class BrowserMicCapture implements NanivioMicCapture {
     if (this.stopped) return;
     this.stopped = true;
     this.removeAbort?.(); this.removeAbort = null;
+    this.removeDeviceListener?.(); this.removeDeviceListener = null;
     if (this.processor) {
       this.processor.port.onmessage = null;
       this.processor.onprocessorerror = null;

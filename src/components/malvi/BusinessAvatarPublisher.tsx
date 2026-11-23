@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import type { BusinessRoom } from '../../types/malviBusiness';
 import { malviBusinessClient } from '../../lib/malviBusinessClient';
+import { createMalviAvatarRenderer } from '../../lib/malviAvatarRenderer';
 
 /** Only the consenting meeting owner hosts the one actual avatar renderer.
  * Its synchronized audio/video are published as a separate RTC participant;
@@ -34,11 +35,12 @@ export function BusinessAvatarPublisher({ room, leaseId, onRunningChange }: { ro
     try {
       created = await malviBusinessClient.avatar(room.id, leaseId);
       if (epoch !== generation.current) { await malviBusinessClient.endAvatar(room.id, created.session.id); return; }
-      const [{ default: AgoraRTC }, { SessionEvent }, { MalviLiveAvatarSession }] = await Promise.all([
-        import('agora-rtc-sdk-ng'), import('@heygen/liveavatar-web-sdk'), import('../../lib/malviLiveAvatarSession'),
+      const [{ default: AgoraRTC }, sdk] = await Promise.all([
+        import('agora-rtc-sdk-ng'), createMalviAvatarRenderer(created.session),
       ]);
-      if (epoch !== generation.current) { await malviBusinessClient.endAvatar(room.id, created.session.id); return; }
-      const sdk = new MalviLiveAvatarSession(created.session.sessionToken, { autoKeepAlive: false, voiceChat: { defaultMuted: true } });
+      if (epoch !== generation.current) {
+        await Promise.allSettled([sdk.stop(), malviBusinessClient.endAvatar(room.id, created.session.id)]); return;
+      }
       const rtc = AgoraRTC.createClient({ mode: 'rtc', codec: 'vp8' });
       const session = { id: created.session.id, sdk, rtc, tracks: [] as any[], pulse: null as ReturnType<typeof setInterval> | null,
         endsAt: Math.min(created.endsAt, created.session.hardDeadline) };
@@ -49,8 +51,8 @@ export function BusinessAvatarPublisher({ room, leaseId, onRunningChange }: { ro
           setError('Malvi’s meeting media disconnected. The team call remains available.'); void stop();
         }
       });
-      sdk.on(SessionEvent.SESSION_DISCONNECTED, () => { if (active.current === session) { setError('Malvi’s avatar disconnected. The team meeting continues.'); void stop(); } });
-      sdk.on(SessionEvent.SESSION_STREAM_READY, () => { if (active.current === session && video.current) sdk.attach(video.current); });
+      sdk.on('closed', () => { if (active.current === session) { setError('Malvi’s avatar disconnected. The team meeting continues.'); void stop(); } });
+      sdk.on('ready', () => { if (active.current === session && video.current) sdk.attach(video.current); });
       await sdk.start();
       if (video.current) sdk.attach(video.current);
       let stream: MediaStream | null = null;

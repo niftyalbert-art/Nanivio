@@ -154,7 +154,7 @@ test('FX failure preserves USD and rejects missing GHS rather than inventing a r
     assert.equal(basic.priceMonthlyUSD, 12);
     assert.equal(basic.priceMonthlyGHS, null);
     assert.throws(() => quotePaystackOrder({ purpose:'MALVI_SUBSCRIPTION', planTier:'malvi_basic', currency:'GHS',
-      metadata:{catalogVersion:2} }, { subscriptionPlans:[],communicationMinutePackages:[],malviPlans:catalog.plans }), /positive payment amount/);
+      metadata:{catalogVersion:2} }, { subscriptionPlans:[],communicationMinutePackages:[],malviPlans:catalog.plans }), /no available price in the selected currency/i);
     assert.equal(catalog.plans.find(p => p.tier === 'free')!.priceMonthlyGHS, 0);
   } finally { fxDown = false; }
 });

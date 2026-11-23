@@ -61,7 +61,8 @@ test('a transient presence error is handled without starting a new session or re
 });
 test('live integration gates presence by server clock and current session, and cleans it up',()=>{
   const source=readFileSync(new URL('../src/components/malvi/MalviLiveAssistant.tsx',import.meta.url),'utf8');
-  assert.match(source,/autoKeepAlive:\s*false/,'unbounded SDK auto-presence stays disabled');
+  const renderer=readFileSync(new URL('../src/lib/malviAvatarRenderer.ts',import.meta.url),'utf8');
+  assert.match(renderer,/autoKeepAlive:\s*false/,'unbounded SDK auto-presence stays disabled in the renderer adapter');
   assert.match(source,/keepAlive:\(\)=>live\.keepAlive\(\)/);
   assert.match(source,/sessionId\.current===info\.id/);
   assert.match(source,/sessionClock\.current\.secondsRemaining\(\)\?\?0/);

@@ -5,6 +5,15 @@ import { getMalviLanguage } from '../../lib/malviLanguages.ts';
 import { malviVoiceSetup, type MalviVoiceProvider } from './malviVoiceConfig.ts';
 import { MALVI_INTRODUCTION } from './malviSystemPrompt.ts';
 import { liveUsage, type LiveUsage } from './liveUsage.ts';
+import { anamAvatarProvider } from './anamAvatar';
+
+export function selectedAvatarProvider(): 'heygen' | 'anam' {
+  const value = process.env.MALVI_AVATAR_PROVIDER || 'heygen';
+  if (value !== 'heygen' && value !== 'anam') {
+    throw new AssistantError(503, 'AVATAR_PROVIDER_INVALID', 'Configure a supported Malvi avatar renderer.');
+  }
+  return value;
+}
 
 const API = 'https://api.liveavatar.com';
 export const AI_DISCLOSURE = MALVI_INTRODUCTION;
@@ -19,14 +28,16 @@ export function liveAvatarSetup(provider?: MalviVoiceProvider) {
   const brain = getLiveBrainProviderConfig();
   const speech = malviVoiceSetup(process.env, provider);
   const infrastructureMissing = [
-    ...(!process.env.HEYGEN_API_KEY ? ['HEYGEN_API_KEY'] : []),
-    ...(!process.env.AVATAR_ID ? ['AVATAR_ID'] : []),
+    ...(selectedAvatarProvider() === 'anam'
+      ? [...(!process.env.ANAM_API_KEY ? ['ANAM_API_KEY'] : []), ...(!process.env.ANAM_AVATAR_ID ? ['ANAM_AVATAR_ID'] : [])]
+      : [...(!process.env.HEYGEN_API_KEY ? ['HEYGEN_API_KEY'] : []), ...(!process.env.AVATAR_ID ? ['AVATAR_ID'] : [])]),
     ...(!process.env.REDIS_URL ? ['REDIS_URL'] : []),
     ...brain.missing,
   ];
   const missing = [...infrastructureMissing, ...speech.missing];
   return {
     configured: missing.length === 0,
+    renderer: selectedAvatarProvider(),
     missing,
     mode: 'LITE' as const,
     idleSeconds: 60,
@@ -65,11 +76,16 @@ export function createLiveAvatarService(deps: {
   uuid: () => string;
   usage?: LiveUsage;
   businessAccess?: (user: string, context: { roomId: string; leaseId: string; endsAt: number }) => Promise<void>;
+  avatarProvider?: () => 'heygen' | 'anam';
+  anam?: typeof anamAvatarProvider;
 }) {
   const confirmedAt = new Map<string, number>();
   const confirmationFailures = new Set<string>();
   async function stopRecord(store: AssistantStore, record: AssistantSessionRecord) {
-    if (record.providerId) await deps.provider('/v1/sessions/stop', {
+    if (record.providerId && record.avatarProvider === 'anam') {
+      if (!deps.anam) throw new AssistantError(503, 'ANAM_STOP_UNAVAILABLE', 'Anam cleanup is unavailable.');
+      await deps.anam.stop(record.providerId);
+    } else if (record.providerId) await deps.provider('/v1/sessions/stop', {
       session_id: record.providerId,
       reason: record.deadline <= deps.now() ? 'IDLE_TIMEOUT' : 'USER_CLOSED',
     });
@@ -112,6 +128,17 @@ export function createLiveAvatarService(deps: {
         if (mode !== 'LITE') {
           return { id: record.id, mode, language: language.code, idleDeadline: record.deadline, hardDeadline: record.hardDeadline, serverNow: deps.now(), disclosure: AI_DISCLOSURE };
         }
+        record.avatarProvider = deps.avatarProvider?.() || 'heygen';
+        if (record.avatarProvider === 'anam') {
+          if (!deps.anam) throw new AssistantError(503, 'ANAM_SETUP_REQUIRED', 'The Anam renderer is unavailable.');
+          const data = await deps.anam.create((record.hardDeadline - deps.now()) / 1000);
+          record.providerId = data.providerId;
+          record.anamConnection = data.connection;
+          await store.save(record);
+          return { id: record.id, sessionToken: data.sessionToken, renderer: 'anam' as const,
+            mode: 'LITE', language: language.code, idleDeadline: record.deadline,
+            hardDeadline: record.hardDeadline, serverNow: deps.now(), disclosure: AI_DISCLOSURE };
+        }
         // LITE only: no provider LLM, voice agent, automatic opening text, or idle microphone streaming.
         const data = await deps.provider('/v1/sessions/token', {
           mode: 'LITE',
@@ -128,7 +155,12 @@ export function createLiveAvatarService(deps: {
       } catch (error) {
         // A token that could not be persisted must not leave an unmanaged session.
         if (record.providerId) {
-          try { await deps.provider('/v1/sessions/stop', { session_id: record.providerId, reason: 'SERVER_ERROR' }); }
+          try {
+            if (record.avatarProvider === 'anam') {
+              if (!deps.anam) throw new Error('Anam cleanup unavailable');
+              await deps.anam.stop(record.providerId);
+            } else await deps.provider('/v1/sessions/stop', { session_id: record.providerId, reason: 'SERVER_ERROR' });
+          }
           catch {
             // Keep the account reservation and retry cleanup in the sweep.
             // Never refund/release a known provider session whose stop failed.
@@ -160,7 +192,7 @@ export function createLiveAvatarService(deps: {
       if (record.closing || record.deadline <= deps.now()) throw new AssistantError(410, 'SESSION_EXPIRED', 'The live session ended after inactivity.');
       return record;
     },
-    async activity(userId: string, id: string, activeUntil?: number) {
+    async activity(userId: string, id: string) {
       const now = deps.now();
       const store = await deps.store();
       const current = await store.get(id);
@@ -168,10 +200,8 @@ export function createLiveAvatarService(deps: {
         if (!deps.businessAccess) throw new AssistantError(403, 'BUSINESS_AVATAR_FORBIDDEN', 'Business meeting access is unavailable.');
         await deps.businessAccess(userId, current.businessContext);
       }
-      // Only server-produced audio may supply a playback horizon. HTTP clients
-      // cannot submit one, and Redis still enforces ownership/expiry/hard limit.
-      const until = Number.isFinite(activeUntil) ? Math.max(now, Math.min(activeUntil!, now + MAX_SESSION_MS)) : now;
-      const record = await store.touch(id, ownerKey(userId), now, until);
+      // Only real user input renews the deadline. Assistant playback never does.
+      const record = await store.touch(id, ownerKey(userId), now);
       if (!record) throw new AssistantError(410, 'SESSION_EXPIRED', 'Live session is closed or expired.');
       if (confirmationFailures.has(id)) throw new AssistantError(503,'MALVI_BILLING_UNAVAILABLE','Your conversation allowance could not be confirmed. End the conversation and recheck Billing.');
       if (record.usageReserved && now - (confirmedAt.get(id) || 0) >= 5000) {
@@ -213,4 +243,5 @@ export const liveAvatarService = createLiveAvatarService({
     await validateBusinessAvatarAccess(user, context);
   },
   store: getAssistantStore, provider: liveAvatarRequest, now: Date.now, uuid: crypto.randomUUID, usage: liveUsage,
+  avatarProvider: selectedAvatarProvider, anam: anamAvatarProvider,
 });

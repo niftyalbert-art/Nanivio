@@ -165,7 +165,10 @@ try {
   state.geminiOptions.callbacks.onmessage({serverContent:{turnComplete:true}});
   await new Promise(resolve=>setImmediate(resolve));
   assert.equal(gemini.events.filter(e=>e.type==='malvi:brain_audio').length,beforeInterrupted,'Cancelled opening speech cannot arrive late');
-  assert.ok(state.activity > 0, 'Actual synthesized replies refresh conversation activity');
+  assert.equal(state.activity, 0, 'Synthesized replies must not refresh the user-input deadline');
+  assert.equal(state.geminiContent.at(-1).turnComplete, false,
+    'Interrupt tells the backend provider to cancel generation without requesting another reply');
+  assert.match(state.geminiContent.at(-1).turns[0].parts[0].text, /interrupted/);
   const activityBeforeLanguage = state.activity;
   const contentCount = state.geminiContent.length;
   await controller.language(gemini, 'intruder', id1, 'en');
@@ -227,6 +230,9 @@ try {
   assert.equal(voice.events.filter(e => e.type === 'malvi:brain_interrupted').length, 0);
   controller.interrupt(voice, 'owner', voiceId);
   assert.equal(voice.events.filter(e => e.type === 'malvi:brain_interrupted').length, 1);
+  const cancellations = state.geminiContent.length;
+  controller.interrupt(voice, 'owner', voiceId);
+  assert.equal(state.geminiContent.length, cancellations, 'Repeated interrupt requests must not inject duplicate synthetic turns');
   state.geminiOptions.callbacks.onmessage({ serverContent: { modelTurn: { parts: [spokenChunk] }, outputTranscription: { text: 'Cancelled speech' }, turnComplete: true } });
   assert.equal(voice.events.filter(e => e.type === 'malvi:brain_audio').length, 0, 'Interrupted response must not resume playback');
   state.geminiOptions.callbacks.onmessage({ serverContent: { modelTurn: { parts: [spokenChunk] }, outputTranscription: { text: 'New speech' }, turnComplete: true } });
@@ -235,9 +241,11 @@ try {
   const inputPcm=Buffer.alloc(6400);
   for(let i=0;i<inputPcm.length;i+=2)inputPcm.writeInt16LE(i%4?8000:-8000,i);
   const beforeInput=state.geminiInput.length;
+  const cancelsBeforeFrame=state.geminiContent.length;
   await controller.audio(voice,'intruder',voiceId,inputPcm.toString('base64'));
   assert.equal(state.geminiInput.length,beforeInput,'Other accounts cannot inject microphone audio');
   await controller.audio(voice,'owner',voiceId,inputPcm.toString('base64'));
+  assert.equal(state.geminiContent.length,cancelsBeforeFrame,'One loud audio frame must not synthesize a provider cancellation');
   assert.deepEqual(state.geminiInput.at(-1),{audio:{data:inputPcm.toString('base64'),mimeType:'audio/pcm;rate=16000'}},'Forward the captured voice bytes to the one selected brain at the correct sample rate');
   state.geminiOptions.callbacks.onmessage({serverContent:{inputTranscription:{text:'Hello Malvi'}}});
   assert.equal(voice.events.filter(e=>e.type==='malvi:brain_caption'&&e.payload.role==='user').at(-1).payload.text,'Hello Malvi');
@@ -264,12 +272,12 @@ try {
   const nativePcm = Buffer.alloc(480);
   nativePcm.writeInt16LE(16000, 0);
   const nativeChunk = { inlineData: { data: nativePcm.toString('base64'), mimeType: 'audio/pcm;rate=24000' } };
+  const activityBeforeOutput = state.activity;
   emitNative({ serverContent: { modelTurn: { parts: [nativeChunk] }, outputTranscription: { text: 'Hello from Gemini' }, turnComplete: true } });
   await new Promise(resolve => setImmediate(resolve));
-  assert.ok(state.activityCalls.at(-1).activeUntil >= Date.now(),
-    'Native Gemini audio renews through its server-measured playback duration');
-  assert.ok(native.events.some(e=>e.type==='malvi:brain_activity'),
-    'The browser receives the authoritative renewed deadline');
+  assert.equal(state.activity, activityBeforeOutput, 'Native Gemini output never renews the input-only deadline');
+  assert.equal(native.events.some(e=>e.type==='malvi:brain_activity'), false,
+    'Output cannot send a renewed deadline to the browser');
   const activityBeforeQuietSpeech = state.activity;
   const realNow = Date.now;
   try {
@@ -340,7 +348,50 @@ try {
   emitNative({ serverContent: { modelTurn: { parts: [spokenChunk] }, outputTranscription: { text: 'Late' }, turnComplete: true } });
   assert.equal(native.events.filter(e => e.type === 'malvi:brain_audio').length, 5);
   assert.equal(state.speechRequests.length, speechRequestsBefore, 'Gemini voice must not make ElevenLabs requests or fallback');
-  console.log(JSON.stringify({ geminiAndOpenAI: true, exactLanguageAndDialect: true, localizedFirstGreeting: true, livePreferenceUpdates: true, ownerOnly: true, noProviderFanoutOrReconnect: true, languageDoesNotRenewIdle: true, speechAndPlaybackRenewIdle: true }));
+  for (const provider of ['gemini', 'elevenlabs']) {
+    state.speechProvider = provider;
+    process.env.ELEVENLABS_API_KEY = 'fixture-speech-key';
+    const recovery = socket();
+    const recoveryId = provider === 'gemini'
+      ? '55555555-5555-4555-8555-555555555555'
+      : '66666666-6666-4666-8666-666666666666';
+    try {
+      await controller.start(recovery, 'owner', recoveryId, 'en');
+      await new Promise(resolve => setImmediate(resolve));
+      const emit = state.geminiOptions.callbacks.onmessage;
+      const connects = state.geminiConnects;
+      emit({ serverContent: {
+        modelTurn: { parts: [nativeChunk] }, outputTranscription: { text: 'Unfinished' },
+      } });
+      controller.interrupt(recovery, 'owner', recoveryId);
+      // Already-in-flight cancelled output must not reach either voice path.
+      emit({ serverContent: {
+        modelTurn: { parts: [nativeChunk] }, outputTranscription: { text: ' late cancelled words' },
+      } });
+      await new Promise(resolve => setImmediate(resolve));
+      assert.equal(recovery.events.filter(e => e.type === 'malvi:brain_audio').length, 0);
+      // No separate cancelled-turn completion: the acknowledgement itself
+      // establishes that subsequent provider output belongs to a fresh turn.
+      emit({ serverContent: { interrupted: true,
+        modelTurn: { parts: [nativeChunk] }, outputTranscription: { text: 'Discard the ack envelope too' } } });
+      assert.equal(await controller.audio(recovery, 'owner', recoveryId, inputPcm.toString('base64')), true);
+      emit({ serverContent: { inputTranscription: { text: 'Please answer my new question.' } } });
+      emit({ serverContent: {
+        modelTurn: { parts: [nativeChunk] },
+        outputTranscription: { text: 'This is the fresh spoken reply.' }, turnComplete: true,
+      } });
+      await new Promise(resolve => setImmediate(resolve));
+      const delivered = recovery.events.filter(e => e.type === 'malvi:brain_audio');
+      assert.equal(delivered.length, 1, `${provider}: the first fresh reply after acknowledgement reaches the avatar`);
+      assert.equal(delivered[0].payload.text, 'This is the fresh spoken reply.');
+      assert.equal(delivered[0].payload.speechProvider, provider);
+      assert.equal(delivered[0].payload.sampleRate, 24000);
+      assert.equal(delivered[0].payload.channels, 1);
+      assert.equal(delivered[0].payload.format, 'pcm_s16le');
+      assert.equal(state.geminiConnects, connects, 'Barge-in must not start another provider connection');
+    } finally { controller.closeSocket(recovery); }
+  }
+  console.log(JSON.stringify({ geminiAndOpenAI: true, exactLanguageAndDialect: true, localizedFirstGreeting: true, livePreferenceUpdates: true, ownerOnly: true, noProviderFanoutOrReconnect: true, languageDoesNotRenewIdle: true, assistantOutputDoesNotRenewIdle: true, interruptionWithoutTurnCompleteRecovers: true }));
 } finally {
   controller.closeSocket(gemini); controller.closeSocket(openai);
   for (const key of keys) {

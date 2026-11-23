@@ -164,3 +164,23 @@ test('OpenAI bridge accepts only completed function items and returns call_id re
   await bridge(event);
   assert.equal(calls.length, 1);
 });
+
+test('interruption suppresses late tool results and cannot resume either provider generation', async () => {
+  for (const provider of ['gemini', 'openai']) {
+    let generation = 0;
+    let release!: (result: unknown) => void;
+    const emitted: unknown[] = [];
+    const run = () => new Promise(resolve => { release = resolve; });
+    const bridge = provider === 'gemini'
+      ? createGeminiReferenceBridge(run, event => emitted.push(event), () => false, () => generation)
+      : createOpenAIReferenceBridge(run, event => emitted.push(event), () => false, () => generation);
+    const work = bridge(provider === 'gemini'
+      ? { toolCall: { functionCalls: [{ id: 'cancelled', name: REFERENCE_TOOL_NAME, args: {} }] } }
+      : { type: 'response.event', event: { type: 'response.output_item.done',
+        item: { type: 'function_call', call_id: 'cancelled', name: REFERENCE_TOOL_NAME, arguments: '{}' } } });
+    generation++;
+    release({ results: ['late, untrusted result'] });
+    await work;
+    assert.deepEqual(emitted, [], `${provider} must not resume an interrupted response`);
+  }
+});

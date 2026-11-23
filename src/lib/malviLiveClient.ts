@@ -2,6 +2,7 @@ import { authClient } from './authClient';
 
 export interface LiveAvatarReadiness {
   configured: boolean;
+  renderer?: 'heygen' | 'anam';
   enabled: boolean;
   missing: string[];
   brainConnected: boolean;

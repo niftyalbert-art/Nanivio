@@ -1,6 +1,6 @@
 import type { Express, Request, Response, NextFunction } from 'express';
 import { AssistantError, getAssistantStore } from './redisStore.ts';
-import { liveAvatarService, liveAvatarSetup, malviVideoQuality } from './liveAvatarService.ts';
+import { liveAvatarService, liveAvatarSetup, malviVideoQuality, selectedAvatarProvider } from './liveAvatarService.ts';
 import { readMalviLiveAllowance } from './liveAllowance.ts';
 import { selectMalviWelcome } from '../../shared/malviIdentity.ts';
 import { getLiveBrainProviderConfig } from './brainProviderConfig.ts';
@@ -22,7 +22,8 @@ import { requireMalviCapability } from './planAccess.ts';
 
 type Auth = (req: Request, res: Response, next: NextFunction) => unknown;
 export function registerAssistantRoutes(app: Express, auth: Auth, enabled: () => boolean, startSweeper = true,
-  voicePolicy = { get: getManagedMalviVoice, save: saveManagedMalviVoice }) {
+  voicePolicy = { get: getManagedMalviVoice, save: saveManagedMalviVoice },
+  requireCapability = requireMalviCapability) {
   const userId = (req: Request) => (req as any).authUser.id as string;
   const selectedVoice = async (req: Request) => {
     if (Object.prototype.hasOwnProperty.call(req.body ?? {}, 'speechProvider')) {
@@ -55,7 +56,7 @@ export function registerAssistantRoutes(app: Express, auth: Auth, enabled: () =>
   }));
   app.put('/api/assistant/memory', auth, run(async (req, res) => {
     if (typeof req.body?.enabled !== 'boolean') throw new AssistantError(400, 'INVALID_CONSENT', 'Choose whether Malvi may save your conversation transcripts.');
-    if (req.body.enabled) await requireMalviCapability(userId(req), 'memory');
+    if (req.body.enabled) await requireCapability(userId(req), 'memory');
     const state = await setConversationMemory(userId(req), req.body.enabled);
     const cleanup = state.enabled || await malviLiveBrainController.revokeMemory(userId(req));
     res.json({ success: true, enabled: state.enabled,
@@ -69,7 +70,7 @@ export function registerAssistantRoutes(app: Express, auth: Auth, enabled: () =>
   }));
   app.post('/api/assistant/session/:id/vision', auth, run(async (req, res) => {
     if (!enabled()) throw new AssistantError(403, 'MALVI_DISABLED', 'Malvi is currently disabled.');
-    await requireMalviCapability(userId(req), 'multimodal');
+    await requireCapability(userId(req), 'multimodal');
     await liveAvatarService.owned(userId(req), validId(req));
     const image = validateVisionInput(req.body);
     await claimMalviRequest(userId(req), 'analysis', Buffer.byteLength(image.data, 'base64'));
@@ -82,7 +83,7 @@ export function registerAssistantRoutes(app: Express, auth: Auth, enabled: () =>
       planUsageCommand('nanivio_plan_storage', 'ACCESS', { userId: user }),
       planUsageCommand('nanivio_paid_search', 'ACCESS', { userId: user }),
     ]);
-    try { await requireMalviCapability(user, 'research'); search.canResearch = true; }
+    try { await requireCapability(user, 'research'); search.canResearch = true; }
     catch (error) {
       if (error instanceof AssistantError && [402,403].includes(error.status)) search.canResearch = false;
       else throw error;
@@ -100,14 +101,14 @@ export function registerAssistantRoutes(app: Express, auth: Auth, enabled: () =>
   }));
   app.post('/api/assistant/research', auth, run(async (req, res) => {
     if (!enabled()) throw new AssistantError(403, 'MALVI_DISABLED', 'Malvi is currently disabled.');
-    await requireMalviCapability(userId(req), 'research');
+    await requireCapability(userId(req), 'research');
     claimResearch(userId(req));
     await claimMalviRequest(userId(req), 'research');
     res.json({ success: true, ...await researchAccountWeb(userId(req), req.body) });
   }));
   app.post('/api/assistant/input', auth, run(async (req, res) => {
     if (!enabled()) throw new AssistantError(403, 'MALVI_DISABLED', 'Malvi is currently disabled.');
-    await requireMalviCapability(userId(req), 'multimodal');
+    await requireCapability(userId(req), 'multimodal');
     claimResearch(userId(req));
     validateMultimodalInput(req.body);
     await claimMalviRequest(userId(req), 'analysis', Math.min(8388608, Buffer.byteLength(typeof req.body?.attachment?.data === 'string' ? req.body.attachment.data : '', 'base64')));
@@ -115,7 +116,7 @@ export function registerAssistantRoutes(app: Express, auth: Auth, enabled: () =>
   }));
   app.post('/api/assistant/media/research', auth, run(async (req, res) => {
     if (!enabled()) throw new AssistantError(403, 'MALVI_DISABLED', 'Malvi is currently disabled.');
-    await requireMalviCapability(userId(req), 'research');
+    await requireCapability(userId(req), 'research');
     claimResearch(userId(req));
     await claimMalviRequest(userId(req), 'research');
     res.json(await researchPublicMedia(req.body));
@@ -156,8 +157,11 @@ export function registerAssistantRoutes(app: Express, auth: Auth, enabled: () =>
       try { redis = await (await getAssistantStore()).ping() ? 'connected' : 'unavailable'; }
       catch { redis = 'unavailable'; }
     }
+    const renderer = selectedAvatarProvider();
     res.json({ success: true, redis, brain: getLiveBrainProviderConfig(), speech: malviVoiceSetup(process.env, await voicePolicy.get()),
-      avatar: { configured: Boolean(process.env.HEYGEN_API_KEY && process.env.AVATAR_ID), readinessVerified: false },
+      avatar: { renderer, configured: renderer === 'anam'
+        ? Boolean(process.env.ANAM_API_KEY && process.env.ANAM_AVATAR_ID)
+        : Boolean(process.env.HEYGEN_API_KEY && process.env.AVATAR_ID), readinessVerified: false },
       providerSessionStarted: false });
   }));
   app.post('/api/assistant/voice-session', auth, run(async (req, res) => {
@@ -178,7 +182,7 @@ export function registerAssistantRoutes(app: Express, auth: Auth, enabled: () =>
   }));
   app.post('/api/assistant/voice', auth, run(async (req, res) => {
     if (!enabled()) throw new AssistantError(403, 'MALVI_DISABLED', 'Malvi is currently disabled.');
-    await requireMalviCapability(userId(req), 'voice');
+    await requireCapability(userId(req), 'voice');
     const provider = await selectedVoice(req);
     if (!getLiveBrainProviderConfig().configured || !malviVoiceSetup(process.env, provider).configured) {
       throw new AssistantError(503, 'VOICE_SETUP_REQUIRED', 'Malvi voice setup is incomplete. Contact the administrator.');
@@ -191,7 +195,7 @@ export function registerAssistantRoutes(app: Express, auth: Auth, enabled: () =>
   }));
   app.post('/api/assistant/session', auth, run(async (req, res) => {
     if (!enabled()) throw new AssistantError(403, 'MALVI_DISABLED', 'Malvi is currently disabled by the administrator.');
-    await requireMalviCapability(userId(req), 'avatar');
+    await requireCapability(userId(req), 'avatar');
     const provider = await selectedVoice(req);
     const setup = liveAvatarSetup(provider);
     if (!setup.configured) throw new AssistantError(503, 'LIVEAVATAR_SETUP_REQUIRED', `LiveAvatar setup is required: ${setup.missing.join(', ')}. Use your provisioned Malvi custom avatar, not a sample avatar.`);
@@ -207,6 +211,19 @@ export function registerAssistantRoutes(app: Express, auth: Auth, enabled: () =>
     if (!['input', 'interrupt'].includes(req.body?.kind)) throw new AssistantError(400, 'INPUT_REQUIRED', 'Only explicit user input may extend the idle deadline.');
     res.json({ success: true, ...await liveAvatarService.activity(userId(req), validId(req)) });
   }));
+  // The SDK sends its spent Anam token as Authorization. This browser-only
+  // connection handoff must instead authenticate Nanivio's HttpOnly cookie.
+  // No token from the SDK is trusted and no provider request is made here.
+  app.post('/api/assistant/session/:id/anam/v1/engine/session',
+    (req, res, next) => { delete req.headers.authorization; return auth(req, res, next); },
+    run(async (req, res) => {
+      if (!enabled()) throw new AssistantError(403, 'MALVI_DISABLED', 'Malvi is currently disabled.');
+      const record = await liveAvatarService.owned(userId(req), validId(req));
+      if (record.avatarProvider !== 'anam' || !record.anamConnection) {
+        throw new AssistantError(404, 'ANAM_SESSION_NOT_FOUND', 'This conversation has no Anam connection.');
+      }
+      res.json(record.anamConnection);
+    }));
   app.get('/api/assistant/session/:id/clock', auth, run(async (req, res) => {
     const record = await liveAvatarService.owned(userId(req), validId(req));
     // A visibility/resume check is read-only and must never renew idle time.

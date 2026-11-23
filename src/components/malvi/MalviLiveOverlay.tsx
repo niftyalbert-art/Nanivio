@@ -33,6 +33,8 @@ export interface MalviLiveOverlayProps {
   brainReady: boolean;
   microphoneOn: boolean;
   microphoneError: string;
+  microphoneNotice?: string;
+  interrupted?: boolean;
   brainProvider: 'gemini' | 'openai' | null;
   onToggleMicrophone: () => void;
   references: MalviReferenceCitation[];
@@ -81,6 +83,8 @@ export const MalviLiveOverlay: React.FC<MalviLiveOverlayProps> = ({
   brainReady,
   microphoneOn,
   microphoneError,
+  microphoneNotice = '',
+  interrupted = false,
   brainProvider,
   onToggleMicrophone,
   references,
@@ -309,7 +313,7 @@ export const MalviLiveOverlay: React.FC<MalviLiveOverlayProps> = ({
   const listeningCopy = {
     off: 'Microphone off',
     connecting: 'Connecting Nanivio Mic…',
-    listening: 'Listening…',
+    listening: interrupted ? 'Previous response interrupted · listening…' : speaking ? 'Malvi is speaking · still listening…' : 'Listening…',
     hearing: 'Hearing you…',
     processing: 'Malvi is thinking…',
   }[listeningState];
@@ -599,7 +603,7 @@ export const MalviLiveOverlay: React.FC<MalviLiveOverlayProps> = ({
             </details>
           )}
           </div>
-          {(phase === 'connecting' || (phase === 'error' && !showSubscriptionOverlay) || microphoneError) && (
+          {(phase === 'connecting' || (phase === 'error' && !showSubscriptionOverlay) || microphoneError || microphoneNotice) && (
             <div
               role="region"
               aria-label="Session status and feedback"
@@ -636,6 +640,7 @@ export const MalviLiveOverlay: React.FC<MalviLiveOverlayProps> = ({
                   ) : onRetry && <button type="button" onClick={onRetry} className="mt-3 rounded-xl border border-[#e3d09a]/60 px-4 py-2 font-semibold text-[#e3d09a]">Start a new conversation</button>}
                 </div>
               )}
+              {microphoneNotice && <p role="status" className="text-xs text-amber-200">{microphoneNotice}</p>}
               {microphoneError && (
                 <p role="alert" className={`${phase !== 'connected' ? 'mt-2 border-t border-white/10 pt-2 ' : ''}text-[#ffe0d4]`}>
                   {malviPublicCopy(microphoneError)}
@@ -662,8 +667,8 @@ export const MalviLiveOverlay: React.FC<MalviLiveOverlayProps> = ({
             </p>
             <p className="mt-2">
               {microphoneOn
-                ? 'Microphone on · Nanivio is processing your audio.'
-                : 'Your microphone stays off until you choose Start talking.'}
+                ? 'Microphone on · Nanivio keeps listening while Malvi speaks. Pause it at any time.'
+                : 'Starting a conversation enables your microphone after connection. If you paused it or access failed, choose Start speaking to resume.'}
             </p>
             {phase === 'connected' && referenceStatus !== 'idle' && (
               <div className="mt-3 rounded-lg border border-white/10 bg-[#10201f]/70 px-3 py-2 text-left">
