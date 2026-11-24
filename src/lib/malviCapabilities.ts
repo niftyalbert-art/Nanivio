@@ -1,9 +1,9 @@
 import type { MalviSubscriptionTier } from '../types/billing';
 export type MalviCapability = 'conversation' | 'voice' | 'avatar' | 'memory' | 'research' | 'multimodal' | 'business';
 export const MALVI_CAPABILITIES: Record<MalviSubscriptionTier, readonly MalviCapability[]> = {
-  free: ['conversation', 'voice', 'avatar'],
-  malvi_voice: ['conversation', 'voice'],
-  malvi_basic: ['conversation', 'voice', 'avatar'],
+  free: ['conversation', 'voice', 'avatar', 'memory'],
+  malvi_voice: ['conversation', 'voice', 'memory'],
+  malvi_basic: ['conversation', 'voice', 'avatar', 'memory'],
   malvi_premium: ['conversation', 'voice', 'avatar', 'memory', 'research', 'multimodal'],
   malvi_business: ['conversation', 'voice', 'avatar', 'memory', 'research', 'multimodal', 'business'],
 };
@@ -21,6 +21,9 @@ export function subscriptionHasCapability(subscription: {
   if (!subscription || !['ACTIVE', 'TRIAL'].includes(subscription.status)
     || (subscription.currentPeriodStart !== undefined && subscription.currentPeriodStart > Date.now())
     || (subscription.currentPeriodEnd !== undefined && subscription.currentPeriodEnd <= Date.now())) return false;
+  // Memory is an additive account benefit, including older purchased plans.
+  // Other purchased capabilities and all usage allowances remain unchanged.
+  if (capability === 'memory' && Object.hasOwn(MALVI_CAPABILITIES, subscription.tier)) return true;
   if (Array.isArray(subscription.purchasedCapabilities)) return subscription.purchasedCapabilities.includes(capability);
   return Object.hasOwn(MALVI_CAPABILITIES, subscription.tier)
     && MALVI_CAPABILITIES[subscription.tier as MalviSubscriptionTier].includes(capability);

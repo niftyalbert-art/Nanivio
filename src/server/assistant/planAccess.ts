@@ -18,7 +18,8 @@ export async function requireMalviCapability(user: string, capability: MalviCapa
   // Immutable purchased snapshots are captured by the database at activation.
   // Pre-migration subscriptions retain their tier's established benefits.
   const saved = subscription.purchasedCapabilities;
-  const allowed = Array.isArray(saved) ? saved.includes(capability) : planAllows(subscription.tier, capability);
+  const allowed = capability === 'memory' ? planAllows(subscription.tier, capability)
+    : Array.isArray(saved) ? saved.includes(capability) : planAllows(subscription.tier, capability);
   if (!allowed) throw new AssistantError(403, 'MALVI_FEATURE_NOT_INCLUDED', 'This feature needs a higher Malvi plan. Open Malvi billing to compare features.');
   return subscription;
 }

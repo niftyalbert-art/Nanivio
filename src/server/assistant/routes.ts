@@ -51,11 +51,17 @@ export function registerAssistantRoutes(app: Express, auth: Auth, enabled: () =>
     }
   };
   app.get('/api/assistant/memory', auth, run(async (req, res) => {
+    res.setHeader('Cache-Control', 'no-store');
+    const expected = req.get('X-Nanivio-Memory-Owner');
+    if (expected && expected !== userId(req)) throw new AssistantError(409, 'ACCOUNT_CHANGED', 'Your signed-in account changed. Reopen Malvi to view its memory.');
     const state = await readConversationMemory(userId(req), memoryQuery(req.query.q ?? ''));
     res.json({ success: true, enabled: state.enabled, messages: state.messages, hasPrevious: state.hasPrevious });
   }));
   app.put('/api/assistant/memory', auth, run(async (req, res) => {
-    if (typeof req.body?.enabled !== 'boolean') throw new AssistantError(400, 'INVALID_CONSENT', 'Choose whether Malvi may save your conversation transcripts.');
+    res.setHeader('Cache-Control', 'no-store');
+    const expected = req.get('X-Nanivio-Memory-Owner');
+    if (expected && expected !== userId(req)) throw new AssistantError(409, 'ACCOUNT_CHANGED', 'Your signed-in account changed. Reopen Malvi before changing memory.');
+    if (typeof req.body?.enabled !== 'boolean') throw new AssistantError(400, 'INVALID_CONSENT', 'Choose whether conversation memory is on or off.');
     if (req.body.enabled) await requireCapability(userId(req), 'memory');
     const state = await setConversationMemory(userId(req), req.body.enabled);
     const cleanup = state.enabled || await malviLiveBrainController.revokeMemory(userId(req));
@@ -63,6 +69,9 @@ export function registerAssistantRoutes(app: Express, auth: Auth, enabled: () =>
       ...(!cleanup ? { warning: 'Memory is off and the local brain is closed, but avatar cleanup was not confirmed. Close the active session.' } : {}) });
   }));
   app.delete('/api/assistant/memory', auth, run(async (req, res) => {
+    res.setHeader('Cache-Control', 'no-store');
+    const expected = req.get('X-Nanivio-Memory-Owner');
+    if (expected && expected !== userId(req)) throw new AssistantError(409, 'ACCOUNT_CHANGED', 'Your signed-in account changed. Reopen Malvi before deleting memory.');
     await setConversationMemory(userId(req), false, true);
     const cleanup = await malviLiveBrainController.revokeMemory(userId(req));
     res.json({ success: true, enabled: false,

@@ -54,14 +54,14 @@ test('tier capabilities distinguish trial, voice, basic, premium and Business', 
   for (const tier of ['free', 'malvi_voice', 'malvi_basic']) {
     assert.equal(planAllows(tier, 'voice'), true);
     assert.equal(planAllows(tier, 'business'), false);
-    assert.equal(planAllows(tier, 'memory'), false);
+    assert.equal(planAllows(tier, 'memory'), true);
   }
   assert.equal(planAllows('malvi_voice', 'avatar'), false);
   assert.equal(planAllows('malvi_premium', 'research'), true);
   assert.equal(planAllows('malvi_premium', 'multimodal'), true);
   assert.equal(planAllows('malvi_business', 'business'), true);
   assert.equal(planAllows('__proto__', 'business'), false);
-  assert.equal(subscriptionHasCapability({ tier: 'malvi_premium', status: 'ACTIVE', purchasedCapabilities: ['voice'] }, 'memory'), false);
+  assert.equal(subscriptionHasCapability({ tier: 'malvi_premium', status: 'ACTIVE', purchasedCapabilities: ['voice'] }, 'memory'), true);
   assert.equal(subscriptionHasCapability({ tier: 'malvi_basic', status: 'ACTIVE', purchasedCapabilities: ['voice', 'research'] }, 'research'), true);
   assert.equal(subscriptionHasCapability({ tier: 'malvi_business', status: 'ACTIVE', currentPeriodEnd: 0 }, 'business'), false);
 });

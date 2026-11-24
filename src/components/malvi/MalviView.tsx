@@ -1022,7 +1022,7 @@ const MalviAccountWorkspace: React.FC<{ ownerId: string | null }> = ({ ownerId }
         </button>
       </div>
 
-      <MalviContinuityControls />
+      <MalviContinuityControls key={currentUser.id} accountId={currentUser.id} />
 
       <MalviLiveControls />
 

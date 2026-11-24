@@ -49,12 +49,14 @@ const safeResearchUrl = (value: string) => {
   } catch { return null; }
 };
 
-async function memoryRequest(method: 'GET' | 'PUT' | 'DELETE', query = '', enabled?: boolean): Promise<MemoryResponse> {
+async function memoryRequest(accountId: string, method: 'GET' | 'PUT' | 'DELETE', query = '', enabled?: boolean): Promise<MemoryResponse> {
+  if (!accountId) throw new Error('Sign in to manage your private conversation memory.');
   const token = authClient.getToken();
   const response = await fetch(`/api/assistant/memory${query}`, {
     method,
     headers: {
       'Content-Type': 'application/json',
+      'X-Nanivio-Memory-Owner': accountId,
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
     },
     ...(method === 'PUT' ? { body: JSON.stringify({ enabled }) } : {}),
@@ -85,7 +87,7 @@ async function researchRequest(query: string, scope: ResearchScope): Promise<Res
   return result;
 }
 
-export const MalviContinuityControls: React.FC = () => {
+export const MalviContinuityControls: React.FC<{ accountId: string }> = ({ accountId }) => {
   const [enabled, setEnabled] = useState(false);
   const [messages, setMessages] = useState<MemoryMessage[]>([]);
   const [hasPrevious, setHasPrevious] = useState(false);
@@ -109,7 +111,7 @@ export const MalviContinuityControls: React.FC = () => {
     setError('');
     try {
       const params = q.trim() ? `?q=${encodeURIComponent(q.trim())}` : '';
-      const result = await memoryRequest('GET', params);
+      const result = await memoryRequest(accountId, 'GET', params);
       setEnabled(result.enabled === true);
       setMessages(Array.isArray(result.messages) ? result.messages : []);
       setHasPrevious(result.hasPrevious === true);
@@ -120,7 +122,7 @@ export const MalviContinuityControls: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [accountId]);
 
   useEffect(() => { void load(); }, [load]);
 
@@ -130,7 +132,7 @@ export const MalviContinuityControls: React.FC = () => {
     setNotice('');
     setError('');
     try {
-      const result = await memoryRequest('PUT', '', next);
+      const result = await memoryRequest(accountId, 'PUT', '', next);
       window.dispatchEvent(new CustomEvent('nanivio:malvi-memory-change', { detail: { enabled: result.enabled } }));
       setEnabled(result.enabled === true);
       setNotice(result.warning || (result.enabled ? 'Future text and voice transcripts will be saved to this account. Start a new live session to use this setting.' : 'Saving future conversation transcripts is off.'));
@@ -154,7 +156,7 @@ export const MalviContinuityControls: React.FC = () => {
     setError('');
     setNotice('');
     try {
-      const result = await memoryRequest('DELETE');
+      const result = await memoryRequest(accountId, 'DELETE');
       window.dispatchEvent(new CustomEvent('nanivio:malvi-memory-change', { detail: { enabled: false } }));
       setEnabled(result.enabled === true);
       setMessages([]);
@@ -220,7 +222,7 @@ export const MalviContinuityControls: React.FC = () => {
           <div className="min-w-0">
             <p className="text-xs font-semibold tracking-wide text-[#e4d3a8]">Malvi conversation memory</p>
             <p className="mt-0.5 text-[11px] leading-4 text-[#b7b5ad]">
-              {loading ? 'Checking your account setting…' : saving ? 'Saving your choice…' : enabled ? 'Opted in · saved to this account' : 'Off by default · your choice'}
+               {loading ? 'Checking your account setting…' : saving ? 'Saving your choice…' : error ? 'Memory status unavailable' : enabled ? 'Automatic · saved to your account' : 'Off · your saved choice'}
             </p>
           </div>
         </div>
@@ -244,7 +246,10 @@ export const MalviContinuityControls: React.FC = () => {
 
       <div className="border-t border-white/[.07] px-3.5 py-3 sm:px-4">
         <p className="text-[11px] leading-relaxed text-[#c6c4bc]">
-          When enabled, future text and voice transcripts are saved under this account. Raw audio and images are not saved to Nanivio conversation history; provider handling is separate.
+          Memory is automatic for Malvi trial users and every paid Malvi plan unless you turn it off. Text and voice transcripts are linked to your signed-in account, not your display name. You can inspect, turn off or delete saved history here. Two-person interpretation is excluded from personal memory.
+        </p>
+        <p className="mt-1.5 text-[11px] leading-relaxed text-[#c6c4bc]">
+          Raw audio and images are not saved to Nanivio conversation history; provider handling is separate.
         </p>
         <p className="mt-1.5 text-[10px] leading-relaxed text-[#d5bf80]">
           This setting applies to your next live session. Turning it off or deleting saved messages will end active sessions so already-loaded memory is removed.
