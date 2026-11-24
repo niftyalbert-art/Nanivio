@@ -18,8 +18,22 @@ export class BrowserMicCapture implements NanivioMicCapture {
   private processor: AudioWorkletNode | null = null;
   private silent: GainNode | null = null;
   private stopped = false;
+  private activation: Promise<void> | null = null;
   private removeAbort: (() => void) | null = null;
   private removeDeviceListener: (() => void) | null = null;
+  /** Unlock in the Start gesture, without acquiring or transmitting microphone audio. */
+  async prepare() {
+    if (this.stopped) return;
+    if (!this.context) {
+      try { this.context = new AudioContext({ sampleRate: 16000 }); }
+      catch (error) {
+        if (!(error instanceof Error) || error.name !== 'NotSupportedError') throw error;
+        this.context = new AudioContext();
+      }
+      this.activation = this.context.resume();
+    }
+    await this.activation;
+  }
   async start(onFrame: (pcm: ArrayBuffer) => void, onError: (message: string) => void, signal: AbortSignal,
     onProcessing?: (processing: NanivioMicProcessing) => void) {
     if (signal.aborted || this.stopped) return;
@@ -30,14 +44,9 @@ export class BrowserMicCapture implements NanivioMicCapture {
     signal.addEventListener('abort', abort, { once: true });
     this.removeAbort = () => signal.removeEventListener('abort', abort);
     try {
-      try { this.context = new AudioContext({ sampleRate: 16000 }); }
-      catch (error) {
-        if (!(error instanceof Error) || error.name !== 'NotSupportedError') throw error;
-        this.context = new AudioContext(); // The owned processor normalizes the hardware rate.
-      }
-      const context = this.context;
-      await context.resume();
+      await this.prepare();
       if (this.stopped) return;
+      const context = this.context!;
       if (context.state !== 'running') throw new Error('Your browser paused microphone audio. Tap Start talking to resume.');
       const stream = await navigator.mediaDevices.getUserMedia({
         audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true, autoGainControl: true },

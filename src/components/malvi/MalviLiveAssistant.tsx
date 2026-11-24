@@ -7,7 +7,7 @@ import { getMalviLanguage, MALVI_LANGUAGES, malviLanguageCoverage } from '../../
 import { malviPublicCopy } from '../../lib/malviPublicCopy';
 import { realtimeClient } from '../../lib/realtimeClient';
 import { MalviLiveOverlay } from './MalviLiveOverlay';
-import { createMalviAvatarRenderer, type MalviAvatarRenderer } from '../../lib/malviAvatarRenderer';
+import { createMalviAvatarRenderer, prepareMalviAvatarRenderer, type MalviAvatarRenderer } from '../../lib/malviAvatarRenderer';
 import { MalviVoicePlayback } from '../../lib/malviVoicePlayback';
 import { malviAvatarSoundBlocked, playMalviAvatar, malviAvatarPlaybackFailure } from '../../lib/malviAvatarPlayback';
 import { MalviCaptionPlayer, estimatedMalviCaptionTrack, type MalviCaptionTrack } from '../../lib/malviSpeechTiming';
@@ -125,6 +125,7 @@ export const MalviLiveAssistantProvider: React.FC<{ children: React.ReactNode }>
   const stopAvatarPresence = useRef<(() => void) | null>(null);
   const sessionId = useRef<string | null>(null);
   const micEngine = useRef<NanivioMicEngine | null>(null);
+  const microphoneCapture = useRef<BrowserMicCapture | null>(null);
   const stopWake = useRef<(() => void) | null>(null);
   const wakeController = useRef<AbortController | null>(null);
   const generation = useRef(0);
@@ -138,6 +139,7 @@ export const MalviLiveAssistantProvider: React.FC<{ children: React.ReactNode }>
   const stopMicrophone = useCallback(() => {
     const engine = micEngine.current; micEngine.current = null;
     engine?.stop();
+    microphoneCapture.current?.stop(); microphoneCapture.current = null;
     setMicrophoneOn(false);
     setInputLevel(0); setMicReceiving(false); setHearingSpeech(false);
   }, []);
@@ -453,7 +455,8 @@ export const MalviLiveAssistantProvider: React.FC<{ children: React.ReactNode }>
     try { streamId = browserMicStreamId(); }
     catch (error) { setMicrophoneError(error instanceof Error ? error.message : 'Nanivio Mic could not start securely.'); return; }
     const engine = new NanivioMicEngine({
-      sessionId: id, streamId, capture: new BrowserMicCapture(),
+      sessionId: id, streamId,
+      capture: microphoneCapture.current ?? (microphoneCapture.current = new BrowserMicCapture()),
       transport: {
         send: (type, payload) => realtimeClient.send(type, payload) === true,
         subscribe: listener => realtimeClient.on(NANIVIO_MIC_EVENTS.status, listener),
@@ -467,6 +470,7 @@ export const MalviLiveAssistantProvider: React.FC<{ children: React.ReactNode }>
         setMicrophoneNotice(snapshot.warning);
         if (snapshot.error) {
           microphoneWanted.current = false;
+          microphoneCapture.current = null;
           setProcessing(false);
           setMicrophoneError(snapshot.error); micEngine.current = null;
         }
@@ -517,6 +521,10 @@ export const MalviLiveAssistantProvider: React.FC<{ children: React.ReactNode }>
     const run = ++generation.current;
     playbackGuard.current.cancel();
     microphoneWanted.current = true;
+    const capture = microphoneCapture.current = new BrowserMicCapture();
+    void capture.prepare().catch(() => {}); // Report any failure through the normal microphone state.
+    // Overlap code download with the owned-session request; never start a second provider session.
+    void prepareMalviAvatarRenderer(readiness?.renderer).catch(() => {});
     setInterrupted(false);
     disarmWake(); setError(null); setCaption('Connecting your live avatar and selected brain provider.');
     setBrainReady(false); setMicrophoneError(''); setMicrophoneOn(false);
@@ -619,7 +627,7 @@ export const MalviLiveAssistantProvider: React.FC<{ children: React.ReactNode }>
     } catch (err) {
       if (run === generation.current) fail(err instanceof Error ? err.message : 'Unable to connect the live avatar.');
     }
-  }, [attachVideo, close, disarmWake, fail]);
+  }, [attachVideo, close, disarmWake, fail, readiness?.renderer]);
 
   const startVoiceTest = useCallback(async (customer = false) => {
     if (busy.current || sessionId.current || sdk.current) return;
@@ -627,6 +635,8 @@ export const MalviLiveAssistantProvider: React.FC<{ children: React.ReactNode }>
     const run = ++generation.current;
     playbackGuard.current.cancel();
     microphoneWanted.current = true;
+    const capture = microphoneCapture.current = new BrowserMicCapture();
+    void capture.prepare().catch(() => {});
     setInterrupted(false);
     voiceMode.current = true; setVoiceOnly(true);
     disarmWake(); setError(null); setBrainReady(false); setActiveLanguage(null);

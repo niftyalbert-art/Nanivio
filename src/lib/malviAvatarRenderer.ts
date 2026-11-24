@@ -11,6 +11,15 @@ export interface MalviAvatarRenderer {
   on(event: 'ready' | 'closed' | 'speech-start' | 'speech-end', listener: () => void): void;
 }
 
+/** Download only after explicit activation; no constructor, token or provider session. */
+export async function prepareMalviAvatarRenderer(renderer?: 'heygen' | 'anam') {
+  if (renderer === 'anam') {
+    await import('./malviAnamAvatarSession');
+  } else {
+    await Promise.all([import('@heygen/liveavatar-web-sdk'), import('./malviLiveAvatarSession')]);
+  }
+}
+
 export async function createMalviAvatarRenderer(info: {
   id: string; sessionToken: string; renderer?: 'heygen' | 'anam';
 }): Promise<MalviAvatarRenderer> {

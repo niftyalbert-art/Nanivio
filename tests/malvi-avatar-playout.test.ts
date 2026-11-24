@@ -70,9 +70,9 @@ test('captions wait for output audio, ignore early provider end, pause when mute
     observer.providerStart(); observer.cancel(); await wait();
     assert.equal(started,1,'cancelled turns cannot restart captions');
     observer.enqueue(track,Buffer.alloc(4800).toString('base64'));
-    observer.providerStart();
+    // Anam audio passthrough emits no per-utterance speech-start event.
     context.currentTime=3; await wait();
-    assert.equal(started,2);
+    assert.equal(started,2,'actual output starts tracking even without a vendor speech event');
     // Later native packets belong to this same utterance. The avatar sends
     // no second speak_started event, but captions must still follow output.
     observer.enqueue(track,Buffer.alloc(4800).toString('base64'));

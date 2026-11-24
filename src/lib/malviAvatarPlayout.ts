@@ -86,7 +86,10 @@ export class MalviAvatarPlayout {
     if (this.pending.length >= 64 || this.pending.reduce((sum, item) => sum + item.track.durationMs, 0) + track.durationMs > 65_000) {
       throw new Error('Malvi’s subtitle playback queue is full.');
     }
-    this.pending.push({ track, leadingMs: malviLeadingSilenceMs(pcm), eligible: this.utterancePlaying, providerEnded: false, startedAt: null, eligibleAt: performance.now() });
+    // Audio-passthrough renderers (Anam) need not emit per-utterance speech
+    // events. The queued PCM permits observation, never starts a caption:
+    // tick() still requires non-silent OUTPUT from the paired playing element.
+    this.pending.push({ track, leadingMs: malviLeadingSilenceMs(pcm), eligible: true, providerEnded: false, startedAt: null, eligibleAt: performance.now() });
   }
 
   providerStart() {
