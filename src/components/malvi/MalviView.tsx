@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { safeMalviTextFailure, type MalviTextPublicFailure } from '../../shared/malviTextDiagnostics';
 import {
   Send,
   Mic,
@@ -284,7 +285,7 @@ const MalviAccountWorkspace: React.FC<{ ownerId: string | null }> = ({ ownerId }
   const [handsFreeMode, setHandsFreeMode] = useState(false);
   const [speechRate, setSpeechRate] = useState<number>(1.0);
   const [isProcessing, setIsProcessing] = useState(false);
-  const [failedMessage, setFailedMessage] = useState<{text:string;mode:'voice'|'text';id:string} | null>(null);
+  const [failedMessage, setFailedMessage] = useState<{text:string;mode:'voice'|'text';id:string;diagnostic?:MalviTextPublicFailure|null} | null>(null);
   const [wakePhraseActive, setWakePhraseActive] = useState(false);
   const [currentlySpeakingText, setCurrentlySpeakingText] = useState<string | null>(null);
   const [immersiveMode, setImmersiveMode] = useState(false);
@@ -667,13 +668,13 @@ const MalviAccountWorkspace: React.FC<{ ownerId: string | null }> = ({ ownerId }
           speakText(data.reply);
         }
       } else {
-        throw new Error(data.error || 'Failed to get response');
+        throw Object.assign(new Error('Malvi text request failed'), safeMalviTextFailure(data) || {});
       }
     } catch (error: any) {
       if (!isCurrentOwner() || error?.name === 'AbortError') return;
       // A failed request is not an assistant answer and must never be spoken
       // or written to conversation history as a fabricated response.
-      setFailedMessage({text,mode,id:userMessage.id});
+      setFailedMessage({text,mode,id:userMessage.id,diagnostic:safeMalviTextFailure(error)});
       setAvatarState('idle');
     } finally {
       setIsProcessing(false);
@@ -1328,6 +1329,13 @@ const MalviAccountWorkspace: React.FC<{ ownerId: string | null }> = ({ ownerId }
             {failedMessage && (
               <div role="alert" className="rounded-xl border border-amber-200/30 bg-amber-100/5 p-3 text-sm text-amber-100">
                 <p>Malvi couldn’t answer this message. Your message is still available to retry.</p>
+                {failedMessage.diagnostic && (
+                  <div className="mt-2 break-words text-xs" aria-label="Malvi support details">
+                    <p>{failedMessage.diagnostic.message}</p>
+                    <p>Support code: {failedMessage.diagnostic.code}</p>
+                    {failedMessage.diagnostic.reference && <p>Reference: {failedMessage.diagnostic.reference}</p>}
+                  </div>
+                )}
                 <button type="button" disabled={isProcessing}
                   className="mt-2 min-h-10 rounded-lg border border-amber-200/40 px-3 font-medium disabled:opacity-50"
                   onClick={() => {

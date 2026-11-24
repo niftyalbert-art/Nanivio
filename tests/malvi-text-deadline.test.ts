@@ -90,6 +90,8 @@ test('both text generation stages use the same valid deadline without the stale 
   }
   visit(parsed);
   assert.ok(route);
-  assert.equal((route.match(/\.\.\.malviTextRequestOptions\(\)/g) || []).length, 2);
+  assert.equal((route.match(/\.\.\.requestOptions/g) || []).length, 2);
+  assert.match(route, /textDiagnostic\.generate\('provider-initial'/);
+  assert.match(route, /textDiagnostic\.generate\('provider-followup'/);
   assert.doesNotMatch(route, /Malvi AI timeout after 8000ms|timeout: 8000/);
 });

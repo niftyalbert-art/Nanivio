@@ -40,7 +40,8 @@ const output = await build({
           // fail the component's account ownership guard.
           return new Promise(resolve=>window.requests.push({
             body:JSON.parse(options.body),signal:options.signal,
-            finish:()=>resolve(new Response(JSON.stringify({success:true,reply:'LATE ACCOUNT A RESPONSE'})))
+            finish:(payload={success:true,reply:'LATE ACCOUNT A RESPONSE'},status=200)=>resolve(
+              new Response(JSON.stringify(payload),{status,headers:{'Content-Type':'application/json'}}))
           }));
         }
         if(String(url).includes('/synthesize'))window.speechRequests++;
@@ -150,6 +151,31 @@ try {
   // Exercise same-account storage-event refresh without changing other owners.
   await page.evaluate(`localStorage.setItem(window.historyKey('b'),JSON.stringify({version:2,owner:'b',messages:[{id:'tab',sender:'user',text:'SAME ACCOUNT TAB UPDATE',timestamp:2}]}));window.dispatchEvent(new StorageEvent('storage',{key:window.historyKey('b')}));true`);
   await page.wait(`document.body.innerText.includes('SAME ACCOUNT TAB UPDATE')`);
+
+  // Render only allowlisted support details, not the raw provider error. Errors
+  // stay outside assistant history and are never sent to speech synthesis.
+  await page.evaluate(`window.expectedRequests=window.requests.length+1;true`);
+  // Focus explicitly because the prior storage refresh may have moved focus.
+  await page.evaluate(`document.querySelector('button[title="Send to Malvi"]').closest('form').querySelector('input[type="text"]').focus();true`);
+  await page.command('Input.insertText', { text: 'A diagnostic fixture question' });
+  await page.wait(`!document.querySelector('button[title="Send to Malvi"]').disabled`);
+  await page.evaluate(`document.querySelector('button[title="Send to Malvi"]').click();true`);
+  await page.wait('window.requests.length===window.expectedRequests');
+  await page.evaluate(`window.requests.at(-1).finish({success:false,code:'MALVI_TEXT_TIMEOUT',
+    reference:'NVMT-00000000-0000-4000-8000-000000000000',error:'SECRET_PROVIDER_ERROR'},502);true`);
+  await page.wait(`document.body.innerText.includes('Support code: MALVI_TEXT_TIMEOUT')`);
+  assert.match(await text(), /NVMT-00000000-0000-4000-8000-000000000000/);
+  assert.doesNotMatch(await text(), /SECRET_PROVIDER_ERROR/);
+  assert.equal(await page.evaluate('window.speechRequests'), 0);
+  assert.equal(await page.evaluate(`localStorage.getItem(window.historyKey('b')).includes('MALVI_TEXT_TIMEOUT')`), false);
+  await page.evaluate(`Array.from(document.querySelectorAll('button')).find(button=>button.textContent.includes('Restore message to retry')).click();window.expectedRequests=window.requests.length+1;true`);
+  await page.wait(`!document.querySelector('button[title="Send to Malvi"]').disabled`);
+  await page.evaluate(`document.querySelector('button[title="Send to Malvi"]').click();true`);
+  await page.wait('window.requests.length===window.expectedRequests');
+  await page.evaluate(`window.requests.at(-1).finish({success:false,code:'__proto__',
+    reference:'SECRET_REFERENCE',error:'SECRET_PROVIDER_ERROR'},502);true`);
+  await page.wait(`document.body.innerText.includes('Restore message to retry')`);
+  assert.doesNotMatch(await text(), /SECRET_PROVIDER_ERROR|SECRET_REFERENCE|MALVI_TEXT_TIMEOUT/);
   await page.evaluate(`window.setAccount(null);true`);
   await page.wait(`document.body.innerText.includes('Sign in to open your private Malvi conversation')`);
   assert.doesNotMatch(await text(), /SAME ACCOUNT TAB UPDATE|ACCOUNT A PRIVATE HISTORY/);
@@ -158,6 +184,7 @@ try {
     lateResponseDiscarded: true, oldRequestAborted: true, noLateSpeech: true,
     clearOnlyCurrentOwner: true, unownedLegacyUntouched: true,
     mismatchedSessionHidden: true, storageEventRefresh: true, signOutHidesHistory: true,
+    safeSupportDetailsVisible: true, rawErrorsHidden: true, failureNotSpokenOrSaved: true,
   }));
 } finally {
   if (browser) await browser.close();
