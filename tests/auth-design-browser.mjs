@@ -32,9 +32,8 @@ try {
     await page.command('Emulation.setDeviceMetricsOverride', {
       width, height, deviceScaleFactor: 1, mobile: width < 600,
     });
-    await page.wait("!!document.querySelector('.nl-signin')");
-    await page.evaluate("document.querySelector('.nl-signin').click();true");
     await page.wait("!!document.getElementById('input-signin-password')");
+    assert.equal(await page.evaluate("!!document.querySelector('.nl-signin')"), false, 'Visitors must reach auth directly, without a landing-page step');
     assert.equal(await page.evaluate("document.getElementById('input-signin-password').type"), 'password');
     assert.equal(await page.evaluate("document.getElementById('input-signin-identifier').required"), true);
     assert.equal(await page.evaluate("document.getElementById('input-signin-identifier').autocomplete"), 'username');

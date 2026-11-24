@@ -87,9 +87,9 @@ export const AccountView: React.FC = () => {
   const ownerId = authUser?.id || currentUser.id;
   const ownedSummary = !billingSyncError && billingSummary?.userId === ownerId ? billingSummary : null;
   const sub = ownedSummary?.subscription;
-  const nvId = authUser?.nvId || currentUser.nvId || currentUser.nanivioNumber || '0486000000';
+  const nvId = authUser?.nvId || currentUser.nvId || currentUser.nanivioNumber || '';
   const role = authUser?.role || (currentUser.role === 'admin' ? 'ADMIN' : currentUser.role === 'expert' ? 'EXPERT' : currentUser.role === 'business' ? 'BUSINESS' : currentUser.role === 'driver' ? 'DRIVER' : 'PERSONAL');
-  const verificationStatus = authUser?.verificationStatus || 'VERIFIED';
+  const verificationStatus = authUser?.verificationStatus;
 
   const activateCommunicationPlan = async (plan: BillingSubscriptionPlan) => {
     if (Number(plan.priceMonthlyGHS) > 0 || Number(plan.priceMonthlyUSD) > 0) {
@@ -185,7 +185,7 @@ export const AccountView: React.FC = () => {
   };
 
   return (
-    <div className="max-w-7xl mx-auto p-4 sm:p-6 lg:p-8 space-y-8 w-full max-w-full overflow-x-hidden">
+    <div className="nanivio-account-page max-w-7xl mx-auto p-4 sm:p-6 lg:p-8 space-y-8 w-full max-w-full overflow-x-hidden">
       {/* Toast Feedback */}
       {actionSuccessMessage && (
         <div className="p-4 rounded-2xl bg-emerald-950/90 border border-emerald-500 text-emerald-200 text-sm font-semibold flex items-center gap-3 shadow-xl animate-in fade-in duration-200">
@@ -227,10 +227,12 @@ export const AccountView: React.FC = () => {
                   <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold border uppercase tracking-wider bg-emerald-500/20 text-emerald-300 border-emerald-500/40">
                   {role === 'ADMIN' ? 'Administrator' : 'Global Member'}
                 </span>
-                  <span className="px-2 py-0.5 rounded-full text-[10px] font-bold flex items-center gap-1 border bg-emerald-950/80 text-emerald-300 border-emerald-500/50">
-                  <CheckCircle2 className="w-3 h-3 text-emerald-400" />
-                  <span>{verificationStatus}</span>
-                </span>
+                  {verificationStatus && (
+                    <span className="px-2 py-0.5 rounded-full text-[10px] font-bold flex items-center gap-1 border bg-emerald-950/80 text-emerald-300 border-emerald-500/50">
+                      <CheckCircle2 className="w-3 h-3 text-emerald-400" />
+                      <span>{verificationStatus}</span>
+                    </span>
+                  )}
               </div>
 
               <p className="text-xs text-slate-400 break-words">
@@ -281,13 +283,14 @@ export const AccountView: React.FC = () => {
                   <span>Your NV Number</span>
                 </div>
                 <div className="text-base font-black font-mono text-emerald-300 tracking-wider">
-                  {nvId}
+                  {nvId || 'Not assigned'}
                 </div>
               </div>
 
               <button
                 onClick={handleCopyNvId}
-                className="px-3 py-2 rounded-xl bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 text-xs font-bold border border-emerald-500/40 transition-all flex items-center gap-1 cursor-pointer"
+                disabled={!nvId}
+                className="px-3 py-2 rounded-xl bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 text-xs font-bold border border-emerald-500/40 transition-all flex items-center gap-1 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {copiedId ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
                 <span>{copiedId ? 'Copied' : 'Copy'}</span>

@@ -5,6 +5,7 @@ import { mkdir } from 'node:fs/promises';
 import { join } from 'node:path';
 import { createServer } from 'node:http';
 import { launchBrowser } from '../scripts/live-call-checks/cdp.mjs';
+import { loadPresentationStyles } from '../scripts/live-call-checks/presentation-styles.mjs';
 
 const bundle = await build({
   stdin: {
@@ -13,6 +14,7 @@ const bundle = await build({
       import React from 'react';
       import {createRoot} from 'react-dom/client';
       import {HomeView} from './src/components/home/HomeView';
+      import {AccountHomeSections} from './src/components/home/AccountHomeSections';
       import {CallsView} from './src/components/calls/CallsView';
       import {BottomNavigationBar} from './src/components/BottomNavigationBar';
       import {Navbar} from './src/components/Navbar';
@@ -50,11 +52,11 @@ const bundle = await build({
       let root;
       window.__renderHomeCallsFixture=(tab)=>{
         values.activeTab=tab;root?.unmount();root=createRoot(document.getElementById('fixture-root'));
-        root.render(<div className="nanivio-app nv-theme-dark min-h-[100dvh] flex flex-col w-full max-w-full">
+        root.render(<div data-nanivio-page={tab} className={\`nanivio-app nv-theme-dark \${tab==='home'?'chat-app-shell h-[100dvh] max-h-[100dvh]':'min-h-[100dvh]'} flex flex-col w-full max-w-full overflow-x-hidden relative\`}>
           <Navbar/>
-          <main className="nanivio-main flex-1 pb-24 w-full max-w-full">
+          <main className={\`nanivio-main \${tab==='home'?'home-main flex min-h-0 flex-1 overflow-hidden pb-[calc(4.5rem+env(safe-area-inset-bottom))]':'flex-1 pb-24'} w-full max-w-full overflow-x-hidden\`}>
             <ErrorBoundary fallbackTitle="Fixture screen failure">
-              {tab==='home'?<HomeView/>:tab==='calls'?<CallsView/>:tab==='credit-transfer'
+              {tab==='home'?<HomeView/>:tab==='account'?<AccountHomeSections/>:tab==='calls'?<CallsView/>:tab==='credit-transfer'
                 ?<TransferValueModal isOpen onClose={noop} onSuccess={noop}
                     defaultMode="INTERNAL" communicationBalance={20} fintechBalance={999}/>
                 :<div data-destination={tab}/>}
@@ -101,9 +103,8 @@ const bundle = await build({
 });
 
 const base = process.env.NANIVIO_TEST_URL || 'http://127.0.0.1:5000';
-const response = await fetch(`${base}/src/index.css?direct`);
-assert.ok(response.ok, 'Running stylesheet unavailable');
-const css = await response.text() + '\n' + bundle.outputFiles.filter(file => file.path.endsWith('.css')).map(file => file.text).join('\n');
+const css = bundle.outputFiles.filter(file => file.path.endsWith('.css')).map(file => file.text).join('\n')
+  + '\n' + await loadPresentationStyles(base);
 const screenshotDirectory = process.env.NANIVIO_SCREENSHOT_DIR;
 if (screenshotDirectory) await mkdir(screenshotDirectory, { recursive: true });
 const brandResponse = await fetch(`${base}/brand/nanivio-emblem.png`);
@@ -137,8 +138,8 @@ try {
     assert.ok(await page.evaluate(`!![...document.querySelectorAll('.home-shortcut')]
       .find(button=>button.querySelector('strong')?.textContent==='Langpretation')
       ?.querySelector('svg[viewBox="0 0 100 100"] linearGradient')`), 'Langpretation must use its own brand logo, not a generic language icon');
-    assert.ok(await page.evaluate(`(()=>{const style=getComputedStyle(document.querySelector('.nv-home-hero'));
-      return style.borderTopWidth==='0px' && style.borderRadius==='0px';})()`), 'Home must be a screen, not a bordered promotional card');
+    assert.ok(await page.evaluate(`!!document.querySelector('.home-profile-card') &&
+      !!document.querySelector('.home-wallet-card')`), 'Home must retain the real profile and credit overview');
     assert.ok(await page.evaluate(`document.documentElement.scrollWidth<=innerWidth+1`), `Home overflow at ${width}`);
     if (screenshotDirectory && width === 390 && height === 844) await page.screenshot(join(screenshotDirectory, 'home-mobile.png'));
     await page.evaluate(`document.querySelector('#nav-tab-calls').click();true`);
@@ -214,7 +215,7 @@ try {
   await settle();
   assert.equal(await page.evaluate(`window.__homeCallsActions.filter(a=>a.name==='call').length`), completed, 'Failed lookup must not fabricate a successful call');
   assert.ok(await page.evaluate(`document.querySelector('main').textContent.includes('unavailable')`), 'Lookup failure must be visible');
-  await page.evaluate(`window.__lookupFails=false;window.__renderHomeCallsFixture('home');true`);
+  await page.evaluate(`window.__lookupFails=false;window.__renderHomeCallsFixture('account');true`);
   await settle();
   await page.evaluate(`(()=>{const input=document.querySelector('main form input');
     Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(input,'0486222222');
@@ -223,7 +224,7 @@ try {
   await page.evaluate(`document.querySelector('main form').dispatchEvent(new Event('submit',{bubbles:true,cancelable:true}));true`);
   await settle();
   await page.evaluate(`document.querySelector('[aria-label="Open chat"]').click();true`);
-  assert.equal(await page.evaluate(`window.__homeCallsActions.filter(a=>a.name==='chat').at(-1)?.args[0].id`), 'fixture-peer', 'Home search must open the real direct-chat action');
+  assert.equal(await page.evaluate(`window.__homeCallsActions.filter(a=>a.name==='chat').at(-1)?.args[0].id`), 'fixture-peer', 'Relocated Account search must open the real direct-chat action');
   await page.evaluate(`window.__homeCallsValue.contacts=[{...window.__dialerPeer,preferredLanguage:'en',createdAt:1}];
     window.__renderHomeCallsFixture('calls');true`);
   await settle();
@@ -264,8 +265,12 @@ try {
   assert.ok(await page.evaluate(`document.querySelector('.home-wallet-amount strong').textContent.includes('0.00')`), 'Known zero must remain a real zero');
   assert.ok(await page.evaluate(`document.querySelectorAll('.home-wallet-amount strong')[1].textContent.includes('12.50')`), 'Decimal strings render as amounts');
   assert.equal(await page.evaluate(`/fintech|send money/i.test(document.querySelector('main').textContent)`), false, 'Home offers Nanivio credits, not money transfers');
+  await page.evaluate(`window.__renderHomeCallsFixture('account');true`);
+  await settle();
   assert.equal(await page.evaluate(`document.querySelector('.home-activity-main strong').textContent`), 'Newest payment', 'ISO dates must sort newest first');
   assert.equal(await page.evaluate(`document.querySelector('.home-activity').textContent.includes('Other account private payment')`), false, 'Foreign activity must never appear');
+  await page.evaluate(`window.__renderHomeCallsFixture('home');true`);
+  await settle();
   await page.evaluate(`document.querySelector('[aria-label="Hide credit balances"]').click();true`);
   await settle();
   assert.ok(await page.evaluate(`[...document.querySelectorAll('.home-wallet-amount strong')].every(node=>node.textContent==='••••••')`), 'Hide all displayed currency balances');

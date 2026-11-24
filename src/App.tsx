@@ -47,7 +47,7 @@ const MainLayout: React.FC = () => {
         />
       )}
 
-      <main className={`nanivio-main ${adminWorkspace ? 'flex-1' : activeTab === 'chat' ? 'chat-main flex min-h-0 flex-1 flex-col overflow-hidden pb-[calc(4.5rem+env(safe-area-inset-bottom))]' : activeTab === 'home' ? 'home-main flex min-h-0 flex-1 overflow-hidden pb-[calc(4.5rem+env(safe-area-inset-bottom))]' : 'flex-1 pb-24 sm:pb-28'} w-full max-w-full overflow-x-hidden`}>
+      <main data-nanivio-page={activeTab} className={`nanivio-main ${adminWorkspace ? 'flex-1' : activeTab === 'chat' ? 'chat-main flex min-h-0 flex-1 flex-col overflow-hidden pb-[calc(4.5rem+env(safe-area-inset-bottom))]' : activeTab === 'home' ? 'home-main flex min-h-0 flex-1 overflow-hidden pb-[calc(4.5rem+env(safe-area-inset-bottom))]' : 'flex-1 pb-24 sm:pb-28'} w-full max-w-full overflow-x-hidden`}>
         <ErrorBoundary
           key={activeTab}
           fallbackTitle={`Nanivio ${activeTab.charAt(0).toUpperCase() + activeTab.slice(1)} Workspace`}

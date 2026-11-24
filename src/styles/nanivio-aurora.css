@@ -1,0 +1,896 @@
+/* Production Aurora: one visual language, tuned to the real signed-in shell. */
+.nv-theme-dark {
+  --home-ink: #f4f5ff;
+  --home-muted: #a5aec9;
+  --home-dim: #7f8baa;
+  --home-surface: rgba(18, 24, 46, .82);
+  --home-raised: rgba(29, 36, 65, .92);
+  --home-edge: rgba(193, 204, 255, .16);
+  --home-cream: #d9d4ff;
+  --home-cyan: #71e8ef;
+  --home-violet: #c4a3ff;
+  --home-shadow: 0 18px 42px rgba(2, 5, 18, .25), inset 0 1px rgba(255,255,255,.06);
+}
+.nv-theme-dark.nanivio-app {
+  background:
+    radial-gradient(ellipse 58% 44% at 2% 32%, rgba(0,200,238,.13), transparent 72%),
+    radial-gradient(ellipse 48% 42% at 100% 6%, rgba(124,87,239,.16), transparent 70%),
+    radial-gradient(ellipse 56% 42% at 63% 100%, rgba(219,80,173,.08), transparent 70%),
+    #090c18;
+}
+.nv-theme-dark .nanivio-main { position: relative; isolation: isolate; }
+.nv-theme-dark.nanivio-support-page {
+  background:
+    radial-gradient(ellipse 60% 45% at 5% 14%,rgba(0,200,238,.14),transparent 72%),
+    radial-gradient(ellipse 48% 44% at 100% 6%,rgba(124,87,239,.18),transparent 70%),
+    #090c18 !important;
+}
+
+/* Header: restrained product chrome, not a separate warm-colored skin. */
+.nv-theme-dark .nanivio-navbar-inner { min-height: 68px; }
+.nv-theme-dark .navbar-brand > button > .nanivio-logo,
+.nv-theme-dark .navbar-brand .nanivio-logo { filter: drop-shadow(0 2px 12px rgba(89,149,255,.2)); }
+.nv-theme-dark .navbar-actions > button,
+.nv-theme-dark .navbar-actions > div,
+.nv-theme-dark .navbar-install button {
+  transition: color .18s ease, border-color .18s ease, background-color .18s ease, transform .18s ease;
+}
+.nv-theme-dark .navbar-actions > button:hover:not(:disabled),
+.nv-theme-dark .navbar-install button:hover:not(:disabled) { transform: translateY(-1px); }
+.nv-theme-dark header #toggle-global-langpretation[class*="bg-emerald-600"] {
+  background: linear-gradient(120deg, #35a6b4, #8266c8) !important;
+}
+.nv-theme-dark header [class*="bg-[#bdc9c0]"] { background: #46516f !important; }
+.nv-theme-dark #nanivio-bottom-navigation {
+  border-top: 1px solid rgba(193,204,255,.13) !important;
+  background: rgba(12,17,34,.88) !important;
+  -webkit-backdrop-filter: blur(18px);
+  backdrop-filter: blur(18px);
+}
+.nv-theme-dark #nanivio-bottom-navigation > div:first-child > div {
+  background: rgba(161,178,220,.48) !important;
+}
+.nv-theme-dark #nanivio-bottom-navigation button[class*="bg-[#174e3c]"] {
+  transform: translateY(-1px);
+}
+.nv-theme-dark #nanivio-bottom-navigation [role="menu"] button {
+  min-height: 42px;
+  color: #dce3ff;
+}
+.nv-theme-dark #nanivio-bottom-navigation [role="menu"] button:hover {
+  background: rgba(113,232,239,.1) !important;
+}
+
+/* Compact signed-in Home profile. The dashboard stays inside its true viewport;
+   supplemental destinations float above it instead of being clipped. */
+.nv-theme-dark .nv-home,
+.nv-theme-dark .home-dashboard { color: #f4f5ff; }
+.nv-theme-dark .nv-home { padding: .35rem 0 0; }
+.nv-theme-dark .home-dashboard {
+  --home-ink: #f4f5ff;
+  --home-muted: #a5aec9;
+  --home-dim: #8290b0;
+  --home-surface: rgba(18,24,46,.82);
+  --home-raised: rgba(29,36,65,.92);
+  --home-edge: rgba(193,204,255,.16);
+  --home-cyan: #71e8ef;
+  --home-violet: #c4a3ff;
+  width: min(100%, 1180px);
+  height: 100%;
+  max-height: 100%;
+  overflow: visible;
+  padding: .55rem 1.35rem .35rem;
+}
+.nv-theme-dark .home-overline {
+  color: #92a0c3;
+  font-family: var(--font-mono);
+  letter-spacing: .13em;
+}
+.nv-theme-dark .nv-home .nv-home-hero.home-profile-card {
+  position: relative;
+  overflow: hidden;
+  padding: 1rem 1.2rem;
+  border: 1px solid rgba(185,204,255,.17);
+  border-radius: 19px;
+  background:
+    radial-gradient(ellipse 70% 110% at 100% 0%, rgba(128,91,221,.16), transparent 68%),
+    linear-gradient(120deg, rgba(30,45,77,.86), rgba(17,23,44,.84));
+  box-shadow: inset 0 1px rgba(255,255,255,.065), 0 14px 32px rgba(2,5,18,.16);
+}
+.nv-theme-dark .home-profile-avatar {
+  border-color: rgba(113,232,239,.58);
+  background: linear-gradient(140deg,#253c59,#292548);
+  box-shadow: 0 0 0 4px rgba(113,232,239,.055), 0 8px 22px rgba(0,0,0,.28), inset 0 1px rgba(255,255,255,.15);
+}
+.nv-theme-dark .home-profile-avatar > span { color: #dffaff; }
+.nv-theme-dark .home-profile-avatar i { border-color: #17213d; background: #57d6a0; }
+.nv-theme-dark .nv-home .nv-home-hero .home-profile-copy h1 { color: #f5f6ff; }
+.nv-theme-dark .home-profile-copy h1 span { color: var(--nv-cyan); }
+.nv-theme-dark .home-welcome { color: #adb8d3; }
+.nv-theme-dark .home-profile-id {
+  border-top-color: rgba(193,204,255,.14);
+}
+.nv-theme-dark .home-profile-id > span { color: #8e9cba; }
+.nv-theme-dark .home-profile-id > span svg { color: var(--nv-violet); }
+.nv-theme-dark .home-profile-id strong { color: #dfe5ff; }
+.nv-theme-dark .home-profile-id button,
+.nv-theme-dark .home-icon-button {
+  border-color: rgba(193,204,255,.16);
+  color: #dce4ff;
+  background: rgba(255,255,255,.055);
+  box-shadow: inset 0 1px rgba(255,255,255,.07);
+}
+.nv-theme-dark .home-profile-id button:hover,
+.nv-theme-dark .home-icon-button:hover { border-color: rgba(113,232,239,.48); background: rgba(113,232,239,.1); }
+.nv-theme-dark .home-wallet-card {
+  border-color: rgba(190,204,255,.19);
+  border-radius: 19px;
+  background:
+    radial-gradient(ellipse at 100% 0%, rgba(107,111,223,.19), transparent 60%),
+    linear-gradient(143deg, rgba(35,48,81,.94), rgba(17,23,44,.95));
+  box-shadow: inset 0 1px rgba(255,255,255,.075), 0 16px 36px rgba(2,5,18,.18);
+}
+.nv-theme-dark .home-wallet-light {
+  background: rgba(87,209,235,.12);
+}
+.nv-theme-dark .home-wallet-heading h2 { color: #f0f2ff; }
+.nv-theme-dark .home-wallet-amount > span { color: #a5b1d1; }
+.nv-theme-dark .home-wallet-amount strong,
+.nv-theme-dark .home-wallet-unknown strong { color: #f5f6ff; }
+.nv-theme-dark .home-wallet-unknown span { color: #a5aec9; }
+.nv-theme-dark .home-wallet-footer { border-top-color: rgba(193,204,255,.14); }
+.nv-theme-dark .home-wallet-footer > span { color: #a5aec9; }
+.nv-theme-dark .home-wallet-footer > span svg { color: #69d9b1; }
+.nv-theme-dark .home-wallet-footer button {
+  color: #10192e;
+  border-color: rgba(196,239,255,.62);
+  background: linear-gradient(120deg,#9cebed,#c9b3ff);
+  box-shadow: 0 4px 14px rgba(78,142,217,.17), inset 0 1px rgba(255,255,255,.62);
+}
+.nv-theme-dark .home-wallet-footer button:hover { filter: brightness(1.07); transform: translateY(-1px); }
+.nv-theme-dark .home-wallet-footer button:active { transform: translateY(1px); }
+.nv-theme-dark .home-section-title h2 { color: #f1f3ff; }
+.nv-theme-dark .home-unread-link { color: var(--nv-cyan); }
+.nv-theme-dark .home-shortcut-grid { gap: .58rem; }
+.nv-theme-dark .home-shortcut {
+  min-height: 74px;
+  padding: .7rem .78rem;
+  border-color: rgba(193,204,255,.14);
+  border-radius: 15px;
+  color: #edf0ff;
+  background: linear-gradient(145deg,rgba(29,37,66,.92),rgba(17,23,43,.91));
+  box-shadow: inset 0 1px rgba(255,255,255,.045), 0 6px 14px rgba(2,5,18,.16);
+  transition: transform .18s ease, border-color .18s ease, background-color .18s ease, box-shadow .18s ease;
+}
+.nv-theme-dark .home-shortcut:hover {
+  transform: translateY(-2px);
+  border-color: rgba(113,232,239,.48);
+  background: linear-gradient(145deg,rgba(38,51,84,.95),rgba(19,27,50,.95));
+  box-shadow: 0 11px 24px rgba(2,5,18,.25), inset 0 1px rgba(255,255,255,.07);
+}
+.nv-theme-dark .home-shortcut:active { transform: translateY(1px) scale(.985); }
+.nv-theme-dark .home-shortcut-icon {
+  border-color: rgba(193,204,255,.15);
+  border-radius: 11px;
+  color: var(--nv-cyan);
+  background: rgba(113,232,239,.08);
+  box-shadow: inset 0 1px rgba(255,255,255,.06);
+}
+.nv-theme-dark .home-accent-violet .home-shortcut-icon { color: var(--nv-violet); background: rgba(196,163,255,.09); }
+.nv-theme-dark .home-accent-cream .home-shortcut-icon { color: #d7ceff; background: rgba(137,110,209,.1); }
+.nv-theme-dark .home-shortcut-copy strong { color: #f2f3ff; }
+.nv-theme-dark .home-shortcut-copy small { color: #a5aec9; }
+.nv-theme-dark .home-shortcut-arrow { color: #99a6c7; }
+.nv-theme-dark .home-more-shortcuts {
+  position: fixed;
+  z-index: 70;
+  top: max(78px, calc(env(safe-area-inset-top) + 70px));
+  right: max(16px, calc((100vw - 1180px) / 2 + 22px));
+  width: min(410px, calc(100vw - 32px));
+  max-height: min(62dvh, 430px);
+  overflow-y: auto;
+  margin: 0;
+  padding: 13px;
+  border: 1px solid rgba(193,204,255,.23);
+  border-radius: 19px;
+  background: rgba(16,22,43,.98);
+  box-shadow: 0 24px 65px rgba(0,0,0,.5), inset 0 1px rgba(255,255,255,.06);
+  -webkit-backdrop-filter: blur(22px);
+  backdrop-filter: blur(22px);
+}
+.nv-theme-dark .home-more-shortcuts::before {
+  content: "MORE DESTINATIONS";
+  grid-column: 1 / -1;
+  padding: 1px 4px 4px;
+  color: #99a6c7;
+  font: 700 8px var(--font-mono);
+  letter-spacing: .13em;
+}
+.nv-theme-dark .home-more-shortcuts .home-shortcut { min-height: 60px; }
+
+/* Account is the full profile and settings workspace; no balances are fabricated
+   and its real ownership / permission states remain untouched. */
+.nv-theme-dark .nanivio-account-page { color: #eaf0ff; }
+.nv-theme-dark .nanivio-account-page > div[class*="rounded-3xl"] {
+  border-color: rgba(193,204,255,.16) !important;
+  border-radius: 24px !important;
+  background: linear-gradient(145deg,rgba(25,34,62,.94),rgba(15,21,41,.96)) !important;
+  box-shadow: 0 18px 44px rgba(2,5,18,.2), inset 0 1px rgba(255,255,255,.055) !important;
+}
+.nv-theme-dark .nanivio-account-page > div:first-child[class*="rounded-3xl"] {
+  border-color: rgba(113,232,239,.2) !important;
+  background:
+    radial-gradient(ellipse 70% 120% at 100% 0%,rgba(124,87,239,.18),transparent 67%),
+    linear-gradient(125deg,rgba(24,43,73,.98),rgba(17,23,44,.97)) !important;
+}
+.nv-theme-dark .nanivio-account-page [class*="bg-gradient-to-br"][class*="from-emerald-950"] {
+  background: linear-gradient(140deg,#243d5b,#2a254a) !important;
+}
+.nv-theme-dark .nanivio-account-page [class*="bg-slate-950"] {
+  background: rgba(10,15,31,.7) !important;
+}
+.nv-theme-dark .nanivio-account-page [class*="bg-slate-900/"] {
+  background: rgba(20,27,50,.76) !important;
+}
+.nv-theme-dark .nanivio-account-page [class*="bg-slate-800"],
+.nv-theme-dark .nanivio-account-page [class*="bg-slate-700"] {
+  background: rgba(38,48,79,.72) !important;
+}
+.nv-theme-dark .nanivio-account-page [class*="border-slate-800"],
+.nv-theme-dark .nanivio-account-page [class*="border-slate-700"] { border-color: rgba(193,204,255,.15) !important; }
+.nv-theme-dark .nanivio-account-page [class*="bg-emerald-500"]:not(button),
+.nv-theme-dark .nanivio-account-page [class*="bg-emerald-950"] { background-color: rgba(54,139,145,.16) !important; }
+.nv-theme-dark .nanivio-account-page [class*="text-amber-300"] { color: #e8c57e !important; }
+.nv-theme-dark .nanivio-account-page button[class*="bg-emerald-500"],
+.nv-theme-dark .nanivio-account-page button[class*="bg-emerald-600"] {
+  color: #0d1a2c !important;
+  border-color: rgba(190,240,255,.48) !important;
+  background: linear-gradient(120deg,#91e8eb,#bca7f4) !important;
+  box-shadow: 0 5px 15px rgba(67,142,211,.15) !important;
+}
+.nv-theme-dark .nanivio-account-page button[class*="bg-emerald-500"]:hover,
+.nv-theme-dark .nanivio-account-page button[class*="bg-emerald-600"]:hover { filter: brightness(1.08); }
+.nv-theme-dark .nanivio-account-page [class*="bg-gradient-to-r"][class*="from-emerald-500"] {
+  background-image: linear-gradient(100deg,#42b5bf,#9376dd) !important;
+}
+.nv-theme-dark .nanivio-account-page [role="progressbar"] > div { background-image: linear-gradient(90deg,#56d4dc,#9580ec) !important; }
+
+/* Communication-first route surfaces, including account dialogs and cards. */
+.nv-theme-dark main[data-nanivio-page="nvnumber"] > div > div[class*="bg-gradient-to-br"],
+.nv-theme-dark main[data-nanivio-page="contacts"] > div > div[class*="bg-gradient-to-r"] {
+  border-color: rgba(193,204,255,.17) !important;
+  background:
+    radial-gradient(ellipse at 100% 0%,rgba(113,232,239,.09),transparent 56%),
+    linear-gradient(145deg,rgba(26,37,67,.95),rgba(15,21,41,.97)) !important;
+}
+.nv-theme-dark main[data-nanivio-page="contacts"] [class*="bg-[#0c1424]"],
+.nv-theme-dark main[data-nanivio-page="contacts"] [class*="bg-[#0c1424]"]:hover {
+  background-color: rgba(22,30,55,.92) !important;
+}
+.nv-theme-dark main[data-nanivio-page="services"] [class*="bg-[#091120]"],
+.nv-theme-dark main[data-nanivio-page="services"] [class*="bg-[#091220]"],
+.nv-theme-dark main[data-nanivio-page="services"] [class*="bg-[#0b1424]"],
+.nv-theme-dark main[data-nanivio-page="services"] [class*="bg-[#0c1424]"],
+.nv-theme-dark main[data-nanivio-page="services"] [class*="bg-[#091322]"],
+.nv-theme-dark main[data-nanivio-page="services"] [class*="bg-[#0b1322]"] {
+  background-color: #141d38 !important;
+}
+.nv-theme-dark main[data-nanivio-page="billing"] > div {
+  background-color: transparent;
+}
+.nv-theme-dark main[data-nanivio-page="billing"] [class*="bg-slate-950"],
+.nv-theme-dark main[data-nanivio-page="billing"] [class*="bg-[#0b1424]"],
+.nv-theme-dark main[data-nanivio-page="billing"] [class*="bg-[#0c1424]"] {
+  background-color: rgba(12,18,37,.78) !important;
+}
+.nv-theme-dark main[data-nanivio-page="ride"] [class*="bg-[#070d18]"] {
+  background-color: #121a32 !important;
+}
+.nv-theme-dark .nv-calls-page {
+  --nv-stage: #090c18;
+  --nv-panel: #141b34;
+  --nv-panel-2: #202a4a;
+  --nv-line: rgba(193,204,255,.16);
+  --nv-paper-text: #f4f5ff;
+  --nv-soft-text: #a5aec9;
+  --nv-brass: #71e8ef;
+  --call-cyan: #71e8ef;
+  --call-violet: #c4a3ff;
+  --call-sky: #80c8f0;
+  --call-teal: #6ddfcb;
+  --call-lilac: #d49ae7;
+}
+.nv-theme-dark .nv-calls-page .nv-calls-heading,
+.nv-theme-dark .nv-calls-page .nv-call-tabs,
+.nv-theme-dark .nv-calls-page .nv-history-list,
+.nv-theme-dark .nv-calls-page .nv-specialists-list { border-color: rgba(193,204,255,.14); }
+.nv-theme-dark .nv-calls-page .nv-call-mark,
+.nv-theme-dark .nv-calls-page .nv-dialer-heading-icon,
+.nv-theme-dark .nv-calls-page .nv-history-icon,
+.nv-theme-dark .nv-calls-page .nv-contact-initials {
+  border-color: rgba(113,232,239,.22);
+  color: var(--nv-cyan);
+  background: rgba(113,232,239,.075);
+}
+.nv-theme-dark .nv-calls-page .nv-call-tabs button.is-active,
+.nv-theme-dark .nv-calls-page .nv-mode-select button.is-active {
+  border-color: rgba(196,163,255,.35);
+  color: #f2efff;
+  background: rgba(125,103,199,.18);
+}
+.nv-theme-dark .nv-calls-page .nv-dialer-panel,
+.nv-theme-dark .nv-calls-page .nv-call-empty,
+.nv-theme-dark .nv-calls-page .nv-group-contacts > button {
+  border-color: rgba(193,204,255,.15);
+  background: linear-gradient(145deg,rgba(25,34,62,.92),rgba(15,21,41,.96));
+}
+.nv-theme-dark .nv-calls-page .nv-dialer-keypad > div:first-child {
+  background: rgba(8,13,29,.72) !important;
+  border-color: rgba(193,204,255,.15) !important;
+}
+.nv-theme-dark .nv-calls-page .nv-dialer-keypad .nv-dialer-pad-grid button {
+  border-color: rgba(193,204,255,.15) !important;
+  background: linear-gradient(145deg,#202b4a,#17203b) !important;
+}
+.nv-theme-dark .nv-calls-page .nv-dialer-keypad .nv-dialer-pad-grid button:hover:not(:disabled) {
+  border-color: rgba(113,232,239,.52) !important;
+  background: linear-gradient(145deg,#29385d,#1c2b48) !important;
+}
+.nv-theme-dark .nv-calls-page .nv-dialer-keypad .nv-dialer-actions button {
+  color: #0c1b2e !important;
+  border-color: rgba(190,240,255,.48) !important;
+  background: linear-gradient(120deg,#91e8eb,#bca7f4) !important;
+}
+.nv-theme-dark .nv-calls-page .nv-call-empty svg,
+.nv-theme-dark .nv-calls-page .nv-call-empty button,
+.nv-theme-dark .nv-calls-page .nv-history-icon { color: var(--nv-cyan); }
+
+/* Dialog portals do not inherit the page subtree, so give them the same glass. */
+.nv-theme-dark.nv-portal-backdrop {
+  background: rgba(3,6,18,.78) !important;
+  -webkit-backdrop-filter: blur(14px);
+  backdrop-filter: blur(14px);
+}
+:is(.nv-theme-dark, .nanivio-auth) [class*="bg-[#0b1424]"],
+:is(.nv-theme-dark, .nanivio-auth) [class*="bg-[#0c1424]"],
+:is(.nv-theme-dark, .nanivio-auth) [class*="bg-[#0b1322]"],
+:is(.nv-theme-dark, .nanivio-auth) [class*="bg-[#0b1324]"],
+:is(.nv-theme-dark, .nanivio-auth) [class*="bg-[#0a1120]"],
+:is(.nv-theme-dark, .nanivio-auth) [class*="bg-[#091322]"],
+:is(.nv-theme-dark, .nanivio-auth) [class*="bg-[#091120]"],
+:is(.nv-theme-dark, .nanivio-auth) [class*="bg-[#090f1d]"],
+:is(.nv-theme-dark, .nanivio-auth) [class*="bg-[#080e18]"],
+:is(.nv-theme-dark, .nanivio-auth) [class*="bg-[#071311]"],
+:is(.nv-theme-dark, .nanivio-auth) [class*="bg-[#0c100e]"],
+:is(.nv-theme-dark, .nanivio-auth) [class*="bg-[#101211]"],
+:is(.nv-theme-dark, .nanivio-auth) [class*="bg-[#10201f]"],
+:is(.nv-theme-dark, .nanivio-auth) [class*="bg-[#0d100e]"],
+:is(.nv-theme-dark, .nanivio-auth) [class*="bg-[#10130f]"],
+:is(.nv-theme-dark, .nanivio-auth) [class*="bg-[#111814]"],
+:is(.nv-theme-dark, .nanivio-auth) [class*="bg-[#18211c]"],
+:is(.nv-theme-dark, .nanivio-auth) [class*="bg-[#1d2822]"] {
+  background-color: #141c35 !important;
+}
+:is(.nv-theme-dark, .nanivio-auth) [class*="bg-[#174e3c]"],
+:is(.nv-theme-dark, .nanivio-auth) button[class*="bg-[#18312e]"] {
+  color: #f4f5ff !important;
+  border-color: rgba(196,163,255,.34) !important;
+  background: linear-gradient(125deg,rgba(72,115,195,.3),rgba(132,91,196,.3)) !important;
+}
+:is(.nv-theme-dark, .nanivio-auth) [class*="text-transparent"][class*="bg-clip-text"] {
+  color: #c5b3ff !important;
+  -webkit-text-fill-color: #c5b3ff !important;
+}
+
+/* Retire the legacy brass CTA translation in index.css. Green remains a
+   status color; primary actions use the brand's cyan-to-violet light. */
+.nv-theme-dark button[class~="bg-emerald-500"],
+.nv-theme-dark button[class~="bg-emerald-600"]:not(#toggle-global-langpretation),
+.nv-theme-dark button[class~="bg-emerald-700"],
+.nv-theme-dark button[class~="bg-cyan-500"],
+.nv-theme-dark button[class~="bg-teal-500"],
+.nv-theme-dark button[class~="from-emerald-500"],
+.nv-theme-dark button[class~="from-emerald-600"],
+.nv-theme-dark button[class~="from-cyan-500"] {
+  color: #0b172b !important;
+  background: linear-gradient(120deg,#91e8eb,#bca7f4) !important;
+  background-image: linear-gradient(120deg,#91e8eb,#bca7f4) !important;
+  border-color: rgba(190,240,255,.52) !important;
+  box-shadow: 0 5px 15px rgba(67,142,211,.13) !important;
+}
+.nv-theme-dark button[class~="bg-emerald-500"]:hover:not(:disabled),
+.nv-theme-dark button[class~="bg-emerald-600"]:not(#toggle-global-langpretation):hover:not(:disabled),
+.nv-theme-dark button[class~="bg-emerald-700"]:hover:not(:disabled),
+.nv-theme-dark button[class~="bg-cyan-500"]:hover:not(:disabled),
+.nv-theme-dark button[class~="bg-teal-500"]:hover:not(:disabled) {
+  filter: brightness(1.08);
+}
+.nv-theme-dark button[class~="bg-emerald-500"]:active:not(:disabled),
+.nv-theme-dark button[class~="bg-emerald-600"]:not(#toggle-global-langpretation):active:not(:disabled),
+.nv-theme-dark button[class~="bg-emerald-700"]:active:not(:disabled) { transform: translateY(1px); }
+
+/* Auth and recovery use the same dark aurora environment, but retain a focused
+   form layout and their live error/success states. */
+.nanivio-auth.auth-luxury {
+  --auth-ink: #f4f5ff;
+  --auth-muted: #a5aec9;
+  --auth-brass: #71e8ef;
+  --auth-brass-light: #c4a3ff;
+  --auth-brass-dim: #4776af;
+  --auth-line: rgba(113,232,239,.22);
+  color: #f4f5ff !important;
+  background:
+    radial-gradient(ellipse 58% 42% at 5% 18%,rgba(0,200,238,.16),transparent 72%),
+    radial-gradient(ellipse 48% 48% at 100% 4%,rgba(124,87,239,.2),transparent 70%),
+    radial-gradient(ellipse 55% 40% at 55% 100%,rgba(219,80,173,.09),transparent 70%),
+    #090c18 !important;
+}
+.nanivio-auth.auth-luxury > .auth-ambient {
+  border-color: rgba(113,232,239,.12);
+}
+.nanivio-auth.auth-luxury > .auth-ambient::before,
+.nanivio-auth.auth-luxury > .auth-ambient::after { border-color: rgba(196,163,255,.08); }
+.nanivio-auth.auth-luxury > .auth-top-rule {
+  background: linear-gradient(90deg,transparent,rgba(113,232,239,.62),rgba(196,163,255,.42),transparent);
+}
+.nanivio-auth.auth-luxury .auth-brand-pill,
+.nanivio-auth.auth-luxury .auth-language {
+  border-color: rgba(193,204,255,.17) !important;
+  background: rgba(18,24,46,.82) !important;
+  color: #cad4f0 !important;
+}
+.nanivio-auth.auth-luxury .auth-status-dot {
+  background: #71e8ef !important;
+  box-shadow: 0 0 10px rgba(113,232,239,.42);
+}
+.nanivio-auth.auth-luxury .auth-language-select { color: #a7eaf0 !important; }
+.nanivio-auth.auth-luxury .auth-wordmark,
+.nanivio-auth.auth-luxury .auth-wordmark-name { color: #f4f5ff; }
+.nanivio-auth.auth-luxury .auth-folded-mark { filter: drop-shadow(0 3px 14px rgba(89,149,255,.28)); }
+.nanivio-auth.auth-luxury .auth-tagline { color: #a5aec9 !important; }
+.nanivio-auth.auth-luxury .auth-panel {
+  border-color: rgba(193,204,255,.2) !important;
+  background: linear-gradient(145deg,rgba(255,255,255,.045),transparent 30%),rgba(17,23,43,.94) !important;
+  box-shadow: 0 28px 90px rgba(0,0,0,.48), inset 0 1px rgba(255,255,255,.07) !important;
+  color: #f4f5ff !important;
+}
+.nanivio-auth.auth-luxury .auth-overline { color: #71e8ef; }
+.nanivio-auth.auth-luxury .auth-panel-heading h1 { color: #f4f5ff; }
+.nanivio-auth.auth-luxury .auth-panel-heading p { color: #a5aec9; }
+.nanivio-auth.auth-luxury .auth-tabs {
+  border-color: rgba(193,204,255,.13) !important;
+  background: rgba(9,14,29,.8) !important;
+}
+.nanivio-auth.auth-luxury .auth-tabs button { color: #a5aec9 !important; }
+.nanivio-auth.auth-luxury .auth-tabs button[class*="bg-emerald-500/20"] {
+  border-color: rgba(113,232,239,.32) !important;
+  background: rgba(72,121,190,.17) !important;
+  color: #dffaff !important;
+}
+.nanivio-auth.auth-luxury .auth-panel label { color: #d8def3 !important; }
+.nanivio-auth.auth-luxury .auth-panel input:not([type="checkbox"]):not([type="radio"]),
+.nanivio-auth.auth-luxury .auth-panel textarea,
+.nanivio-auth.auth-luxury .auth-panel select {
+  border-color: rgba(193,204,255,.19) !important;
+  background-color: rgba(9,14,29,.8) !important;
+  color: #f4f5ff !important;
+}
+.nanivio-auth.auth-luxury .auth-panel input::placeholder,
+.nanivio-auth.auth-luxury .auth-panel textarea::placeholder { color: #8794b3 !important; }
+.nanivio-auth.auth-luxury .auth-panel input:focus,
+.nanivio-auth.auth-luxury .auth-panel textarea:focus,
+.nanivio-auth.auth-luxury .auth-panel select:focus {
+  border-color: rgba(113,232,239,.68) !important;
+  background-color: rgba(14,21,41,.96) !important;
+  outline: 2px solid rgba(113,232,239,.15) !important;
+}
+.nanivio-auth.auth-luxury .auth-panel input[type="checkbox"] { accent-color: #71e8ef; }
+.nanivio-auth.auth-luxury .auth-panel button[class~="bg-emerald-500"],
+.nanivio-auth.auth-luxury .auth-panel button[class~="bg-emerald-600"],
+.nanivio-auth.auth-luxury .auth-panel button[class*="from-emerald-500"],
+.nanivio-auth.auth-luxury .auth-panel button[class~="bg-amber-500"] {
+  border-color: rgba(190,240,255,.62) !important;
+  background: linear-gradient(115deg,#91e8eb,#c4a3ff) !important;
+  color: #10182e !important;
+  box-shadow: 0 8px 24px rgba(84,132,217,.17) !important;
+}
+.nanivio-auth.auth-luxury .auth-panel button[class*="bg-slate-800"],
+.nanivio-auth.auth-luxury .auth-panel button[class*="bg-slate-700"] {
+  border-color: rgba(193,204,255,.16);
+  background: #202a4a !important;
+  color: #e4e9ff !important;
+}
+.nanivio-auth.auth-luxury .auth-panel button[class*="bg-slate-900"] {
+  border-color: rgba(193,204,255,.14) !important;
+  background: #151d38 !important;
+  color: #dce3fa !important;
+}
+.nanivio-auth.auth-luxury .auth-panel button[class*="text-emerald-400"],
+.nanivio-auth.auth-luxury .auth-panel button[class*="text-emerald-300"] { color: #82e8ea !important; }
+.nanivio-auth.auth-luxury .auth-panel button:focus-visible,
+.nanivio-auth.auth-luxury .auth-panel input:focus-visible,
+.nanivio-auth.auth-luxury .auth-panel select:focus-visible,
+.nanivio-auth.auth-luxury .auth-panel textarea:focus-visible { outline: 2px solid #71e8ef !important; outline-offset: 3px; }
+.nanivio-auth.auth-luxury .auth-panel [class*="border-t"] { border-color: rgba(193,204,255,.15) !important; }
+.nanivio-auth.auth-luxury .auth-panel [class*="bg-emerald-50"],
+.nanivio-auth.auth-luxury .auth-panel [class*="bg-white"] {
+  border-color: rgba(193,204,255,.16) !important;
+  background: rgba(27,36,65,.84) !important;
+}
+.nanivio-auth.auth-luxury .auth-panel [class*="text-emerald-800"],
+.nanivio-auth.auth-luxury .auth-panel [class*="text-emerald-700"],
+.nanivio-auth.auth-luxury .auth-panel [class*="text-emerald-900"],
+.nanivio-auth.auth-luxury .auth-panel [class*="text-emerald-400"],
+.nanivio-auth.auth-luxury .auth-panel [class*="text-emerald-300"] { color: #71e8ef !important; }
+.nanivio-auth.auth-luxury .auth-panel [class*="border-emerald-"] { border-color: rgba(113,232,239,.24) !important; }
+.nanivio-auth.auth-luxury .auth-panel [class*="bg-emerald-950"],
+.nanivio-auth.auth-luxury .auth-panel [class*="bg-emerald-500/20"] { background: rgba(41,109,147,.16) !important; }
+.nanivio-auth.auth-luxury .auth-panel [class*="text-slate-500"],
+.nanivio-auth.auth-luxury .auth-panel [class*="text-slate-400"] { color: #a5aec9 !important; }
+.nanivio-auth.auth-luxury .auth-panel [class*="text-slate-300"] { color: #d2daf2 !important; }
+.nanivio-auth.auth-luxury .auth-panel [class*="text-white"] { color: #f4f5ff !important; }
+.nanivio-auth.auth-luxury .auth-panel .country-selector-choice > div > button {
+  border-color: rgba(193,204,255,.18) !important;
+  background: #11172b !important;
+  color: #f4f5ff !important;
+}
+.nanivio-auth.auth-luxury > .fixed.inset-0 { background: rgba(3,6,18,.84) !important; }
+.nanivio-auth.auth-luxury > .fixed.inset-0 > div {
+  border-color: rgba(193,204,255,.22);
+  background: #151d38 !important;
+}
+
+/* Keep overlays polished without changing the real dialog structure or actions. */
+.nv-theme-dark [role="dialog"] {
+  border-color: rgba(193,204,255,.18) !important;
+}
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .nv-theme-dark header:not(.call-topbar):not(.dialer-top),
+  .nv-theme-dark #nanivio-bottom-navigation,
+  .nv-theme-dark .home-more-shortcuts,
+  .chat-app-shell .chat-composer { background-color: #11172b !important; }
+}
+
+@media (max-width: 767px) {
+  .nv-theme-dark .home-dashboard { padding: .38rem .85rem .25rem; }
+  .nv-theme-dark .nv-home .nv-home-hero.home-profile-card {
+    grid-template-columns: 46px minmax(0,1fr);
+    gap: 6px 10px;
+    padding: 9px 11px;
+    border-radius: 15px;
+  }
+  .nv-theme-dark .home-profile-avatar { width: 44px; height: 44px; }
+  .nv-theme-dark .home-profile-copy h1 { font-size: 19px; }
+  .nv-theme-dark .home-profile-id { gap: 5px; padding-top: 5px; }
+  .nv-theme-dark .home-profile-id button { min-height: 25px; padding: 3px 7px; font-size: 9px; }
+  .nv-theme-dark .home-wallet-card { padding: 9px 11px; border-radius: 15px; }
+  .nv-theme-dark .home-wallet-heading { align-items: center; }
+  .nv-theme-dark .home-wallet-heading h2 { font-size: 12px; }
+  .nv-theme-dark .home-icon-button { width: 30px; height: 30px; }
+  .nv-theme-dark .home-wallet-balances { min-height: 34px; padding: 2px 0 5px; }
+  .nv-theme-dark .home-wallet-unknown { display: flex; align-items: baseline; gap: 8px; }
+  .nv-theme-dark .home-wallet-unknown strong { font-size: 19px; }
+  .nv-theme-dark .home-wallet-unknown span { font-size: 10px; }
+  .nv-theme-dark .home-wallet-footer { padding-top: 6px; }
+  .nv-theme-dark .home-wallet-footer > span { font-size: 9px; }
+  .nv-theme-dark .home-wallet-footer button { min-height: 30px; padding: 4px 8px; font-size: 9px; }
+  .nv-theme-dark .home-shortcuts-section { margin-top: .55rem; }
+  .nv-theme-dark .home-shortcuts-section > .home-section-title { margin-bottom: .35rem; }
+  .nv-theme-dark .home-section-title h2 { font-size: 15px; }
+  .nv-theme-dark .home-shortcut-grid { grid-template-columns: repeat(3,minmax(0,1fr)); gap: .4rem; }
+  .nv-theme-dark .home-shortcut { min-height: 60px; flex-direction: column; align-items: flex-start; gap: .25rem; padding: .42rem; border-radius: 12px; }
+  .nv-theme-dark .home-shortcut-icon { width: 28px; height: 28px; }
+  .nv-theme-dark .home-shortcut-copy { width: 100%; }
+  .nv-theme-dark .home-shortcut-copy strong { font-size: .67rem; }
+  .nv-theme-dark .home-shortcut-copy small { display: none; }
+  .nv-theme-dark .home-shortcut-arrow { display: none; }
+  .nv-theme-dark .home-more-shortcuts {
+    top: max(67px, calc(env(safe-area-inset-top) + 60px));
+    left: 12px;
+    right: 12px;
+    width: auto;
+    max-height: min(65dvh, 460px);
+    padding: 11px;
+  }
+  .nv-theme-dark .home-more-shortcuts .home-shortcut { min-height: 54px; flex-direction: row; align-items: center; }
+  .nv-theme-dark .nanivio-account-page { padding: 1rem; }
+  .nv-theme-dark .nanivio-account-page > div[class*="rounded-3xl"] { border-radius: 20px !important; }
+}
+@media (max-width: 390px) {
+  .nv-theme-dark .home-dashboard { padding-inline: .72rem; }
+  .nv-theme-dark .home-shortcut-grid { gap: .32rem; }
+  .nv-theme-dark .home-shortcut { min-height: 56px; padding: .34rem; }
+  .nv-theme-dark .home-shortcut-copy strong { font-size: .62rem; }
+  .nv-theme-dark .home-profile-id { gap: .32rem; }
+  .nv-theme-dark .home-profile-id > span { font-size: 7px; }
+  .nv-theme-dark .home-profile-id strong { font-size: 8px; }
+}
+@media (max-height: 740px) and (min-width: 768px) {
+  .nv-theme-dark .home-dashboard { padding-top: .25rem; }
+  .nv-theme-dark .home-shortcut { min-height: 66px; }
+  .nv-theme-dark .home-shortcuts-section { margin-top: .4rem; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .nv-theme-dark *, .nv-theme-dark *::before, .nv-theme-dark *::after,
+  .nanivio-auth *, .nanivio-auth *::before, .nanivio-auth *::after {
+    scroll-behavior: auto !important;
+    transition-duration: .01ms !important;
+    animation-duration: .01ms !important;
+    animation-iteration-count: 1 !important;
+  }
+}
+@media (max-width: 639px) {
+  .malvi-live-video-details > header { flex-wrap: wrap; }
+}
+
+/* Account's relocated discovery/activity sections share the Home stylesheet,
+   so theme that component surface explicitly rather than relying on Tailwind
+   remaps intended for the rest of the app. */
+.nv-theme-dark .account-home-sections {
+  --home-ink: #f4f5ff;
+  --home-muted: #a5aec9;
+  --home-dim: #8492b1;
+  --home-surface: rgba(18,24,46,.84);
+  --home-raised: rgba(29,36,65,.92);
+  --home-edge: rgba(193,204,255,.16);
+  --home-cream: #d9d4ff;
+  --home-cyan: #71e8ef;
+  --home-violet: #c4a3ff;
+  color: #eaf0ff;
+}
+.nv-theme-dark .account-home-sections .home-section-title h2,
+.nv-theme-dark .account-home-sections .home-find-heading h2,
+.nv-theme-dark .account-home-sections .home-services-heading h2 {
+  color: #f2f4ff;
+}
+.nv-theme-dark .account-home-sections .home-text-link {
+  min-height: 38px;
+  padding: .35rem .5rem;
+  border: 1px solid transparent;
+  border-radius: 10px;
+  color: #a9dfe9;
+  transition: color .18s ease, border-color .18s ease, background-color .18s ease, transform .18s ease;
+}
+.nv-theme-dark .account-home-sections .home-text-link:hover {
+  color: #e9ffff;
+  border-color: rgba(113,232,239,.2);
+  background: rgba(113,232,239,.07);
+  transform: translateY(-1px);
+}
+.nv-theme-dark .account-home-sections .home-text-link:active { transform: translateY(1px); }
+.nv-theme-dark .account-home-sections :is(.home-activity-list,.home-activity-empty,.home-find,.home-language-note) {
+  border-color: rgba(193,204,255,.15);
+  border-radius: 17px;
+  background:
+    linear-gradient(145deg,rgba(255,255,255,.025),transparent 38%),
+    linear-gradient(145deg,rgba(25,34,62,.92),rgba(15,21,41,.94));
+  box-shadow: inset 0 1px rgba(255,255,255,.045), 0 10px 26px rgba(2,5,18,.13);
+}
+.nv-theme-dark .account-home-sections .home-activity-list { overflow: hidden; }
+.nv-theme-dark .account-home-sections .home-activity-row {
+  min-height: 68px;
+  border-bottom-color: rgba(193,204,255,.1);
+  color: #eff2ff;
+  background: transparent;
+  transition: background-color .18s ease, transform .18s ease;
+}
+.nv-theme-dark .account-home-sections .home-activity-row:hover {
+  background: rgba(113,232,239,.055);
+}
+.nv-theme-dark .account-home-sections .home-activity-row:active { transform: scale(.995); }
+.nv-theme-dark .account-home-sections .home-activity-icon {
+  border-color: rgba(113,232,239,.2);
+  color: #8bdfe9;
+  background: rgba(113,232,239,.075);
+}
+.nv-theme-dark .account-home-sections .home-activity-icon.is-complete {
+  border-color: rgba(87,214,160,.32);
+  color: #70dfad;
+  background: rgba(43,151,111,.14);
+}
+.nv-theme-dark .account-home-sections .home-activity-main strong,
+.nv-theme-dark .account-home-sections .home-activity-amount strong { color: #f0f3ff; }
+.nv-theme-dark .account-home-sections .home-activity-main small,
+.nv-theme-dark .account-home-sections .home-activity-amount small { color: #a1adca; }
+.nv-theme-dark .account-home-sections .home-activity-arrow { color: #91a0c4; }
+.nv-theme-dark .account-home-sections .home-activity-empty {
+  min-height: 66px;
+  color: #adb8d3;
+}
+.nv-theme-dark .account-home-sections .home-activity-empty svg { color: #b6a2f5; }
+
+.nv-theme-dark .account-home-sections .home-find {
+  padding: 1.05rem;
+}
+.nv-theme-dark .account-home-sections .home-find-heading { align-items: end; }
+.nv-theme-dark .account-home-sections .home-lookup {
+  min-height: 54px;
+  border-color: rgba(193,204,255,.18);
+  border-radius: 14px;
+  color: #a5b4d2;
+  background: rgba(9,14,30,.74);
+  transition: border-color .18s ease, background-color .18s ease, box-shadow .18s ease;
+}
+.nv-theme-dark .account-home-sections .home-lookup:focus-within {
+  border-color: rgba(113,232,239,.58);
+  background: rgba(12,19,38,.9);
+  box-shadow: 0 0 0 3px rgba(113,232,239,.09), 0 0 22px rgba(85,145,224,.1);
+}
+.nv-theme-dark .account-home-sections .home-lookup > svg { color: #b9a8f3; }
+.nv-theme-dark .account-home-sections .home-lookup input {
+  min-height: 42px;
+  color: #f4f5ff !important;
+  caret-color: #71e8ef;
+  background: transparent !important;
+}
+.nv-theme-dark .account-home-sections .home-lookup input::placeholder { color: #8996b5 !important; }
+.nv-theme-dark .account-home-sections .home-lookup input:focus-visible {
+  outline: none !important;
+}
+.nv-theme-dark .account-home-sections .home-lookup button {
+  min-height: 40px;
+  border: 1px solid rgba(190,240,255,.48);
+  border-radius: 11px;
+  color: #0c1930;
+  background: linear-gradient(120deg,#91e8eb,#bca7f4);
+  box-shadow: 0 4px 12px rgba(67,142,211,.16), inset 0 1px rgba(255,255,255,.42);
+  transition: transform .18s ease, filter .18s ease, box-shadow .18s ease;
+}
+.nv-theme-dark .account-home-sections .home-lookup button:hover:not(:disabled) {
+  filter: brightness(1.08);
+  transform: translateY(-1px);
+  box-shadow: 0 7px 18px rgba(67,142,211,.2), inset 0 1px rgba(255,255,255,.5);
+}
+.nv-theme-dark .account-home-sections .home-lookup button:active:not(:disabled) { transform: translateY(1px); }
+.nv-theme-dark .account-home-sections .home-lookup button:disabled {
+  border-color: rgba(151,166,207,.14);
+  color: #9ba6c2;
+  background: #303956;
+  box-shadow: none;
+  filter: none;
+  opacity: .78;
+  cursor: not-allowed;
+}
+.nv-theme-dark .account-home-sections .home-lookup-result {
+  border-color: rgba(113,232,239,.25);
+  color: #e8f5ff;
+  background: rgba(31,76,103,.22);
+}
+.nv-theme-dark .account-home-sections .home-lookup-result.is-error {
+  border-color: rgba(240,128,141,.4);
+  color: #ffc0c5;
+  background: rgba(87,32,49,.3);
+}
+.nv-theme-dark .account-home-sections .home-result-actions button {
+  border-color: rgba(193,204,255,.18);
+  color: #dce6ff;
+  background: rgba(255,255,255,.055);
+  transition: transform .18s ease, color .18s ease, border-color .18s ease, background-color .18s ease;
+}
+.nv-theme-dark .account-home-sections .home-result-actions button:hover:not(:disabled) {
+  border-color: rgba(113,232,239,.48);
+  color: #e8ffff;
+  background: rgba(113,232,239,.1);
+  transform: translateY(-1px);
+}
+.nv-theme-dark .account-home-sections .home-result-actions button:active:not(:disabled) { transform: translateY(1px); }
+.nv-theme-dark .account-home-sections .home-result-actions button:disabled {
+  border-color: rgba(151,166,207,.12);
+  color: #7d89a7;
+  background: rgba(49,59,87,.4);
+  opacity: .58;
+  cursor: not-allowed;
+}
+.nv-theme-dark .account-home-sections :is(button,input,select):focus-visible {
+  outline: 2px solid rgba(113,232,239,.92);
+  outline-offset: 3px;
+}
+
+.nv-theme-dark .account-home-sections .home-language-note {
+  grid-template-columns: 40px minmax(0,1fr) 36px;
+  border-radius: 16px;
+}
+.nv-theme-dark .account-home-sections .home-language-icon {
+  border-color: rgba(196,163,255,.22);
+  color: #d2c0ff;
+  background: rgba(121,92,192,.12);
+}
+.nv-theme-dark .account-home-sections .home-language-note > div p:last-child {
+  color: #b9c4df;
+}
+.nv-theme-dark .account-home-sections .home-language-note > button {
+  border-color: rgba(193,204,255,.18);
+  color: #c9baff;
+  background: rgba(255,255,255,.045);
+  transition: transform .18s ease, color .18s ease, border-color .18s ease, background-color .18s ease;
+}
+.nv-theme-dark .account-home-sections .home-language-note > button:hover {
+  border-color: rgba(113,232,239,.42);
+  color: #e8ffff;
+  background: rgba(113,232,239,.09);
+  transform: translateY(-1px);
+}
+.nv-theme-dark .account-home-sections .home-language-note > button:active { transform: translateY(1px); }
+
+.nv-theme-dark .account-home-sections .home-services {
+  margin-top: 1.6rem;
+}
+.nv-theme-dark .account-home-sections .home-services-heading {
+  border-bottom-color: rgba(193,204,255,.15);
+}
+.nv-theme-dark .account-home-sections #frontpage-services-section {
+  color: #eaf0ff;
+}
+.nv-theme-dark .account-home-sections #frontpage-services-section > div:first-child {
+  border-bottom-color: rgba(193,204,255,.14);
+}
+.nv-theme-dark .account-home-sections #frontpage-services-section > div:first-child > div:last-child {
+  border-color: rgba(193,204,255,.15) !important;
+  background: rgba(18,24,46,.78) !important;
+  box-shadow: inset 0 1px rgba(255,255,255,.04);
+}
+.nv-theme-dark .account-home-sections #frontpage-services-section > div:first-child > div:last-child button {
+  border: 1px solid transparent;
+  border-radius: 11px;
+  transition: transform .18s ease, color .18s ease, border-color .18s ease, background-color .18s ease, filter .18s ease;
+}
+.nv-theme-dark .account-home-sections #frontpage-services-section > div:first-child > div:last-child button[class*="from-rose-600"] {
+  color: #11182e !important;
+  border-color: rgba(190,240,255,.48);
+  background: linear-gradient(120deg,#91e8eb,#bca7f4) !important;
+  box-shadow: 0 4px 14px rgba(67,142,211,.16) !important;
+}
+.nv-theme-dark .account-home-sections #frontpage-services-section > div:first-child > div:last-child button[class*="from-rose-600"] svg {
+  color: #7358b5 !important;
+}
+.nv-theme-dark .account-home-sections #frontpage-services-section > div:first-child > div:last-child button[class*="text-amber-300"] {
+  color: #c6b8fa !important;
+}
+.nv-theme-dark .account-home-sections #frontpage-services-section > div:first-child > div:last-child button:not([class*="from-rose-600"]):not([class*="bg-emerald-500"]) {
+  color: #b9c5e2;
+}
+.nv-theme-dark .account-home-sections #frontpage-services-section > div:first-child > div:last-child button:not([class*="from-rose-600"]):not([class*="bg-emerald-500"]):hover {
+  color: #f2f5ff;
+  border-color: rgba(113,232,239,.2);
+  background: rgba(113,232,239,.07);
+}
+.nv-theme-dark .account-home-sections #frontpage-services-section [class*="bg-slate-900/60"],
+.nv-theme-dark .account-home-sections #frontpage-services-section [class*="bg-slate-900/90"],
+.nv-theme-dark .account-home-sections #frontpage-services-section [class*="bg-slate-950/80"] {
+  background-color: rgba(12,18,37,.72) !important;
+}
+.nv-theme-dark .account-home-sections #frontpage-services-section [class*="bg-[#091222]"] {
+  background: rgba(18,24,46,.78) !important;
+}
+.nv-theme-dark .account-home-sections #frontpage-services-section [class*="bg-gradient-to-b"][class*="from-slate-900"] {
+  border-color: rgba(193,204,255,.14);
+  background-image: linear-gradient(145deg,rgba(30,42,74,.94),rgba(14,20,39,.96));
+  transition: border-color .18s ease, transform .18s ease, box-shadow .18s ease;
+}
+.nv-theme-dark .account-home-sections #frontpage-services-section [class*="bg-gradient-to-b"][class*="from-slate-900"]:hover {
+  border-color: rgba(113,232,239,.34);
+  box-shadow: 0 14px 30px rgba(2,5,18,.22);
+}
+.nv-theme-dark .account-home-sections #frontpage-services-section [class*="focus:border-emerald"]:focus,
+.nv-theme-dark .account-home-sections #frontpage-services-section select:focus-visible,
+.nv-theme-dark .account-home-sections #frontpage-services-section input:focus-visible {
+  border-color: rgba(113,232,239,.72) !important;
+}
+.nv-theme-dark .account-home-sections #frontpage-services-section button:disabled {
+  cursor: not-allowed;
+  filter: saturate(.45);
+  opacity: .62;
+}
+.nv-theme-dark .account-home-sections #frontpage-services-section button:focus-visible {
+  outline: 2px solid rgba(113,232,239,.92);
+  outline-offset: 3px;
+}
+.nv-theme-dark .account-home-sections #frontpage-services-section [class*="bg-[#0b1424]"] {
+  border-color: rgba(193,204,255,.19) !important;
+}
+
+@media (max-width: 639px) {
+  .nv-theme-dark .account-home-sections .home-find-heading { align-items: flex-start; }
+  .nv-theme-dark .account-home-sections .home-lookup { gap: .45rem; padding-left: .65rem; }
+  .nv-theme-dark .account-home-sections .home-lookup button { padding-inline: .52rem; font-size: .65rem; }
+}

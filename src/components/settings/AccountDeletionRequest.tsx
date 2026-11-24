@@ -98,7 +98,7 @@ export function AccountDeletionRequest({ initialEmail = '' }: { initialEmail?: s
 }
 
 export function AccountDeletionPage() {
-  return <main className="min-h-[100dvh] bg-slate-950 px-4 py-8 text-white">
+  return <main className="nv-theme-dark nanivio-support-page min-h-[100dvh] bg-slate-950 px-4 py-8 text-white">
     <div className="mx-auto max-w-xl space-y-5">
       <a href="/" className="text-sm text-emerald-300 underline">Back to Nanivio sign in</a>
       <h1 className="text-2xl font-bold">Nanivio account deletion</h1>

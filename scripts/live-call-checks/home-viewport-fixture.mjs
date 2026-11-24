@@ -5,6 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { build } from 'esbuild';
 import { launchBrowser } from './cdp.mjs';
+import { loadPresentationStyles } from './presentation-styles.mjs';
 
 const root = process.cwd();
 const artifacts = path.join(root, 'generated-artifacts', 'home-viewport');
@@ -46,7 +47,7 @@ const context = {
   currentUser: fakeUser, authUser: { ...fakeUser, verificationStatus: 'VERIFIED' },
   setActiveTab, setPendingBillingAction: noop, signOut: noop,
   start1on1Call: noop, startDirectChatWithUser: noop, setActiveConversationId: noop,
-  contacts: [], conversations: [], callLogs: [],
+  contacts: [], conversations: [], callLogs: [], experts: [],
   adminFeatures: { audioCallsEnabled: true, videoCallsEnabled: true, maintenanceMode: false, malviAiAssistantEnabled: false },
   billingSummary: summary, billingSyncError: false, refreshBilling: async () => {},
   myLanguage: 'en', setMyLanguage: noop, appLanguage: 'en', setAppLanguage: noop,
@@ -78,6 +79,7 @@ import { createRoot } from 'react-dom/client';
 import { HomeView } from ${JSON.stringify(path.join(root, 'src/components/home/HomeView.tsx'))};
 import { AccountView } from ${JSON.stringify(path.join(root, 'src/components/account/AccountView.tsx'))};
 import { BottomNavigationBar } from ${JSON.stringify(path.join(root, 'src/components/BottomNavigationBar.tsx'))};
+import { Navbar } from ${JSON.stringify(path.join(root, 'src/components/Navbar.tsx'))};
 import { useNanivio } from '../../src/context/NanivioContext';
 
 window.fetch = async (input, init) => {
@@ -88,11 +90,9 @@ window.fetch = async (input, init) => {
 
 function FixtureApp() {
   const { activeTab } = useNanivio();
-  return <div data-active-tab={activeTab} className={activeTab === 'home' ? 'fixture-app fixture-home-app nv-theme-dark' : 'fixture-app nv-theme-dark'}>
-    <header className="fixture-header" aria-label="Fixture Nanivio header">
-      <strong>Nanivio</strong><span>Ghana · Global</span>
-    </header>
-    <main id="fixture-main" className={activeTab === 'home' ? 'fixture-home-main home-main' : 'fixture-account-main'}>
+  return <div data-active-tab={activeTab} data-nanivio-page={activeTab} className={activeTab === 'home' ? 'nanivio-app fixture-app fixture-home-app chat-app-shell nv-theme-dark' : 'nanivio-app fixture-app nv-theme-dark'}>
+    <Navbar />
+    <main id="fixture-main" className={activeTab === 'home' ? 'nanivio-main fixture-home-main home-main' : 'nanivio-main fixture-account-main'}>
       {activeTab === 'home' ? <HomeView /> : <AccountView />}
     </main>
     <BottomNavigationBar />
@@ -104,12 +104,15 @@ createRoot(document.getElementById('root')).render(<FixtureApp />);
 const sourceAlias = {
   name: 'fixture-context-only',
   setup(api) {
+    api.onResolve({ filter: /malvi\/MalviFloatingWidget$/ }, () => ({
+      path: 'fixture-assistant', namespace: 'nanivio-fixture',
+    }));
     api.onResolve({ filter: /(?:^|\/)context\/NanivioContext$/ }, () => ({
       path: 'fixture-context',
       namespace: 'nanivio-fixture',
     }));
-    api.onLoad({ filter: /.*/, namespace: 'nanivio-fixture' }, () => ({
-      contents: fixtureContext,
+    api.onLoad({ filter: /.*/, namespace: 'nanivio-fixture' }, ({ path }) => ({
+      contents: path === 'fixture-assistant' ? 'export const MalviFloatingWidget=()=>null;' : fixtureContext,
       loader: 'tsx',
       resolveDir: root,
     }));
@@ -129,33 +132,21 @@ assert.ok(cssFile, 'esbuild included the real HomeView CSS');
 await fs.writeFile(path.join(bundleDir, 'fixture.js'), jsFile.contents, { mode: 0o600 });
 await fs.writeFile(path.join(bundleDir, 'fixture.css'), cssFile.contents, { mode: 0o600 });
 
+const presentationStyles = await loadPresentationStyles(process.env.NANIVIO_TEST_URL || 'http://127.0.0.1:5000');
 const html = `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><link rel="stylesheet" href="/fixture.css"><style>
 *{box-sizing:border-box}
-html,body,#root{margin:0;width:100%;min-height:100%;background:#121417;color:#f2f0ea;font-family:system-ui,sans-serif}
+html,body,#root{margin:0;width:100%;min-height:100%}
 body{min-width:320px;overflow-x:hidden}
-.fixture-app{display:flex;flex-direction:column;min-height:100dvh;width:100%;overflow-x:hidden;background:#121417}
+.fixture-app{display:flex;flex-direction:column;min-height:100dvh;width:100%;overflow-x:hidden}
 .fixture-home-app{height:100dvh;max-height:100dvh;min-height:100dvh}
-.fixture-header{height:68px;flex:0 0 68px;display:flex;align-items:center;justify-content:space-between;padding:0 16px;background:#fbf9f2;color:#23352b;border-bottom:1px solid #d9d4c8}
-.fixture-header span{font-size:11px;letter-spacing:.08em}
 .fixture-home-main{display:flex;flex:1;min-height:0;overflow:hidden;padding-bottom:calc(4.5rem + env(safe-area-inset-bottom))}
 .fixture-account-main{flex:1;min-height:0;overflow:visible;padding-bottom:calc(5rem + env(safe-area-inset-bottom))}
-#nanivio-bottom-navigation{position:fixed!important;left:0!important;right:0!important;bottom:0!important;z-index:40!important;display:block!important;background:#fbf9f2!important;padding:4px 0 max(4px,env(safe-area-inset-bottom))!important;box-shadow:0 -4px 16px #0002!important}
-#nanivio-bottom-navigation>div:first-child{display:none!important}
-#nanivio-bottom-navigation>div:nth-child(2){display:flex;align-items:center;max-width:1100px;margin:auto;padding:0 5px}
-#nanivio-bottom-navigation>div:nth-child(2)>div:nth-child(2){display:flex;align-items:center;justify-content:space-around;gap:3px;overflow:hidden;width:100%;padding:2px}
-#nanivio-bottom-navigation>div:nth-child(2)>div:nth-child(2)>button{display:flex;align-items:center;justify-content:center;gap:5px;min-width:0;min-height:48px;padding:6px 8px;border:1px solid transparent;border-radius:14px;background:transparent;color:#53675b;font-size:12px;font-weight:700}
-#nanivio-bottom-navigation>div:nth-child(2)>button{display:none!important}
-#nanivio-bottom-navigation>div:nth-child(2)>div:nth-child(2)>button{flex-direction:column}
-#nanivio-bottom-navigation .leading-tight>span:last-child{display:none}
-#nanivio-bottom-navigation>div:nth-child(2)>div:nth-child(2)>button>div{display:flex;align-items:center;justify-content:center}
-#nanivio-bottom-navigation button{cursor:pointer}
-#nanivio-bottom-navigation [role=menu]{z-index:60;position:absolute;bottom:100%;right:12px;width:224px;max-height:60dvh;overflow:auto;background:#fbf9f2;color:#34443a;border:1px solid #d9d4c8;border-radius:16px;padding:8px}
 .home-dashboard{box-sizing:border-box}
 .fixture-account-main .account-home-sections{margin-top:0}
 .fixture-account-main .home-activity,.fixture-account-main .home-find,.fixture-account-main .home-language-note,.fixture-account-main .home-services{margin-top:1.25rem}
 .fixture-account-main .home-services{padding-bottom:1rem}
 .fixture-account-main .home-services-heading{margin-bottom:.75rem}
-</style></head><body><div id="root"></div><script src="/fixture.js"></script></body></html>`;
+</style><style>${presentationStyles}</style></head><body><div id="root"></div><script src="/fixture.js"></script></body></html>`;
 
 const server = http.createServer(async (request, response) => {
   const pathname = new URL(request.url, 'http://localhost').pathname;
@@ -168,6 +159,11 @@ const server = http.createServer(async (request, response) => {
     const name = pathname.slice(1);
     response.writeHead(200, { 'content-type': name.endsWith('.js') ? 'text/javascript' : 'text/css' });
     response.end(await fs.readFile(path.join(bundleDir, name)));
+    return;
+  }
+  if (pathname === '/brand/nanivio-emblem.png') {
+    response.writeHead(200, { 'content-type': 'image/png' });
+    response.end(await fs.readFile(path.join(root, 'public/brand/nanivio-emblem.png')));
     return;
   }
   response.writeHead(404);
@@ -273,6 +269,7 @@ try {
     text: document.body.innerText.slice(0, 500),
   })`)));
   await page.wait("!!document.querySelector('#account-home-activity-title') && !!document.querySelector('#account-home-find-title') && !!document.querySelector('#account-home-services-title')");
+  await page.screenshot(path.join(artifacts, 'account-profile-390x844.png'));
   await page.evaluate(`document.querySelector('#account-home-services-title').scrollIntoView({block:'center'})`);
   await sleep(200);
   const accountReachability = await page.evaluate(`(() => ({
