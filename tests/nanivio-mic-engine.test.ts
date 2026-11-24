@@ -88,6 +88,28 @@ test('engine owns speech/silence state independently of speech-recognition APIs'
   } finally { f.engine.stop(); }
 });
 
+test('quiet input gets feedback, keeps its PCM, and ends after a bounded pause', async () => {
+  let now = 0;
+  const f = fixture({ now: () => now });
+  try {
+    await f.engine.start(); f.emit({});
+    const quiet = new ArrayBuffer(6400), samples = new DataView(quiet);
+    for (let i = 0; i < quiet.byteLength; i += 2) samples.setInt16(i, 100, true);
+    f.frame(quiet); f.emit({ state: 'receiving', lastSequence: 1 });
+    assert.equal(f.snapshots.at(-1)!.state, 'hearing');
+    assert.deepEqual(Buffer.from(f.sent.find(event => event.type === E.audio)!.payload.audio, 'base64'), Buffer.from(quiet),
+      'Listening feedback must not amplify noise, alter the speaker or discard quiet PCM');
+    now = 300; f.frame();
+    assert.equal(f.snapshots.at(-1)!.state, 'hearing', 'A brief natural pause keeps the turn open');
+    now = 500; f.frame();
+    assert.equal(f.snapshots.at(-1)!.state, 'processing');
+    now = 1200; f.frame();
+    assert.equal(f.counts().speechEnds, 1);
+    assert.equal(f.sent.filter(event => event.type === E.audio).length, 4,
+      'Continuous silence still reaches provider VAD; the UI must not force a turn');
+  } finally { f.engine.stop(); }
+});
+
 test('failed or unsupported protocol handshakes stop capture without a provider fallback', async () => {
   const f = fixture({ startupTimeoutMs: 20 });
   await f.engine.start(); f.emit({ version: 2 as 1 });

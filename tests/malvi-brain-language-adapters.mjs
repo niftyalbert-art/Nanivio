@@ -21,6 +21,20 @@ const fixtures = {
       }};
     }`,
   openai: `export default class OpenAI {}`,
+  plan: `export const requireMalviCapability=async()=>{};`,
+  knowledge: `export const getNanivioAppKnowledge=async()=>'';`,
+  database: `
+    export const getServerSupabase=()=>{throw new Error('Database access is forbidden in this isolated adapter fixture');};
+    export const isServerSupabaseConfigured=()=>false;`,
+  memory: `
+    // Account memory is covered separately; adapter tests never contact Supabase.
+    export const MEMORY_TOOL_NAME='recall_conversation';
+    export const MEMORY_TOOL={name:MEMORY_TOOL_NAME,description:'Isolated memory tool',parameters:{type:'OBJECT',properties:{}}};
+    export const readConversationMemory=async()=>({enabled:false,generation:0,messages:[],hasPrevious:false});
+    export const conversationMemoryContext=()=>'';
+    export const appendConversationMemory=async()=>{};
+    export const memoryQuery=value=>typeof value==='string'?value:'';
+  `,
   live: `
     export class LiveWS {
       handlers = {};
@@ -44,16 +58,21 @@ const fixtures = {
       activity: async (user, id, activeUntil) => {
         globalThis.__malviAdapter.activity++;
         (globalThis.__malviAdapter.activityCalls ||= []).push({user,id,activeUntil});
+        if (globalThis.__malviAdapter.holdActivity) await new Promise((resolve,reject) => {
+          globalThis.__malviAdapter.releaseActivity=resolve;
+          globalThis.__malviAdapter.rejectActivity=reject;
+        });
         return { idleDeadline: Math.max(Date.now(),activeUntil || 0)+60000 };
       }
     };`,
 };
 const output = await build({
   stdin: {
-    contents: `export { malviLiveBrainController } from './src/server/assistant/liveBrain.ts';`,
+    contents: `export { malviLiveBrainController } from './src/server/assistant/liveBrain.ts';
+      export { createNanivioMicGateway } from './src/server/assistant/nanivioMicGateway.ts';`,
     resolveDir: process.cwd(), loader: 'ts',
   },
-  bundle: true, platform: 'node', format: 'cjs', packages: 'external', write: false,
+  bundle: true, platform: 'node', format: 'cjs', packages: 'external', write: false, metafile: true,
   plugins: [{
     name: 'isolated-live-providers',
     setup(build) {
@@ -61,10 +80,17 @@ const output = await build({
       build.onResolve({ filter: /^openai$/ }, () => ({ path: 'openai', namespace: 'malvi-fixture' }));
       build.onResolve({ filter: /^openai\/resources\/live\/ws$/ }, () => ({ path: 'live', namespace: 'malvi-fixture' }));
       build.onResolve({ filter: /liveAvatarService\.ts$/ }, () => ({ path: 'service', namespace: 'malvi-fixture' }));
+      build.onResolve({ filter: /conversationMemory\.ts$/ }, () => ({ path: 'memory', namespace: 'malvi-fixture' }));
+      build.onResolve({ filter: /planAccess\.ts$/ }, () => ({ path: 'plan', namespace: 'malvi-fixture' }));
+      build.onResolve({ filter: /nanivioAppKnowledge\.ts$/ }, () => ({ path: 'knowledge', namespace: 'malvi-fixture' }));
+      build.onResolve({ filter: /\/supabaseServer(?:\.ts)?$/ }, () => ({ path: 'database', namespace: 'malvi-fixture' }));
       build.onLoad({ filter: /.*/, namespace: 'malvi-fixture' }, args => ({ contents: fixtures[args.path], loader: 'js' }));
     },
   }],
 });
+assert.deepEqual(Object.entries(output.metafile.inputs)
+  .filter(([,input]) => input.imports.some(item => item.path === '@supabase/supabase-js'))
+  .map(([path]) => path), [], 'Provider adapter tests must not include a real database client');
 globalThis.__malviAdapter = {
   geminiConnects: 0, geminiCloses: 0, geminiContent: [], geminiInput: [],
   openaiConnects: 0, openaiCloses: 0, openaiEvents: [], activity: 0,
@@ -88,7 +114,7 @@ const isolatedModule = { exports: {} };
 new Function('require', 'module', 'exports', output.outputFiles[0].text)(
   createRequire(import.meta.url), isolatedModule, isolatedModule.exports,
 );
-const { malviLiveBrainController: controller } = isolatedModule.exports;
+const { malviLiveBrainController: controller, createNanivioMicGateway } = isolatedModule.exports;
 const keys = ['MALVI_BRAIN_PROVIDER', 'GEMINI_API_KEY', 'OPENAI_API_KEY', 'ELEVENLABS_API_KEY', 'ELEVENLABS_VOICE_ID', 'MALVI_TTS_TRANSPORT', 'MALVI_VOICE_PROVIDER'];
 const original = Object.fromEntries(keys.map(key => [key, process.env[key]]));
 const socket = () => ({ readyState: 1, OPEN: 1, events: [], send(value) { this.events.push(JSON.parse(value)); } });
@@ -264,7 +290,7 @@ try {
   await new Promise(resolve => setImmediate(resolve));
   assert.equal(native.events.find(e => e.type === 'malvi:brain_ready').payload.speechProvider, 'gemini');
   assert.equal(state.geminiOptions.config.speechConfig.voiceConfig.prebuiltVoiceConfig.voiceName, 'Sulafat');
-  assert.equal(state.geminiOptions.config.realtimeInputConfig.automaticActivityDetection.silenceDurationMs, 650);
+  assert.equal(state.geminiOptions.config.realtimeInputConfig.automaticActivityDetection.silenceDurationMs, 500);
   assert.equal(state.geminiOptions.config.realtimeInputConfig.automaticActivityDetection.endOfSpeechSensitivity, 'END_SENSITIVITY_LOW');
   assert.match(state.geminiOptions.config.systemInstruction, /British English and light Ghanaian English/);
   assert.match(state.geminiOptions.config.systemInstruction, /"Na ni vio"/);
@@ -345,6 +371,60 @@ try {
   assert.equal(state.geminiOptions.config.speechConfig.voiceConfig.prebuiltVoiceConfig.voiceName, 'Sulafat');
   assert.equal(state.geminiConnects, connectsBeforeArabic, 'A spoken Arabic switch cannot select another voice or reconnect');
   controller.closeSocket(native);
+
+  // Exercise the actual ordered microphone gateway with an unresolved activity
+  // check. It must not delay audio, overflow its queue or fan out account reads.
+  for (const finish of ['reject', 'after-close']) {
+    const inputSocket = socket();
+    const inputId = finish === 'reject'
+      ? '66666666-6666-4666-8666-666666666666'
+      : '77777777-7777-4777-8777-777777777777';
+    const streamId = '88888888-8888-4888-8888-888888888888';
+    const gateway = createNanivioMicGateway(controller);
+    const restoreNow = Date.now;
+    let clock;
+    try {
+      await controller.start(inputSocket, 'owner', inputId, 'en');
+      await new Promise(resolve => setImmediate(resolve));
+      clock = restoreNow() + 4000;
+      gateway.start(inputSocket, 'owner', { sessionId: inputId, streamId, version: 1,
+        sampleRate: 16000, channels: 1, format: 'pcm_s16le', frameSamples: 3200 });
+      Date.now = () => clock;
+      state.holdActivity = true;
+      const beforeActivity = state.activity, beforeFrames = state.geminiInput.length;
+      const pcm = Buffer.alloc(6400);
+      for (let offset = 0; offset < pcm.length; offset += 2) pcm.writeInt16LE(1500, offset);
+      for (let sequence = 1; sequence <= 6; sequence++) {
+        let timeout;
+        try {
+          await Promise.race([
+            gateway.audio(inputSocket, 'owner', { sessionId: inputId, streamId, sequence, audio: pcm.toString('base64') }),
+            new Promise((_,reject) => { timeout=setTimeout(() => reject(new Error('Activity check blocked microphone delivery')),200); }),
+          ]);
+        } finally { clearTimeout(timeout); }
+        clock += sequence === 3 ? 2000 : 200;
+      }
+      assert.equal(state.geminiInput.length - beforeFrames, 6, 'All frames reach the selected provider while activity is pending');
+      assert.equal(state.activity - beforeActivity, 1, 'Only one activity check may be outstanding per session');
+      assert.equal(inputSocket.events.some(event => event.payload?.code === 'INPUT_BUSY'), false);
+      if (finish === 'reject') {
+        state.rejectActivity(new Error('Isolated activity failure'));
+        await new Promise(resolve => setImmediate(resolve));
+        assert.equal(controller.inputReadiness(inputSocket, 'owner', inputId), null,
+          'A failed activity check must still close the session');
+        assert.ok(inputSocket.events.some(event => event.type === 'malvi:brain_error'));
+      } else {
+        controller.closeSocket(inputSocket);
+        const beforeEvents = inputSocket.events.length;
+        state.releaseActivity();
+        await new Promise(resolve => setImmediate(resolve));
+        assert.equal(inputSocket.events.length, beforeEvents, 'Late activity results cannot revive a closed session');
+      }
+    } finally {
+      state.holdActivity = false; state.releaseActivity?.(); Date.now = restoreNow;
+      controller.closeSocket(inputSocket);
+    }
+  }
   emitNative({ serverContent: { modelTurn: { parts: [spokenChunk] }, outputTranscription: { text: 'Late' }, turnComplete: true } });
   assert.equal(native.events.filter(e => e.type === 'malvi:brain_audio').length, 5);
   assert.equal(state.speechRequests.length, speechRequestsBefore, 'Gemini voice must not make ElevenLabs requests or fallback');
@@ -391,7 +471,7 @@ try {
       assert.equal(state.geminiConnects, connects, 'Barge-in must not start another provider connection');
     } finally { controller.closeSocket(recovery); }
   }
-  console.log(JSON.stringify({ geminiAndOpenAI: true, exactLanguageAndDialect: true, localizedFirstGreeting: true, livePreferenceUpdates: true, ownerOnly: true, noProviderFanoutOrReconnect: true, languageDoesNotRenewIdle: true, assistantOutputDoesNotRenewIdle: true, interruptionWithoutTurnCompleteRecovers: true }));
+  console.log(JSON.stringify({ geminiAndOpenAI: true, exactLanguageAndDialect: true, localizedFirstGreeting: true, livePreferenceUpdates: true, ownerOnly: true, noProviderFanoutOrReconnect: true, languageDoesNotRenewIdle: true, assistantOutputDoesNotRenewIdle: true, interruptionWithoutTurnCompleteRecovers: true, activityCheckDoesNotBlockInput: true, pendingActivityDeduplicated: true, activityFailureStopsSession: true, lateActivityCannotReviveSession: true }));
 } finally {
   controller.closeSocket(gemini); controller.closeSocket(openai);
   for (const key of keys) {

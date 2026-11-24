@@ -109,12 +109,12 @@ export class NanivioMicEngine {
       }
       if (!this.active) return; // A failed interruption may have closed capture.
       const now = this.options.now?.() ?? Date.now();
-      // Level is RMS multiplied by five. Match the cloud's 0.009 RMS
-      // speech floor so quieter words still receive listening feedback.
-      if (this.level > 0.045) {
+      // Quiet-input feedback is not ASR or barge-in. All PCM reaches the
+      // provider unchanged; keep the stricter echo-safe interruption gate.
+      if (this.level >= 0.015) {
         if (!this.speaking) this.options.onSpeechStart?.();
         this.speaking = true; this.processing = false; this.lastSpeech = now;
-      } else if (this.speaking && now - this.lastSpeech > 700) {
+      } else if (this.speaking && now - this.lastSpeech >= 500) {
         this.speaking = false; this.processing = true; this.options.onSpeechEnd?.();
       }
       // Never queue microphone audio while the authenticated gateway is unready.

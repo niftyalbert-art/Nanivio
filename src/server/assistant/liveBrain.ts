@@ -107,7 +107,7 @@ export const MALVI_INPUT_ACTIVITY = Object.freeze({
   // Despite its name, the SDK defines this as minimum detected speech
   // duration, not a look-behind buffer. Keep short answers recognizable.
   prefixPaddingMs: 20,
-  silenceDurationMs: 650,
+  silenceDurationMs: 500,
 });
 
 function hasSpeech(pcm: Buffer) {
@@ -163,14 +163,17 @@ async function refreshConversationActivity(connection: BrainConnection) {
   });
 }
 
+const pendingInputActivity = new WeakSet<BrainConnection>();
 function observeConversationActivity(connection: BrainConnection) {
+  if (pendingInputActivity.has(connection)) return;
+  pendingInputActivity.add(connection);
   void refreshConversationActivity(connection).catch(() => {
     if (connection.closed) return;
     send(connection.socket, 'malvi:brain_error', {
       sessionId: connection.sessionId, message: 'The live session could not confirm its activity. End it and start a new conversation.',
     });
     void malviLiveBrainController.stopSession(connection.owner, connection.sessionId);
-  });
+  }).finally(() => { pendingInputActivity.delete(connection); });
 }
 
 async function flushAudio(socket: WebSocket, connection: BrainConnection, ended: boolean, boundary?: number) {
@@ -734,17 +737,13 @@ export const malviLiveBrainController = {
     // Do not cancel from a single RMS frame: noise and speaker echo can cross
     // that threshold. The provider's VAD and the echo-processed client's
     // sustained barge-in gate own interruption. Every frame still reaches ASR.
-    if (hasSpeech(pcm) && Date.now() - connection.lastActivityAt > 1000) {
-      try {
-        await refreshConversationActivity(connection);
-      } catch {
-        send(socket, 'malvi:brain_error', { sessionId, message: 'The live session timed out. End it and start a new conversation.' });
-        await this.stopSession(userId, sessionId);
-        return false;
-      }
-    }
     if (connection.closed || !current() || socket.readyState !== socket.OPEN) return false;
+    // The gateway delivers frames in order. A Redis/account round-trip here
+    // stalls every following frame and can exhaust its bounded input queue.
+    // Owned-session checks and local expiry still gate input; failed activity
+    // confirmation closes the session asynchronously, without replaying audio.
     connection.sendAudio(pcm.toString('base64'));
+    if (hasSpeech(pcm)) observeConversationActivity(connection);
     return true;
   },
   endAudio(socket: WebSocket, userId: string, sessionId: string) {
