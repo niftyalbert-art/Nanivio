@@ -28,11 +28,15 @@ export class MalviAvatarAudioStream {
       this.send(JSON.stringify({ type: 'agent.speak', event_id: id, audio }));
       offset += length;
     }
-    if (ended) {
-      this.send(JSON.stringify({ type: 'agent.speak_end', event_id: id }));
-      this.utteranceId = null;
-    }
+    if (ended) this.finish();
     return id;
+  }
+
+  /** Close only an existing utterance; duplicate completion is harmless. */
+  finish() {
+    if (!this.utteranceId) return;
+    this.send(JSON.stringify({ type: 'agent.speak_end', event_id: this.utteranceId }));
+    this.utteranceId = null;
   }
 
   cancel() { this.utteranceId = null; }

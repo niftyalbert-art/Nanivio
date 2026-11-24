@@ -54,3 +54,30 @@ test('delivery forwards end-of-reply and preserves voice-only playback', () => {
   deliverMalviAudio({ repeatAudio: () => repeated++ }, audio);
   assert.equal(repeated, 1);
 });
+
+test('a reply ending without more PCM closes its existing utterance exactly once', () => {
+  const messages: any[] = [];
+  let id = 0;
+  const stream = new MalviAvatarAudioStream(json => messages.push(JSON.parse(json)), () => `turn-${++id}`);
+  stream.finish();
+  assert.equal(messages.length, 0);
+  stream.append('AAA=', false);
+  stream.finish();
+  stream.finish();
+  assert.deepEqual(messages.map(m => [m.type, m.event_id]), [
+    ['agent.speak', 'turn-1'], ['agent.speak_end', 'turn-1'],
+  ]);
+  stream.append('AAA=', true);
+  stream.finish();
+  assert.equal(messages.filter(m => m.type === 'agent.speak_end').length, 2);
+  assert.equal(messages.at(-1).event_id, 'turn-2');
+});
+
+test('completion after interruption cannot resurrect an abandoned utterance', () => {
+  const messages: any[] = [];
+  const stream = new MalviAvatarAudioStream(json => messages.push(JSON.parse(json)));
+  stream.append('AAA=', false);
+  stream.cancel();
+  stream.finish();
+  assert.deepEqual(messages.map(m => m.type), ['agent.speak']);
+});

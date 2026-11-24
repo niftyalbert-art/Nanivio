@@ -4,6 +4,7 @@ export interface MalviAvatarRenderer {
   stop(): Promise<void>;
   attach(video: HTMLVideoElement): void;
   appendAudio(audio: string, ended: boolean): unknown;
+  finishAudio?(): unknown;
   repeatAudio(audio: string): unknown;
   interrupt(): unknown;
   keepAlive(): Promise<void>;
@@ -35,6 +36,7 @@ export async function createMalviAvatarRenderer(info: {
     async start() { await live.start(); await live.voiceChat.stop(); },
     stop: () => live.stop(), attach: video => live.attach(video),
     appendAudio: (audio, ended) => live.appendAudio(audio, ended),
+    finishAudio: () => live.finishAudio(),
     repeatAudio: audio => live.repeatAudio(audio), interrupt: () => live.interrupt(),
     keepAlive: async () => { await live.keepAlive(); },
     on: (event, listener) => { live.on(events[event] as any, listener); },

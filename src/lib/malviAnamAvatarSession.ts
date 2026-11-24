@@ -12,6 +12,7 @@ export class MalviAnamAvatarSession implements MalviAvatarRenderer {
   private video: HTMLVideoElement | null = null;
   private mutedForInterrupt = false;
   private previouslyMuted = false;
+  private sequenceOpen = false;
   private listeners = new Map<string, (() => void)[]>();
   private emit(event: string) { for (const callback of this.listeners.get(event) || []) callback(); }
 
@@ -60,8 +61,17 @@ export class MalviAnamAvatarSession implements MalviAvatarRenderer {
       this.video.muted = this.previouslyMuted;
       this.mutedForInterrupt = false;
     }
-    if (audio) this.input.sendAudioChunk(audio);
-    if (ended) this.input.endSequence();
+    if (audio) {
+      this.input.sendAudioChunk(audio);
+      this.sequenceOpen = true;
+    }
+    if (ended) this.finishAudio();
+  }
+  /** A final transcript event need not contain another PCM packet. */
+  finishAudio() {
+    if (this.stopped || !this.input || !this.sequenceOpen) return;
+    this.input.endSequence();
+    this.sequenceOpen = false;
   }
   repeatAudio(audio: string) { this.appendAudio(audio, true); }
   interrupt() {
@@ -74,6 +84,7 @@ export class MalviAnamAvatarSession implements MalviAvatarRenderer {
     }
     this.client.interruptPersona();
     this.input.endSequence();
+    this.sequenceOpen = false;
   }
   async keepAlive() {
     // Anam maintains transport heartbeats itself. Never extend Nanivio's
@@ -81,7 +92,7 @@ export class MalviAnamAvatarSession implements MalviAvatarRenderer {
     if (this.stopped || !this.client.isStreaming()) throw new Error('Malvi’s avatar connection ended.');
   }
   async stop() {
-    this.stopped = true; this.input = null; this.listeners.clear();
+    this.stopped = true; this.input = null; this.sequenceOpen = false; this.listeners.clear();
     try { await this.client.stopStreaming(); }
     finally {
       this.stream?.getTracks().forEach(track => track.stop()); this.stream = null;

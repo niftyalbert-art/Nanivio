@@ -289,8 +289,11 @@ export const MalviLiveAssistantProvider: React.FC<{ children: React.ReactNode }>
     const handleAudio = (payload: any) => {
       if (!isCurrent(payload) || playbackGuard.current.blocked || (payload.language && payload.language !== languageRef.current)) return;
       const outputIsCurrent = playbackGuard.current.checkpoint();
-      outputPending.current = true;
-      setInterrupted(false);
+      const turnEnd = payload.avatarTurnEnd === true;
+      if (!turnEnd) {
+        outputPending.current = true;
+        setInterrupted(false);
+      }
       if (!voiceMode.current && !avatarAcceptingAudio.current) {
         if (startupAudio.current.length >= 64 || startupAudio.current.reduce((ms, packet) => ms + packet.durationMs, 0) + payload.durationMs > 65_000) {
           fail('Malvi’s avatar did not become ready before the voice startup queue filled.'); return;
@@ -299,6 +302,18 @@ export const MalviLiveAssistantProvider: React.FC<{ children: React.ReactNode }>
         return;
       }
       try {
+        if (turnEnd) {
+          const avatar = sdk.current;
+          if (!voiceMode.current && avatar) {
+            // Keep EOF behind all queued PCM, including startup packets. It
+            // closes input, not playback: captions remain driven by heard audio.
+            videoGate.current?.complete(() => {
+              if (sdk.current === avatar && isCurrent(payload) && outputIsCurrent())
+                avatar.finishAudio?.();
+            });
+          }
+          return;
+        }
         if (!voiceMode.current && !sdk.current) return;
         const track = captions.current!.enqueue(payload.speechProvider === 'gemini' && payload.captionTiming === 'estimated'
           ? estimatedMalviCaptionTrack(payload.text, payload.durationMs, payload.speechDurationMs, payload.streaming === true)
@@ -330,6 +345,8 @@ export const MalviLiveAssistantProvider: React.FC<{ children: React.ReactNode }>
     };
     receiveBrainAudio.current = handleAudio;
     const offAudio = realtimeClient.on('malvi:brain_audio', handleAudio);
+    const offTurnEnd = realtimeClient.on('malvi:brain_turn_end', payload =>
+      handleAudio({ ...payload, avatarTurnEnd: true, durationMs: 0 }));
     const offCaption = realtimeClient.on('malvi:brain_caption', (payload) => {
       if (!isCurrent(payload) || (payload.language && payload.language !== languageRef.current) || typeof payload.text !== 'string') return;
       if (payload.role === 'user') {
@@ -402,7 +419,7 @@ export const MalviLiveAssistantProvider: React.FC<{ children: React.ReactNode }>
     const offConnectionLost = realtimeClient.on('connection:lost', () => {
       if (sessionId.current) fail('The conversation connection was interrupted. Your microphone has stopped. Tap below to start a new conversation; a new session uses your allowance.');
     });
-    return () => { offConnectionLost(); offReady(); offAudio(); offCaption(); offActivity(); offSources(); offMemory(); offError(); offLanguage(); offLanguageError(); offInterrupted(); };
+    return () => { offConnectionLost(); offReady(); offAudio(); offTurnEnd(); offCaption(); offActivity(); offSources(); offMemory(); offError(); offLanguage(); offLanguageError(); offInterrupted(); };
   }, [stopOutput, fail]);
 
   useEffect(() => {

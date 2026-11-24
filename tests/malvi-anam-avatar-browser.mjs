@@ -17,10 +17,15 @@ const bundle = await build({
       const video=document.querySelector('video');live.attach(video);
       if(ready!==1||video.srcObject.getAudioTracks().length!==1||video.srcObject.getVideoTracks().length!==1)
         throw Error('Paired A/V handoff failed');
+      live.finishAudio();if(window.fixture.ends!==0)throw Error('Empty turn created an end signal');
       live.appendAudio('first',false);live.appendAudio('second',true);
       if(window.fixture.ends!==1||window.fixture.chunks.join(',')!=='first,second')throw Error('Split sequence');
+      live.finishAudio();if(window.fixture.ends!==1)throw Error('Final PCM and turn-end double-closed');
+      live.appendAudio('no-final-packet',false);live.finishAudio();live.finishAudio();
+      if(window.fixture.ends!==2)throw Error('No-PCM completion failed or duplicated');
       live.interrupt();
-      if(!video.muted||window.fixture.interrupts!==1||window.fixture.ends!==2)throw Error('No immediate local interruption');
+      live.finishAudio();
+      if(!video.muted||window.fixture.interrupts!==1||window.fixture.ends!==3)throw Error('No immediate local interruption');
       live.appendAudio('next-response',true);
       if(video.muted)throw Error('Fresh output remains muted');
       await live.keepAlive();
@@ -40,7 +45,7 @@ const bundle = await build({
       if(window.fixture.token!=='fixture-nanivio-jwt'||
         window.fixture.options.api.baseUrl!=='/api/assistant/session/fixture-lease/anam-bearer')
         throw Error('Existing bearer sign-in cannot authenticate the handoff');
-      return {cookieAndBearerHandoff:true,pairedAudioVideo:true,streamedUtterance:true,immediateLocalMute:true,
+      return {cookieAndBearerHandoff:true,pairedAudioVideo:true,streamedUtterance:true,emptyFinalPacketHandled:true,duplicateCompletionSafe:true,immediateLocalMute:true,
         lateOutputRefused:true,stoppedTracks:true,providerRequests:0,liveLipSyncVerified:false};
     };` },
   bundle: true, format: 'iife', write: false,

@@ -44,18 +44,30 @@ export class MalviAvatarVideoGate {
   constructor(private video: () => HTMLVideoElement | null, private failed: (message: string) => void) {}
 
   enqueue(durationMs: number, deliver: () => void) {
-    if (!Number.isFinite(durationMs) || durationMs <= 0 || this.pending >= 64 || this.durationMs + durationMs > 65_000) {
+    if (!Number.isFinite(durationMs) || durationMs <= 0) {
+      throw new Error('Malvi’s avatar audio queue exceeded its safety limit.');
+    }
+    this.queue(durationMs, deliver, true);
+  }
+
+  /** Ordered EOF contains no audio and must not wait for another video frame. */
+  complete(deliver: () => void) { this.queue(0, deliver, false); }
+
+  private queue(durationMs: number, deliver: () => void, needsFrame: boolean) {
+    if (this.pending >= 64 || this.durationMs + durationMs > 65_000) {
       throw new Error('Malvi’s avatar audio queue exceeded its safety limit.');
     }
     const generation = this.generation, signal = this.controller.signal;
     this.pending++; this.durationMs += durationMs;
     this.chain = this.chain.then(async () => {
       if (signal.aborted) return;
-      const video = this.video();
-      if (!video) throw new Error('Malvi’s video is unavailable. Reconnect to retry.');
-      await waitForMalviVideoFrame(video, signal);
+      if (needsFrame) {
+        const video = this.video();
+        if (!video) throw new Error('Malvi’s video is unavailable. Reconnect to retry.');
+        await waitForMalviVideoFrame(video, signal);
+        if (video !== this.video()) throw new Error('Malvi’s video changed before playback. Reconnect to retry.');
+      }
       if (signal.aborted || generation !== this.generation) return;
-      if (video !== this.video()) throw new Error('Malvi’s video changed before playback. Reconnect to retry.');
       deliver();
     }).catch(error => {
       if (signal.aborted || generation !== this.generation) return;

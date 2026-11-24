@@ -20,6 +20,11 @@ export class MalviLiveAvatarSession extends LiveAvatarSession {
 
   override repeatAudio(audio: string) { return this.appendAudio(audio, true); }
 
+  finishAudio() {
+    if (!this.assertConnected()) throw new Error('Malvi’s avatar is not connected.');
+    this.audioStream.finish();
+  }
+
   override interrupt() {
     this.audioStream.cancel();
     return super.interrupt();
