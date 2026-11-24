@@ -7,6 +7,13 @@ const bundle=await build({
   stdin:{contents:`export * from './src/server/voiceNotePipeline.ts';
     export {transcribeProviderAudio} from './src/server/speechProviders.ts';`,resolveDir:process.cwd()},
   bundle:true,write:false,platform:'node',format:'cjs',
+  plugins:[{name:'isolated-audio-transport',setup(build){
+    build.onResolve({filter:/speechAudioTransport\.ts$/},()=>({path:'speech-audio',namespace:'fixture'}));
+    build.onLoad({filter:/.*/,namespace:'fixture'},()=>({contents:`
+      export function requestSpeechAudio(url,headers,body,signal){
+        return fetch(url,{method:'POST',headers,body,signal,redirect:'error'});
+      }`}));
+  }}],
 });
 function wav(seconds=.25){
   const a=Buffer.alloc(44+Math.round(seconds*32000));
@@ -65,7 +72,8 @@ test('the pair-specific speech choice does not change default English recognitio
 test('recognition failures identify the stage without leaking provider names or upstream bodies',async()=>{
   const f=fixture(()=>new Response('private upstream error fixture',{status:403}));
   await assert.rejects(()=>f.api.processStagedVoiceNote(wav(),'ak','en'),(error:any)=>{
-    assert.equal(error.stage,'recognition');assert.equal(error.status,502);
+    assert.equal(error.stage,'recognition');assert.equal(error.status,503);
+    assert.equal(error.code,'SPEECH_SERVICE_CONFIGURATION');
     assert.doesNotMatch(error.message,/khaya|gemini|upstream|fixture/i);return true;
   });
   assert.equal(f.requests.length,1);

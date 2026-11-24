@@ -47,6 +47,7 @@ export async function processStagedVoiceNote(audio:Buffer,source:string,target:s
       return result;
     }catch(cause){
       if(signal?.aborted)cause=new SpeechProviderError(499,'Voice-message processing stopped.');
+      else if(deadline.aborted)cause=new SpeechProviderError(504,'Voice-message processing timed out.');
       const error=new VoiceNoteProcessingError(name,cause);
       failedStage=name;
       console.warn('[Nanivio voice note]',{stage:name,status:error.status,

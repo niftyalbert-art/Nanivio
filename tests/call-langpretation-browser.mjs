@@ -8,6 +8,8 @@ const fixtureModules = {
   media: `import React from 'react'; export const LiveCallVideoStage=()=> <div>Isolated call media fixture</div>;`,
   agora: `export const agoraClient={
     getLocalStream:()=>window.__callStream,setRemoteAudioMuted(){},restoreOriginalAudioTrack(){},
+    async unlockTranslatedAudio(){},getTranslationAudioContext(){return null;},
+    async prepareTranslatedAudio(){window.__callActions.push({type:'phrase-playback-ready'});return true;},
   };`,
   readiness: `export async function waitForCallTranslation(){
     window.__callActions.push({type:'readiness'});
@@ -123,7 +125,7 @@ try {
     checks:['automatic activation','StrictMode duplicate prevention','pause and resume',
       'switch off cleanup','allowance failure visibility','specialist raw WAV',
       'call microphone reuse','mute cleanup','same-language original audio',
-      'Swahili live call selection with standard voice']},null,2));
+      'Swahili streaming without unsupported voice cloning']},null,2));
 } finally {
   await browser.close();
 }

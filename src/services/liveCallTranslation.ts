@@ -55,7 +55,12 @@ export class TranslationPcmPlayer {
     if(this.muted)return;
     const raw=atob(p.data);
     if(!raw.length||raw.length%2)throw new Error('Invalid translated audio.');
-    if(this.next-ctx.currentTime>6)throw new Error('Translated audio fell behind. Restart translation.');
+    // Include the incoming packet and startup padding in the limit. Checking
+    // only the old queue admits arbitrarily long first packets or lets a nearly
+    // full queue grow by another whole packet before we notice the delay.
+    const start=Math.max(ctx.currentTime+0.06,this.next);
+    if(start+raw.length/2/24000-ctx.currentTime>6)
+      throw new Error('Translated audio fell behind. Restart translation.');
     const buffer=ctx.createBuffer(1,raw.length/2,24000),samples=buffer.getChannelData(0);
     for(let i=0;i<samples.length;i++){
       const value=raw.charCodeAt(i*2)|(raw.charCodeAt(i*2+1)<<8);
@@ -63,7 +68,6 @@ export class TranslationPcmPlayer {
     }
     const node=ctx.createBufferSource();node.buffer=buffer;node.connect(this.gain!);
     this.sources.add(node);node.onended=()=>{this.sources.delete(node);node.disconnect();};
-    const start=Math.max(ctx.currentTime+0.06,this.next);
     this.next=start+buffer.duration;node.start(start);
   }
   setMuted(muted:boolean){this.muted=muted;if(this.gain)this.gain.gain.value=muted?0:1;if(muted)this.clear();}

@@ -31,12 +31,16 @@ test('international voice notes authorize allowance before their integrated audi
   assert.match(route,/requireAuthenticatedUser/);
   const providerStart=route.indexOf('if(supportsPalabraPair');
   const branch=route.slice(providerStart,route.indexOf('const result=await processStagedVoiceNote'));
-  assert.ok(route.indexOf('langpretationMinutesRemaining')>=0&&route.indexOf('langpretationMinutesRemaining')<providerStart);
+  const allowanceReservation = route.indexOf("communicationAccess.reserve(authenticatedUserId(req),'note',input.seconds)");
+  assert.ok(allowanceReservation>=0&&allowanceReservation<providerStart,
+    'Reserve the actual recorded input before opening the paid provider');
   assert.match(route,/parsePalabraWav\(audio,60\)/);
   assert.match(branch,/reservePalabraCapacity/);
-  assert.match(branch,/recordTranslatedVoiceNoteUsage\(audio,/);
+  assert.match(branch,/await communicationAccess.commit\(reservation\)/);
+  assert.match(branch,/minutesUsed:input.seconds\/60/);
   assert.doesNotMatch(branch,/transcribeProviderAudio|synthesizeProviderAudio/);
-  assert.match(route,/finally\{release\?\.\(\)/);
+  assert.match(route,/finally\{if\(reservation\)await communicationAccess.release\(reservation\)/);
+  assert.match(route,/release\?\.\(\)/);
 });
 test('authenticated presence changes language preference but cannot replace account identity or roles',()=>{
   const server=readFileSync('src/server/realtimeServer.ts','utf8');
