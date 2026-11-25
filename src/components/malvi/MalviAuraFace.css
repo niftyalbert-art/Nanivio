@@ -1,0 +1,17 @@
+.malvi-aura { position: relative; display: grid; place-items: center; width: 100%; height: 100%; overflow: hidden;
+  border-radius: inherit; background: radial-gradient(circle at 50% 40%, #1b2350 0%, #0b1026 62%, #070914 100%); }
+.malvi-aura-glow { position: absolute; inset: 12%; border-radius: 50%; filter: blur(14px);
+  background: conic-gradient(from 0deg, #22d3ee, #8b5cf6, #e879f9, #22d3ee); opacity: .45; animation: malvi-aura-spin 9s linear infinite; }
+.malvi-aura-ring { position: absolute; border-radius: 50%; border: 1.5px solid rgba(125, 243, 255, .55); }
+.malvi-aura-ring-a { inset: 16% 8%; transform: rotateX(68deg); animation: malvi-aura-orbit 6s linear infinite; }
+.malvi-aura-ring-b { inset: 10% 18%; border-color: rgba(232, 121, 249, .45); transform: rotateY(68deg); animation: malvi-aura-orbit 8s linear infinite reverse; }
+.malvi-aura-figure { position: relative; width: 64%; height: 64%; filter: drop-shadow(0 0 8px rgba(125, 243, 255, .6)); }
+.malvi-aura-eye { animation: malvi-aura-blink 5s infinite; transform-origin: center; transform-box: fill-box; }
+.malvi-aura[data-state='listening'] .malvi-aura-glow { opacity: .7; }
+.malvi-aura[data-state='speaking'] .malvi-aura-glow { opacity: .8; animation-duration: 3s; }
+.malvi-aura[data-state='thinking'] .malvi-aura-ring { animation-duration: 2.5s; }
+.malvi-aura[data-state='error'] .malvi-aura-glow { background: conic-gradient(#fb7185, #f43f5e, #fb7185); }
+@keyframes malvi-aura-spin { to { transform: rotate(360deg); } }
+@keyframes malvi-aura-orbit { from { rotate: 0deg; } to { rotate: 360deg; } }
+@keyframes malvi-aura-blink { 0%, 94%, 100% { transform: scaleY(1); } 97% { transform: scaleY(.1); } }
+@media (prefers-reduced-motion: reduce) { .malvi-aura * { animation: none !important; } }

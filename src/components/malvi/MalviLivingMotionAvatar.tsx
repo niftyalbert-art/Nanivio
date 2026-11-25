@@ -1,5 +1,5 @@
 import React from 'react';
-import { MALVI_PORTRAIT } from '../../lib/malviIdentity';
+import { MalviAuraFace } from './MalviAuraFace';
 import { MalviAvatarState } from '../../types';
 
 interface MalviLivingMotionAvatarProps {
@@ -36,16 +36,7 @@ export const MalviLivingMotionAvatar: React.FC<MalviLivingMotionAvatarProps> = (
       className={`relative flex h-full w-full items-center justify-center overflow-hidden rounded-[inherit] bg-[#142c2c] ${onInteract ? 'cursor-pointer focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-[-4px] focus-visible:outline-[#d3e6d9]' : ''} ${className}`}
       data-assistant-state={state}
     >
-      <img
-        src={MALVI_PORTRAIT}
-        alt="Malvi, Nanivio's AI assistant"
-        className="h-full w-full object-cover object-[50%_36%]"
-        draggable={false}
-      />
-      <div
-        aria-hidden="true"
-        className="pointer-events-none absolute inset-0 bg-gradient-to-t from-[#10201f]/70 via-transparent to-[#10201f]/10"
-      />
+      <MalviAuraFace state={state} />
     </div>
   );
 };

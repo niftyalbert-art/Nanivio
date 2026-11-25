@@ -218,19 +218,6 @@ export const AdminRideHailingMapsManager: React.FC = () => {
             <ExternalLink className="w-3.5 h-3.5 text-emerald-400" />
             <span>Launch Rider View</span>
           </button>
-
-          <button
-            onClick={handleSimulateDispatch}
-            disabled={isSimulatingDispatch || adminFeatures?.nanivioDriveEnabled === false}
-            className={`px-3.5 py-2 rounded-xl text-xs font-black transition-all flex items-center gap-2 cursor-pointer shadow-lg ${
-              adminFeatures?.nanivioDriveEnabled === false
-                ? 'bg-slate-800 text-slate-500 cursor-not-allowed'
-                : 'bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-slate-950 shadow-emerald-500/20'
-            }`}
-          >
-            <Radio className={`w-3.5 h-3.5 ${isSimulatingDispatch ? 'animate-spin' : 'animate-pulse'}`} />
-            <span>{isSimulatingDispatch ? 'Simulating...' : 'Test Dispatch Radar'}</span>
-          </button>
         </div>
       </div>
 

@@ -1494,13 +1494,10 @@ export const UniversalBillingHub: React.FC = () => {
               </div>
 
               <div className="pt-2">
-                <button
-                  onClick={() => alert('Start call from the Calls tab to initiate this exact session.')}
-                  className="w-full py-2.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-xs transition flex items-center justify-center gap-2"
-                >
+                <div role="status" className="w-full py-2.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-xs transition flex items-center justify-center gap-2">
                   <CheckCircle2 className="w-4 h-4" />
                   <span>Authorized & Ready</span>
-                </button>
+                </div>
               </div>
             </div>
           </div>
@@ -1909,12 +1906,6 @@ export const UniversalBillingHub: React.FC = () => {
                       <Users className="w-4 h-4 text-indigo-400" />
                       <span>Corporate Seat Allocations & Usage</span>
                     </h3>
-                    <button
-                      onClick={() => alert('Add seats dialog: $15/seat added to monthly consolidated invoice.')}
-                      className="px-3 py-1.5 rounded-lg bg-indigo-500/20 text-indigo-300 border border-indigo-500/40 text-xs font-bold hover:bg-indigo-500/30 transition"
-                    >
-                      + Add Team Seat
-                    </button>
                   </div>
 
                   <div className="space-y-2">

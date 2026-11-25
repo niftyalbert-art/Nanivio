@@ -589,13 +589,6 @@ export const NanivioDrivePartnerApp: React.FC<NanivioDrivePartnerAppProps> = ({
               </div>
               <div className="flex items-center gap-2">
                 <button
-                  onClick={handleSimulateIncomingTrip}
-                  className="py-1.5 px-3 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black text-xs flex items-center gap-1.5 cursor-pointer shadow-md shadow-emerald-500/20"
-                >
-                  <Sparkles className="w-3.5 h-3.5" />
-                  <span>Test Dispatch (disabled)</span>
-                </button>
-                <button
                   onClick={() => setDriverViewTab('user_requests_board')}
                   className="py-1.5 px-3 rounded-xl bg-slate-900 hover:bg-slate-800 text-slate-300 text-xs font-bold border border-slate-700 cursor-pointer"
                 >

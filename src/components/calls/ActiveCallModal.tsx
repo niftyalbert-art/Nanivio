@@ -301,11 +301,7 @@ export const ActiveCallModal: React.FC = () => {
               type="button"
               onClick={toggleCallMute}
               aria-label={activeCall.isMuted ? 'Unmute microphone' : 'Mute microphone'}
-              className={`w-12 h-12 sm:w-14 sm:h-14 rounded-full flex items-center justify-center border transition-all cursor-pointer shadow-lg active:scale-95 ${
-                activeCall.isMuted
-                  ? 'bg-rose-500/20 border-rose-500 text-rose-400'
-                  : 'bg-slate-900/80 border-slate-700 text-slate-200 hover:border-emerald-400'
-              }`}
+              className={`nv-orb nv-orb-cyan ${activeCall.isMuted ? 'is-off' : ''}`}
               title={activeCall.isMuted ? 'Unmute microphone' : 'Mute microphone'}
             >
               {activeCall.isMuted ? <MicOff className="w-5 h-5 sm:w-6 sm:h-6" /> : <Mic className="w-5 h-5 sm:w-6 sm:h-6" />}
@@ -322,11 +318,7 @@ export const ActiveCallModal: React.FC = () => {
               type="button"
               onClick={() => setShowCallerKeypad((prev) => !prev)}
               aria-label={showCallerKeypad ? 'Close keypad' : 'Open keypad'}
-              className={`w-12 h-12 sm:w-14 sm:h-14 rounded-full flex items-center justify-center border transition-all cursor-pointer shadow-lg active:scale-95 ${
-                showCallerKeypad
-                  ? 'bg-emerald-500 text-slate-950 border-emerald-400 shadow-emerald-500/30 font-bold'
-                  : 'bg-slate-900/80 border-slate-700 text-slate-200 hover:border-cyan-400'
-              }`}
+              className={`nv-orb nv-orb-violet ${showCallerKeypad ? 'is-on' : ''}`}
               title="Toggle DTMF Keypad"
             >
               <Hash className="w-5 h-5 sm:w-6 sm:h-6" />
@@ -341,7 +333,7 @@ export const ActiveCallModal: React.FC = () => {
               type="button"
               onClick={endCall}
               aria-label="End call"
-              className="w-16 h-16 sm:w-18 sm:h-18 rounded-full bg-gradient-to-tr from-rose-600 to-rose-500 hover:from-rose-500 hover:to-rose-400 active:scale-95 text-white flex items-center justify-center shadow-2xl shadow-rose-600/60 transition-all hover:scale-105 cursor-pointer border-2 border-rose-400/40"
+              className="nv-orb nv-orb-end nv-orb-lg"
               title="Cancel / End Call"
             >
               <PhoneOff className="w-7 h-7 sm:w-8 sm:h-8" />
@@ -356,11 +348,7 @@ export const ActiveCallModal: React.FC = () => {
               type="button"
               onClick={() => setIsSpeakerOn((prev) => !prev)}
               aria-label={isSpeakerOn ? 'Mute speaker' : 'Unmute speaker'}
-              className={`w-12 h-12 sm:w-14 sm:h-14 rounded-full flex items-center justify-center border transition-all cursor-pointer shadow-lg active:scale-95 ${
-                isSpeakerOn
-                  ? 'bg-cyan-500/20 border-cyan-400 text-cyan-300'
-                  : 'bg-slate-900/80 border-slate-700 text-slate-400'
-              }`}
+              className={`nv-orb nv-orb-cyan ${isSpeakerOn ? 'is-on' : 'is-dim'}`}
               title={isSpeakerOn ? 'Speaker On' : 'Speaker Off'}
             >
               {isSpeakerOn ? <Volume2 className="w-5 h-5 sm:w-6 sm:h-6" /> : <VolumeX className="w-5 h-5 sm:w-6 sm:h-6" />}
@@ -376,11 +364,7 @@ export const ActiveCallModal: React.FC = () => {
                 type="button"
                 onClick={toggleCallVideo}
                 aria-label={activeCall.isVideoOff ? 'Turn camera on' : 'Turn camera off'}
-                className={`w-12 h-12 sm:w-14 sm:h-14 rounded-full flex items-center justify-center border transition-all cursor-pointer shadow-lg active:scale-95 ${
-                  activeCall.isVideoOff
-                    ? 'bg-rose-500/20 border-rose-500 text-rose-400'
-                    : 'bg-slate-900/80 border-slate-700 text-slate-200 hover:border-emerald-400'
-                }`}
+                className={`nv-orb nv-orb-violet ${activeCall.isVideoOff ? 'is-off' : ''}`}
                 title={activeCall.isVideoOff ? 'Turn Video On' : 'Turn Video Off'}
               >
                 {activeCall.isVideoOff ? <VideoOff className="w-5 h-5 sm:w-6 sm:h-6" /> : <VideoIcon className="w-5 h-5 sm:w-6 sm:h-6" />}
@@ -768,11 +752,7 @@ export const ActiveCallModal: React.FC = () => {
               id="call-btn-mute"
               onClick={toggleCallMute}
               aria-label={activeCall.host.isMuted ? 'Unmute microphone' : 'Mute microphone'}
-              className={`w-13 h-13 sm:w-14 sm:h-14 rounded-full flex items-center justify-center transition-all shadow-md cursor-pointer ${
-                activeCall.host.isMuted
-                  ? 'bg-rose-500/20 text-rose-400 border border-rose-500/40'
-                  : 'bg-slate-800 hover:bg-slate-700 text-white border border-slate-700'
-              }`}
+              className={`nv-orb nv-orb-cyan ${activeCall.host.isMuted ? 'is-off' : ''}`}
               title={activeCall.host.isMuted ? 'Unmute microphone' : 'Mute microphone'}
             >
               {activeCall.host.isMuted ? <MicOff className="w-5 h-5" /> : <Mic className="w-5 h-5" />}
@@ -788,7 +768,7 @@ export const ActiveCallModal: React.FC = () => {
               id="call-btn-end"
               onClick={endCall}
               aria-label="End call"
-              className="w-13 h-13 sm:w-14 sm:h-14 rounded-full bg-rose-600 hover:bg-rose-500 active:scale-95 text-white flex items-center justify-center shadow-lg shadow-rose-600/40 transition-all hover:scale-105 cursor-pointer"
+              className="nv-orb nv-orb-end"
               title="End call"
             >
               <PhoneOff className="w-6 h-6" />

@@ -39,12 +39,13 @@ export const NVNumberView: React.FC = () => {
   const [searchError, setSearchError] = useState<string | null>(null);
   const [qrDataUrl, setQrDataUrl] = useState<string>('');
 
-  const myNvNumber = authUser?.nvId || currentUser.nvId || currentUser.nanivioNumber || '0486482190';
+  const myNvNumber = authUser?.nvId || currentUser.nvId || currentUser.nanivioNumber || '';
   const qrTargetUrl = `https://nanivio.tech/nv/${encodeURIComponent(myNvNumber)}`;
 
   // Generate live vector/high-res QR code locally without any third-party external dependencies
   useEffect(() => {
     let isMounted = true;
+    if (!myNvNumber) { setQrDataUrl(''); return; }
     QRCode.toDataURL(qrTargetUrl, {
       width: 360,
       margin: 2,

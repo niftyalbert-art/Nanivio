@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { MalviAllowanceNotice } from './MalviAllowanceNotice';
 import { createPortal } from 'react-dom';
 import { AlertCircle, AudioLines, Camera, ImagePlus, LoaderCircle, Mic, MicOff, Square, Upload, X } from 'lucide-react';
-import { MALVI_PROFILE } from '../../lib/malviIdentity';
+import { MalviAuraFace } from './MalviAuraFace';
 import type { MalviAssetResult } from '../../shared/malviInputTypes';
 import { MalviAssetResults } from './MalviAssetResults';
 import type { MalviReferenceCitation } from '../../lib/malviLiveClient';
@@ -384,12 +384,8 @@ export const MalviLiveOverlay: React.FC<MalviLiveOverlayProps> = ({
               className="malvi-live-avatar-video absolute inset-0 h-full w-full object-contain object-center"
             />}
             {!voiceOnly && (phase === 'connecting' || phase === 'error') && (
-              <div className="absolute inset-0 overflow-hidden bg-[#172e2d]">
-                <img
-                  src={MALVI_PROFILE}
-                  alt={phase === 'connecting' ? 'Malvi portrait preview while connecting' : 'Malvi portrait preview'}
-                  className="absolute inset-0 h-full w-full object-contain object-center opacity-75"
-                />
+              <div className="absolute inset-0 overflow-hidden">
+                <MalviAuraFace state={phase === 'error' ? 'error' : 'thinking'} label={phase === 'connecting' ? 'Malvi is connecting' : 'Malvi'} />
               </div>
             )}
             {showVideoAllowanceOverlay && (
@@ -546,9 +542,7 @@ export const MalviLiveOverlay: React.FC<MalviLiveOverlayProps> = ({
                 <Camera size={14} /> Share a still view · optional
               </summary>
               <div className="max-h-[34dvh] space-y-3 overflow-y-auto border-t border-white/10 px-3 py-3">
-                <p className="leading-relaxed text-[#d9dfd9]/80">
-                  A still image is shared with the selected AI to discuss visible objects, colours, or surroundings. It is not for diagnosis, emotion, or identity inference. Images are not saved to Nanivio conversation history; provider handling is separate. Camera access is preview-only until you tap “Share this view”; video is never streamed to the AI.
-                </p>
+                <p className="leading-relaxed text-[#d9dfd9]/80">Share a photo to ask Malvi about what you see. It isn’t saved to your Nanivio history; the AI provider handles it under its own policy. Video is never streamed.</p>
                 <div className="flex flex-wrap items-center gap-2">
                   {!cameraStream ? (
                     <button type="button" onClick={() => void startCamera()} disabled={!activeSessionId || visionBusy} className="inline-flex min-h-9 items-center gap-1.5 rounded-lg border border-[#b89a5a]/45 bg-[#b89a5a]/10 px-3 text-xs font-semibold text-[#ead9a7] hover:bg-[#b89a5a]/20 disabled:cursor-not-allowed disabled:opacity-45">
@@ -598,7 +592,7 @@ export const MalviLiveOverlay: React.FC<MalviLiveOverlayProps> = ({
                 )}
                 {!activeSessionId && <p role="status" className="text-[#e3d09a]">Image sharing is unavailable until the active session ID is passed to this overlay.</p>}
                 {cameraError && <p role={cameraError.includes('shared') ? 'status' : 'alert'} className="break-words text-[#f0d5bd]">{malviPublicCopy(cameraError)}</p>}
-                <p className="text-[10px] leading-relaxed text-white/55">Selected image limit: JPEG or PNG up to 512 KB. Shared stills are converted to JPEG at no more than 640 × 480 before upload.</p>
+                <p className="text-[10px] leading-relaxed text-white/55">JPEG or PNG, up to 512 KB.</p>
               </div>
             </details>
           )}
@@ -662,13 +656,11 @@ export const MalviLiveOverlay: React.FC<MalviLiveOverlayProps> = ({
           )}
           <details className="max-w-lg rounded-xl bg-[#10201f]/60 px-3 py-2 text-center text-[11px] leading-relaxed text-[#e0e8e2]/80 backdrop-blur-md">
             <summary className="cursor-pointer underline underline-offset-4">Audio &amp; sources</summary>
-            <p className="mt-2">
-              Nanivio processes your speech using connected AI services. Research uses public sources; do not include private account information in searches.
-            </p>
+            <p className="mt-2">Malvi uses connected AI services and public sources. Don’t share private details in searches.</p>
             <p className="mt-2">
               {microphoneOn
-                ? 'Microphone on · Nanivio keeps listening while Malvi speaks. Pause it at any time.'
-                : 'Starting a conversation enables your microphone after connection. If you paused it or access failed, choose Start speaking to resume.'}
+                ? 'Microphone on. You can interrupt Malvi any time.'
+                : 'Tap Start speaking to turn on your microphone.'}
             </p>
             {phase === 'connected' && referenceStatus !== 'idle' && (
               <div className="mt-3 rounded-lg border border-white/10 bg-[#10201f]/70 px-3 py-2 text-left">

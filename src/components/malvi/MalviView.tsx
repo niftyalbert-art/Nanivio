@@ -831,7 +831,7 @@ const MalviAccountWorkspace: React.FC<{ ownerId: string | null }> = ({ ownerId }
             <h1 className="text-xl sm:text-2xl font-black tracking-tight text-white flex flex-wrap items-center gap-2">
               <span>Malvi</span>
               <span className="text-xs px-2.5 py-0.5 rounded-full bg-cyan-500/20 text-cyan-300 font-bold border border-cyan-500/40">
-                3D VOICE AI COMPANION
+                AI
               </span>
             </h1>
             <p className="mt-1 max-w-xl break-words text-xs leading-relaxed text-slate-300">
@@ -950,7 +950,7 @@ const MalviAccountWorkspace: React.FC<{ ownerId: string | null }> = ({ ownerId }
                 </span>
               </div>
               <p className="text-xs text-slate-300">
-                You have used your free introductory video interaction minutes with Malvi. Subscribe to Malvi Basic, Premium, or Business to continue continuous voice and video interaction.
+                Free minutes used. Subscribe to keep talking with Malvi.
               </p>
             </div>
           </div>

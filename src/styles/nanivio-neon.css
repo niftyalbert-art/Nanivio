@@ -1,0 +1,652 @@
+/* Nanivio Neon: the electric cyan / violet / amethyst glass language from the
+   approved reference screens. Loaded last so it re-tones every page. */
+:root {
+  --neo-cyan: #3ee6f5;
+  --neo-violet: #8b5cf6;
+  --neo-amethyst: #c084fc;
+  --neo-pink: #f472b6;
+  --neo-ink: #f5f3ff;
+  --neo-muted: #a9aed6;
+  --neo-glass: rgba(52, 45, 122, .62);
+  --neo-glass-strong: rgba(40, 34, 98, .9);
+  --neo-edge: rgba(176, 160, 255, .22);
+  --neo-gradient: linear-gradient(100deg, #8b5cf6 0%, #6366f1 45%, #22d3ee 100%);
+  --neo-ring: conic-gradient(from 200deg, #22d3ee, #8b5cf6, #ec4899, #22d3ee);
+
+  /* Re-tone Tailwind's palette so every existing key, badge and wallet surface
+     follows the neon scheme: emerald becomes electric cyan, teal becomes violet,
+     slate becomes deep indigo glass. */
+  --color-emerald-50: #effeff;
+  --color-emerald-100: #d8fbff;
+  --color-emerald-200: #b0f5fd;
+  --color-emerald-300: #7ceefa;
+  --color-emerald-400: #3ee6f5;
+  --color-emerald-500: #1fcbe6;
+  --color-emerald-600: #19a6cf;
+  --color-emerald-700: #1a82ad;
+  --color-emerald-800: #1d5f8a;
+  --color-emerald-900: #1c3f66;
+  --color-emerald-950: #121f45;
+  --color-teal-300: #c4b5fd;
+  --color-teal-400: #a78bfa;
+  --color-teal-500: #8b5cf6;
+  --color-teal-600: #7c3aed;
+  --color-teal-700: #6d28d9;
+  --color-teal-800: #5b21b6;
+  --color-teal-900: #3b1a78;
+  --color-teal-950: #22104a;
+  --color-slate-200: #e0e0f7;
+  --color-slate-300: #c7c8e8;
+  --color-slate-400: #9da1cc;
+  --color-slate-500: #6f72a3;
+  --color-slate-600: #484b7c;
+  --color-slate-700: #4a4789;
+  --color-slate-800: #353272;
+  --color-slate-900: #29265e;
+  --color-slate-950: #1f1c4e;
+}
+
+body,
+.nv-theme-dark.nanivio-app {
+  background:
+    radial-gradient(ellipse 60% 45% at 0% 20%, rgba(56, 220, 245, .26), transparent 70%),
+    radial-gradient(ellipse 55% 45% at 100% 0%, rgba(167, 139, 250, .36), transparent 70%),
+    radial-gradient(ellipse 60% 45% at 70% 100%, rgba(244, 114, 182, .22), transparent 70%),
+    linear-gradient(160deg, #2a2468 0%, #221d58 50%, #1c2c5e 100%) !important;
+}
+
+/* Glass surfaces with a soft neon edge. */
+.nv-glass-card,
+.nv-theme-dark .home-shortcut,
+.nv-theme-dark .home-wallet-card,
+.nv-theme-dark .nv-home .nv-home-hero.home-profile-card {
+  border: 1px solid var(--neo-edge) !important;
+  background: linear-gradient(150deg, rgba(62, 54, 140, .62), rgba(36, 31, 88, .72)) !important;
+  box-shadow: 0 18px 44px rgba(4, 2, 20, .42), inset 0 1px rgba(255, 255, 255, .08) !important;
+}
+
+/* Primary action: violet to cyan, like "Start Messaging". */
+.nv-gradient-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: .5rem;
+  min-height: 44px;
+  padding: .6rem 1.3rem;
+  border: 0;
+  border-radius: 14px;
+  color: #fff;
+  background: var(--neo-gradient);
+  box-shadow: 0 8px 26px rgba(99, 102, 241, .45), inset 0 1px rgba(255, 255, 255, .35);
+  font-weight: 700;
+  letter-spacing: .01em;
+  cursor: pointer;
+  transition: transform .18s ease, box-shadow .18s ease, filter .18s ease;
+}
+.nv-gradient-button:hover { transform: translateY(-1px); filter: brightness(1.08); box-shadow: 0 12px 32px rgba(34, 211, 238, .4); }
+.nv-gradient-button:active { transform: translateY(1px) scale(.98); }
+
+/* ---------- Header ---------- */
+.nv-theme-dark .nv-glass-header {
+  border-bottom: 1px solid rgba(176, 160, 255, .14) !important;
+  background: rgba(38, 32, 92, .72) !important;
+}
+.nv-pill-nav {
+  padding: 5px;
+  border: 1px solid var(--neo-edge);
+  border-radius: 999px;
+  background: rgba(30, 26, 72, .55);
+  box-shadow: inset 0 1px rgba(255, 255, 255, .06), 0 10px 30px rgba(4, 2, 20, .35);
+}
+.nv-pill-link {
+  display: inline-flex;
+  align-items: center;
+  gap: .45rem;
+  min-height: 38px;
+  padding: 0 1rem;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  color: var(--neo-muted);
+  font-size: .86rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: color .18s ease, background .18s ease, box-shadow .18s ease;
+}
+.nv-pill-link:hover { color: #fff; background: rgba(255, 255, 255, .06); }
+.nv-pill-link.is-active {
+  color: #fff;
+  border-color: rgba(124, 238, 250, .35);
+  background: linear-gradient(100deg, rgba(139, 92, 246, .45), rgba(34, 211, 238, .3));
+  box-shadow: 0 0 18px rgba(139, 92, 246, .45), inset 0 1px rgba(255, 255, 255, .18);
+}
+.nv-pill-link.is-active svg { color: var(--neo-cyan); filter: drop-shadow(0 0 6px rgba(62, 230, 245, .8)); }
+.nv-profile-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: .5rem;
+  min-height: 42px;
+  padding: 3px 12px 3px 3px;
+  border: 1px solid var(--neo-edge);
+  border-radius: 999px;
+  color: #fff;
+  background: rgba(30, 26, 72, .6);
+  font-size: .82rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+.nv-profile-chip:not(:has(.nv-profile-chip-name:not(.hidden))) { padding-right: 3px; }
+.nv-profile-chip.is-active,
+.nv-profile-chip:hover { border-color: rgba(124, 238, 250, .55); box-shadow: 0 0 16px rgba(34, 211, 238, .3); }
+.nv-profile-chip-avatar {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  overflow: hidden;
+  border-radius: 50%;
+  background: linear-gradient(140deg, #3b2a8a, #1b3f78);
+  box-shadow: 0 0 0 2px #2a2468, 0 0 0 4px rgba(139, 92, 246, .8);
+  font-size: .72rem;
+}
+.nv-profile-chip-avatar img { width: 100%; height: 100%; object-fit: cover; }
+
+/* ---------- Bottom tab bar ---------- */
+.nv-tabbar {
+  border-top: 1px solid rgba(176, 160, 255, .16) !important;
+  background: linear-gradient(180deg, rgba(48, 41, 110, .86), rgba(32, 27, 82, .96)) !important;
+  -webkit-backdrop-filter: blur(20px);
+  backdrop-filter: blur(20px);
+  box-shadow: 0 -12px 34px rgba(4, 2, 20, .45);
+}
+.nv-tab {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  flex-shrink: 0;
+  min-width: 58px;
+  min-height: 52px;
+  padding: 4px 8px;
+  border: 0;
+  border-radius: 16px;
+  color: #8f93c0;
+  background: transparent;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: color .18s ease, transform .18s ease;
+}
+.nv-tab:active { transform: scale(.95); }
+.nv-tab:hover { color: #fff; }
+.nv-tab-icon {
+  display: grid;
+  place-items: center;
+  width: 38px;
+  height: 30px;
+  border-radius: 12px;
+  transition: background .18s ease, box-shadow .18s ease;
+}
+.nv-tab.is-active { color: #fff; }
+.nv-tab.is-active .nv-tab-icon {
+  color: var(--neo-cyan);
+  background: linear-gradient(120deg, rgba(139, 92, 246, .38), rgba(34, 211, 238, .24));
+  box-shadow: 0 0 18px rgba(62, 230, 245, .38), inset 0 0 0 1px rgba(124, 238, 250, .35);
+}
+.nv-tab.is-active .nv-tab-icon svg { filter: drop-shadow(0 0 6px rgba(62, 230, 245, .9)); }
+@media (min-width: 640px) {
+  .nv-tab { flex-direction: row; gap: 6px; min-height: 46px; padding: 4px 14px 4px 4px; font-size: 13px; }
+  .nv-tab.is-active { background: rgba(139, 92, 246, .14); box-shadow: inset 0 0 0 1px rgba(176, 160, 255, .22); }
+}
+
+/* ---------- Home ---------- */
+.nv-theme-dark .nv-home .nv-neon-hero.home-profile-card {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 1rem;
+  min-height: 210px;
+  overflow: hidden;
+  padding: 1.5rem 1.6rem;
+  border-radius: 24px;
+  background:
+    radial-gradient(ellipse 60% 90% at 85% 40%, rgba(139, 92, 246, .35), transparent 70%),
+    linear-gradient(150deg, rgba(70, 58, 160, .7), rgba(34, 29, 86, .8)) !important;
+}
+.nv-hero-ribbons {
+  position: absolute;
+  inset: auto 0 -10px 0;
+  width: 100%;
+  height: 75%;
+  opacity: .55;
+  filter: blur(1.5px) drop-shadow(0 0 14px rgba(139, 92, 246, .7));
+  pointer-events: none;
+  animation: nv-ribbon-drift 9s ease-in-out infinite alternate;
+}
+@keyframes nv-ribbon-drift { from { transform: translateX(-2%) skewY(-1deg); } to { transform: translateX(2%) skewY(1deg); } }
+.nv-hero-copy { position: relative; z-index: 1; min-width: 0; }
+.nv-hero-hello {
+  display: flex;
+  align-items: center;
+  gap: .6rem;
+  color: #c9c6f3;
+  font-size: .9rem;
+  font-weight: 600;
+}
+.nv-theme-dark .nv-hero-hello .home-profile-avatar {
+  grid-row: auto;
+  width: 34px;
+  height: 34px;
+  border: 0;
+  box-shadow: 0 0 0 2px #2a2468, 0 0 0 4px rgba(62, 230, 245, .75);
+}
+.nv-theme-dark .nv-hero-hello .home-profile-avatar > span { font-size: .75rem; }
+.nv-theme-dark .nv-home .nv-neon-hero h1 {
+  margin: .55rem 0 1rem;
+  max-width: 14ch;
+  color: #fff;
+  font: 800 clamp(1.7rem, 3.6vw, 2.6rem)/1.08 var(--font-display);
+  letter-spacing: -.035em;
+  text-shadow: 0 2px 24px rgba(139, 92, 246, .45);
+}
+.nv-hero-actions { display: flex; flex-wrap: wrap; align-items: center; gap: .75rem 1rem; }
+.nv-theme-dark .nv-neon-hero .home-profile-id {
+  grid-column: auto;
+  padding: .35rem .4rem .35rem .75rem;
+  border: 1px solid var(--neo-edge);
+  border-radius: 999px;
+  background: rgba(14, 12, 38, .55);
+}
+.nv-theme-dark .nv-neon-hero .home-profile-id button { margin-left: .25rem; }
+.nv-hero-emblem {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  place-items: center;
+  width: clamp(104px, 16vw, 170px);
+  aspect-ratio: 1;
+}
+.nv-hero-emblem img {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  border-radius: 34%;
+  object-fit: cover;
+  -webkit-mask-image: radial-gradient(circle, #000 55%, transparent 72%);
+  mask-image: radial-gradient(circle, #000 55%, transparent 72%);
+  animation: nv-emblem-float 6s ease-in-out infinite;
+}
+.nv-hero-emblem-glow {
+  position: absolute;
+  inset: 4%;
+  border-radius: 40%;
+  background: var(--neo-ring);
+  filter: blur(22px);
+  opacity: .75;
+  animation: nv-emblem-spin 12s linear infinite;
+}
+@keyframes nv-emblem-float { 50% { transform: translateY(-6px) rotate(2deg); } }
+@keyframes nv-emblem-spin { to { transform: rotate(360deg); } }
+
+.nv-theme-dark .home-wallet-card {
+  border-radius: 24px !important;
+  background:
+    radial-gradient(ellipse 80% 90% at 100% 0%, rgba(236, 72, 153, .35), transparent 62%),
+    radial-gradient(ellipse 70% 80% at 0% 100%, rgba(34, 211, 238, .3), transparent 65%),
+    linear-gradient(135deg, #3b1d8f 0%, #4338ca 52%, #0e7490 100%) !important;
+  box-shadow: 0 20px 48px rgba(67, 56, 202, .4), inset 0 1px rgba(255, 255, 255, .25) !important;
+}
+.nv-theme-dark .home-wallet-card .home-wallet-heading h2 { color: #fff; letter-spacing: .02em; }
+.nv-theme-dark .home-wallet-card .home-wallet-amount > span { color: rgba(236, 233, 255, .78); }
+.nv-theme-dark .home-wallet-card .home-wallet-amount strong { color: #fff; text-shadow: 0 2px 14px rgba(15, 10, 50, .4); }
+.nv-theme-dark .home-wallet-card .home-wallet-footer { border-top-color: rgba(255, 255, 255, .2); }
+.nv-theme-dark .home-wallet-card .home-wallet-footer button {
+  color: #fff;
+  border-color: rgba(255, 255, 255, .4);
+  background: rgba(255, 255, 255, .16);
+  box-shadow: inset 0 1px rgba(255, 255, 255, .35);
+}
+.nv-theme-dark .home-wallet-card .home-icon-button { color: #fff; border-color: rgba(255, 255, 255, .3); background: rgba(255, 255, 255, .12); }
+
+.nv-theme-dark .home-shortcut { border-radius: 20px !important; }
+.nv-theme-dark .home-shortcut:hover {
+  border-color: rgba(124, 238, 250, .5) !important;
+  box-shadow: 0 14px 34px rgba(4, 2, 20, .5), 0 0 22px rgba(139, 92, 246, .3) !important;
+}
+.nv-theme-dark .home-shortcut-icon {
+  border: 0 !important;
+  border-radius: 14px !important;
+  color: #fff !important;
+  background: linear-gradient(140deg, rgba(34, 211, 238, .55), rgba(139, 92, 246, .55)) !important;
+  box-shadow: 0 6px 18px rgba(34, 211, 238, .25), inset 0 1px rgba(255, 255, 255, .3) !important;
+}
+.nv-theme-dark .home-accent-violet .home-shortcut-icon { background: linear-gradient(140deg, rgba(139, 92, 246, .65), rgba(236, 72, 153, .5)) !important; }
+.nv-theme-dark .home-accent-cream .home-shortcut-icon { background: linear-gradient(140deg, rgba(192, 132, 252, .55), rgba(99, 102, 241, .6)) !important; }
+
+@media (max-width: 760px) {
+  .nv-theme-dark .nv-home .nv-neon-hero.home-profile-card { min-height: 0; padding: 1rem 1.05rem; gap: .5rem; border-radius: 20px; }
+  .nv-theme-dark .nv-home .nv-neon-hero h1 { margin: .35rem 0 .6rem; font-size: 1.45rem; }
+  .nv-hero-emblem { width: 84px; }
+  .nv-hero-actions { gap: .5rem; }
+  .nv-gradient-button { min-height: 38px; padding: .45rem .95rem; font-size: .82rem; }
+  .nv-theme-dark .nv-neon-hero .home-profile-id { padding: .25rem .3rem .25rem .6rem; font-size: .72rem; }
+}
+
+/* ---------- Calls: glowing orb controls ---------- */
+.nv-orb {
+  --orb: var(--neo-cyan);
+  --orb-glow: rgba(62, 230, 245, .45);
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 54px;
+  height: 54px;
+  border: 2px solid var(--orb);
+  border-radius: 50%;
+  color: var(--orb);
+  background: radial-gradient(circle at 50% 30%, rgba(255, 255, 255, .22), rgba(52, 44, 118, .9) 70%);
+  box-shadow: 0 0 16px var(--orb-glow), inset 0 0 14px var(--orb-glow);
+  cursor: pointer;
+  transition: transform .16s ease, box-shadow .16s ease, background .16s ease;
+}
+.nv-orb:hover { transform: translateY(-2px); box-shadow: 0 0 26px var(--orb-glow), inset 0 0 18px var(--orb-glow); }
+.nv-orb:active { transform: scale(.94); }
+.nv-orb-violet { --orb: #b794ff; --orb-glow: rgba(139, 92, 246, .55); }
+.nv-orb-pink { --orb: #f9a8d4; --orb-glow: rgba(236, 72, 153, .5); }
+.nv-orb.is-on { color: #fff; background: radial-gradient(circle at 50% 30%, var(--orb-glow), rgba(52, 44, 118, .9) 75%); }
+.nv-orb.is-dim { opacity: .6; box-shadow: none; }
+.nv-orb.is-off { --orb: #fda4af; --orb-glow: rgba(244, 63, 94, .5); }
+.nv-orb-end {
+  --orb: #fecdd3;
+  --orb-glow: rgba(244, 63, 94, .6);
+  color: #fff;
+  background: radial-gradient(circle at 50% 30%, #fb7185, #e11d48 70%);
+  border-color: rgba(253, 164, 175, .8);
+}
+.nv-orb-lg { width: 66px; height: 66px; }
+
+/* ---------- Dialer: constellation keypad ---------- */
+.nv-constellation {
+  position: relative;
+  width: min(300px, 82vw);
+  aspect-ratio: 1;
+  margin: .5rem auto 1rem;
+  border-radius: 50%;
+  background:
+    radial-gradient(circle at 50% 50%, rgba(139, 92, 246, .28), transparent 62%),
+    radial-gradient(circle at 50% 50%, rgba(70, 60, 150, .75), rgba(40, 34, 100, .9) 70%);
+  box-shadow: 0 0 0 1px rgba(176, 160, 255, .25), 0 0 40px rgba(99, 102, 241, .35), inset 0 0 40px rgba(34, 211, 238, .12);
+}
+.nv-constellation-lines { position: absolute; inset: 0; width: 100%; height: 100%; }
+.nv-constellation-lines circle { fill: none; stroke: rgba(176, 160, 255, .2); stroke-width: 1; }
+.nv-constellation-lines polyline { fill: none; stroke: rgba(124, 238, 250, .35); stroke-width: 1; }
+.nv-constellation-lines .nv-star { fill: #cffafe; stroke: none; filter: drop-shadow(0 0 3px #22d3ee); }
+.nv-constellation-key {
+  position: absolute;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  width: 46px;
+  height: 46px;
+  transform: translate(-50%, -50%);
+  border: 1px solid rgba(176, 160, 255, .3);
+  border-radius: 50%;
+  color: #fff;
+  background: rgba(62, 54, 136, .85);
+  box-shadow: 0 0 12px rgba(139, 92, 246, .3);
+  cursor: pointer;
+  transition: box-shadow .15s ease, border-color .15s ease, transform .15s ease;
+}
+.nv-constellation-key span { font: 700 1.05rem/1 var(--font-mono, monospace); }
+.nv-constellation-key small { margin-top: 1px; color: #a9aed6; font-size: 6.5px; letter-spacing: .12em; }
+.nv-constellation-key:hover { border-color: var(--neo-cyan); box-shadow: 0 0 18px rgba(62, 230, 245, .55); }
+.nv-constellation-key:active { transform: translate(-50%, -50%) scale(.9); }
+.nv-constellation-key:disabled { opacity: .5; cursor: wait; }
+.nv-constellation-core {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  display: grid;
+  place-items: center;
+  width: 68px;
+  height: 68px;
+  transform: translate(-50%, -50%);
+  border-radius: 50%;
+  color: #fff;
+  background: var(--neo-gradient);
+  box-shadow: 0 0 30px rgba(62, 230, 245, .5), 0 0 0 8px rgba(139, 92, 246, .15);
+}
+
+/* ---------- Chat ---------- */
+.chat-app-shell .nv-chat-workspace .chat-outgoing-bubble {
+  border: 1px solid rgba(196, 181, 253, .35) !important;
+  background: linear-gradient(120deg, #6d28d9, #4f46e5 55%, #0891b2) !important;
+  box-shadow: 0 8px 22px rgba(79, 70, 229, .35), inset 0 1px rgba(255, 255, 255, .2) !important;
+}
+.chat-app-shell .nv-chat-workspace .chat-outgoing-bubble p { color: #fff !important; }
+.chat-app-shell .nv-chat-workspace .chat-incoming-bubble {
+  border: 1px solid rgba(176, 160, 255, .2) !important;
+  background: rgba(70, 62, 150, .62) !important;
+}
+.chat-app-shell {
+  background:
+    radial-gradient(ellipse 58% 44% at 0% 30%, rgba(34, 211, 238, .14), transparent 72%),
+    radial-gradient(ellipse 50% 44% at 100% 0%, rgba(139, 92, 246, .24), transparent 70%),
+    linear-gradient(150deg, #2c2670 0%, #231e5a 45%, #1c2a5e 100%) !important;
+}
+
+/* ---------- Account ---------- */
+.nv-account-hero { padding: 1.25rem; }
+@media (min-width: 640px) { .nv-account-hero { padding: 1.75rem; } }
+.nv-ring-avatar {
+  position: relative;
+  border: 3px solid transparent;
+  background: linear-gradient(#2d2870, #2d2870) padding-box, var(--neo-ring) border-box;
+  box-shadow: 0 0 26px rgba(139, 92, 246, .5);
+}
+.nanivio-account-page > div { border-radius: 24px; }
+
+@media (prefers-reduced-motion: reduce) {
+  .nv-hero-ribbons,
+  .nv-hero-emblem img,
+  .nv-hero-emblem-glow { animation: none; }
+}
+
+/* Primary buttons app-wide: saturated violet to cyan with white text,
+   replacing the earlier pastel treatment. */
+html .nv-theme-dark button[class~="bg-emerald-500"],
+html .nv-theme-dark button[class~="bg-emerald-600"]:not(#toggle-global-langpretation),
+html .nv-theme-dark button[class~="bg-emerald-700"],
+html .nv-theme-dark button[class~="bg-cyan-500"],
+html .nv-theme-dark button[class~="bg-teal-500"],
+html .nv-theme-dark button[class~="from-emerald-500"],
+html .nv-theme-dark button[class~="from-emerald-600"],
+html .nv-theme-dark button[class~="from-cyan-500"],
+html .nanivio-auth button[class~="bg-emerald-500"],
+html .nanivio-auth button[class~="from-emerald-500"] {
+  color: #fff !important;
+  background: var(--neo-gradient) !important;
+  background-image: var(--neo-gradient) !important;
+  border-color: rgba(196, 181, 253, .45) !important;
+  box-shadow: 0 8px 22px rgba(99, 102, 241, .38), inset 0 1px rgba(255, 255, 255, .28) !important;
+}
+html .nv-theme-dark button[class~="from-emerald-500"] svg,
+html .nv-theme-dark button[class~="bg-emerald-500"] svg { color: #fff !important; }
+
+/* Legacy dark-navy page panels become violet glass. */
+html .nv-theme-dark .nanivio-main [class*="bg-gradient-to-r"][class*="from-[#0"],
+html .nv-theme-dark .nanivio-main [class*="bg-gradient-to-br"][class*="from-[#0"] {
+  border-color: var(--neo-edge) !important;
+  background: linear-gradient(150deg, rgba(62, 54, 140, .62), rgba(36, 31, 88, .72)) !important;
+  box-shadow: 0 18px 44px rgba(4, 2, 20, .4), inset 0 1px rgba(255, 255, 255, .07) !important;
+}
+
+/* Secondary tinted buttons: glass with a cyan edge. */
+html .nv-theme-dark button[class*="bg-emerald-500/"] {
+  color: #a5f3fc !important;
+  background: rgba(139, 92, 246, .18) !important;
+  border-color: rgba(62, 230, 245, .4) !important;
+  box-shadow: 0 0 14px rgba(62, 230, 245, .15) !important;
+}
+
+/* Short windows: compact hero, and let Home scroll rather than hide shortcuts
+   behind the tab bar. */
+.nv-theme-dark .home-dashboard { overflow-y: auto; overscroll-behavior: contain; }
+@media (max-height: 760px) {
+  .nv-theme-dark .nv-home .nv-neon-hero.home-profile-card { min-height: 0; padding-block: .85rem; }
+  .nv-theme-dark .nv-home .nv-neon-hero h1 { margin: .3rem 0 .55rem; font-size: clamp(1.3rem, 3vw, 1.9rem); }
+  .nv-hero-emblem { width: clamp(72px, 11vw, 112px); }
+}
+
+/* Friendlier, lighter calls workspace */
+.nv-theme-dark .nv-calls-page {
+  --nv-stage: transparent;
+  --nv-panel: rgba(52, 45, 122, .62);
+  --nv-panel-2: rgba(92, 80, 176, .55);
+  --nv-line: rgba(210, 200, 255, .24);
+}
+.nv-calls-page .nv-calls-heading {
+  border: 1px solid rgba(210, 200, 255, .24) !important;
+  border-radius: 1.5rem;
+  background: linear-gradient(120deg, rgba(139, 92, 246, .38), rgba(34, 211, 238, .22)) !important;
+}
+
+/* ---------- Friendlier, lighter base (overrides older deep-navy skins) ---------- */
+html .nv-theme-dark.nanivio-app,
+html body {
+  background:
+    radial-gradient(ellipse 60% 45% at 0% 20%, rgba(56, 220, 245, .26), transparent 70%),
+    radial-gradient(ellipse 55% 45% at 100% 0%, rgba(167, 139, 250, .36), transparent 70%),
+    radial-gradient(ellipse 60% 45% at 70% 100%, rgba(244, 114, 182, .22), transparent 70%),
+    linear-gradient(160deg, #2a2468 0%, #221d58 50%, #1c2c5e 100%) !important;
+  background-attachment: fixed !important;
+}
+html .nv-theme-dark .nv-glass-header,
+html .nv-theme-dark .nanivio-navbar {
+  background: rgba(62, 54, 140, .62) !important;
+  border-bottom-color: rgba(210, 200, 255, .2) !important;
+}
+html .nv-theme-dark #nanivio-bottom-navigation,
+html .nv-theme-dark .nv-tabbar {
+  background: linear-gradient(180deg, rgba(70, 60, 152, .82), rgba(50, 43, 120, .94)) !important;
+  border-top-color: rgba(210, 200, 255, .22) !important;
+}
+html .nv-theme-dark .nv-pill-nav { background: rgba(88, 76, 176, .45); }
+html :is(.nv-theme-dark, .nanivio-auth) [class~="bg-slate-950"] { background-color: #211d55 !important; }
+html :is(.nv-theme-dark, .nanivio-auth) [class~="bg-slate-900"] { background-color: #29245f !important; }
+html .chat-app-shell .nv-chat-workspace .chat-thread-surface { background: rgba(48, 42, 112, .6) !important; }
+html .chat-app-shell .chat-composer { background-color: rgba(58, 50, 130, .85) !important; }
+html .nv-theme-dark ::-webkit-scrollbar-track { background: #29245f; }
+html .nv-dialer-line { background: linear-gradient(120deg, rgba(110, 92, 210, .42), rgba(56, 189, 248, .2)) !important; border-color: rgba(210, 200, 255, .3) !important; }
+html body .nanivio-app.nv-theme-dark,
+html body .nanivio-app.chat-app-shell {
+  background:
+    radial-gradient(ellipse 60% 45% at 0% 20%, rgba(56, 220, 245, .26), transparent 70%),
+    radial-gradient(ellipse 55% 45% at 100% 0%, rgba(167, 139, 250, .36), transparent 70%),
+    radial-gradient(ellipse 60% 45% at 70% 100%, rgba(244, 114, 182, .22), transparent 70%),
+    linear-gradient(160deg, #2a2468 0%, #221d58 50%, #1c2c5e 100%) !important;
+}
+html body .chat-app-shell > .nv-chat-toolbar,
+html body .nanivio-app > header.nv-glass-header { background: rgba(62, 54, 140, .62) !important; }
+html body .chat-app-shell .nv-reference-pills { background: rgba(88, 76, 176, .45); }
+html body .chat-app-shell .nv-chat-workspace :is(.bg-slate-900,.bg-slate-950,.bg-slate-800,.bg-slate-700) { background-color: rgba(46, 40, 110, .7) !important; }
+html body .nanivio-app header.nv-glass-header.nv-glass-header { background: rgba(36, 31, 90, .78) !important; }
+html body .nanivio-app #nanivio-bottom-navigation#nanivio-bottom-navigation { background: linear-gradient(180deg, rgba(44, 38, 108, .9), rgba(32, 28, 82, .96)) !important; }
+html body .nanivio-app header.nv-glass-header [class*="bg-white/5"] { background: rgba(255, 255, 255, .14) !important; border-color: rgba(255, 255, 255, .22) !important; }
+html body .nv-theme-dark .nv-calls-page .nv-calls-heading {
+  padding: 1rem 1.15rem;
+  border: 1px solid rgba(210, 200, 255, .28) !important;
+  border-radius: 1.5rem;
+  background: linear-gradient(120deg, rgba(124, 92, 246, .5), rgba(34, 211, 238, .28)) !important;
+}
+html body .nv-theme-dark .nv-calls-page :is(.nv-dialer-panel, .nv-group-contacts > button) {
+  border-color: rgba(210, 200, 255, .26) !important;
+  background: linear-gradient(150deg, rgba(58, 50, 132, .66), rgba(36, 31, 90, .78)) !important;
+}
+html body .nv-theme-dark .nv-calls-page .nv-dialer-keypad > div:first-child {
+  border-color: rgba(210, 200, 255, .3) !important;
+  background: linear-gradient(120deg, rgba(88, 72, 190, .5), rgba(34, 211, 238, .2)) !important;
+}
+
+/* Medium-depth indigo for legacy near-black panels (Account, Contacts, services). */
+html body:not(#nv-mid) .nv-theme-dark .nanivio-account-page > div[class*="rounded-3xl"],
+html body:not(#nv-mid) .nv-theme-dark .nanivio-account-page .nv-account-hero,
+html body:not(#nv-mid) .nv-theme-dark .nanivio-account-page > section[class*="rounded-3xl"],
+html body:not(#nv-mid) .nv-theme-dark main[data-nanivio-page] > div > div[class*="bg-gradient-to-r"],
+html body:not(#nv-mid) .nv-theme-dark main[data-nanivio-page] > div > div[class*="bg-gradient-to-br"] {
+  background:
+    radial-gradient(ellipse 70% 120% at 100% 0%, rgba(139, 92, 246, .2), transparent 67%),
+    linear-gradient(140deg, rgba(56, 48, 132, .72), rgba(34, 29, 86, .82)) !important;
+  border-color: rgba(176, 160, 255, .24) !important;
+}
+html body:not(#nv-mid) .nv-theme-dark :is(.nanivio-account-page, main[data-nanivio-page]) :is([class*="bg-slate-950"], [class*="bg-slate-900/"], [class*="bg-[#0"], [class*="bg-[#1"]):not(button) {
+  background-color: rgba(30, 26, 78, .78) !important;
+}
+html body:not(#nv-mid) .nv-theme-dark :is(.nanivio-account-page, main[data-nanivio-page]) :is([class*="bg-slate-800"], [class*="bg-slate-700"]):not(:enabled[class*="disabled:bg-slate"]) {
+  background-color: rgba(60, 52, 136, .6) !important;
+}
+
+/* ---------- Aurora navy palette (approved reference) ---------- */
+:root {
+  --color-slate-200: #dfe4f0;
+  --color-slate-300: #c3cbe0;
+  --color-slate-400: #94a0bf;
+  --color-slate-500: #64708f;
+  --color-slate-600: #3e4866;
+  --color-slate-700: #2b3453;
+  --color-slate-800: #1b2540;
+  --color-slate-900: #131a31;
+  --color-slate-950: #0b1020;
+  --neo-glass: rgba(21, 31, 55, .86);
+  --neo-glass-strong: rgba(19, 26, 49, .94);
+  --neo-edge: rgba(70, 84, 128, .55);
+  --aurora-card: linear-gradient(150deg, #172340 0%, #131a31 100%);
+  --aurora-pastel: linear-gradient(120deg, #91e8eb, #bca7f4);
+}
+html body:not(#nv-aurora) .nanivio-app.nv-theme-dark,
+html body:not(#nv-aurora) .nanivio-app.chat-app-shell,
+html body:not(#nv-aurora) {
+  background:
+    radial-gradient(ellipse 60% 40% at 100% 0%, rgba(113, 232, 239, .06), transparent 70%),
+    radial-gradient(ellipse 50% 40% at 0% 100%, rgba(124, 87, 239, .08), transparent 70%),
+    linear-gradient(180deg, #0d1323 0%, #0b0f1f 100%) !important;
+}
+html body:not(#nv-aurora) .nanivio-app header.nv-glass-header { background: rgba(12, 18, 35, .92) !important; border-bottom-color: #1e2742 !important; }
+html body:not(#nv-aurora) .nanivio-app #nanivio-bottom-navigation { background: rgba(13, 19, 35, .95) !important; border-top-color: #1e2742 !important; }
+html body:not(#nv-aurora) .nv-theme-dark :is(
+  .nv-glass-card, .home-shortcut, .home-wallet-card, .nv-dialer-panel, .nv-group-contacts > button, .nv-calls-page .nv-calls-heading,
+  .nanivio-account-page > div[class*="rounded-3xl"], .nanivio-account-page > section[class*="rounded-3xl"], .nanivio-account-page .nv-account-hero,
+  main[data-nanivio-page] > div > div[class*="bg-gradient-to-r"], main[data-nanivio-page] > div > div[class*="bg-gradient-to-br"],
+  .nanivio-main [class*="bg-gradient-to-r"][class*="from-[#0"], .nanivio-main [class*="bg-gradient-to-br"][class*="from-[#0"]
+) {
+  background: var(--aurora-card) !important;
+  border-color: var(--neo-edge) !important;
+  box-shadow: 0 14px 34px rgba(0, 0, 0, .35), inset 0 1px rgba(255, 255, 255, .04) !important;
+}
+html body:not(#nv-aurora) .nv-theme-dark .nv-home .nv-neon-hero.home-profile-card {
+  background:
+    radial-gradient(ellipse 55% 90% at 90% 30%, rgba(113, 232, 239, .07), transparent 70%),
+    linear-gradient(150deg, #1a2644 0%, #151f37 60%, #20263d 100%) !important;
+  border-color: var(--neo-edge) !important;
+}
+html body:not(#nv-aurora) .nv-theme-dark .home-wallet-card .home-wallet-footer button,
+html body:not(#nv-aurora) .nv-gradient-button,
+html body:not(#nv-aurora) .nv-theme-dark :is(button[class~="bg-emerald-500"], button[class~="bg-emerald-600"]:not(#toggle-global-langpretation), button[class~="bg-emerald-700"], button[class~="bg-cyan-500"], button[class~="bg-teal-500"], button[class~="from-emerald-500"], button[class~="from-emerald-600"], button[class~="from-cyan-500"]),
+html body:not(#nv-aurora) .nanivio-auth :is(button[class~="bg-emerald-500"], button[class~="from-emerald-500"]) {
+  color: #0d1a2c !important;
+  background: var(--aurora-pastel) !important;
+  background-image: var(--aurora-pastel) !important;
+  border-color: rgba(190, 240, 255, .45) !important;
+  box-shadow: 0 6px 16px rgba(67, 142, 211, .18) !important;
+}
+html body:not(#nv-aurora) :is(.nv-gradient-button, .home-wallet-footer button, button[class~="bg-emerald-500"], button[class~="from-emerald-500"]) :is(svg, span:not([class*="bg-slate-9"])) { color: #0d1a2c !important; }
+html body:not(#nv-aurora) :is(.nv-theme-dark, .nanivio-auth) [class~="bg-slate-950"],
+html body:not(#nv-aurora) .nv-theme-dark :is(.nanivio-account-page, main[data-nanivio-page]) :is([class*="bg-slate-950"], [class*="bg-slate-900/"], [class*="bg-[#0"], [class*="bg-[#1"]):not(button) { background-color: rgba(11, 16, 31, .78) !important; }
+html body:not(#nv-aurora) :is(.nv-theme-dark, .nanivio-auth) [class~="bg-slate-900"] { background-color: #131a31 !important; }
+html body:not(#nv-aurora) .nv-theme-dark :is(.nanivio-account-page, main[data-nanivio-page]) :is([class*="bg-slate-800"], [class*="bg-slate-700"]):not(:enabled[class*="disabled:bg-slate"]) { background-color: #1b2540 !important; }
+html body:not(#nv-aurora) .chat-app-shell .nv-chat-workspace :is(.bg-slate-900, .bg-slate-950, .bg-slate-800, .bg-slate-700) { background-color: #151f37 !important; }
+html body:not(#nv-aurora) .nv-theme-dark .nv-calls-page .nv-dialer-keypad > div:first-child,
+html body:not(#nv-aurora) .nv-dialer-line { background: #0d1426 !important; border-color: var(--neo-edge) !important; }
+html body:not(#nv-aurora) .nv-ring-avatar { background: linear-gradient(#151f37, #151f37) padding-box, var(--neo-ring) border-box !important; }

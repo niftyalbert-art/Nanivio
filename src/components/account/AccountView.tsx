@@ -35,6 +35,7 @@ import { PWAInstallButton } from '../common/PWAInstallButton';
 import { getAccountText } from '../../i18n/authTranslations';
 import { billingNumber, formatBillingAmount, communicationCreditBalance, billingHistoryDisplay } from '../../lib/billingPresentation';
 import { AccountHomeSections } from '../home/AccountHomeSections';
+import { NanivioOfficialCard } from '../common/NanivioOfficialCard';
 
 export const AccountView: React.FC = () => {
   const {
@@ -197,11 +198,11 @@ export const AccountView: React.FC = () => {
       {/* ------------------------------------------------------------- */}
       {/* SECTION 1: GLOBAL NV IDENTITY & PROFILE CARD */}
       {/* ------------------------------------------------------------- */}
-      <div className="bg-gradient-to-r from-[#0c182c] via-[#091526] to-[#070d18] border border-emerald-500/30 rounded-3xl p-4 sm:p-6 lg:p-8 shadow-2xl space-y-5">
+      <div className="nv-account-hero nv-glass-card rounded-3xl p-4 sm:p-6 lg:p-8 shadow-2xl space-y-5">
         <div className="flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-5 lg:gap-6 min-w-0">
           <div className="flex items-start gap-3 sm:gap-4 min-w-0 w-full lg:w-auto">
             <div className="relative">
-              <div className="w-20 h-20 rounded-2xl overflow-hidden border-2 border-emerald-500/60 shadow-2xl bg-gradient-to-br from-emerald-950 via-slate-900 to-slate-950 flex items-center justify-center">
+              <div className="nv-ring-avatar w-20 h-20 rounded-full overflow-hidden flex items-center justify-center">
                 {currentUser.avatar ? (
                   <img
                     src={currentUser.avatar}
@@ -323,6 +324,8 @@ export const AccountView: React.FC = () => {
           </div>
         </div>
       </div>
+
+      <NanivioOfficialCard />
 
       {/* ------------------------------------------------------------- */}
       {/* SECTION 2: PREMIUM LIVE LANGPRETATION METER READING */}

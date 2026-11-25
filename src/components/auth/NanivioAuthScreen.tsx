@@ -20,6 +20,7 @@ import {
 } from 'lucide-react';
 import { PasswordRecoveryError, requestPasswordReset } from '../../lib/passwordRecovery';
 import { useNanivio } from '../../context/NanivioContext';
+import { isNanivioJoinLink } from '../../lib/nanivioOfficial';
 import { SUPPORTED_LANGUAGES, RideServiceTier } from '../../types';
 import { SupportedLanguageCode } from '../../types';
 import { CountryCallingCodeSelector } from '../common/CountryCallingCodeSelector';
@@ -58,7 +59,7 @@ export const NanivioAuthScreen: React.FC<NanivioAuthScreenProps> = ({ onSuccess 
   const [activeTab, setActiveTab] = useState<'signin' | 'personal' | 'expert' | 'business' | 'admin'>(
   typeof window !== 'undefined' && window.location.pathname === '/admin'
     ? 'admin'
-    : (authMode || 'signin')
+    : isNanivioJoinLink() ? 'personal' : (authMode || 'signin')
 );
 
   // Common UI State
