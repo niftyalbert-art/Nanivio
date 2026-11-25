@@ -26,7 +26,9 @@ export function malviAudibleOnsetMs(encoded: string): number | null {
 }
 
 /** A packet inside a playing reply that output detection missed starts on schedule. */
-const CONTINUATION_DETECT_MS = 1000;
+const CONTINUATION_DETECT_MS = 300;
+/** Caption time left visible for a missed packet, bounding timeline drift. */
+const CONTINUATION_VISIBLE_MS = 120;
 
 interface Pending {
   track: MalviCaptionTrack;
@@ -128,7 +130,8 @@ export class MalviAvatarPlayout {
       // Inside a playing reply, silent packets (pauses, trailing tails) have no
       // onset to detect; the first packet still waits for audible output.
       if (this.continuing && (item.silent || waitedMs > item.leadingMs + CONTINUATION_DETECT_MS)) {
-        item.startedAt = context.currentTime - (item.silent ? 0 : item.leadingMs / 1000);
+        item.startedAt = context.currentTime - (item.silent ? 0
+          : Math.min(waitedMs, Math.max(0, item.track.durationMs - CONTINUATION_VISIBLE_MS)) / 1000);
       } else {
         if (waitedMs > item.leadingMs + 8000) {
           this.cancel();
