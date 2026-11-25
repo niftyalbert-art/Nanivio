@@ -68,10 +68,12 @@ export const Navbar: React.FC<{compact?:boolean}> = ({compact=false}) => {
                 type="button"
                 onClick={() => setActiveTab(id)}
                 aria-current={activeTab === id ? 'page' : undefined}
+              aria-label={label}
+              title={label}
                 className={`nv-pill-link ${activeTab === id ? 'is-active' : ''}`}
               >
                 <Icon size={16} strokeWidth={1.9} aria-hidden="true" />
-                <span>{label}</span>
+                <span className="hidden lg:inline">{label}</span>
               </button>
             ))}
           </nav>
