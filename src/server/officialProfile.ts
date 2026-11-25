@@ -41,7 +41,9 @@ export function validateOfficialProfile(input: unknown): OfficialProfile {
   if (profile.website) {
     let url: URL | undefined;
     try { url = new URL(profile.website); } catch {}
-    if (!url || url.protocol !== 'https:') throw new OfficialProfileError(400, 'The website must start with https://');
+    if (!url || url.protocol !== 'https:' || !url.hostname.includes('.'))
+      throw new OfficialProfileError(400, 'The website must start with https://');
+    profile.website = url.href;
   }
   return profile;
 }

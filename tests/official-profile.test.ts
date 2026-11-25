@@ -20,6 +20,7 @@ test('valid details are trimmed and the QR choice defaults to the official desig
   assert.equal(profile.address, 'Accra, Ghana');
   assert.equal(profile.qrMode, 'official');
   assert.equal(validateOfficialProfile({ qrMode: 'join' }).qrMode, 'join');
+  assert.equal(validateOfficialProfile({ website: 'https:/naniviio.com' }).website, 'https://naniviio.com/');
 });
 
 test('invalid details are rejected', () => {
