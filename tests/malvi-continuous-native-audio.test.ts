@@ -7,7 +7,7 @@ const pcm = () => Buffer.alloc(24000,16).toString('base64');
 test('native PCM continues while transcription is between updates',()=>{
   const voice=new GeminiNativeVoice();
   voice.append(pcm(),'audio/pcm;rate=24000');
-  assert.equal(voice.ready(''),false,'first speech still needs its transcript');
+  assert.equal(voice.ready(''),true,'first speech does not wait for lagging transcription');
   assert.equal(voice.ready('Hello.'),true);
   assert.ok(voice.finish('Hello.',false)?.pcm24k);
   for(let i=0;i<4;i++){
@@ -20,7 +20,8 @@ test('native PCM continues while transcription is between updates',()=>{
   }
   assert.ok(voice.finish('',true));
   voice.append(pcm(),'audio/pcm;rate=24000');
-  assert.equal(voice.ready(''),false,'next utterance must establish its own transcript');
+  assert.ok(voice.finish('',false)?.pcm24k,'next utterance may start before its transcript');
+  assert.throws(()=>voice.finish('',true),/both voice audio and its transcript/,'but must receive one before it ends');
 });
 test('audio-only continuation retains the actual previous subtitle, never a prior conversation',()=>{
   const updates: Array<[string,boolean]> = [];

@@ -134,7 +134,8 @@ export const synthesizeTimedMalviSpeech = createMalviSpeechSynthesizer(undefined
 /** One text segment → one request. Interrupted requests are not retried. */
 export function createMalviSpeechQueue(
   synthesize = synthesizeTimedMalviSpeech,
-  limits = { characters: 6000, turns: 30 },
+  // One reply can be several sentence segments; characters bound the cost.
+  limits = { characters: 6000, turns: 90 },
 ) {
   let generation = 0;
   let active: AbortController | null = null;
@@ -145,6 +146,7 @@ export function createMalviSpeechQueue(
   const waiting = new Set<symbol>();
   return {
     get pending() { return waiting.size > 0; },
+    get queued() { return waiting.size; },
     cancel() { generation++; active?.abort(); active = null; waiting.clear(); tail = Promise.resolve(); },
     close() { closed = true; this.cancel(); },
     async speak(text: string, language: string): Promise<MalviSpeechBuffer | null> {

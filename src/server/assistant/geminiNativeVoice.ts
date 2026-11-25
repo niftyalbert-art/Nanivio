@@ -1,6 +1,9 @@
 import { MAX_SPEECH_BYTES, MAX_SPEECH_TEXT } from './malviSpeech.ts';
 import { MalviGeminiEffectStream, MALVI_GEMINI_TAIL_SAMPLES } from './geminiVoiceEffects.ts';
 
+/** 200 ms of 24 kHz PCM16 per packet plus the retained 20 ms tail. */
+export const MALVI_NATIVE_PACKET_BYTES = 9_600 + 960;
+
 /** One bounded native turn. No synthesis request, voice clone, or provider retry. */
 export class GeminiNativeVoice {
   private chunks: Buffer[] = [];
@@ -11,6 +14,7 @@ export class GeminiNativeVoice {
   private turnBytes = 0;
   private turnCharacters = 0;
   private emitted = false;
+  private sawText = false;
   private effects = new MalviGeminiEffectStream();
 
   append(encoded: string, mime: string) {
@@ -30,12 +34,13 @@ export class GeminiNativeVoice {
     this.chunks.push(pcm);
   }
 
-  /** 400 ms plus the retained 20 ms tail. Still use paired avatar A/V playback. */
-  ready(text: string) {
-    // Transcription arrives in bursts and can run ahead of PCM. Once the
-    // utterance has started, do not stall its audio awaiting another word.
-    // The first packet still requires text, and finish() retains its bounds.
-    return this.bytes >= 20_160 && (this.emitted || Boolean(text.trim()));
+  /**
+   * Release audio as soon as a packet is buffered. Output transcription usually
+   * lags the PCM, so waiting for it delayed Malvi's first words; captions catch
+   * up on later packets. Still use paired avatar A/V playback.
+   */
+  ready(_text = '') {
+    return this.bytes >= MALVI_NATIVE_PACKET_BYTES;
   }
 
   finish(text: string, final = true) {
@@ -45,7 +50,8 @@ export class GeminiNativeVoice {
       return null;
     }
     if (!this.bytes && !text.trim()) return null; // Duplicate completion.
-    if (!this.bytes || (!text.trim() && !this.emitted)) throw new Error('Gemini did not provide both voice audio and its transcript.');
+    if (text.trim()) this.sawText = true;
+    if (!this.bytes || (final && !this.sawText)) throw new Error('Gemini did not provide both voice audio and its transcript.');
     if (this.turnCharacters + text.length > MAX_SPEECH_TEXT || this.characters + text.length > 6000 || (!this.emitted && this.turns >= 30)) {
       throw new Error('Malvi reached this session’s native speech usage limit.');
     }
@@ -71,7 +77,7 @@ export class GeminiNativeVoice {
   }
 
   cancel() {
-    this.chunks = []; this.bytes = 0; this.turnBytes = 0; this.turnCharacters = 0; this.emitted = false;
+    this.chunks = []; this.bytes = 0; this.turnBytes = 0; this.turnCharacters = 0; this.emitted = false; this.sawText = false;
     this.effects = new MalviGeminiEffectStream();
   }
 }
