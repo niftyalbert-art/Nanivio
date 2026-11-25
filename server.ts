@@ -3993,6 +3993,11 @@ async function startServer() {
   if (isProduction) {
     const distPath = path.join(process.cwd(), "dist");
     app.use(express.static(distPath));
+    // A missing build file must not fall back to index.html, or browsers report
+    // a MIME error instead of a clean 404 for stale code-split chunks.
+    app.get("/assets/*", (_req, res) => {
+      res.status(404).type("text/plain").send("Not found");
+    });
     app.get("*", (_req, res) => {
       res.sendFile(path.join(distPath, "index.html"));
     });
