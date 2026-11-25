@@ -17,11 +17,15 @@ export const AdminOfficialProfile: React.FC = () => {
   const [profile, setProfile] = useState<Profile>(EMPTY);
   const [status, setStatus] = useState<{ tone: 'ok' | 'error'; text: string } | null>(null);
   const [saving, setSaving] = useState(false);
+  const [loaded, setLoaded] = useState(false);
 
   useEffect(() => {
     fetch('/api/official-profile', { cache: 'no-store' })
-      .then(response => response.ok ? response.json() : EMPTY)
-      .then(saved => setProfile({ ...EMPTY, ...saved, qrMode: saved?.qrMode === 'join' ? 'join' : 'official' }))
+      .then(response => { if (!response.ok) throw new Error(); return response.json(); })
+      .then(saved => {
+        setProfile({ ...EMPTY, ...saved, qrMode: saved?.qrMode === 'join' ? 'join' : 'official' });
+        setLoaded(true);
+      })
       .catch(() => setStatus({ tone: 'error', text: 'Could not load the saved details.' }));
   }, []);
 
@@ -87,7 +91,7 @@ export const AdminOfficialProfile: React.FC = () => {
       </fieldset>
 
       <div className="flex flex-wrap items-center gap-3">
-        <button type="button" id="official-save" onClick={save} disabled={saving}
+        <button type="button" id="official-save" onClick={save} disabled={saving || !loaded}
           className="inline-flex min-h-10 items-center gap-2 rounded-xl bg-gradient-to-r from-cyan-500 to-fuchsia-500 px-4 text-sm font-semibold text-white disabled:opacity-60">
           <Save className="h-4 w-4" />{saving ? 'Saving…' : 'Save'}
         </button>
