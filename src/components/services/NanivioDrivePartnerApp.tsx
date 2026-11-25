@@ -32,6 +32,7 @@ import {
   Volume2,
   VolumeX,
 } from 'lucide-react';
+import { useNanivio } from '../../context/NanivioContext';
 import { NanivioDriverMapViewer, UserServiceRequestPin } from './NanivioDriverMapViewer';
 import { UserServiceRequestsBoard, UserMarketplaceRequest, INITIAL_USER_REQUESTS } from './UserServiceRequestsBoard';
 import {
@@ -59,11 +60,12 @@ export const NanivioDrivePartnerApp: React.FC<NanivioDrivePartnerAppProps> = ({
 }) => {
   // Driver Status & Daily Metrics
   const [isOnline, setIsOnline] = useState<boolean>(true);
-  const [todayEarnings, setTodayEarnings] = useState<number>(468.5);
-  const [completedTripsCount, setCompletedTripsCount] = useState<number>(7);
+  const [todayEarnings, setTodayEarnings] = useState<number>(0);
+  const [completedTripsCount, setCompletedTripsCount] = useState<number>(0);
   const [onlineMinutes, setOnlineMinutes] = useState<number>(255); // 4h 15m
   const [acceptanceRate, setAcceptanceRate] = useState<number>(98.4);
-  const [driverRating, setDriverRating] = useState<number>(4.96);
+  const driverRating: number | null = null;
+  const { currentUser } = useNanivio();
 
   // Driver Trip History
   const [tripHistory, setTripHistory] = useState<DriverCompletedTrip[]>(() => {
@@ -201,9 +203,6 @@ export const NanivioDrivePartnerApp: React.FC<NanivioDrivePartnerAppProps> = ({
     }, 1000);
     return () => clearInterval(interval);
   }, [activeDriverTrip?.status]);
-
-  // Handle incoming trip simulation
-  const handleSimulateIncomingTrip = () => { alert('Live driver dispatch is not connected. No simulated passenger request is created.'); };
 
   // Accept trip offer
   const handleAcceptTrip = () => {
@@ -399,11 +398,17 @@ export const NanivioDrivePartnerApp: React.FC<NanivioDrivePartnerAppProps> = ({
         {/* Driver Profile */}
         <div className="flex items-center gap-3">
           <div className="relative">
-            <img
-              src="https://images.unsplash.com/photo-1506794778202-cad84cf45f1d?w=200&auto=format&fit=crop&q=80"
-              alt="Driver Kofi Mensah"
-              className="w-13 h-13 rounded-2xl object-cover border-2 border-emerald-500 shadow-md shadow-emerald-500/20"
-            />
+            {currentUser.avatar ? (
+              <img
+                src={currentUser.avatar}
+                alt={currentUser.name}
+                className="w-13 h-13 rounded-2xl object-cover border-2 border-emerald-500 shadow-md shadow-emerald-500/20"
+              />
+            ) : (
+              <div className="w-13 h-13 rounded-2xl border-2 border-emerald-500 bg-slate-800 flex items-center justify-center text-sm font-black text-white">
+                {currentUser.initials}
+              </div>
+            )}
             <span
               className={`absolute -bottom-1 -right-1 w-4 h-4 rounded-full border-2 border-slate-900 ${
                 isOnline ? 'bg-emerald-400 animate-pulse' : 'bg-slate-600'
@@ -413,22 +418,17 @@ export const NanivioDrivePartnerApp: React.FC<NanivioDrivePartnerAppProps> = ({
 
           <div>
             <div className="flex items-center gap-2">
-              <h3 className="text-sm sm:text-base font-black text-white">Kofi Mensah</h3>
+              <h3 className="text-sm sm:text-base font-black text-white">{currentUser.name}</h3>
               <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 font-mono font-bold border border-emerald-500/40">
-                NV 0486821940
-              </span>
-              <span className="hidden sm:inline text-[10px] px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 font-bold border border-amber-500/30">
-                Gold Tier Partner
+                NV {currentUser.nvId || '—'}
               </span>
             </div>
 
             <div className="text-xs text-slate-300 flex flex-wrap items-center gap-2 mt-0.5">
-              <span className="font-semibold text-white">Silver Toyota Corolla</span>
-              <span className="font-mono text-emerald-400 font-bold">GN 4821-24</span>
-              <span>•</span>
+
               <span className="flex items-center gap-1 text-amber-400 font-bold">
                 <Star className="w-3.5 h-3.5 fill-amber-400" />
-                <span>{driverRating}</span>
+                <span>{driverRating ?? 'New'}</span>
               </span>
               <span className="text-slate-400">({completedTripsCount} trips today)</span>
             </div>
@@ -576,14 +576,14 @@ export const NanivioDrivePartnerApp: React.FC<NanivioDrivePartnerAppProps> = ({
       {/* ===================================================================== */}
       {driverViewTab === 'cockpit_map' && (
         <div className="space-y-4">
-          {/* Quick Simulation Bar if no active trip or offer */}
+          {/* Status bar if no active trip or offer */}
           {!activeDriverTrip && !incomingOffer && (
             <div className="p-3 rounded-2xl bg-emerald-950/40 border border-emerald-500/40 flex flex-wrap items-center justify-between gap-2.5">
               <div className="flex items-center gap-2 text-xs text-emerald-200">
                 <Zap className="w-4 h-4 text-emerald-400 shrink-0" />
                 <span>
                   {isOnline
-                    ? 'Radar Active: Scanning local metropolitan zone for passenger ride & courier requests...'
+                    ? 'Online. New ride and courier requests appear here.'
                     : 'Switch Online to receive requests on your map.'}
                 </span>
               </div>
@@ -985,34 +985,12 @@ export const NanivioDrivePartnerApp: React.FC<NanivioDrivePartnerAppProps> = ({
       {driverViewTab === 'vehicle_docs' && (
         <div className="space-y-4">
           {/* Vehicle Compliance Status */}
-          <div className="p-4 rounded-2xl bg-slate-900 border border-slate-800 space-y-3">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <FileCheck className="w-5 h-5 text-emerald-400" />
-                <h4 className="text-sm font-bold text-white">DVLA Compliance &amp; Inspection Badges</h4>
-              </div>
-              <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 font-bold border border-emerald-500/40">
-                100% Certified
-              </span>
+          <div className="p-4 rounded-2xl bg-slate-900 border border-slate-800 space-y-2">
+            <div className="flex items-center gap-2">
+              <FileCheck className="w-5 h-5 text-emerald-400" />
+              <h4 className="text-sm font-bold text-white">Vehicle documents</h4>
             </div>
-
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 text-xs">
-              <div className="p-3 rounded-xl bg-slate-950 border border-slate-800 space-y-1">
-                <div className="text-slate-400">Roadworthiness Certificate</div>
-                <div className="font-bold text-white">Valid until Nov 2026</div>
-                <div className="text-[10px] text-emerald-400">DVLA Inspected</div>
-              </div>
-              <div className="p-3 rounded-xl bg-slate-950 border border-slate-800 space-y-1">
-                <div className="text-slate-400">Comprehensive Insurance</div>
-                <div className="font-bold text-white">Enterprise Insurance Gold</div>
-                <div className="text-[10px] text-emerald-400">Commercial Taxi/Ride Cover</div>
-              </div>
-              <div className="p-3 rounded-xl bg-slate-950 border border-slate-800 space-y-1">
-                <div className="text-slate-400">Driver License Class</div>
-                <div className="font-bold text-white">Class C (Commercial Passenger)</div>
-                <div className="text-[10px] text-emerald-400">Verified NV ID 0486821940</div>
-              </div>
-            </div>
+            <p className="text-xs text-slate-400">No documents uploaded yet. Nanivio verifies your licence, roadworthiness and insurance before you can take trips.</p>
           </div>
 
           {/* Uba Fleet Car Renting Settings */}
@@ -1096,7 +1074,7 @@ export const NanivioDrivePartnerApp: React.FC<NanivioDrivePartnerAppProps> = ({
                   <div className="p-3 rounded-xl bg-slate-900 border border-emerald-500/50 flex items-center justify-between">
                     <div>
                       <div className="font-bold text-white">MTN Mobile Money</div>
-                      <div className="text-[11px] text-slate-400">0244 891 023 (Kofi Mensah)</div>
+                      <div className="text-[11px] text-slate-400">Paid to the mobile money number on your account</div>
                     </div>
                     <span className="text-[10px] text-emerald-400 font-bold">Instant 0s</span>
                   </div>

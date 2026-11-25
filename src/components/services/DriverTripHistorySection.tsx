@@ -500,14 +500,6 @@ export const DriverTripHistorySection: React.FC<DriverTripHistorySectionProps> =
                 <span className="text-white font-semibold">{viewReceiptModalTrip.date} at {viewReceiptModalTrip.time}</span>
               </div>
               <div className="flex justify-between text-slate-400">
-                <span>Driver:</span>
-                <span className="text-white font-semibold">Kofi Mensah (NV 0486821940)</span>
-              </div>
-              <div className="flex justify-between text-slate-400">
-                <span>Vehicle:</span>
-                <span className="text-white font-semibold">Silver Toyota Corolla · GN 4821-24</span>
-              </div>
-              <div className="flex justify-between text-slate-400">
                 <span>Passenger:</span>
                 <span className="text-white font-semibold">{viewReceiptModalTrip.riderName} (NV {viewReceiptModalTrip.riderNvId})</span>
               </div>

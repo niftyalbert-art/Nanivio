@@ -536,59 +536,46 @@ export const NanivioRideHailingPanel: React.FC<NanivioRideHailingPanelProps> = (
             </div>
           </div>
 
-          {/* Prospective Matching Driver Card */}
-          <div className="p-3.5 rounded-xl bg-slate-950/80 border border-slate-800 space-y-3">
-            <div className="flex items-center justify-between">
+          {drivers[0] ? (
+            <div className="p-3.5 rounded-xl bg-slate-950/80 border border-slate-800 flex items-center justify-between gap-2.5">
               <div className="flex items-center gap-2.5">
-                <img
-                  src={drivers[0]?.avatar || 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=200&auto=format&fit=crop&q=80'}
-                  alt={drivers[0]?.name || 'No live driver'}
-                  className="w-10 h-10 rounded-full object-cover border border-emerald-500/40"
-                />
-                <div>
-                  <div className="flex items-center gap-1.5">
-                    <span className="text-xs font-bold text-white">{drivers[0]?.name || 'No live driver'}</span>
-                    <span className="px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-300 font-mono text-[10px] font-bold">
-                      Closest
-                    </span>
+                {drivers[0].avatar ? (
+                  <img src={drivers[0].avatar} alt={drivers[0].name} className="w-10 h-10 rounded-full object-cover border border-emerald-500/40" />
+                ) : (
+                  <div className="w-10 h-10 rounded-full border border-emerald-500/40 bg-slate-800 flex items-center justify-center text-xs font-bold text-white">
+                    {drivers[0].name?.slice(0, 2).toUpperCase()}
                   </div>
+                )}
+                <div>
+                  <span className="text-xs font-bold text-white">{drivers[0].name}</span>
                   <p className="text-[11px] text-slate-400">
-                    {drivers[0]?.vehicleMake || 'Toyota'} {drivers[0]?.vehicleModel || 'Corolla'} · ★{drivers[0]?.rating || 4.94}
+                    {[drivers[0].vehicleMake, drivers[0].vehicleModel].filter(Boolean).join(' ')}
+                    {drivers[0].rating ? ` · ★${drivers[0].rating}` : ''}
                   </p>
                 </div>
               </div>
-              <div className="text-right">
-                <div className="text-xs font-extrabold text-emerald-400 font-mono">
-                  GH₵ {calculateFare(currentTierInfo)}
-                </div>
-                <div className="text-[10px] text-slate-400">1.2 km · 3 mins away</div>
+              <div className="text-xs font-extrabold text-emerald-400 font-mono">
+                GH₵ {calculateFare(currentTierInfo)}
               </div>
             </div>
+          ) : (
+            <p className="text-xs text-slate-400">Looking for a nearby driver…</p>
+          )}
 
-            {/* Interactive Driver Acceptance Controls */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1 border-t border-slate-800/80">
+          {onSwitchToDriverCockpit && (
+            <div className="pt-1">
               <button
-                onClick={() => executeDriverMatch(0)}
-                className="w-full py-2 px-3 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-slate-950 font-extrabold text-xs flex items-center justify-center gap-1.5 transition-all cursor-pointer shadow-md"
+                onClick={() => {
+                  setIsSearching(false);
+                  onSwitchToDriverCockpit();
+                }}
+                className="w-full py-2 px-3 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 font-semibold text-xs flex items-center justify-center gap-1.5 transition-all cursor-pointer"
               >
-                <Check className="w-3.5 h-3.5 stroke-[3]" />
-                <span>Accept as Driver Now</span>
+                <Car className="w-3.5 h-3.5 text-emerald-400" />
+                <span>Open Drive Cockpit</span>
               </button>
-
-              {onSwitchToDriverCockpit && (
-                <button
-                  onClick={() => {
-                    setIsSearching(false);
-                    onSwitchToDriverCockpit();
-                  }}
-                  className="w-full py-2 px-3 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 font-semibold text-xs flex items-center justify-center gap-1.5 transition-all cursor-pointer"
-                >
-                  <Car className="w-3.5 h-3.5 text-emerald-400" />
-                  <span>Open Drive Cockpit</span>
-                </button>
-              )}
             </div>
-          </div>
+          )}
 
           <div className="flex items-center justify-between text-xs pt-1">
             <span className="text-slate-500 text-[11px]">Pickup: {pickupLocation.label.split(',')[0]}</span>

@@ -712,7 +712,7 @@ export const AdminControlCenter: React.FC = () => {
             {
               key: 'driverInstantAcceptanceSimEnabled',
               label: 'Driver Radar Auto-Match',
-              desc: 'Simulates driver acceptance within 15s countdown timeout',
+              desc: 'Auto-matches the nearest online driver; offers expire after 15s',
               danger: false,
             },
             {

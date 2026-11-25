@@ -47,12 +47,6 @@ export const TransferValueModal: React.FC<TransferValueModalProps> = ({
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [receipt, setReceipt] = useState<PeerToPeerTransferResult | null>(null);
 
-  // Suggested contacts for quick selection
-  const quickContacts = [
-    { name: 'Ama Serwaa', identifier: '0486829104', role: 'Trader / Personal' },
-    { name: 'Expert Amina', identifier: '0486484804', role: 'Langpretation Provider' },
-    { name: 'Yaw Boateng', identifier: '0486910243', role: 'Driver' },
-  ];
 
   const currentAvailableBalance = creditsOnly || accountType === 'COMMUNICATION' ? communicationBalance : fintechBalance;
 
@@ -332,21 +326,6 @@ export const TransferValueModal: React.FC<TransferValueModalProps> = ({
                     onChange={(e) => setToIdentifier(e.target.value)}
                     className="w-full px-3.5 py-2.5 rounded-xl bg-slate-950 border border-slate-800 focus:border-blue-500 focus:outline-none text-slate-100 text-xs font-mono"
                   />
-
-                  {/* Quick Select Buttons */}
-                  {!creditsOnly && <div className="flex flex-wrap gap-1.5 pt-1">
-                    <span className="text-[10px] text-slate-500 self-center mr-1">Quick:</span>
-                    {quickContacts.map((contact) => (
-                      <button
-                        key={contact.identifier}
-                        type="button"
-                        onClick={() => setToIdentifier(contact.identifier)}
-                        className="px-2 py-0.5 rounded-md bg-slate-800/80 hover:bg-slate-700 text-slate-300 text-[10px] font-mono transition"
-                      >
-                        {contact.name} ({contact.identifier.slice(-4)})
-                      </button>
-                    ))}
-                  </div>}
                 </div>
               ) : (
                 /* Internal Transfer Destination Info */

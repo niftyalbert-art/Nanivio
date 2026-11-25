@@ -42,7 +42,7 @@ export const ROTATING_PROMOS: BusinessPromoItem[] = [
     description: 'Break every language barrier with Nanivio Langpretation. Ultra-low latency bilingual translation during video calls.',
     mediaUrl: 'https://images.unsplash.com/photo-1516321318423-f06f85e504b3?w=600&auto=format&fit=crop&q=80',
     ctaText: 'Activate Now',
-    destinationUrl: 'https://nanivio.com',
+    destinationUrl: 'https://naniviio.com',
     highlights: [
       'Arabic ⇄ English real-time dialect engine',
       'Automatic receiver-language transcription',
@@ -147,7 +147,7 @@ export const SmartLiveServicesStrip: React.FC<SmartLiveServicesStripProps> = ({
       description: b.description,
       mediaUrl: b.avatar,
       ctaText: 'Connect Now',
-      destinationUrl: 'https://nanivio.com',
+      destinationUrl: 'https://naniviio.com',
       highlights: b.services.slice(0, 3),
     }));
   }, [geoMatchedResults]);
