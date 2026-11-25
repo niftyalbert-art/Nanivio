@@ -24,7 +24,7 @@ import { MAPS_TOOL } from './mapTools.ts';
 import { VISION_INSTRUCTION } from './visionInput.ts';
 import { AssistantError } from './redisStore.ts';
 import { getNanivioAppKnowledge } from './nanivioAppKnowledge.ts';
-import { createLanguageControlTool, parseLanguageControl } from './languageControl.ts';
+import { createLanguageControlTool, languageMentioned, parseLanguageControl } from './languageControl.ts';
 
 type BrainEvent = (type: string, payload: Record<string, unknown>) => void;
 type BrainConnection = {
@@ -53,6 +53,7 @@ type BrainConnection = {
   nativeVoice: GeminiNativeVoice;
   playbackUntil: number;
   outputLanguage: string | null;
+  recentUserText: string;
   transcript: string;
   openingSent: boolean;
   timing: MalviTurnTiming;
@@ -368,6 +369,7 @@ async function connectGemini(
           connection.timing.userAt = Date.now();
           observeConversationActivity(connection);
           connection.memoryUser = (connection.memoryUser + inputText).slice(0,12000);
+          connection.recentUserText = (connection.recentUserText + inputText).slice(-600);
           send(socket, 'malvi:brain_caption', { sessionId: connection.sessionId, text: inputText, role: 'user' });
         }
         const outputText = serverContent?.outputTranscription?.text;
@@ -592,6 +594,7 @@ function createConnection(socket: WebSocket, userId: string, sessionId: string, 
     nativeVoice: new GeminiNativeVoice(),
     playbackUntil: 0,
     outputLanguage: null,
+    recentUserText: '',
     transcript: '',
     openingSent: false,
     timing: newMalviTurnTiming(),
@@ -609,6 +612,12 @@ function createConnection(socket: WebSocket, userId: string, sessionId: string, 
       async args => {
         if (!connection.ready || connection.closed) throw new Error('Start a connected Malvi conversation before changing language.');
         const selection = parseLanguageControl(args, code => assertMalviVoiceLanguage(code, connection.speechProvider));
+        const requested = selection.interpreterPair ?? [selection.language.code];
+        const withinInterpretation = connection.interpreterPair?.includes(selection.language.code)
+          && (!selection.interpreterPair || selection.interpreterPair.every(code => connection.interpreterPair!.includes(code)));
+        if (!withinInterpretation && !requested.every(code => languageMentioned(connection.recentUserText, code))) {
+          throw new Error(`Not switched: the user did not name ${selection.language.name}. Keep replying in ${getMalviLanguage(connection.language).name}. Only switch after the user says the language name.`);
+        }
         await liveAvatarService.owned(userId, sessionId);
         if (connection.closed) throw new Error('The conversation has ended.');
         applyConversationLanguage(connection, selection.language.code, selection.interpreterPair, 'voice');

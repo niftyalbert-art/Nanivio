@@ -209,10 +209,12 @@ try {
     await new Promise(resolve => setImmediate(resolve));
     return state.geminiToolResponses.at(-1).functionResponses[0].response;
   };
+  state.geminiOptions.callbacks.onmessage({serverContent:{inputTranscription:{text:'Please speak French'}}});
   const switched = await spokenSwitch('spoken-fr', { language:'fr', mode:'conversation', partnerLanguage:null });
   assert.equal(switched.switched, true);
   assert.equal(controller.inputReadiness(gemini,'owner',id1).language, 'fr');
   assert.equal(gemini.events.filter(event=>event.type==='malvi:brain_language').at(-1).payload.source, 'voice');
+  state.geminiOptions.callbacks.onmessage({serverContent:{inputTranscription:{text:'Interpret between English and French'}}});
   const interpreting = await spokenSwitch('interpret-en-fr', { language:'en', mode:'interpreter', partnerLanguage:'fr' });
   assert.deepEqual(interpreting.interpreterPair, ['en','fr']);
   const reverse = await spokenSwitch('interpret-fr-en', { language:'fr', mode:'interpreter', partnerLanguage:'en' });
@@ -363,6 +365,7 @@ try {
   assert.equal(closing.text, '', 'Trailing sound must not repeat the transcript');
   assert.equal(native.events.filter(e => e.type === 'malvi:brain_turn_end').length, endEventsBefore + 1);
   const connectsBeforeArabic = state.geminiConnects;
+  state.geminiOptions.callbacks.onmessage({serverContent:{inputTranscription:{text:'Please speak Arabic'}}});
   const arabicSwitch = await spokenSwitch('native-arabic-signature', { language:'ar', mode:'conversation', partnerLanguage:null });
   assert.equal(arabicSwitch.switched, true);
   assert.equal(controller.inputReadiness(native, 'owner', nativeId).language, 'ar');
