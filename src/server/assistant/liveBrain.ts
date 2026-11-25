@@ -486,6 +486,7 @@ async function connectOpenAI(
     } else if (event.type === 'session.input_transcript.delta' && typeof event.delta === 'string') {
       if (event.delta.trim()) observeConversationActivity(connection);
       connection.memoryUser = (connection.memoryUser + event.delta).slice(0,12000);
+      connection.recentUserText = (connection.recentUserText + event.delta).slice(-600);
       send(socket, 'malvi:brain_caption', { sessionId: connection.sessionId, text: event.delta, role: 'user' });
     } else if (event.type === 'session.closed') {
       onFailure('The live brain session ended.');
@@ -671,7 +672,7 @@ function applyConversationLanguage(connection: BrainConnection, code: string, pa
   if (pair || connection.interpreterPair) { connection.memoryUser = ''; connection.memoryAssistant = ''; }
   connection.outputGeneration++;
   connection.speech.cancel(); connection.nativeVoice.cancel();
-  connection.playbackUntil = 0; connection.transcript = '';
+  connection.playbackUntil = 0; connection.transcript = ''; connection.recentUserText = '';
   // A manual update can arrive mid-turn: retain its old language marker until
   // that turn ends, so late old-language audio is discarded rather than relabelled.
   // A voice tool result resumes the current turn in the confirmed new language.
