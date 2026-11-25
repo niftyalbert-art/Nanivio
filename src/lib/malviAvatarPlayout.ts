@@ -1,5 +1,5 @@
 import { malviAvatarSoundBlocked } from './malviAvatarPlayback';
-import type { MalviCaptionTrack } from './malviSpeechTiming';
+import { MALVI_AUDIO_QUEUE_MS, MALVI_AUDIO_QUEUE_PACKETS, type MalviCaptionTrack } from './malviSpeechTiming';
 
 const AUDIBLE_RMS = 0.008;
 
@@ -83,7 +83,7 @@ export class MalviAvatarPlayout {
   }
 
   enqueue(track: MalviCaptionTrack, pcm: string) {
-    if (this.pending.length >= 64 || this.pending.reduce((sum, item) => sum + item.track.durationMs, 0) + track.durationMs > 65_000) {
+    if (this.pending.length >= MALVI_AUDIO_QUEUE_PACKETS || this.pending.reduce((sum, item) => sum + item.track.durationMs, 0) + track.durationMs > MALVI_AUDIO_QUEUE_MS) {
       throw new Error('Malvi’s subtitle playback queue is full.');
     }
     // Audio-passthrough renderers (Anam) need not emit per-utterance speech

@@ -1,6 +1,6 @@
 /**
- * At most one early phrase, then the final remainder. This avoids waiting for
- * a full native-audio turn without making a billable TTS request for every word.
+ * End of the next complete phrase (32–180 characters). Each phrase is voiced as
+ * soon as it is transcribed, without a billable TTS request for every word.
  */
 export function malviOpeningBoundary(text: string): number {
   for (const match of text.matchAll(/[.!?。！？।؟](?:["'”’»])?(?=\s|$)/gu)) {

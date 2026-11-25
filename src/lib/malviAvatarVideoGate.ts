@@ -1,3 +1,5 @@
+import { MALVI_AUDIO_QUEUE_MS, MALVI_AUDIO_QUEUE_PACKETS } from './malviSpeechTiming';
+
 /**
  * A newly received stream is not necessarily a decoded, visible avatar frame.
  * Keep audio on the SDK's paired A/V element; never add a second sound source
@@ -54,7 +56,7 @@ export class MalviAvatarVideoGate {
   complete(deliver: () => void) { this.queue(0, deliver, false); }
 
   private queue(durationMs: number, deliver: () => void, needsFrame: boolean) {
-    if (this.pending >= 64 || this.durationMs + durationMs > 65_000) {
+    if (this.pending >= MALVI_AUDIO_QUEUE_PACKETS || this.durationMs + durationMs > MALVI_AUDIO_QUEUE_MS) {
       throw new Error('Malvi’s avatar audio queue exceeded its safety limit.');
     }
     const generation = this.generation, signal = this.controller.signal;

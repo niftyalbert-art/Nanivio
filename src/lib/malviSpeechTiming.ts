@@ -1,3 +1,8 @@
+// Unplayed Malvi speech held by each client queue. Duration is the real bound;
+// the packet cap only stops floods of tiny packets (200 ms packets fill 65 s at 325).
+export const MALVI_AUDIO_QUEUE_MS = 65_000;
+export const MALVI_AUDIO_QUEUE_PACKETS = 384;
+
 export interface MalviAlignment {
   characters: string[];
   character_start_times_seconds: number[];
@@ -59,8 +64,8 @@ export class MalviCaptionPlayer {
   private lastVisible = '';
   constructor(private update: (text: string, speaking: boolean) => void) {}
   enqueue(track: MalviCaptionTrack) {
-    if (!validMalviAlignment(track.alignment, track.durationMs) || this.pending.length >= 64
-      || this.pending.reduce((sum, item) => sum + item.durationMs, 0) + track.durationMs > 65_000) {
+    if (!validMalviAlignment(track.alignment, track.durationMs) || this.pending.length >= MALVI_AUDIO_QUEUE_PACKETS
+      || this.pending.reduce((sum, item) => sum + item.durationMs, 0) + track.durationMs > MALVI_AUDIO_QUEUE_MS) {
       throw new Error('Malvi’s subtitle timing is unavailable.');
     }
     this.pending.push(track);

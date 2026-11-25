@@ -10,6 +10,7 @@ import { IDLE_MS } from './redisStore.ts';
 import { REFERENCE_TOOL_NAME, REFERENCE_TOOL_DESCRIPTION, REFERENCE_TOOL_PARAMETERS } from './referenceTools.ts';
 import { createGeminiReferenceBridge, createOpenAIReferenceBridge } from './referenceToolBridges.ts';
 import { createMalviSpeechQueue, MAX_SPEECH_TEXT } from './malviSpeech.ts';
+import { markMalviPacketSent, malviTurnTimingSummary, newMalviTurnTiming, type MalviTurnTiming } from './malviTurnTiming.ts';
 import { malviOpeningBoundary } from './malviResponsePacing.ts';
 import { assertMalviVoiceLanguage, malviVoiceSetup, type MalviVoiceProvider } from './malviVoiceConfig.ts';
 import { GeminiNativeVoice } from './geminiNativeVoice.ts';
@@ -53,6 +54,7 @@ type BrainConnection = {
   outputLanguage: string | null;
   transcript: string;
   openingSent: boolean;
+  timing: MalviTurnTiming;
   outputCharacters: number;
   outputGeneration: number;
   interruptGeneration: number;
@@ -65,6 +67,7 @@ type BrainConnection = {
   memoryAssistant: string;
   memoryTurn: number;
   memoryWrites: Promise<unknown>;
+  lastSpeech: Promise<void>;
   sendVision: (image: { data: string; mimeType: string }) => void;
   visionAt: number;
 };
@@ -176,6 +179,15 @@ function observeConversationActivity(connection: BrainConnection) {
   }).finally(() => { pendingInputActivity.delete(connection); });
 }
 
+function endTurn(socket: WebSocket, connection: BrainConnection) {
+  const summary = malviTurnTimingSummary(connection.timing);
+  if (summary.packets) console.info('[Malvi] Turn timing', {
+    provider: connection.provider, speechProvider: connection.speechProvider, ...summary,
+  });
+  connection.timing = newMalviTurnTiming();
+  send(socket, 'malvi:brain_turn_end', { sessionId: connection.sessionId, timing: summary });
+}
+
 async function flushAudio(socket: WebSocket, connection: BrainConnection, ended: boolean, boundary?: number) {
   if (connection.outputLanguage && connection.outputLanguage !== connection.language) {
     connection.transcript = '';
@@ -186,14 +198,26 @@ async function flushAudio(socket: WebSocket, connection: BrainConnection, ended:
   const language = connection.language;
   const generation = connection.outputGeneration;
   connection.transcript = boundary ? connection.transcript.slice(boundary) : '';
+  const previous = connection.lastSpeech;
   if (!text.trim()) {
     if (connection.outputLanguage && !connection.openingSent) throw new Error('Malvi’s brain did not provide the transcript required for her ElevenLabs voice.');
     if (ended) connection.outputLanguage = null;
-    if (ended) send(socket, 'malvi:brain_turn_end', { sessionId: connection.sessionId });
+    if (ended) {
+      // Phrases may still be synthesizing; turn end must follow their audio.
+      await previous;
+      if (!connection.closed && generation === connection.outputGeneration) endTurn(socket, connection);
+    }
     return;
   }
   if (ended) connection.outputLanguage = null;
   else connection.openingSent = true;
+  let sent!: () => void;
+  connection.lastSpeech = new Promise<void>(resolve => { sent = resolve; });
+  try { await sendSpeech(socket, connection, text, language, generation, ended); }
+  finally { sent(); }
+}
+
+async function sendSpeech(socket: WebSocket, connection: BrainConnection, text: string, language: string, generation: number, ended: boolean) {
   const requestedAt = Date.now();
   const audio = await connection.speech.speak(text, language);
   if (!audio || connection.closed || connection.language !== language || generation !== connection.outputGeneration) return;
@@ -203,6 +227,7 @@ async function flushAudio(socket: WebSocket, connection: BrainConnection, ended:
   });
   const pcm24k = audio.toString('base64');
   connection.playbackUntil = Math.max(Date.now(), connection.playbackUntil) + audio.length / 48;
+  markMalviPacketSent(connection.timing, audio.length / 48);
   send(socket, 'malvi:brain_audio', {
     sessionId: connection.sessionId,
     language,
@@ -218,9 +243,7 @@ async function flushAudio(socket: WebSocket, connection: BrainConnection, ended:
     speechProvider: 'elevenlabs',
   });
   connection.isFirstTurn = false;
-  if (ended) {
-    send(socket, 'malvi:brain_turn_end', { sessionId: connection.sessionId });
-  }
+  if (ended) endTurn(socket, connection);
 }
 
 function flushNativeAudio(socket: WebSocket, connection: BrainConnection, ended = true) {
@@ -234,25 +257,32 @@ function flushNativeAudio(socket: WebSocket, connection: BrainConnection, ended 
   connection.transcript = '';
   if (ended) connection.outputLanguage = null;
   if (!audio) {
-    if (ended) send(socket, 'malvi:brain_turn_end', { sessionId: connection.sessionId });
+    if (ended) endTurn(socket, connection);
     return;
   }
   connection.playbackUntil = Math.max(Date.now(), connection.playbackUntil) + audio.durationMs;
+  markMalviPacketSent(connection.timing, audio.durationMs);
   send(socket, 'malvi:brain_audio', {
     ...audio, sessionId: connection.sessionId, language: connection.language,
     sampleRate: 24000, format: 'pcm_s16le', channels: 1, ended,
     greeting: connection.isFirstTurn, speechProvider: 'gemini', streaming: true,
   });
   connection.isFirstTurn = false;
-  if (ended) send(socket, 'malvi:brain_turn_end', { sessionId: connection.sessionId });
+  if (ended) endTurn(socket, connection);
 }
 
-function flushOpening(socket: WebSocket, connection: BrainConnection, failed: (message: string) => void) {
-  if (connection.openingSent) return;
-  const boundary = malviOpeningBoundary(connection.transcript);
-  if (!boundary) return;
-  void flushAudio(socket, connection, false, boundary).catch(error =>
-    failed(error instanceof Error ? error.message : 'Malvi’s opening voice could not complete.'));
+/**
+ * Voice each complete phrase as soon as it is transcribed instead of one opening
+ * and then silence until the reply finishes. The speech queue keeps synthesis
+ * in order; its depth stays bounded and the remainder flushes at turn end.
+ */
+function flushSentences(socket: WebSocket, connection: BrainConnection, failed: (message: string) => void) {
+  while (connection.speech.queued < 2) {
+    const boundary = malviOpeningBoundary(connection.transcript);
+    if (!boundary) return;
+    void flushAudio(socket, connection, false, boundary).catch(error =>
+      failed(error instanceof Error ? error.message : 'Malvi’s voice could not complete.'));
+  }
 }
 
 async function connectGemini(
@@ -296,6 +326,7 @@ async function connectGemini(
           connection.speech.cancel(); connection.playbackUntil = 0;
           connection.nativeVoice.cancel();
           connection.transcript = '';
+          connection.timing = newMalviTurnTiming();
           // The provider acknowledgement is the cancelled-generation boundary:
           // its old output precedes this event. A separate turnComplete is not
           // guaranteed here. Keep rejecting in-flight output until this ack,
@@ -308,6 +339,7 @@ async function connectGemini(
           if (part.inlineData?.data && part.inlineData.mimeType?.startsWith('audio/pcm')) {
             // Native output is only retained after explicit voice selection.
             if (acceptsOutput(connection) && connection.speechProvider === 'gemini') {
+              if (!connection.timing.firstModelAudioAt) connection.timing.firstModelAudioAt = Date.now();
               try { connection.nativeVoice.append(part.inlineData.data, part.inlineData.mimeType); }
               catch (error) { onFailure((error as Error).message); return; }
             }
@@ -315,12 +347,14 @@ async function connectGemini(
         }
         const inputText = serverContent?.inputTranscription?.text;
         if (inputText?.trim()) {
+          connection.timing.userAt = Date.now();
           observeConversationActivity(connection);
           connection.memoryUser = (connection.memoryUser + inputText).slice(0,12000);
           send(socket, 'malvi:brain_caption', { sessionId: connection.sessionId, text: inputText, role: 'user' });
         }
         const outputText = serverContent?.outputTranscription?.text;
         if (outputText && acceptsOutput(connection)) {
+          if (!connection.timing.firstModelAudioAt && connection.speechProvider === 'elevenlabs') connection.timing.firstModelAudioAt = Date.now();
           connection.transcript += outputText;
           connection.memoryAssistant = (connection.memoryAssistant + outputText).slice(0,12000);
           connection.outputCharacters += outputText.length;
@@ -329,7 +363,7 @@ async function connectGemini(
             return;
           }
           send(socket, 'malvi:brain_caption', { sessionId: connection.sessionId, language: connection.outputLanguage, text: outputText, role: 'assistant' });
-          if (!serverContent?.turnComplete && connection.speechProvider === 'elevenlabs') flushOpening(socket, connection, onFailure);
+          if (!serverContent?.turnComplete && connection.speechProvider === 'elevenlabs') flushSentences(socket, connection, onFailure);
         }
         if (serverContent?.turnComplete) saveMemoryTurn(connection);
         if (serverContent?.turnComplete && connection.speechProvider === 'gemini') {
@@ -427,7 +461,7 @@ async function connectOpenAI(
         return;
       }
       send(socket, 'malvi:brain_caption', { sessionId: connection.sessionId, language: connection.outputLanguage, text: event.delta, role: 'assistant' });
-      flushOpening(socket, connection, onFailure);
+      flushSentences(socket, connection, onFailure);
       scheduleSpeech();
     } else if (event.type === 'session.input_transcript.delta' && typeof event.delta === 'string') {
       if (event.delta.trim()) observeConversationActivity(connection);
@@ -540,12 +574,13 @@ function createConnection(socket: WebSocket, userId: string, sessionId: string, 
     outputLanguage: null,
     transcript: '',
     openingSent: false,
+    timing: newMalviTurnTiming(),
     outputCharacters: 0,
     outputGeneration: 0,
     interruptGeneration: 0,
     startedAt: Date.now(),
     isFirstTurn: true,
-    memory, memoryUser: '', memoryAssistant: '', memoryTurn: 0, memoryWrites: Promise.resolve(),
+    memory, memoryUser: '', memoryAssistant: '', memoryTurn: 0, memoryWrites: Promise.resolve(), lastSpeech: Promise.resolve(),
     sendVision: () => { throw new AssistantError(409, 'VISION_NOT_READY', 'Start a connected Gemini conversation before sharing a view.'); },
     visionAt: 0,
     research: createConversationTools(userId,

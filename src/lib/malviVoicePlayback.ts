@@ -1,5 +1,8 @@
 // Voice-only diagnostics use the same server-produced PCM as the avatar.
 // No browser TTS, replacement voice, or simulated provider responses.
+// A short lead on an idle queue absorbs network jitter between streamed packets.
+const PLAYBACK_LEAD_S = 0.08;
+
 export class MalviVoicePlayback {
   private context: AudioContext;
   private sources = new Set<AudioBufferSourceNode>();
@@ -31,7 +34,8 @@ export class MalviVoicePlayback {
       this.sources.delete(source); source.disconnect();
       if (generation === this.generation) events?.onEnd();
     };
-    const start = Math.max(this.context.currentTime, this.nextStart);
+    const now = this.context.currentTime;
+    const start = this.nextStart > now ? this.nextStart : now + PLAYBACK_LEAD_S;
     source.start(start);
     this.nextStart = start + buffer.duration;
     if (events) {

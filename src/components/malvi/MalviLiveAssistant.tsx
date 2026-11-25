@@ -10,7 +10,7 @@ import { MalviLiveOverlay } from './MalviLiveOverlay';
 import { createMalviAvatarRenderer, prepareMalviAvatarRenderer, type MalviAvatarRenderer } from '../../lib/malviAvatarRenderer';
 import { MalviVoicePlayback } from '../../lib/malviVoicePlayback';
 import { malviAvatarSoundBlocked, playMalviAvatar, malviAvatarPlaybackFailure } from '../../lib/malviAvatarPlayback';
-import { MalviCaptionPlayer, estimatedMalviCaptionTrack, type MalviCaptionTrack } from '../../lib/malviSpeechTiming';
+import { MALVI_AUDIO_QUEUE_MS, MALVI_AUDIO_QUEUE_PACKETS, MalviCaptionPlayer, estimatedMalviCaptionTrack, type MalviCaptionTrack } from '../../lib/malviSpeechTiming';
 import { MalviAvatarPlayout } from '../../lib/malviAvatarPlayout';
 import { MalviAvatarVideoGate } from '../../lib/malviAvatarVideoGate';
 import { MalviAvatarStartup, MALVI_AVATAR_CONNECTION_TIMEOUT_MS, MALVI_AVATAR_FRAME_TIMEOUT_MS, type MalviAvatarConnectionStage } from '../../lib/malviAvatarStartup';
@@ -297,7 +297,7 @@ export const MalviLiveAssistantProvider: React.FC<{ children: React.ReactNode }>
         setInterrupted(false);
       }
       if (!voiceMode.current && !avatarAcceptingAudio.current) {
-        if (startupAudio.current.length >= 64 || startupAudio.current.reduce((ms, packet) => ms + packet.durationMs, 0) + payload.durationMs > 65_000) {
+        if (startupAudio.current.length >= MALVI_AUDIO_QUEUE_PACKETS || startupAudio.current.reduce((ms, packet) => ms + packet.durationMs, 0) + payload.durationMs > MALVI_AUDIO_QUEUE_MS) {
           fail('Malvi’s avatar did not become ready before the voice startup queue filled.'); return;
         }
         startupAudio.current.push(payload);
