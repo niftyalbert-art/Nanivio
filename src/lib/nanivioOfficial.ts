@@ -5,6 +5,8 @@ const clean = (value?: string) => value?.trim() || '';
 /** The official printed QR code opens this address. */
 export const NANIVIO_OFFICIAL_URL = 'https://naniviio.com/';
 export const NANIVIO_OFFICIAL_QR = '/brand/nanivio-official-qr.png';
+/** Shared invites open registration and always offer installation. */
+export const NANIVIO_JOIN_URL = `${NANIVIO_OFFICIAL_URL}join`;
 
 export const isNanivioJoinLink = () =>
   typeof window !== 'undefined' && window.location.pathname.replace(/\/$/, '') === '/join';

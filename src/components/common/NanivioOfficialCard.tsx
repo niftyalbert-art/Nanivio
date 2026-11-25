@@ -1,10 +1,10 @@
 import React, { useState } from 'react';
 import { Check, Globe, Mail, MapPin, MessageCircle, Phone, Share2 } from 'lucide-react';
-import { NANIVIO_COMPANY, NANIVIO_CONTACTS, NANIVIO_OFFICIAL_QR, NANIVIO_OFFICIAL_URL } from '../../lib/nanivioOfficial';
+import { NANIVIO_COMPANY, NANIVIO_CONTACTS, NANIVIO_JOIN_URL, NANIVIO_OFFICIAL_QR } from '../../lib/nanivioOfficial';
 import { NanivioLogo } from './NanivioLogo';
 
 export const NanivioOfficialCard: React.FC<{ className?: string }> = ({ className = '' }) => {
-  const joinUrl = NANIVIO_OFFICIAL_URL;
+  const joinUrl = NANIVIO_JOIN_URL;
   const [shared, setShared] = useState(false);
 
   const share = async () => {
