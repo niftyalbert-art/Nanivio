@@ -67,6 +67,7 @@ type BrainConnection = {
   memoryAssistant: string;
   memoryTurn: number;
   memoryWrites: Promise<unknown>;
+  lastSpeech: Promise<void>;
   sendVision: (image: { data: string; mimeType: string }) => void;
   visionAt: number;
 };
@@ -197,14 +198,26 @@ async function flushAudio(socket: WebSocket, connection: BrainConnection, ended:
   const language = connection.language;
   const generation = connection.outputGeneration;
   connection.transcript = boundary ? connection.transcript.slice(boundary) : '';
+  const previous = connection.lastSpeech;
   if (!text.trim()) {
     if (connection.outputLanguage && !connection.openingSent) throw new Error('Malvi’s brain did not provide the transcript required for her ElevenLabs voice.');
     if (ended) connection.outputLanguage = null;
-    if (ended) endTurn(socket, connection);
+    if (ended) {
+      // Phrases may still be synthesizing; turn end must follow their audio.
+      await previous;
+      if (!connection.closed && generation === connection.outputGeneration) endTurn(socket, connection);
+    }
     return;
   }
   if (ended) connection.outputLanguage = null;
   else connection.openingSent = true;
+  let sent!: () => void;
+  connection.lastSpeech = new Promise<void>(resolve => { sent = resolve; });
+  try { await sendSpeech(socket, connection, text, language, generation, ended); }
+  finally { sent(); }
+}
+
+async function sendSpeech(socket: WebSocket, connection: BrainConnection, text: string, language: string, generation: number, ended: boolean) {
   const requestedAt = Date.now();
   const audio = await connection.speech.speak(text, language);
   if (!audio || connection.closed || connection.language !== language || generation !== connection.outputGeneration) return;
@@ -567,7 +580,7 @@ function createConnection(socket: WebSocket, userId: string, sessionId: string, 
     interruptGeneration: 0,
     startedAt: Date.now(),
     isFirstTurn: true,
-    memory, memoryUser: '', memoryAssistant: '', memoryTurn: 0, memoryWrites: Promise.resolve(),
+    memory, memoryUser: '', memoryAssistant: '', memoryTurn: 0, memoryWrites: Promise.resolve(), lastSpeech: Promise.resolve(),
     sendVision: () => { throw new AssistantError(409, 'VISION_NOT_READY', 'Start a connected Gemini conversation before sharing a view.'); },
     visionAt: 0,
     research: createConversationTools(userId,
