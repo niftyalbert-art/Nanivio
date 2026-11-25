@@ -15,6 +15,7 @@ import {
 import { motion, AnimatePresence } from 'motion/react';
 import { usePWAInstall } from '../../hooks/usePWAInstall';
 import { NanivioLogo } from './NanivioLogo';
+import { isNanivioJoinLink } from '../../lib/nanivioOfficial';
 
 const DISMISS_STORAGE_KEY = 'nanivio_install_prompt_dismissed_at';
 const DISMISS_DURATION_MS = 2 * 24 * 60 * 60 * 1000; // 48 hours
@@ -33,8 +34,9 @@ export const NewUserInstallPrompt: React.FC = () => {
       return;
     }
 
-    // Check if dismissed recently
+    // Check if dismissed recently; an official join link always offers installation.
     try {
+      if (isNanivioJoinLink()) throw null;
       const dismissedAt = localStorage.getItem(DISMISS_STORAGE_KEY);
       if (dismissedAt) {
         const timePassed = Date.now() - parseInt(dismissedAt, 10);
