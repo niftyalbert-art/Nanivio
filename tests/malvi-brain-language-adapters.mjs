@@ -290,7 +290,7 @@ try {
   await new Promise(resolve => setImmediate(resolve));
   assert.equal(native.events.find(e => e.type === 'malvi:brain_ready').payload.speechProvider, 'gemini');
   assert.equal(state.geminiOptions.config.speechConfig.voiceConfig.prebuiltVoiceConfig.voiceName, 'Sulafat');
-  assert.equal(state.geminiOptions.config.realtimeInputConfig.automaticActivityDetection.silenceDurationMs, 300);
+  assert.equal(state.geminiOptions.config.realtimeInputConfig.automaticActivityDetection.silenceDurationMs, 500);
   assert.equal(state.geminiOptions.config.realtimeInputConfig.automaticActivityDetection.endOfSpeechSensitivity, 'END_SENSITIVITY_LOW');
   assert.match(state.geminiOptions.config.systemInstruction, /British English and light Ghanaian English/);
   assert.match(state.geminiOptions.config.systemInstruction, /"Na ni vio"/);
