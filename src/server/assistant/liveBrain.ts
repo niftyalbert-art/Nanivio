@@ -188,7 +188,8 @@ function keepOutputActive(connection: BrainConnection) {
   if (wait <= 0) return;
   connection.outputActivityTimer = setTimeout(() => {
     connection.outputActivityTimer = null;
-    if (connection.closed) return;
+    // An interrupted reply resets playbackUntil; its canceled playback must not renew the deadline.
+    if (connection.closed || !connection.playbackUntil) return;
     observeConversationActivity(connection);
     keepOutputActive(connection);
   }, Math.min(wait, 20_000));
