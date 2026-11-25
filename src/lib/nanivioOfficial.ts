@@ -20,3 +20,24 @@ export const NANIVIO_CONTACTS = {
   whatsapp: clean(env.VITE_NANIVIO_CONTACT_WHATSAPP),
   website: clean(env.VITE_NANIVIO_WEBSITE),
 };
+
+export type NanivioOfficialProfile = typeof NANIVIO_CONTACTS & { qrMode: 'official' | 'join' };
+
+/** Admin-edited details win; build-time values fill anything left empty. */
+export async function loadOfficialProfile(signal?: AbortSignal): Promise<NanivioOfficialProfile> {
+  const fallback: NanivioOfficialProfile = { ...NANIVIO_CONTACTS, qrMode: 'official' };
+  try {
+    const response = await fetch('/api/official-profile', { signal });
+    if (!response.ok) return fallback;
+    const saved = await response.json();
+    const pick = (key: keyof typeof NANIVIO_CONTACTS) =>
+      typeof saved?.[key] === 'string' && saved[key].trim() ? saved[key].trim() : fallback[key];
+    return {
+      address: pick('address'), email: pick('email'), phone: pick('phone'),
+      whatsapp: pick('whatsapp'), website: pick('website'),
+      qrMode: saved?.qrMode === 'join' ? 'join' : 'official',
+    };
+  } catch {
+    return fallback;
+  }
+}

@@ -1,11 +1,32 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
+import QRCode from 'qrcode';
 import { Check, Globe, Mail, MapPin, MessageCircle, Phone, Share2 } from 'lucide-react';
-import { NANIVIO_COMPANY, NANIVIO_CONTACTS, NANIVIO_JOIN_URL, NANIVIO_OFFICIAL_QR } from '../../lib/nanivioOfficial';
+import {
+  NANIVIO_COMPANY, NANIVIO_CONTACTS, NANIVIO_JOIN_URL, NANIVIO_OFFICIAL_QR,
+  loadOfficialProfile, type NanivioOfficialProfile,
+} from '../../lib/nanivioOfficial';
 import { NanivioLogo } from './NanivioLogo';
 
 export const NanivioOfficialCard: React.FC<{ className?: string }> = ({ className = '' }) => {
   const joinUrl = NANIVIO_JOIN_URL;
   const [shared, setShared] = useState(false);
+  const [profile, setProfile] = useState<NanivioOfficialProfile>({ ...NANIVIO_CONTACTS, qrMode: 'official' });
+  const [joinQr, setJoinQr] = useState('');
+
+  useEffect(() => {
+    const controller = new AbortController();
+    loadOfficialProfile(controller.signal).then(setProfile);
+    return () => controller.abort();
+  }, []);
+
+  useEffect(() => {
+    if (profile.qrMode !== 'join') return;
+    let active = true;
+    QRCode.toDataURL(joinUrl, { width: 320, margin: 1, color: { dark: '#1a1530', light: '#ffffff' } })
+      .then(url => { if (active) setJoinQr(url); })
+      .catch(() => { if (active) setJoinQr(''); });
+    return () => { active = false; };
+  }, [profile.qrMode, joinUrl]);
 
   const share = async () => {
     try {
@@ -18,7 +39,8 @@ export const NanivioOfficialCard: React.FC<{ className?: string }> = ({ classNam
     }
   };
 
-  const { address, email, phone, whatsapp, website } = NANIVIO_CONTACTS;
+  const { address, email, phone, whatsapp, website } = profile;
+  const qrSrc = profile.qrMode === 'join' && joinQr ? joinQr : NANIVIO_OFFICIAL_QR;
   const whatsappUrl = whatsapp && (/^https?:/.test(whatsapp) ? whatsapp : `https://wa.me/${whatsapp.replace(/\D/g, '')}`);
   const contacts = [
     email && { label: email, href: `mailto:${email}`, icon: Mail },
@@ -33,7 +55,7 @@ export const NanivioOfficialCard: React.FC<{ className?: string }> = ({ classNam
       className={`nv-official-card flex flex-col gap-5 rounded-3xl border border-white/10 bg-gradient-to-br from-[#121838]/90 via-[#161a3d]/90 to-[#2a1640]/90 p-5 shadow-[0_0_40px_rgba(139,92,246,.18)] sm:flex-row sm:items-center ${className}`}
     >
       <div className="mx-auto shrink-0 rounded-2xl shadow-[0_0_24px_rgba(34,211,238,.35)] sm:mx-0">
-        <img src={NANIVIO_OFFICIAL_QR} alt="Nanivio official QR code" className="h-40 w-40" />
+        <img src={qrSrc} alt="Nanivio official QR code" className="h-40 w-40 rounded-2xl" />
       </div>
       <div className="min-w-0 flex-1 space-y-3 text-center sm:text-left">
         <div className="flex items-center justify-center gap-2 sm:justify-start">

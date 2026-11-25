@@ -101,6 +101,7 @@ import { speechConfigured, SpeechProviderError, transcribeProviderAudio, synthes
 import { recordTranslatedVoiceNoteUsage } from "./src/server/voiceNoteUsage.ts";
 import { createSetupPreview, rejectSetupRealtime } from "./src/server/setupPreview.ts";
 import { getServerSupabase } from "./src/server/supabaseServer.ts";
+import { OfficialProfileError, readOfficialProfile, saveOfficialProfile } from "./src/server/officialProfile.ts";
 import { registerAssistantRoutes } from "./src/server/assistant/routes.ts";
 import { registerAdminMalviMinutes } from "./src/server/adminMalviMinutes.ts";
 import { configureNanivioAppKnowledge, getNanivioAppKnowledge } from "./src/server/assistant/nanivioAppKnowledge.ts";
@@ -862,6 +863,21 @@ app.post("/api/admin/features/update", requireAdmin, (req, res) => {
   const updates = req.body;
   Object.assign(adminFeatureSwitches, updates);
   res.json({ success: true, features: adminFeatureSwitches });
+});
+
+// Official Nanivio Tech. Ghana contact details and QR choice shown on every Account page.
+app.get("/api/official-profile", async (_req, res) => {
+  res.setHeader("Cache-Control", "public, max-age=60");
+  res.json(await readOfficialProfile());
+});
+
+app.put("/api/admin/official-profile", requireAdmin, async (req, res) => {
+  try {
+    res.json({ success: true, profile: await saveOfficialProfile(req.body, String((req as any).adminUser?.id || "")) });
+  } catch (error) {
+    const status = error instanceof OfficialProfileError ? error.status : 500;
+    res.status(status).json({ success: false, error: error instanceof OfficialProfileError ? error.message : "Could not save." });
+  }
 });
 
 // Admin Pricing Engine

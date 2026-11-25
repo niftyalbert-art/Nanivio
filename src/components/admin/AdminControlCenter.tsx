@@ -42,6 +42,7 @@ import { AdminMalviBillingWorkspace } from './AdminMalviBillingWorkspace';
 import { AdminMalviOverview } from './AdminMalviOverview';
 import { AdminCommunicationPolicy } from './AdminCommunicationPolicy';
 import { AdminDeletionRequests } from './AdminDeletionRequests';
+import { AdminOfficialProfile } from './AdminOfficialProfile';
 
 export const AdminControlCenter: React.FC = () => {
   const {
@@ -62,7 +63,7 @@ export const AdminControlCenter: React.FC = () => {
     setActiveTab,
   } = useNanivio();
 
-  const [adminSubTab, setAdminSubTab] = useState<'launcher' | 'langpretation' | 'rides-maps' | 'users' | 'experts' | 'businesses' | 'drivers' | 'gateways' | 'audit' | 'switches' | 'malvi-billing' | 'account-deletion'>('launcher');
+  const [adminSubTab, setAdminSubTab] = useState<'launcher' | 'langpretation' | 'rides-maps' | 'users' | 'experts' | 'businesses' | 'drivers' | 'gateways' | 'audit' | 'switches' | 'malvi-billing' | 'account-deletion' | 'official'>('launcher');
   const [adminKeyInput, setAdminKeyInput] = useState('');
   const [keyError, setKeyError] = useState('');
   const [savedSuccess, setSavedSuccess] = useState(false);
@@ -366,6 +367,16 @@ export const AdminControlCenter: React.FC = () => {
           <ShieldAlert className="w-4 h-4" /><span>Account Deletion</span>
         </button>
 
+        <button type="button" id="tab-admin-official"
+          onClick={() => setAdminSubTab('official')}
+          aria-pressed={adminSubTab === 'official'}
+          className={`px-4 py-2.5 rounded-2xl text-xs font-bold flex items-center gap-2 transition-all shrink-0 ${
+            adminSubTab === 'official' ? 'bg-amber-500 text-slate-950 shadow-md'
+              : 'bg-slate-900/80 text-slate-400 hover:text-white border border-slate-800'
+          }`}>
+          <MapPin className="w-4 h-4" /><span>Official Contact &amp; QR</span>
+        </button>
+
         <button
           id="tab-admin-switches"
           onClick={() => setAdminSubTab('switches')}
@@ -407,6 +418,7 @@ export const AdminControlCenter: React.FC = () => {
       {adminSubTab === 'audit' && <AdminAuditTrail />}
       {adminSubTab === 'account-deletion' && <AdminDeletionRequests key={authUser?.id || 'signed-out'} />}
       {adminSubTab === 'malvi-billing' && <AdminMalviBillingWorkspace />}
+      {adminSubTab === 'official' && <AdminOfficialProfile />}
 
       {/* Existing Switches & Telemetry Tab */}
       {adminSubTab === 'switches' && (

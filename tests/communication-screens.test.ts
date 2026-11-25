@@ -7,7 +7,7 @@ import { renderToStaticMarkup } from 'react-dom/server';
 
 async function component(path: string, name: string) {
   const built = await build({ entryPoints: [path], bundle: true, write: false,
-    format: 'cjs', platform: 'node', packages: 'external', loader:{'.png':'dataurl'},
+    format: 'cjs', platform: 'node', packages: 'external', loader:{'.png':'dataurl','.css':'empty'},
     plugins: [{ name: 'isolated-communication-fixture', setup(builder) {
       builder.onResolve({ filter: /context\/NanivioContext$/ }, () => ({ path: 'context', namespace: 'fixture' }));
       builder.onResolve({ filter: /lib\/agoraClient$/ }, () => ({ path: 'agora', namespace: 'fixture' }));
