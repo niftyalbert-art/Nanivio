@@ -490,3 +490,12 @@ html .nv-theme-dark button[class*="bg-emerald-500/"] {
   border-color: rgba(62, 230, 245, .4) !important;
   box-shadow: 0 0 14px rgba(62, 230, 245, .15) !important;
 }
+
+/* Short windows: compact hero, and let Home scroll rather than hide shortcuts
+   behind the tab bar. */
+.nv-theme-dark .home-dashboard { overflow-y: auto; overscroll-behavior: contain; }
+@media (max-height: 760px) {
+  .nv-theme-dark .nv-home .nv-neon-hero.home-profile-card { min-height: 0; padding-block: .85rem; }
+  .nv-theme-dark .nv-home .nv-neon-hero h1 { margin: .3rem 0 .55rem; font-size: clamp(1.3rem, 3vw, 1.9rem); }
+  .nv-hero-emblem { width: clamp(72px, 11vw, 112px); }
+}
