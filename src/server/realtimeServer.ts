@@ -1,5 +1,6 @@
 import { CallTranslationConsent } from './callTranslationConsent';
 import { WebSocketServer, WebSocket } from 'ws';
+import { websocketOriginAllowed } from './httpSecurity.ts';
 import { tokenIssuedAtMs } from './passwordRecoveryStore.ts';
 import { accountAccessAuthority, type AccountLease } from './accountAccessAuthority';
 import { avatarForSignaling, connectedAvatarForSignaling, callControlForClient } from './realtimeAvatars';
@@ -429,7 +430,12 @@ export function setupRealtimeServer(httpServer: HttpServer,options?:{
       return sent;
     }
   });
-  const wss = new WebSocketServer({ server: httpServer, path: '/ws' });
+  const wss = new WebSocketServer({
+    server: httpServer,
+    path: '/ws',
+    maxPayload: 2 * 1024 * 1024,
+    verifyClient: ({ origin, req }) => websocketOriginAllowed(origin, req.headers.host, process.env.PUBLIC_APP_URL),
+  });
 
   wss.on('error', (err) => {
     console.warn('[Realtime WSS Warning]', err?.message || err);

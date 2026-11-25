@@ -1,4 +1,5 @@
-﻿import express from "express";
+﻿import { createRateLimiter, securityHeaders, twilioSignatureValid } from "./src/server/httpSecurity.ts";
+import express from "express";
 import { callStartupTracing } from './src/server/callStartupTrace.ts';
 import { accountMayUseRoute } from './src/server/accountAccessPolicy';
 import { registerAccountAccessRoutes } from './src/server/accountAccessRoutes';
@@ -139,6 +140,9 @@ const otpProxyTrust = proxyaddr.compile(
   (process.env.AUTH_TRUSTED_PROXY_CIDRS || '').split(',').map(v => v.trim()).filter(Boolean),
 );
 
+app.disable("x-powered-by");
+app.use(securityHeaders(process.env.NODE_ENV === "production"));
+
 app.use(express.json({
   limit: "15mb",
   verify: (req, _res, buf) => {
@@ -244,7 +248,6 @@ async function getAuthUser(req: express.Request) {
   let token = "";
   if (authHeader && authHeader.startsWith("Bearer ")) token = authHeader.substring(7).trim();
   else if (req.headers["x-nanivio-token"]) token = String(req.headers["x-nanivio-token"]).trim();
-  else if (req.query.token) token = String(req.query.token).trim();
   if (!token) return null;
   const adminTokenUser = persistentAuth.adminFromToken(token);
   if (adminTokenUser) return adminTokenUser;
@@ -259,17 +262,6 @@ async function getAuthUser(req: express.Request) {
 }
 
 async function requireAdmin(req: express.Request, res: express.Response, next: express.NextFunction) {
-  const masterKeyHeader = req.headers["x-admin-master-key"];
-  if (masterKeyHeader) {
-    try {
-      const { user } = authDb.authenticateWithMasterKey(String(masterKeyHeader));
-      (req as any).adminUser = user;
-      return next();
-    } catch {
-      // Fallback to standard token validation
-    }
-  }
-
   const user = await getAuthUser(req);
   if (!user || user.role !== "ADMIN") {
     return res.status(403).json({
@@ -304,6 +296,22 @@ function authenticatedUserId(req: express.Request): string {
 // ----------------------------------------------------------------------------
 // AUTHENTICATION API ENDPOINTS
 // ----------------------------------------------------------------------------
+
+const clientKey = (req: express.Request) => proxyaddr(req, otpProxyTrust) || "unknown";
+const identifierKey = (req: express.Request) => {
+  const body = req.body || {};
+  const id = String(body.identifier || body.email || body.phone || body.nvId || "").trim().toLowerCase().slice(0, 200);
+  return `${clientKey(req)}|${id}`;
+};
+const authAttemptLimiter = createRateLimiter({ windowMs: 15 * 60_000, max: 20, key: identifierKey,
+  message: "Too many sign-in attempts. Please wait 15 minutes and try again." });
+const authBurstLimiter = createRateLimiter({ windowMs: 60_000, max: 30, key: clientKey });
+const adminKeyLimiter = createRateLimiter({ windowMs: 15 * 60_000, max: 10, key: clientKey,
+  message: "Too many administrative sign-in attempts. Please wait 15 minutes." });
+const directoryLimiter = createRateLimiter({ windowMs: 60_000, max: 60, key: req => (req as any).authUser?.id || clientKey(req) });
+const reportLimiter = createRateLimiter({ windowMs: 60_000, max: 10, key: clientKey });
+app.use(["/api/auth/signin", "/api/auth/register", "/api/auth/email/otp", "/api/auth/recovery", "/api/auth/reset-password"], authBurstLimiter);
+app.post("/api/auth/signin", authAttemptLimiter);
 
 // Phone OTP verification (Didit)
 app.use("/api/admin/phone-verification", createPhoneVerificationAdminRouter(requireAdmin));
@@ -507,7 +515,7 @@ app.post("/api/auth/signin", async (req, res) => {
 });
 
 // 4b. Admin Master Key Gateway Authentication
-app.post("/api/admin/auth/master-key", async (req, res) => {
+app.post("/api/admin/auth/master-key", adminKeyLimiter, async (req, res) => {
   try {
     const { masterKey, token, key } = req.body;
     const providedKey = (masterKey || token || key || "").toString().trim();
@@ -584,7 +592,7 @@ registerAccountDeletionRoutes(app, {
 registerAccountDeletionReview(app, requireAdmin);
 
 // 11. Safety & Abuse Report Endpoint
-app.post("/api/safety/report", async (req, res) => {
+app.post("/api/safety/report", reportLimiter, async (req, res) => {
   try {
     const user = await getAuthUser(req);
     const { targetId, targetName, reason, details } = req.body;
@@ -635,8 +643,8 @@ app.get("/api/admin/users/search-nv", requireAdmin, async (req, res) => {
   return res.json({ success: true, dossier });
 });
 
-// C2. Direct NV ID Directory Lookup for Calling and Direct Chat (Public / App-Wide)
-app.get("/api/users/lookup", async (req, res) => {
+// C2. Direct NV ID Directory Lookup for Calling and Direct Chat (signed-in users)
+app.get("/api/users/lookup", requireAuthenticatedUser, directoryLimiter, async (req, res) => {
   const { nvId } = req.query;
   if (!nvId) {
     return res.status(400).json({ success: false, error: "Nanivio number is required." });
@@ -658,7 +666,6 @@ app.get("/api/users/lookup", async (req, res) => {
       preferredLanguage: user.preferredLanguage,
       country: user.country,
       role: user.role,
-      accountStatus: user.accountStatus,
     }
   });
 });
@@ -1467,7 +1474,7 @@ app.get("/api/fintech/rates", (_req, res) => {
 // ==========================================
 
 // 1. Get Telecom Gateway Configuration & Provider Statuses
-app.get("/api/telecom/config", (_req, res) => {
+app.get("/api/telecom/config", requireAdmin, (_req, res) => {
   res.json({
     success: true,
     gateways: telecomGateway.getGatewayConfigStatus(),
@@ -1477,7 +1484,7 @@ app.get("/api/telecom/config", (_req, res) => {
 });
 
 // 2. Get Full Multi-Carrier Routing Table with Live Rates & Latency
-app.get("/api/telecom/routes", (_req, res) => {
+app.get("/api/telecom/routes", requireAdmin, (_req, res) => {
   res.json({
     success: true,
     routes: CARRIER_ROUTING_TABLE,
@@ -1486,7 +1493,7 @@ app.get("/api/telecom/routes", (_req, res) => {
 });
 
 // 3. Test Routing Path for Any Destination Number
-app.post("/api/telecom/test-routing", (req, res) => {
+app.post("/api/telecom/test-routing", requireAdmin, (req, res) => {
   const { phoneNumber } = req.body;
   if (!phoneNumber) {
     return res.status(400).json({ error: "phoneNumber is required to test routing." });
@@ -1500,7 +1507,7 @@ app.post("/api/telecom/test-routing", (req, res) => {
 });
 
 // 4. Initiate Outbound Real-Carrier Voice Call (PSTN / Cellular)
-app.post("/api/telecom/outbound", async (req, res) => {
+app.post("/api/telecom/outbound", requireAdmin, async (req, res) => {
   try {
     const { toNumber, fromNumber, callerName, sourceLang, targetLang } = req.body;
     if (!toNumber) {
@@ -1527,7 +1534,12 @@ app.all("/api/telecom/webhook/voice", (_req, res) => {
 });
 
 // 6. Telecom Call Status Webhook (Ringing, Answered, Hangup)
-app.post("/api/telecom/webhook/status", (req, res) => {
+app.post("/api/telecom/webhook/status", express.urlencoded({ extended: false, limit: "64kb" }), (req, res) => {
+  const authToken = process.env.TWILIO_AUTH_TOKEN || "";
+  const publicUrl = (process.env.PUBLIC_APP_URL || "").replace(/\/$/, "");
+  if (!authToken || !publicUrl || !twilioSignatureValid(authToken, publicUrl + req.originalUrl, req.body || {}, String(req.headers["x-twilio-signature"] || ""))) {
+    return res.status(403).json({ success: false, error: "Invalid telecom webhook signature." });
+  }
   const { CallSid, CallStatus, Duration, callId } = req.body;
   console.log(`[Telecom Status Webhook] Call ${CallSid || callId} status: ${CallStatus}, duration: ${Duration}s`);
   res.json({ success: true, received: true });
@@ -3309,49 +3321,6 @@ app.get("/api/contacts", requireAuthenticatedUser, async (req,res)=>{try{const c
 app.post("/api/contacts/save", requireAuthenticatedUser, async (req,res)=>{try{const contact=await persistentAuth.saveContact(authenticatedUserId(req),req.body);res.json({success:true,contact});}catch(error:any){res.status(400).json({success:false,error:error.message});}});
 app.put("/api/contacts/:id", requireAuthenticatedUser, async (req,res)=>{try{const contact=await persistentAuth.updateContact(authenticatedUserId(req),req.params.id,req.body);res.json({success:true,contact});}catch(error:any){res.status(400).json({success:false,error:error.message});}});
 app.delete("/api/contacts/:id", requireAuthenticatedUser, async (req,res)=>{try{await persistentAuth.deleteContact(authenticatedUserId(req),req.params.id);res.json({success:true});}catch(error:any){res.status(400).json({success:false,error:error.message});}});
-
-// ==========================================
-const userContactsDb: Map<string, any[]> = new Map();
-
-app.post("/api/contacts/save", (req, res) => {
-  try {
-    const contact = req.body;
-    if (!contact || !contact.id) {
-      return res.status(400).json({ success: false, error: "Invalid contact payload" });
-    }
-    const currentList = userContactsDb.get("default_user") || [];
-    const updated = [contact, ...currentList.filter(c => c.id !== contact.id)];
-    userContactsDb.set("default_user", updated);
-    return res.json({ success: true, contact });
-  } catch (err: any) {
-    return res.status(500).json({ success: false, error: err.message });
-  }
-});
-
-app.put("/api/contacts/:id", (req, res) => {
-  try {
-    const { id } = req.params;
-    const updates = req.body;
-    const currentList = userContactsDb.get("default_user") || [];
-    const updated = currentList.map(c => c.id === id ? { ...c, ...updates } : c);
-    userContactsDb.set("default_user", updated);
-    return res.json({ success: true });
-  } catch (err: any) {
-    return res.status(500).json({ success: false, error: err.message });
-  }
-});
-
-app.delete("/api/contacts/:id", (req, res) => {
-  try {
-    const { id } = req.params;
-    const currentList = userContactsDb.get("default_user") || [];
-    const updated = currentList.filter(c => c.id !== id);
-    userContactsDb.set("default_user", updated);
-    return res.json({ success: true });
-  } catch (err: any) {
-    return res.status(500).json({ success: false, error: err.message });
-  }
-});
 
 // ==========================================
 // MALVI â€” HUMAN-LIKE AI ASSISTANT API

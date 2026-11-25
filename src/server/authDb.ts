@@ -1,4 +1,5 @@
 import crypto from 'crypto';
+import { timingSafeEqualString } from './httpSecurity';
 import fs from 'fs';
 import path from 'path';
 import type {
@@ -701,7 +702,7 @@ export class AuthDatabase {
     const configuredMasterKey = process.env.ADMIN_MASTER_KEY || '';
 
     const cleanKey = (masterKey || '').toString().trim();
-    if (!configuredMasterKey || !cleanKey || cleanKey !== configuredMasterKey) {
+    if (!configuredMasterKey || !cleanKey || !timingSafeEqualString(cleanKey, configuredMasterKey)) {
       throw new Error('Invalid administrative master authorization key.');
     }
 

@@ -1,4 +1,5 @@
 import { Participant } from '../types';
+import { authClient } from '../lib/authClient';
 
 export function normalizeNanivioNumber(raw: string): string {
   if (!raw) return '';
@@ -39,7 +40,10 @@ export async function lookupNanivioUser(rawNumber: string): Promise<Participant 
 
   // 1. First: Query the authoritative backend server database directly
   try {
-    const res = await fetch(`/api/users/lookup?nvId=${encodeURIComponent(cleanNumber)}`);
+    const token = authClient.getToken();
+    const res = await fetch(`/api/users/lookup?nvId=${encodeURIComponent(cleanNumber)}`, {
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    });
     if (res.ok) {
       const data = await res.json();
       if (data.success && data.user) {
