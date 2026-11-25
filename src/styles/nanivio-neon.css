@@ -455,3 +455,40 @@ body,
   .nv-hero-emblem img,
   .nv-hero-emblem-glow { animation: none; }
 }
+
+/* Primary buttons app-wide: saturated violet to cyan with white text,
+   replacing the earlier pastel treatment. */
+html .nv-theme-dark button[class~="bg-emerald-500"],
+html .nv-theme-dark button[class~="bg-emerald-600"]:not(#toggle-global-langpretation),
+html .nv-theme-dark button[class~="bg-emerald-700"],
+html .nv-theme-dark button[class~="bg-cyan-500"],
+html .nv-theme-dark button[class~="bg-teal-500"],
+html .nv-theme-dark button[class~="from-emerald-500"],
+html .nv-theme-dark button[class~="from-emerald-600"],
+html .nv-theme-dark button[class~="from-cyan-500"],
+html .nanivio-auth button[class~="bg-emerald-500"],
+html .nanivio-auth button[class~="from-emerald-500"] {
+  color: #fff !important;
+  background: var(--neo-gradient) !important;
+  background-image: var(--neo-gradient) !important;
+  border-color: rgba(196, 181, 253, .45) !important;
+  box-shadow: 0 8px 22px rgba(99, 102, 241, .38), inset 0 1px rgba(255, 255, 255, .28) !important;
+}
+html .nv-theme-dark button[class~="from-emerald-500"] svg,
+html .nv-theme-dark button[class~="bg-emerald-500"] svg { color: #fff !important; }
+
+/* Legacy dark-navy page panels become violet glass. */
+html .nv-theme-dark .nanivio-main [class*="bg-gradient-to-r"][class*="from-[#0"],
+html .nv-theme-dark .nanivio-main [class*="bg-gradient-to-br"][class*="from-[#0"] {
+  border-color: var(--neo-edge) !important;
+  background: linear-gradient(150deg, rgba(40, 34, 92, .62), rgba(16, 14, 42, .8)) !important;
+  box-shadow: 0 18px 44px rgba(4, 2, 20, .4), inset 0 1px rgba(255, 255, 255, .07) !important;
+}
+
+/* Secondary tinted buttons: glass with a cyan edge. */
+html .nv-theme-dark button[class*="bg-emerald-500/"] {
+  color: #a5f3fc !important;
+  background: rgba(139, 92, 246, .18) !important;
+  border-color: rgba(62, 230, 245, .4) !important;
+  box-shadow: 0 0 14px rgba(62, 230, 245, .15) !important;
+}
