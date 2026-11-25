@@ -12,7 +12,7 @@ test('input detection accepts short answers and preserves natural mid-sentence p
   assert.equal(MALVI_INPUT_ACTIVITY.endOfSpeechSensitivity,'END_SENSITIVITY_LOW');
   assert.ok(MALVI_INPUT_ACTIVITY.prefixPaddingMs>=0 && MALVI_INPUT_ACTIVITY.prefixPaddingMs<=40,
     'This SDK field is minimum detected speech duration, not buffered audio before speech');
-  assert.equal(MALVI_INPUT_ACTIVITY.silenceDurationMs,500);
+  assert.equal(MALVI_INPUT_ACTIVITY.silenceDurationMs,300);
 });
 
 test('Malvi introduces herself warmly without an unsolicited not-human disclaimer', () => {

@@ -110,7 +110,7 @@ export const MALVI_INPUT_ACTIVITY = Object.freeze({
   // Despite its name, the SDK defines this as minimum detected speech
   // duration, not a look-behind buffer. Keep short answers recognizable.
   prefixPaddingMs: 20,
-  silenceDurationMs: 500,
+  silenceDurationMs: 300,
 });
 
 function hasSpeech(pcm: Buffer) {
