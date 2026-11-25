@@ -11,7 +11,6 @@ const result = await build({
     import {createRoot} from 'react-dom/client';
     import {CommunicationSpaceView} from './src/components/calls/CommunicationSpaceView';
     import {MalviLiveOverlay} from './src/components/malvi/MalviLiveOverlay';
-    import {MALVI_PROFILE} from './src/lib/malviIdentity';
     const peer={id:'fixture-peer',name:'Sample contact',initials:'SC',myLanguage:'ar',nvId:'NV123456'};
     const values={currentUser:{id:'fixture-self',name:'Sample user',myLanguage:'en'},authUser:{id:'fixture-self'},
       contacts:[peer],experts:[],conversations:[],messages:{},adminFeatures:{},
@@ -25,7 +24,7 @@ const result = await build({
      window.show=(screen,options={})=>{
       root.unmount();root=createRoot(document.getElementById('fixture'));
         root.render(screen==='malvi'?<MalviLiveOverlay videoRef={{current:null}}
-          onVideoElement={node=>{if(node)node.poster=MALVI_PROFILE;}} error={options.error??null}
+          onVideoElement={()=>{}} error={options.error??null}
           secondsRemaining={180} allowanceSecondsRemaining={options.allowance===undefined?180:options.allowance}
           allowanceUnavailable={options.unavailable??false} languageCode={options.languageCode??'en'}
           onOpenBilling={options.billing===false?undefined:()=>{window.__billing=(window.__billing||0)+1;}}

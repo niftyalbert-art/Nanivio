@@ -1,7 +1,7 @@
 import React from 'react';
 import { Sparkles, Mic, Volume2, Loader2, AlertCircle } from 'lucide-react';
 import { MalviAvatarState } from '../../types';
-import { MALVI_PORTRAIT } from '../../lib/malviIdentity';
+import { MalviAuraFace } from './MalviAuraFace';
 
 interface MalviAvatarProps {
   state?: MalviAvatarState;
@@ -48,15 +48,10 @@ export const MalviAvatar: React.FC<MalviAvatarProps> = ({
         interactive ? 'cursor-pointer group' : ''
       } ${className}`}
     >
-      {/* This portrait is a still identity image; real motion appears only in the live session overlay. */}
       <div
         className={`relative ${sizeMap[size]} rounded-full overflow-hidden ring-2 ${ringGlowMap[state]} shadow-lg transition-colors duration-300 bg-[#132d31] flex items-center justify-center`}
       >
-        <img
-          src={MALVI_PORTRAIT}
-          alt="Malvi, Nanivio's AI assistant"
-          className="h-full w-full object-cover object-[50%_35%]"
-        />
+        <MalviAuraFace state={state} />
 
         {/* State Overlays */}
         {state === 'thinking' && (

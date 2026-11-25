@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { MalviAllowanceNotice } from './MalviAllowanceNotice';
 import { createPortal } from 'react-dom';
 import { AlertCircle, AudioLines, Camera, ImagePlus, LoaderCircle, Mic, MicOff, Square, Upload, X } from 'lucide-react';
-import { MALVI_PROFILE } from '../../lib/malviIdentity';
+import { MalviAuraFace } from './MalviAuraFace';
 import type { MalviAssetResult } from '../../shared/malviInputTypes';
 import { MalviAssetResults } from './MalviAssetResults';
 import type { MalviReferenceCitation } from '../../lib/malviLiveClient';
@@ -384,12 +384,8 @@ export const MalviLiveOverlay: React.FC<MalviLiveOverlayProps> = ({
               className="malvi-live-avatar-video absolute inset-0 h-full w-full object-contain object-center"
             />}
             {!voiceOnly && (phase === 'connecting' || phase === 'error') && (
-              <div className="absolute inset-0 overflow-hidden bg-[#172e2d]">
-                <img
-                  src={MALVI_PROFILE}
-                  alt={phase === 'connecting' ? 'Malvi portrait preview while connecting' : 'Malvi portrait preview'}
-                  className="absolute inset-0 h-full w-full object-contain object-center opacity-75"
-                />
+              <div className="absolute inset-0 overflow-hidden">
+                <MalviAuraFace state={phase === 'error' ? 'error' : 'thinking'} label={phase === 'connecting' ? 'Malvi is connecting' : 'Malvi'} />
               </div>
             )}
             {showVideoAllowanceOverlay && (
