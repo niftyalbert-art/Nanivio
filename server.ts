@@ -141,7 +141,10 @@ const otpProxyTrust = proxyaddr.compile(
 );
 
 app.disable("x-powered-by");
-app.use(securityHeaders(process.env.NODE_ENV === "production"));
+const servesProductionBundle =
+  process.env.NODE_ENV === "production" ||
+  (typeof __filename !== "undefined" && (__filename.includes("dist") || __filename.endsWith(".cjs")));
+app.use(securityHeaders(servesProductionBundle));
 
 app.use(express.json({
   limit: "15mb",
