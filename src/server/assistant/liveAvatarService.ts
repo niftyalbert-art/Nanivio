@@ -200,7 +200,7 @@ export function createLiveAvatarService(deps: {
         if (!deps.businessAccess) throw new AssistantError(403, 'BUSINESS_AVATAR_FORBIDDEN', 'Business meeting access is unavailable.');
         await deps.businessAccess(userId, current.businessContext);
       }
-      // Only real user input renews the deadline. Assistant playback never does.
+      // Real user input renews the deadline; so does projected playback of a long reply (liveBrain keepOutputActive).
       const record = await store.touch(id, ownerKey(userId), now);
       if (!record) throw new AssistantError(410, 'SESSION_EXPIRED', 'Live session is closed or expired.');
       if (confirmationFailures.has(id)) throw new AssistantError(503,'MALVI_BILLING_UNAVAILABLE','Your conversation allowance could not be confirmed. End the conversation and recheck Billing.');

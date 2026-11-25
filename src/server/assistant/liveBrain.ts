@@ -45,6 +45,7 @@ type BrainConnection = {
   lastActivityAt: number;
   idleTimer: ReturnType<typeof setTimeout> | null;
   hardTimer: ReturnType<typeof setTimeout> | null;
+  outputActivityTimer: ReturnType<typeof setTimeout> | null;
   frameWindowStartedAt: number;
   framesInWindow: number;
   speech: ReturnType<typeof createMalviSpeechQueue>;
@@ -179,6 +180,20 @@ function observeConversationActivity(connection: BrainConnection) {
   }).finally(() => { pendingInputActivity.delete(connection); });
 }
 
+// Gemini can deliver a long reply faster than it plays. Keep the idle deadline
+// renewed until the projected playback ends so a listener is not cut off.
+function keepOutputActive(connection: BrainConnection) {
+  if (connection.outputActivityTimer || connection.closed) return;
+  const wait = connection.playbackUntil - Date.now();
+  if (wait <= 0) return;
+  connection.outputActivityTimer = setTimeout(() => {
+    connection.outputActivityTimer = null;
+    if (connection.closed) return;
+    observeConversationActivity(connection);
+    keepOutputActive(connection);
+  }, Math.min(wait, 20_000));
+}
+
 function endTurn(socket: WebSocket, connection: BrainConnection) {
   const summary = malviTurnTimingSummary(connection.timing);
   if (summary.packets) console.info('[Malvi] Turn timing', {
@@ -228,6 +243,7 @@ async function sendSpeech(socket: WebSocket, connection: BrainConnection, text: 
   const pcm24k = audio.toString('base64');
   connection.playbackUntil = Math.max(Date.now(), connection.playbackUntil) + audio.length / 48;
   markMalviPacketSent(connection.timing, audio.length / 48);
+  keepOutputActive(connection);
   send(socket, 'malvi:brain_audio', {
     sessionId: connection.sessionId,
     language,
@@ -262,6 +278,7 @@ function flushNativeAudio(socket: WebSocket, connection: BrainConnection, ended 
   }
   connection.playbackUntil = Math.max(Date.now(), connection.playbackUntil) + audio.durationMs;
   markMalviPacketSent(connection.timing, audio.durationMs);
+  keepOutputActive(connection);
   send(socket, 'malvi:brain_audio', {
     ...audio, sessionId: connection.sessionId, language: connection.language,
     sampleRate: 24000, format: 'pcm_s16le', channels: 1, ended,
@@ -559,12 +576,14 @@ function createConnection(socket: WebSocket, userId: string, sessionId: string, 
       connection.nativeVoice.cancel();
       if (connection.idleTimer) clearTimeout(connection.idleTimer);
       if (connection.hardTimer) clearTimeout(connection.hardTimer);
+      if (connection.outputActivityTimer) clearTimeout(connection.outputActivityTimer);
       connection.closeProvider();
       if (voiceOnly) void liveAvatarService.stop(userId, sessionId).catch(() => {});
     },
     lastActivityAt: 0,
     idleTimer: null,
     hardTimer: null,
+    outputActivityTimer: null,
     frameWindowStartedAt: 0,
     framesInWindow: 0,
     speech: createMalviSpeechQueue(),
