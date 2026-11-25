@@ -341,7 +341,7 @@ const ContactFormModal: React.FC<ContactModalProps> = ({
             <button
               type="submit"
               disabled={isSubmitting || !name.trim() || !nvId.trim()}
-              className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-500 text-slate-950 font-bold hover:scale-105 transition-all disabled:opacity-50 shadow-lg shadow-emerald-500/20 flex items-center gap-2"
+              className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-cyan-500 to-fuchsia-500 text-white font-bold hover:scale-105 transition-all disabled:opacity-50 shadow-lg shadow-emerald-500/20 flex items-center gap-2"
             >
               <Check className="w-4 h-4" />
               <span>{initialContact ? 'Update Contact' : 'Save to Directory'}</span>
@@ -445,14 +445,11 @@ export const ContactsView: React.FC = () => {
             </div>
             <div>
               <h1 className="text-xl font-bold text-white flex items-center gap-2">
-                <span>Nanivio Contacts &amp; Quick-Dial</span>
+                <span>Contacts</span>
                 <span className="text-xs font-mono px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
-                  {contacts.length} Saved
+                  {contacts.length}
                 </span>
               </h1>
-              <p className="text-xs text-slate-400">
-                Direct lookup directory with one-click Audio, Video, and Translated Chat shortcuts
-              </p>
             </div>
           </div>
         </div>
@@ -467,7 +464,7 @@ export const ContactsView: React.FC = () => {
             className="flex-1 md:flex-none flex items-center justify-center gap-2 px-4 py-2.5 rounded-2xl bg-gradient-to-r from-emerald-500 to-teal-500 text-slate-950 font-bold text-xs hover:scale-105 transition-all shadow-lg shadow-emerald-500/20 cursor-pointer"
           >
             <UserPlus className="w-4 h-4" />
-            <span>Add New Contact</span>
+            <span>Add contact</span>
           </button>
         </div>
       </div>
