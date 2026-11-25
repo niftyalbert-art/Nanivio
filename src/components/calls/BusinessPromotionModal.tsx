@@ -115,16 +115,18 @@ export const BusinessPromotionModal: React.FC<BusinessPromotionModalProps> = ({
             Back to Call
           </button>
 
-          <button
-            onClick={() => {
-              alert(`Redirecting to ${promo.companyName} verified partner portal...`);
-              onClose();
-            }}
+          {promo.destinationUrl && (
+          <a
+            href={promo.destinationUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            onClick={onClose}
             className="flex-[1.4] py-3 px-4 rounded-2xl bg-gradient-to-r from-cyan-500 to-emerald-500 hover:from-cyan-400 hover:to-emerald-400 text-slate-950 font-extrabold text-xs flex items-center justify-center gap-1.5 shadow-lg shadow-cyan-500/20 transition-all hover:scale-[1.02]"
           >
             <span>{promo.ctaText}</span>
             <ArrowRight className="w-4 h-4" />
-          </button>
+          </a>
+          )}
         </div>
       </div>
     </div>

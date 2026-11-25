@@ -37,57 +37,12 @@ export const AdminRideHailingMapsManager: React.FC = () => {
 
   const [savedSuccess, setSavedSuccess] = useState(false);
   const [selectedTier, setSelectedTier] = useState<RideServiceTier>('standard');
-  const [isSimulatingDispatch, setIsSimulatingDispatch] = useState(false);
-  const [simulationStatus, setSimulationStatus] = useState<string | null>(null);
 
   // Active Trips Ledger in Admin Memory
-  const [activeTrips, setActiveTrips] = useState([
-    {
-      id: 'TRIP-8941',
-      riderName: 'Ama Serwaa',
-      riderNvId: '',
-      driverName: 'Kofi Mensah',
-      driverNvId: '0486821940',
-      vehicle: 'Toyota Corolla LE (GN 4821-24)',
-      pickup: 'Kotoka International Airport (Terminal 3)',
-      destination: 'Kempinski Hotel Gold Coast City, Ridge',
-      fareGHS: 62,
-      tier: 'Comfort',
-      status: 'IN_TRIP',
-      otp: '4821',
-      elapsedMins: 8,
-    },
-    {
-      id: 'TRIP-8942',
-      riderName: 'Kwesi Appiah',
-      riderNvId: '0486128491',
-      driverName: 'Kwame Boateng',
-      driverNvId: '0486719283',
-      vehicle: 'Hyundai Elantra (GR 8921-23)',
-      pickup: 'Accra Mall, Tetteh Quarshie',
-      destination: 'East Legon, Lagos Avenue',
-      fareGHS: 38,
-      tier: 'Standard',
-      status: 'ARRIVED',
-      otp: '1940',
-      elapsedMins: 4,
-    },
-    {
-      id: 'TRIP-8943',
-      riderName: 'Abena Mansa',
-      riderNvId: '0486339182',
-      driverName: 'Unassigned (Broadcasting Radar)',
-      driverNvId: '—',
-      vehicle: 'Searching Nearest Tier 1...',
-      pickup: 'University of Ghana, Legon Campus',
-      destination: 'Achimota Retail Centre',
-      fareGHS: 28,
-      tier: 'Standard',
-      status: 'SEARCHING',
-      otp: '6219',
-      elapsedMins: 1,
-    },
-  ]);
+  const [activeTrips, setActiveTrips] = useState<Array<{
+    id: string; riderName: string; riderNvId: string; driverName: string; driverNvId: string; vehicle: string;
+    pickup: string; destination: string; fareGHS: number; tier: string; status: string; otp: string; elapsedMins: number;
+  }>>([]);
 
   // Live Driver Fleet Roster
   const [fleetDrivers] = useState<NanivioDriver[]>([]);
@@ -97,8 +52,6 @@ export const AdminRideHailingMapsManager: React.FC = () => {
     setSavedSuccess(true);
     setTimeout(() => setSavedSuccess(false), 1500);
   };
-
-  const handleSimulateDispatch = () => { setSimulationStatus('Live dispatch provider is not connected. No simulated dispatch is generated.'); };
 
   const handleEmergencyCancelTrip = (tripId: string) => {
     setActiveTrips((prev) =>
@@ -220,13 +173,6 @@ export const AdminRideHailingMapsManager: React.FC = () => {
           </button>
         </div>
       </div>
-
-      {simulationStatus && (
-        <div className="p-3.5 rounded-2xl bg-emerald-950/70 border border-emerald-500/50 text-emerald-200 text-xs flex items-center gap-2 animate-in fade-in">
-          <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
-          <span>{simulationStatus}</span>
-        </div>
-      )}
 
       {/* Fleet Telemetry Metric Counters */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">

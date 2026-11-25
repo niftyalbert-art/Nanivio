@@ -51,7 +51,6 @@ import type { PaymentMethod } from './PaymentMethodButtons';
 import { CommunicationCreditCheckout } from './CommunicationCreditCheckout';
 import { PaystackPaymentRecovery } from './PaystackPaymentRecovery';
 import { TransferValueModal } from './TransferValueModal';
-import { UniversalFlowTracer } from './UniversalFlowTracer';
 import { LiveLangpretationMeter } from './LiveLangpretationMeter';
 import { CommunicationMinutesModal } from './CommunicationMinutesModal';
 import { CommunicationAccessPanel } from './CommunicationAccessPanel';
@@ -92,7 +91,7 @@ export const UniversalBillingHub: React.FC = () => {
     subscribeMalviPlan,
   } = useNanivio();
 
-  const [activeSubTab, setActiveSubTab] = useState<'overview' | 'flow' | 'plans' | 'malvi' | 'transfer' | 'calculator' | 'invoices' | 'disputes' | 'b2b'>('overview');
+  const [activeSubTab, setActiveSubTab] = useState<'overview' | 'plans' | 'malvi' | 'transfer' | 'calculator' | 'invoices' | 'disputes' | 'b2b'>('overview');
   const [isPaystackModalOpen, setIsPaystackModalOpen] = useState<boolean>(false);
   const [externalPaymentMethod, setExternalPaymentMethod] = useState<PaymentMethod>('PAYSTACK');
   const [creditPlanTier, setCreditPlanTier] = useState<string | null>(null);
@@ -461,7 +460,6 @@ export const UniversalBillingHub: React.FC = () => {
           <div className="flex items-center overflow-x-auto scrollbar-none touch-pan-x gap-1 bg-slate-950/70 p-1 rounded-xl border border-slate-800 w-full sm:w-auto">
             {[
               { id: 'overview', label: 'Wallet & Quotas', icon: Layers },
-              { id: 'flow', label: 'Flow Verification', icon: Activity },
               { id: 'transfer', label: 'Transfer Value', icon: ArrowRightLeft },
               { id: 'plans', label: 'Communication Plans', icon: Zap },
               { id: 'malvi', label: 'Malvi AI Plans', icon: Sparkles },
@@ -574,15 +572,6 @@ export const UniversalBillingHub: React.FC = () => {
                   <Send className="w-3.5 h-3.5" />
                   <span>Send Nanivio credits (P2P)</span>
                 </button>
-                <button
-                  type="button"
-                  id="btn_view_flow_overview"
-                  onClick={() => setActiveSubTab('flow')}
-                  className="px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-emerald-400 font-semibold text-xs transition flex items-center gap-1.5 border border-slate-700"
-                >
-                  <Activity className="w-3.5 h-3.5" />
-                  <span>Flow Verification</span>
-                </button>
               </div>
             </div>
 
@@ -671,16 +660,6 @@ export const UniversalBillingHub: React.FC = () => {
                 </div>
               </div>
             </div>
-
-            {/* Architecture Flow Diagnostic Card in Overview */}
-            <UniversalFlowTracer
-              onOpenPaystackModal={() => setIsPaystackModalOpen(true)}
-              onOpenUSDTModal={() => { setExternalPaymentMethod('USDT'); setPaystackConfig({ purpose: 'COMMUNICATION_TOPUP' }); setIsPaystackModalOpen(true); }}
-              onOpenTransferModal={() => {
-                setTransferModalMode('P2P');
-                setIsTransferModalOpen(true);
-              }}
-            />
 
             {/* Live Langpretation Real-Time Production Meter */}
             <LiveLangpretationMeter
@@ -876,22 +855,6 @@ export const UniversalBillingHub: React.FC = () => {
                 </div>
               </div>
             </div>
-          </div>
-        )}
-
-        {/* ========================================================================= */}
-        {/* SUBTAB: FLOW VERIFICATION */}
-        {/* ========================================================================= */}
-        {activeSubTab === 'flow' && (
-          <div className="space-y-6">
-            <UniversalFlowTracer
-              onOpenPaystackModal={() => setIsPaystackModalOpen(true)}
-              onOpenUSDTModal={() => { setExternalPaymentMethod('USDT'); setPaystackConfig({ purpose: 'COMMUNICATION_TOPUP' }); setIsPaystackModalOpen(true); }}
-              onOpenTransferModal={() => {
-                setTransferModalMode('P2P');
-                setIsTransferModalOpen(true);
-              }}
-            />
           </div>
         )}
 

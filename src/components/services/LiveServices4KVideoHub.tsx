@@ -155,7 +155,7 @@ export const LiveServices4KVideoHub: React.FC = () => {
       description: b.description,
       mediaUrl: b.avatar || 'https://images.unsplash.com/photo-1542744173-8e7e53415bb0?w=800&auto=format&fit=crop&q=80',
       ctaText: 'Connect & Inquire',
-      destinationUrl: 'https://nanivio.com',
+      destinationUrl: 'https://naniviio.com',
       highlights: b.services.slice(0, 3),
     }));
   }, [geoMatchedResults]);
