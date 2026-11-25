@@ -7,8 +7,8 @@
   --neo-pink: #f472b6;
   --neo-ink: #f5f3ff;
   --neo-muted: #a9aed6;
-  --neo-glass: rgba(74, 64, 150, .5);
-  --neo-glass-strong: rgba(58, 50, 128, .86);
+  --neo-glass: rgba(52, 45, 122, .62);
+  --neo-glass-strong: rgba(40, 34, 98, .9);
   --neo-edge: rgba(176, 160, 255, .22);
   --neo-gradient: linear-gradient(100deg, #8b5cf6 0%, #6366f1 45%, #22d3ee 100%);
   --neo-ring: conic-gradient(from 200deg, #22d3ee, #8b5cf6, #ec4899, #22d3ee);
@@ -52,7 +52,7 @@ body,
     radial-gradient(ellipse 60% 45% at 0% 20%, rgba(56, 220, 245, .26), transparent 70%),
     radial-gradient(ellipse 55% 45% at 100% 0%, rgba(167, 139, 250, .36), transparent 70%),
     radial-gradient(ellipse 60% 45% at 70% 100%, rgba(244, 114, 182, .22), transparent 70%),
-    linear-gradient(160deg, #4a3d9e 0%, #3c3388 50%, #2f4c93 100%) !important;
+    linear-gradient(160deg, #2a2468 0%, #221d58 50%, #1c2c5e 100%) !important;
 }
 
 /* Glass surfaces with a soft neon edge. */
@@ -61,7 +61,7 @@ body,
 .nv-theme-dark .home-wallet-card,
 .nv-theme-dark .nv-home .nv-home-hero.home-profile-card {
   border: 1px solid var(--neo-edge) !important;
-  background: linear-gradient(150deg, rgba(88, 76, 170, .5), rgba(44, 38, 104, .62)) !important;
+  background: linear-gradient(150deg, rgba(62, 54, 140, .62), rgba(36, 31, 88, .72)) !important;
   box-shadow: 0 18px 44px rgba(4, 2, 20, .42), inset 0 1px rgba(255, 255, 255, .08) !important;
 }
 
@@ -212,7 +212,7 @@ body,
   border-radius: 24px;
   background:
     radial-gradient(ellipse 60% 90% at 85% 40%, rgba(139, 92, 246, .35), transparent 70%),
-    linear-gradient(150deg, rgba(92, 78, 182, .62), rgba(40, 34, 100, .72)) !important;
+    linear-gradient(150deg, rgba(70, 58, 160, .7), rgba(34, 29, 86, .8)) !important;
 }
 .nv-hero-ribbons {
   position: absolute;
@@ -479,7 +479,7 @@ html .nv-theme-dark button[class~="bg-emerald-500"] svg { color: #fff !important
 html .nv-theme-dark .nanivio-main [class*="bg-gradient-to-r"][class*="from-[#0"],
 html .nv-theme-dark .nanivio-main [class*="bg-gradient-to-br"][class*="from-[#0"] {
   border-color: var(--neo-edge) !important;
-  background: linear-gradient(150deg, rgba(88, 76, 170, .5), rgba(44, 38, 104, .62)) !important;
+  background: linear-gradient(150deg, rgba(62, 54, 140, .62), rgba(36, 31, 88, .72)) !important;
   box-shadow: 0 18px 44px rgba(4, 2, 20, .4), inset 0 1px rgba(255, 255, 255, .07) !important;
 }
 
@@ -503,7 +503,7 @@ html .nv-theme-dark button[class*="bg-emerald-500/"] {
 /* Friendlier, lighter calls workspace */
 .nv-theme-dark .nv-calls-page {
   --nv-stage: transparent;
-  --nv-panel: rgba(74, 64, 150, .5);
+  --nv-panel: rgba(52, 45, 122, .62);
   --nv-panel-2: rgba(92, 80, 176, .55);
   --nv-line: rgba(210, 200, 255, .24);
 }
@@ -520,7 +520,7 @@ html body {
     radial-gradient(ellipse 60% 45% at 0% 20%, rgba(56, 220, 245, .26), transparent 70%),
     radial-gradient(ellipse 55% 45% at 100% 0%, rgba(167, 139, 250, .36), transparent 70%),
     radial-gradient(ellipse 60% 45% at 70% 100%, rgba(244, 114, 182, .22), transparent 70%),
-    linear-gradient(160deg, #4a3d9e 0%, #3c3388 50%, #2f4c93 100%) !important;
+    linear-gradient(160deg, #2a2468 0%, #221d58 50%, #1c2c5e 100%) !important;
   background-attachment: fixed !important;
 }
 html .nv-theme-dark .nv-glass-header,
@@ -534,8 +534,8 @@ html .nv-theme-dark .nv-tabbar {
   border-top-color: rgba(210, 200, 255, .22) !important;
 }
 html .nv-theme-dark .nv-pill-nav { background: rgba(88, 76, 176, .45); }
-html :is(.nv-theme-dark, .nanivio-auth) [class~="bg-slate-950"] { background-color: #2a2665 !important; }
-html :is(.nv-theme-dark, .nanivio-auth) [class~="bg-slate-900"] { background-color: #332e74 !important; }
+html :is(.nv-theme-dark, .nanivio-auth) [class~="bg-slate-950"] { background-color: #211d55 !important; }
+html :is(.nv-theme-dark, .nanivio-auth) [class~="bg-slate-900"] { background-color: #29245f !important; }
 html .chat-app-shell .nv-chat-workspace .chat-thread-surface { background: rgba(48, 42, 112, .6) !important; }
 html .chat-app-shell .chat-composer { background-color: rgba(58, 50, 130, .85) !important; }
 html .nv-theme-dark ::-webkit-scrollbar-track { background: #29245f; }
@@ -546,26 +546,44 @@ html body .nanivio-app.chat-app-shell {
     radial-gradient(ellipse 60% 45% at 0% 20%, rgba(56, 220, 245, .26), transparent 70%),
     radial-gradient(ellipse 55% 45% at 100% 0%, rgba(167, 139, 250, .36), transparent 70%),
     radial-gradient(ellipse 60% 45% at 70% 100%, rgba(244, 114, 182, .22), transparent 70%),
-    linear-gradient(160deg, #4a3d9e 0%, #3c3388 50%, #2f4c93 100%) !important;
+    linear-gradient(160deg, #2a2468 0%, #221d58 50%, #1c2c5e 100%) !important;
 }
 html body .chat-app-shell > .nv-chat-toolbar,
 html body .nanivio-app > header.nv-glass-header { background: rgba(62, 54, 140, .62) !important; }
 html body .chat-app-shell .nv-reference-pills { background: rgba(88, 76, 176, .45); }
-html body .chat-app-shell .nv-chat-workspace :is(.bg-slate-900,.bg-slate-950,.bg-slate-800,.bg-slate-700) { background-color: rgba(64, 56, 140, .6) !important; }
-html body .nanivio-app header.nv-glass-header.nv-glass-header { background: rgba(86, 74, 172, .55) !important; }
-html body .nanivio-app #nanivio-bottom-navigation#nanivio-bottom-navigation { background: linear-gradient(180deg, rgba(92, 80, 180, .78), rgba(70, 60, 152, .92)) !important; }
+html body .chat-app-shell .nv-chat-workspace :is(.bg-slate-900,.bg-slate-950,.bg-slate-800,.bg-slate-700) { background-color: rgba(46, 40, 110, .7) !important; }
+html body .nanivio-app header.nv-glass-header.nv-glass-header { background: rgba(36, 31, 90, .78) !important; }
+html body .nanivio-app #nanivio-bottom-navigation#nanivio-bottom-navigation { background: linear-gradient(180deg, rgba(44, 38, 108, .9), rgba(32, 28, 82, .96)) !important; }
 html body .nanivio-app header.nv-glass-header [class*="bg-white/5"] { background: rgba(255, 255, 255, .14) !important; border-color: rgba(255, 255, 255, .22) !important; }
 html body .nv-theme-dark .nv-calls-page .nv-calls-heading {
   padding: 1rem 1.15rem;
   border: 1px solid rgba(210, 200, 255, .28) !important;
   border-radius: 1.5rem;
-  background: linear-gradient(120deg, rgba(150, 120, 255, .42), rgba(56, 189, 248, .26)) !important;
+  background: linear-gradient(120deg, rgba(124, 92, 246, .5), rgba(34, 211, 238, .28)) !important;
 }
 html body .nv-theme-dark .nv-calls-page :is(.nv-dialer-panel, .nv-group-contacts > button) {
   border-color: rgba(210, 200, 255, .26) !important;
-  background: linear-gradient(150deg, rgba(100, 86, 196, .5), rgba(64, 56, 146, .6)) !important;
+  background: linear-gradient(150deg, rgba(58, 50, 132, .66), rgba(36, 31, 90, .78)) !important;
 }
 html body .nv-theme-dark .nv-calls-page .nv-dialer-keypad > div:first-child {
   border-color: rgba(210, 200, 255, .3) !important;
-  background: linear-gradient(120deg, rgba(120, 100, 225, .45), rgba(56, 189, 248, .22)) !important;
+  background: linear-gradient(120deg, rgba(88, 72, 190, .5), rgba(34, 211, 238, .2)) !important;
+}
+
+/* Medium-depth indigo for legacy near-black panels (Account, Contacts, services). */
+html body:not(#nv-mid) .nv-theme-dark .nanivio-account-page > div[class*="rounded-3xl"],
+html body:not(#nv-mid) .nv-theme-dark .nanivio-account-page .nv-account-hero,
+html body:not(#nv-mid) .nv-theme-dark .nanivio-account-page > section[class*="rounded-3xl"],
+html body:not(#nv-mid) .nv-theme-dark main[data-nanivio-page] > div > div[class*="bg-gradient-to-r"],
+html body:not(#nv-mid) .nv-theme-dark main[data-nanivio-page] > div > div[class*="bg-gradient-to-br"] {
+  background:
+    radial-gradient(ellipse 70% 120% at 100% 0%, rgba(139, 92, 246, .2), transparent 67%),
+    linear-gradient(140deg, rgba(56, 48, 132, .72), rgba(34, 29, 86, .82)) !important;
+  border-color: rgba(176, 160, 255, .24) !important;
+}
+html body:not(#nv-mid) .nv-theme-dark :is(.nanivio-account-page, main[data-nanivio-page]) :is([class*="bg-slate-950"], [class*="bg-slate-900/"], [class*="bg-[#0"], [class*="bg-[#1"]):not(button) {
+  background-color: rgba(30, 26, 78, .78) !important;
+}
+html body:not(#nv-mid) .nv-theme-dark :is(.nanivio-account-page, main[data-nanivio-page]) :is([class*="bg-slate-800"], [class*="bg-slate-700"]) {
+  background-color: rgba(60, 52, 136, .6) !important;
 }
