@@ -44,6 +44,7 @@ export function validateOfficialProfile(input: unknown): OfficialProfile {
     if (!url || url.protocol !== 'https:' || !url.hostname.includes('.'))
       throw new OfficialProfileError(400, 'The website must start with https://');
     profile.website = url.href;
+    if (profile.website.length > LIMITS.website) throw new OfficialProfileError(400, 'website is too long.');
   }
   return profile;
 }

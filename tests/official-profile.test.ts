@@ -27,7 +27,7 @@ test('valid details are trimmed and the QR choice defaults to the official desig
 test('invalid details are rejected', () => {
   for (const input of [
     { email: 'not-an-email' }, { phone: 'call me' }, { website: 'http://naniviio.com' },
-    { address: 'x'.repeat(301) }, { qrMode: 'other' }, { whatsapp: 'https://evil.example/' }, { whatsapp: '024 123 4567' }, { email: 5 },
+    { address: 'x'.repeat(301) }, { qrMode: 'other' }, { whatsapp: 'https://evil.example/' }, { whatsapp: '024 123 4567' }, { website: `https://naniviio.com/${'é'.repeat(80)}` }, { email: 5 },
   ]) assert.throws(() => validateOfficialProfile(input), OfficialProfileError);
 });
 
