@@ -310,7 +310,7 @@ const authAttemptLimiter = createRateLimiter({ windowMs: 15 * 60_000, max: 20, k
 const authBurstLimiter = createRateLimiter({ windowMs: 60_000, max: 30, key: clientKey });
 const adminKeyLimiter = createRateLimiter({ windowMs: 15 * 60_000, max: 10, key: clientKey,
   message: "Too many administrative sign-in attempts. Please wait 15 minutes." });
-const directoryLimiter = createRateLimiter({ windowMs: 60_000, max: 60, key: req => (req as any).authUser?.id || clientKey(req) });
+const directoryLimiter = createRateLimiter({ windowMs: 60_000, max: 300, key: req => (req as any).authUser?.id || clientKey(req) });
 const reportLimiter = createRateLimiter({ windowMs: 60_000, max: 10, key: clientKey });
 app.use(["/api/auth/signin", "/api/auth/register", "/api/auth/email/otp", "/api/auth/recovery", "/api/auth/reset-password"], authBurstLimiter);
 app.post("/api/auth/signin", authAttemptLimiter);
