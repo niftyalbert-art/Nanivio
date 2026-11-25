@@ -2,7 +2,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import express from 'express';
 import { malviVoiceSetup, parseMalviVoiceProvider } from '../src/server/assistant/malviVoiceConfig.ts';
-import { GeminiNativeVoice } from '../src/server/assistant/geminiNativeVoice.ts';
+import { GeminiNativeVoice, MALVI_NATIVE_SESSION_TURNS } from '../src/server/assistant/geminiNativeVoice.ts';
+import { MAX_SPEECH_BYTES } from '../src/server/assistant/malviSpeech.ts';
 import { applyMalviGeminiEffects } from '../src/server/assistant/geminiVoiceEffects.ts';
 import { estimatedMalviCaptionTrack, malviCaptionAt, MalviCaptionPlayer } from '../src/lib/malviSpeechTiming.ts';
 import * as avatarModule from '../src/server/assistant/liveAvatarService.ts';
@@ -77,11 +78,12 @@ test('native output rejects incomplete, malformed or oversized responses and enf
   missingText.append(pcm, 'audio/pcm;rate=24000');
   assert.throws(() => missingText.finish(''), /both/);
   const turns = new GeminiNativeVoice();
-  for (let i = 0; i < 30; i++) { turns.append(pcm, 'audio/pcm;rate=24000'); turns.finish('Hello'); }
+  for (let i = 0; i < MALVI_NATIVE_SESSION_TURNS; i++) { turns.append(pcm, 'audio/pcm;rate=24000'); turns.finish('Hello'); }
   turns.append(pcm, 'audio/pcm;rate=24000');
   assert.throws(() => turns.finish('Hello'), /usage limit/);
   const large = new GeminiNativeVoice();
-  large.append(Buffer.alloc(3_000_000).toString('base64'), 'audio/pcm;rate=24000');
+  const chunk = Buffer.alloc(MAX_SPEECH_BYTES / 9).toString('base64');
+  for (let i = 0; i < 9; i++) large.append(chunk, 'audio/pcm;rate=24000');
   assert.throws(() => large.append(pcm, 'audio/pcm;rate=24000'), /safety limit/);
 });
 
