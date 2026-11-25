@@ -332,7 +332,7 @@ body,
   .nv-hero-emblem { width: 84px; }
   .nv-hero-actions { gap: .5rem; }
   .nv-gradient-button { min-height: 38px; padding: .45rem .95rem; font-size: .82rem; }
-  .nv-theme-dark .nv-neon-hero .home-profile-id { display: none; }
+  .nv-theme-dark .nv-neon-hero .home-profile-id { padding: .25rem .3rem .25rem .6rem; font-size: .72rem; }
 }
 
 /* ---------- Calls: glowing orb controls ---------- */
