@@ -20,13 +20,14 @@ test('valid details are trimmed and the QR choice defaults to the official desig
   assert.equal(profile.address, 'Accra, Ghana');
   assert.equal(profile.qrMode, 'official');
   assert.equal(validateOfficialProfile({ qrMode: 'join' }).qrMode, 'join');
+  assert.equal(validateOfficialProfile({ whatsapp: '+233 24 123 4567' }).whatsapp, '+233 24 123 4567');
   assert.equal(validateOfficialProfile({ website: 'https:/naniviio.com' }).website, 'https://naniviio.com/');
 });
 
 test('invalid details are rejected', () => {
   for (const input of [
     { email: 'not-an-email' }, { phone: 'call me' }, { website: 'http://naniviio.com' },
-    { address: 'x'.repeat(301) }, { qrMode: 'other' }, { whatsapp: 'https://evil.example/' }, { email: 5 },
+    { address: 'x'.repeat(301) }, { qrMode: 'other' }, { whatsapp: 'https://evil.example/' }, { whatsapp: '024 123 4567' }, { email: 5 },
   ]) assert.throws(() => validateOfficialProfile(input), OfficialProfileError);
 });
 

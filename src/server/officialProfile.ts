@@ -36,8 +36,8 @@ export function validateOfficialProfile(input: unknown): OfficialProfile {
     throw new OfficialProfileError(400, 'Enter a valid email address.');
   if (profile.phone && !/^\+?[\d\s()-]{6,}$/.test(profile.phone))
     throw new OfficialProfileError(400, 'Enter a valid phone number.');
-  if (profile.whatsapp && !/^\+?[\d\s()-]{6,}$/.test(profile.whatsapp) && !/^https:\/\/(wa\.me|api\.whatsapp\.com)\//.test(profile.whatsapp))
-    throw new OfficialProfileError(400, 'Enter a WhatsApp number or a wa.me link.');
+  if (profile.whatsapp && !/^\+[1-9][\d\s()-]{6,}$/.test(profile.whatsapp) && !/^https:\/\/(wa\.me|api\.whatsapp\.com)\//.test(profile.whatsapp))
+    throw new OfficialProfileError(400, 'Enter the WhatsApp number with its country code (e.g. +233 24 123 4567) or a wa.me link.');
   if (profile.website) {
     let url: URL | undefined;
     try { url = new URL(profile.website); } catch {}

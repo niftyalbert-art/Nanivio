@@ -9,7 +9,7 @@ const FIELDS: { key: Exclude<keyof Profile, 'qrMode'>; label: string; placeholde
   { key: 'address', label: 'Address', placeholder: 'Street, city, region, Ghana' },
   { key: 'email', label: 'Email', placeholder: 'hello@naniviio.com', type: 'email' },
   { key: 'phone', label: 'Phone', placeholder: '+233 …', type: 'tel' },
-  { key: 'whatsapp', label: 'WhatsApp', placeholder: '+233 … or https://wa.me/…' },
+  { key: 'whatsapp', label: 'WhatsApp', placeholder: '+233 24 123 4567 or https://wa.me/…' },
   { key: 'website', label: 'Website', placeholder: 'https://naniviio.com', type: 'url' },
 ];
 
