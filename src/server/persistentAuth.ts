@@ -1,4 +1,5 @@
 import crypto from 'crypto';
+import { timingSafeEqualString } from './httpSecurity';
 import { assertAccountMaySignIn } from './accountAccessPolicy';
 import { otpService } from './otpService';
 import { emailSignupService, emailSignupStore, normalizeSignupEmail } from './emailSignup';
@@ -149,7 +150,7 @@ export async function findById(id:string){ const {data,error}=await serverDb().f
 export async function findByIdentifier(identifier:string){ const id=identifier.trim(); const db=serverDb(); let q=db.from('nanivio_users').select('*').limit(1); if(id.includes('@'))q=q.eq('email',id.toLowerCase()); else if(/^0486\d{6}$/.test(id.replace(/[^0-9]/g,'')))q=q.eq('nv_id',id.replace(/[^0-9]/g,'')); else q=q.eq('phone',cleanPhone(id)); const {data,error}=await q.maybeSingle(); if(error)throw new Error(error.message); return data?rowToUser(data):null; }
 
 export function createAdminSession(masterKey:string):AuthSession{
-  const configured=process.env.ADMIN_MASTER_KEY; if(!configured||!masterKey||masterKey!==configured) throw new Error('Invalid administrative master authorization key.');
+  const configured=process.env.ADMIN_MASTER_KEY; if(!configured||!masterKey||!timingSafeEqualString(masterKey,configured)) throw new Error('Invalid administrative master authorization key.');
   const user:any={id:'admin-master',nvId:process.env.NANIVIO_BOOTSTRAP_ADMIN_NVID||'0486000001',role:'ADMIN',adminSubRole:'SUPER_ADMIN',firstName:'Nanivio',lastName:'Administrator',displayName:'Nanivio Administrator',email:process.env.NANIVIO_BOOTSTRAP_ADMIN_EMAIL||'',phoneNumber:process.env.NANIVIO_BOOTSTRAP_ADMIN_PHONE||'',country:'',callingCode:'',preferredLanguage:'en',avatar:'',accountStatus:'ACTIVE',verificationStatus:'VERIFIED',createdAt:Date.now(),updatedAt:Date.now()};
   const payload=Buffer.from(JSON.stringify({uid:user.id,exp:Date.now()+8*60*60*1000})).toString('base64url');
   const sig=crypto.createHmac('sha256',configured).update(payload).digest('base64url');
