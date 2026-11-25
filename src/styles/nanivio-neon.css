@@ -63,8 +63,6 @@ body,
   border: 1px solid var(--neo-edge) !important;
   background: linear-gradient(150deg, rgba(40, 34, 92, .62), rgba(16, 14, 42, .78)) !important;
   box-shadow: 0 18px 44px rgba(4, 2, 20, .42), inset 0 1px rgba(255, 255, 255, .08) !important;
-  -webkit-backdrop-filter: blur(18px);
-  backdrop-filter: blur(18px);
 }
 
 /* Primary action: violet to cyan, like "Start Messaging". */
