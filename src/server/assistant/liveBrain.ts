@@ -614,9 +614,8 @@ function createConnection(socket: WebSocket, userId: string, sessionId: string, 
         if (!connection.ready || connection.closed) throw new Error('Start a connected Malvi conversation before changing language.');
         const selection = parseLanguageControl(args, code => assertMalviVoiceLanguage(code, connection.speechProvider));
         const requested = selection.interpreterPair ?? [selection.language.code];
-        const withinInterpretation = connection.interpreterPair?.includes(selection.language.code)
-          && (!selection.interpreterPair || selection.interpreterPair.every(code => connection.interpreterPair!.includes(code)));
-        if (!withinInterpretation && !requested.every(code => languageMentioned(connection.recentUserText, code))) {
+        const active = new Set([connection.language, ...(connection.interpreterPair ?? [])]);
+        if (!requested.every(code => active.has(code) || languageMentioned(connection.recentUserText, code))) {
           throw new Error(`Not switched: the user did not name ${selection.language.name}. Keep replying in ${getMalviLanguage(connection.language).name}. Only switch after the user says the language name.`);
         }
         await liveAvatarService.owned(userId, sessionId);
