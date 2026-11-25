@@ -49,10 +49,13 @@ export function securityHeaders(production: boolean) {
   return (_req: Request, res: Response, next: NextFunction) => {
     res.setHeader('X-Content-Type-Options', 'nosniff');
     res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
-    res.setHeader('X-Frame-Options', 'SAMEORIGIN');
     res.setHeader('Cross-Origin-Opener-Policy', 'same-origin-allow-popups');
     res.setHeader('Permissions-Policy', 'camera=(self), microphone=(self), geolocation=(self), payment=(self)');
-    if (production) res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
+    if (production) {
+      // Development stays embeddable for the Replit webview.
+      res.setHeader('X-Frame-Options', 'SAMEORIGIN');
+      res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
+    }
     next();
   };
 }
