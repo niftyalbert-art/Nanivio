@@ -300,7 +300,9 @@ function authenticatedUserId(req: express.Request): string {
 const clientKey = (req: express.Request) => proxyaddr(req, otpProxyTrust) || "unknown";
 const identifierKey = (req: express.Request) => {
   const body = req.body || {};
-  const id = String(body.identifier || body.email || body.phone || body.nvId || "").trim().toLowerCase().slice(0, 200);
+  const raw = String(body.identifier || body.email || body.phone || body.nvId || "").trim().toLowerCase().slice(0, 200);
+  // Phone and NV ID variants (+233…, 0…, spaces) share one bucket per account.
+  const id = raw.includes("@") ? raw : raw.replace(/\D/g, "").slice(-9);
   return `${clientKey(req)}|${id}`;
 };
 const authAttemptLimiter = createRateLimiter({ windowMs: 15 * 60_000, max: 20, key: identifierKey,
