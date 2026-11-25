@@ -542,7 +542,7 @@ export const MalviLiveOverlay: React.FC<MalviLiveOverlayProps> = ({
                 <Camera size={14} /> Share a still view · optional
               </summary>
               <div className="max-h-[34dvh] space-y-3 overflow-y-auto border-t border-white/10 px-3 py-3">
-                <p className="leading-relaxed text-[#d9dfd9]/80">Share a photo to ask Malvi about what you see. Photos aren’t saved, and video is never streamed.</p>
+                <p className="leading-relaxed text-[#d9dfd9]/80">Share a photo to ask Malvi about what you see. It isn’t saved to your Nanivio history; the AI provider handles it under its own policy. Video is never streamed.</p>
                 <div className="flex flex-wrap items-center gap-2">
                   {!cameraStream ? (
                     <button type="button" onClick={() => void startCamera()} disabled={!activeSessionId || visionBusy} className="inline-flex min-h-9 items-center gap-1.5 rounded-lg border border-[#b89a5a]/45 bg-[#b89a5a]/10 px-3 text-xs font-semibold text-[#ead9a7] hover:bg-[#b89a5a]/20 disabled:cursor-not-allowed disabled:opacity-45">
