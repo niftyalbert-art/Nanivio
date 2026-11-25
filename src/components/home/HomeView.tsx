@@ -6,7 +6,6 @@ import {
   Copy,
   Fingerprint,
   MessageCircle,
-  ShieldCheck,
   Sparkles,
   Tv,
   Users,
@@ -72,18 +71,18 @@ export const HomeView: React.FC = () => {
   };
 
   const shortcuts = [
-    { title: 'Chat', description: 'Pick up a conversation', icon: MessageCircle, action: () => setActiveTab('chat'), accent: 'cyan' },
+    { title: 'Chat', description: 'Messages', icon: MessageCircle, action: () => setActiveTab('chat'), accent: 'cyan' },
     { title: 'Call', description: 'Audio or video', icon: AudioLines, action: () => setActiveTab('calls'), accent: 'violet' },
-    { title: 'Langpretation', description: 'Language controls in chat', icon: LangpretationIcon, action: () => setActiveTab('chat'), accent: 'cream' },
-    { title: 'Send credits', description: 'Nanivio credits to another user', icon: Send, action: () => { setPendingBillingAction({ subTab: 'transfer' }); setActiveTab('billing'); }, accent: 'violet' },
-    { title: 'My credits', description: 'Credits & billing', icon: Wallet, action: goToWallet, accent: 'cyan' },
-    { title: 'More', description: 'Explore Nanivio', icon: MoreHorizontal, action: () => setMoreOpen((open) => !open), accent: 'cream' },
+    { title: 'Langpretation', description: 'Translate', icon: LangpretationIcon, action: () => setActiveTab('chat'), accent: 'cream' },
+    { title: 'Send credits', description: 'To a friend', icon: Send, action: () => { setPendingBillingAction({ subTab: 'transfer' }); setActiveTab('billing'); }, accent: 'violet' },
+    { title: 'My credits', description: 'Balance', icon: Wallet, action: goToWallet, accent: 'cyan' },
+    { title: 'More', description: 'All features', icon: MoreHorizontal, action: () => setMoreOpen((open) => !open), accent: 'cream' },
   ];
   const moreShortcuts = [
-    { title: 'Contacts', description: 'People you know', icon: Users, action: () => setActiveTab('contacts'), accent: 'cream' },
-    { title: 'NV Number', description: 'Your Nanivio identity', icon: Fingerprint, action: () => setActiveTab('nvnumber'), accent: 'violet' },
-    { title: 'Services', description: 'Verified people & live', icon: Tv, action: () => setActiveTab('services'), accent: 'cyan' },
-    { title: 'Malvi', description: 'Your personal assistant', icon: Sparkles, action: () => setActiveTab('malvi'), accent: 'cream' },
+    { title: 'Contacts', description: 'Your people', icon: Users, action: () => setActiveTab('contacts'), accent: 'cream' },
+    { title: 'NV Number', description: 'Your ID', icon: Fingerprint, action: () => setActiveTab('nvnumber'), accent: 'violet' },
+    { title: 'Services', description: 'Verified pros', icon: Tv, action: () => setActiveTab('services'), accent: 'cyan' },
+    { title: 'Malvi', description: 'AI assistant', icon: Sparkles, action: () => setActiveTab('malvi'), accent: 'cream' },
   ];
 
   const unreadCount = conversations.reduce((count, item) => count + (item.unreadCount || 0), 0);
@@ -101,9 +100,7 @@ export const HomeView: React.FC = () => {
             {currentUser.isOnline && <i aria-label="Online" />}
           </div>
           <div className="home-profile-copy">
-            <p className="home-overline">YOUR NANIVIO</p>
             <h1 id="home-title">{greeting}<span aria-hidden="true">.</span></h1>
-            <p className="home-welcome">Welcome back.</p>
           </div>
           <div className="home-profile-id">
             <span><Fingerprint size={14} /> NANIVIO ID</span>
@@ -120,8 +117,7 @@ export const HomeView: React.FC = () => {
         <section className="home-wallet-card" aria-labelledby="wallet-heading">
           <div className="home-wallet-heading">
             <div>
-              <p className="home-overline">NANIVIO CREDITS</p>
-              <h2 id="wallet-heading">Your credit balance</h2>
+              <h2 id="wallet-heading">Credits</h2>
             </div>
             <button
               className="home-icon-button"
@@ -152,8 +148,8 @@ export const HomeView: React.FC = () => {
             )}
           </div>
           <div className="home-wallet-footer">
-            <span><ShieldCheck size={14} /> For Nanivio services &amp; P2P credits</span>
-            <button type="button" onClick={goToWallet}>Manage credits <ArrowUpRight size={15} /></button>
+            <span />
+            <button type="button" onClick={goToWallet}>Manage <ArrowUpRight size={15} /></button>
           </div>
           <div className="home-wallet-light" aria-hidden="true" />
         </section>
@@ -161,7 +157,7 @@ export const HomeView: React.FC = () => {
 
       <section className="home-shortcuts-section" aria-labelledby="home-shortcuts-title">
         <div className="home-section-title">
-          <div><p className="home-overline">QUICK ACCESS</p><h2 id="home-shortcuts-title">Where to?</h2></div>
+          <div><h2 id="home-shortcuts-title">Quick access</h2></div>
           {unreadCount > 0 && <button className="home-unread-link" onClick={() => setActiveTab('chat')}>{unreadCount} unread <ArrowUpRight size={14} /></button>}
         </div>
         <div className="home-shortcut-grid">
