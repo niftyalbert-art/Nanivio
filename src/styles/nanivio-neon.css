@@ -584,6 +584,69 @@ html body:not(#nv-mid) .nv-theme-dark main[data-nanivio-page] > div > div[class*
 html body:not(#nv-mid) .nv-theme-dark :is(.nanivio-account-page, main[data-nanivio-page]) :is([class*="bg-slate-950"], [class*="bg-slate-900/"], [class*="bg-[#0"], [class*="bg-[#1"]):not(button) {
   background-color: rgba(30, 26, 78, .78) !important;
 }
-html body:not(#nv-mid) .nv-theme-dark :is(.nanivio-account-page, main[data-nanivio-page]) :is([class*="bg-slate-800"], [class*="bg-slate-700"]) {
+html body:not(#nv-mid) .nv-theme-dark :is(.nanivio-account-page, main[data-nanivio-page]) :is([class*="bg-slate-800"], [class*="bg-slate-700"]):not(:enabled[class*="disabled:bg-slate"]) {
   background-color: rgba(60, 52, 136, .6) !important;
 }
+
+/* ---------- Aurora navy palette (approved reference) ---------- */
+:root {
+  --color-slate-200: #dfe4f0;
+  --color-slate-300: #c3cbe0;
+  --color-slate-400: #94a0bf;
+  --color-slate-500: #64708f;
+  --color-slate-600: #3e4866;
+  --color-slate-700: #2b3453;
+  --color-slate-800: #1b2540;
+  --color-slate-900: #131a31;
+  --color-slate-950: #0b1020;
+  --neo-glass: rgba(21, 31, 55, .86);
+  --neo-glass-strong: rgba(19, 26, 49, .94);
+  --neo-edge: rgba(70, 84, 128, .55);
+  --aurora-card: linear-gradient(150deg, #172340 0%, #131a31 100%);
+  --aurora-pastel: linear-gradient(120deg, #91e8eb, #bca7f4);
+}
+html body:not(#nv-aurora) .nanivio-app.nv-theme-dark,
+html body:not(#nv-aurora) .nanivio-app.chat-app-shell,
+html body:not(#nv-aurora) {
+  background:
+    radial-gradient(ellipse 60% 40% at 100% 0%, rgba(113, 232, 239, .06), transparent 70%),
+    radial-gradient(ellipse 50% 40% at 0% 100%, rgba(124, 87, 239, .08), transparent 70%),
+    linear-gradient(180deg, #0d1323 0%, #0b0f1f 100%) !important;
+}
+html body:not(#nv-aurora) .nanivio-app header.nv-glass-header { background: rgba(12, 18, 35, .92) !important; border-bottom-color: #1e2742 !important; }
+html body:not(#nv-aurora) .nanivio-app #nanivio-bottom-navigation { background: rgba(13, 19, 35, .95) !important; border-top-color: #1e2742 !important; }
+html body:not(#nv-aurora) .nv-theme-dark :is(
+  .nv-glass-card, .home-shortcut, .home-wallet-card, .nv-dialer-panel, .nv-group-contacts > button, .nv-calls-page .nv-calls-heading,
+  .nanivio-account-page > div[class*="rounded-3xl"], .nanivio-account-page > section[class*="rounded-3xl"], .nanivio-account-page .nv-account-hero,
+  main[data-nanivio-page] > div > div[class*="bg-gradient-to-r"], main[data-nanivio-page] > div > div[class*="bg-gradient-to-br"],
+  .nanivio-main [class*="bg-gradient-to-r"][class*="from-[#0"], .nanivio-main [class*="bg-gradient-to-br"][class*="from-[#0"]
+) {
+  background: var(--aurora-card) !important;
+  border-color: var(--neo-edge) !important;
+  box-shadow: 0 14px 34px rgba(0, 0, 0, .35), inset 0 1px rgba(255, 255, 255, .04) !important;
+}
+html body:not(#nv-aurora) .nv-theme-dark .nv-home .nv-neon-hero.home-profile-card {
+  background:
+    radial-gradient(ellipse 55% 90% at 90% 30%, rgba(113, 232, 239, .07), transparent 70%),
+    linear-gradient(150deg, #1a2644 0%, #151f37 60%, #20263d 100%) !important;
+  border-color: var(--neo-edge) !important;
+}
+html body:not(#nv-aurora) .nv-theme-dark .home-wallet-card .home-wallet-footer button,
+html body:not(#nv-aurora) .nv-gradient-button,
+html body:not(#nv-aurora) .nv-theme-dark :is(button[class~="bg-emerald-500"], button[class~="bg-emerald-600"]:not(#toggle-global-langpretation), button[class~="bg-emerald-700"], button[class~="bg-cyan-500"], button[class~="bg-teal-500"], button[class~="from-emerald-500"], button[class~="from-emerald-600"], button[class~="from-cyan-500"]),
+html body:not(#nv-aurora) .nanivio-auth :is(button[class~="bg-emerald-500"], button[class~="from-emerald-500"]) {
+  color: #0d1a2c !important;
+  background: var(--aurora-pastel) !important;
+  background-image: var(--aurora-pastel) !important;
+  border-color: rgba(190, 240, 255, .45) !important;
+  box-shadow: 0 6px 16px rgba(67, 142, 211, .18) !important;
+}
+html body:not(#nv-aurora) :is(.nv-gradient-button, .home-wallet-footer button, button[class~="bg-emerald-500"], button[class~="from-emerald-500"]) :is(svg, span) { color: #0d1a2c !important; }
+html body:not(#nv-aurora) :is(.nv-theme-dark, .nanivio-auth) [class~="bg-slate-950"],
+html body:not(#nv-aurora) .nv-theme-dark :is(.nanivio-account-page, main[data-nanivio-page]) :is([class*="bg-slate-950"], [class*="bg-slate-900/"], [class*="bg-[#0"], [class*="bg-[#1"]):not(button) { background-color: rgba(11, 16, 31, .78) !important; }
+html body:not(#nv-aurora) :is(.nv-theme-dark, .nanivio-auth) [class~="bg-slate-900"] { background-color: #131a31 !important; }
+html body:not(#nv-aurora) .nv-theme-dark :is(.nanivio-account-page, main[data-nanivio-page]) :is([class*="bg-slate-800"], [class*="bg-slate-700"]):not(:enabled[class*="disabled:bg-slate"]) { background-color: #1b2540 !important; }
+html body:not(#nv-aurora) .chat-app-shell .nv-chat-workspace :is(.bg-slate-900, .bg-slate-950, .bg-slate-800, .bg-slate-700) { background-color: #151f37 !important; }
+html body:not(#nv-aurora) .nv-theme-dark .nv-calls-page .nv-dialer-keypad > div:first-child,
+html body:not(#nv-aurora) .nv-dialer-line { background: #0d1426 !important; border-color: var(--neo-edge) !important; }
+html body:not(#nv-aurora) .nv-ring-avatar { background: linear-gradient(#151f37, #151f37) padding-box, var(--neo-ring) border-box !important; }
