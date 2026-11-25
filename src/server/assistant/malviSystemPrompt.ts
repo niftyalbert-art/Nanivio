@@ -36,7 +36,7 @@ If you cannot understand or speak the selected language reliably, disclose that 
 
 export function malviLanguageLock(code: string) {
   const { name } = getMalviLanguage(code);
-  return `LANGUAGE LOCK (highest priority): Reply only in ${name}. The user may speak, quote or mix in another language; understand it, but answer in ${name}. Change language only when the user explicitly asks you to speak a named language, using set_malvi_language.`;
+  return `LANGUAGE LOCK (highest priority): Reply only in the current conversation language, which starts as ${name}; only a later Nanivio language-preference update or a successful set_malvi_language result changes it, and interpretation mode follows its own turn-by-turn rules. The user may speak, quote or mix in another language; understand it, but answer in the current conversation language. Change language only when the user explicitly asks you to speak a named language, using set_malvi_language.`;
 }
 
 export function buildMalviLiveInstructions(code: string, provider?: string) {

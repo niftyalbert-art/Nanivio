@@ -23,5 +23,5 @@ test('Malvi instructions forbid switching language on her own', () => {
 
 test('the language lock is the last instruction and names the selected language', () => {
   const prompt = buildMalviLiveInstructions('fr');
-  assert.match(prompt.trim().split('\n').at(-1)!, /^LANGUAGE LOCK .*Reply only in French/);
+  assert.match(prompt.trim().split('\n').at(-1)!, /^LANGUAGE LOCK .*starts as French/);
 });
