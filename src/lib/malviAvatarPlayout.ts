@@ -5,6 +5,11 @@ const AUDIBLE_RMS = 0.008;
 
 /** Leading silence in the same PCM that is submitted to LiveAvatar. */
 export function malviLeadingSilenceMs(encoded: string) {
+  return malviAudibleOnsetMs(encoded) ?? 0;
+}
+
+/** First audible 20 ms frame, or null when the whole packet is silent. */
+export function malviAudibleOnsetMs(encoded: string): number | null {
   const raw = atob(encoded);
   const frameSamples = 480; // 20 ms at the required 24 kHz.
   for (let start = 0; start < raw.length / 2; start += frameSamples) {
@@ -17,12 +22,16 @@ export function malviLeadingSilenceMs(encoded: string) {
     }
     if (Math.sqrt(energy / (end - start)) >= AUDIBLE_RMS) return start / 24;
   }
-  return 0;
+  return null;
 }
+
+/** A packet inside a playing reply that output detection missed starts on schedule. */
+const CONTINUATION_DETECT_MS = 1000;
 
 interface Pending {
   track: MalviCaptionTrack;
   leadingMs: number;
+  silent: boolean;
   eligible: boolean;
   providerEnded: boolean;
   startedAt: number | null;
@@ -46,6 +55,7 @@ export class MalviAvatarPlayout {
   private timer: ReturnType<typeof setInterval> | null = null;
   private pending: Pending[] = [];
   private utterancePlaying = false;
+  private continuing = false;
   private samples = new Float32Array(1024);
   constructor(
     private startCaption: (track: MalviCaptionTrack, clock: () => number | null) => void,
@@ -89,7 +99,8 @@ export class MalviAvatarPlayout {
     // Audio-passthrough renderers (Anam) need not emit per-utterance speech
     // events. The queued PCM permits observation, never starts a caption:
     // tick() still requires non-silent OUTPUT from the paired playing element.
-    this.pending.push({ track, leadingMs: malviLeadingSilenceMs(pcm), eligible: true, providerEnded: false, startedAt: null, eligibleAt: performance.now() });
+    const onset = malviAudibleOnsetMs(pcm);
+    this.pending.push({ track, leadingMs: onset ?? 0, silent: onset === null, eligible: true, providerEnded: false, startedAt: null, eligibleAt: performance.now() });
   }
 
   providerStart() {
@@ -113,15 +124,22 @@ export class MalviAvatarPlayout {
     if (!item?.eligible || !context || !video || !this.analyser
       || context.state !== 'running' || malviAvatarSoundBlocked(video)) return;
     if (item.startedAt === null) {
-      if (performance.now() - item.eligibleAt > item.leadingMs + 8000) {
-        this.cancel();
-        this.unavailable('Live subtitles could not detect Malvi’s played audio. Try enabling sound.');
-        return;
+      const waitedMs = performance.now() - item.eligibleAt;
+      // Inside a playing reply, silent packets (pauses, trailing tails) have no
+      // onset to detect; the first packet still waits for audible output.
+      if (this.continuing && (item.silent || waitedMs > item.leadingMs + CONTINUATION_DETECT_MS)) {
+        item.startedAt = context.currentTime - (item.silent ? 0 : waitedMs / 1000);
+      } else {
+        if (waitedMs > item.leadingMs + 8000) {
+          this.cancel();
+          this.unavailable('Live subtitles could not detect Malvi’s played audio. Try enabling sound.');
+          return;
+        }
+        this.analyser.getFloatTimeDomainData(this.samples);
+        const rms = Math.sqrt(this.samples.reduce((sum, sample) => sum + sample * sample, 0) / this.samples.length);
+        if (rms < AUDIBLE_RMS) return;
+        item.startedAt = context.currentTime - item.leadingMs / 1000;
       }
-      this.analyser.getFloatTimeDomainData(this.samples);
-      const rms = Math.sqrt(this.samples.reduce((sum, sample) => sum + sample * sample, 0) / this.samples.length);
-      if (rms < AUDIBLE_RMS) return;
-      item.startedAt = context.currentTime - item.leadingMs / 1000;
       this.startCaption(item.track, () => {
         const currentVideo = this.video;
         if (this.pending[0] !== item || this.context !== context
@@ -131,12 +149,13 @@ export class MalviAvatarPlayout {
     }
     if ((context.currentTime - item.startedAt) * 1000 >= item.track.durationMs) {
       this.pending.shift();
+      this.continuing = this.pending.length > 0;
       if (this.pending[0]?.eligible) this.pending[0].eligibleAt = performance.now();
       this.finishCaption(item.track);
     }
   }
 
-  cancel() { this.pending = []; this.utterancePlaying = false; }
+  cancel() { this.pending = []; this.utterancePlaying = false; this.continuing = false; }
 
   private detach() {
     if (this.timer) clearInterval(this.timer);

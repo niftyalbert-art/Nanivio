@@ -86,3 +86,40 @@ test('captions wait for output audio, ignore early provider end, pause when mute
     assert.equal(context.state,'closed');
   } finally { observer.close(); globalThis.AudioContext=oldContext; }
 });
+
+test('silent and quiet packets inside a reply advance on schedule instead of failing subtitles', async () => {
+  const oldContext = globalThis.AudioContext;
+  let level = 0, started = 0, ended = 0, context: any;
+  const warnings: string[] = [];
+  class Context {
+    state = 'running'; currentTime = 0; destination = {};
+    constructor() { context = this; }
+    createMediaStreamSource() { return { connect() {}, disconnect() {} }; }
+    createAnalyser() { return { fftSize: 1024, connect() {}, disconnect() {}, getFloatTimeDomainData(a: Float32Array) { a.fill(level); } }; }
+    createGain() { return { gain: { value: 1 }, connect() {}, disconnect() {} }; }
+    async close() { this.state = 'closed'; }
+  }
+  globalThis.AudioContext = Context as any;
+  const track = { getTracks: () => [], stop() {} };
+  const video = { muted: false, paused: false, volume: 1, srcObject: { getTracks: () => [] },
+    captureStream: () => ({ getAudioTracks: () => [track], getTracks: () => [track] }) } as any;
+  const observer = new MalviAvatarPlayout(() => started++, () => ended++, message => warnings.push(message));
+  const wait = (ms = 40) => new Promise(resolve => setTimeout(resolve, ms));
+  const voiced = Buffer.alloc(9600); for (let i = 0; i < 4800; i++) voiced.writeInt16LE(5000, i * 2);
+  const silent = Buffer.alloc(9600);
+  const caption = { durationMs: 200, alignment: { characters: ['a'], character_start_times_seconds: [0], character_end_times_seconds: [0.2] } };
+  try {
+    await observer.resume(); observer.attach(video);
+    observer.enqueue(caption, voiced.toString('base64'));
+    observer.enqueue(caption, silent.toString('base64'));
+    observer.enqueue(caption, voiced.toString('base64'));
+    level = 0.1; await wait(); assert.equal(started, 1);
+    context.currentTime = 0.25; await wait(); assert.equal(ended, 1);
+    assert.equal(started, 2, 'a silent packet needs no audible onset');
+    context.currentTime = 0.5; await wait(); assert.equal(ended, 2);
+    level = 0; await wait(1100);
+    assert.equal(started, 3, 'a quiet continuation packet starts after a bounded wait');
+    context.currentTime = 2; await wait(); assert.equal(ended, 3);
+    assert.deepEqual(warnings, []);
+  } finally { observer.close(); globalThis.AudioContext = oldContext; }
+});
