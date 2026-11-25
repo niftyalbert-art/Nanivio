@@ -7,8 +7,8 @@
   --neo-pink: #f472b6;
   --neo-ink: #f5f3ff;
   --neo-muted: #a9aed6;
-  --neo-glass: rgba(22, 20, 52, .62);
-  --neo-glass-strong: rgba(26, 23, 62, .86);
+  --neo-glass: rgba(74, 64, 150, .5);
+  --neo-glass-strong: rgba(58, 50, 128, .86);
   --neo-edge: rgba(176, 160, 255, .22);
   --neo-gradient: linear-gradient(100deg, #8b5cf6 0%, #6366f1 45%, #22d3ee 100%);
   --neo-ring: conic-gradient(from 200deg, #22d3ee, #8b5cf6, #ec4899, #22d3ee);
@@ -40,19 +40,19 @@
   --color-slate-400: #9da1cc;
   --color-slate-500: #6f72a3;
   --color-slate-600: #484b7c;
-  --color-slate-700: #2f305f;
-  --color-slate-800: #1e1d47;
-  --color-slate-900: #141335;
-  --color-slate-950: #0b0a24;
+  --color-slate-700: #4a4789;
+  --color-slate-800: #353272;
+  --color-slate-900: #29265e;
+  --color-slate-950: #1f1c4e;
 }
 
 body,
 .nv-theme-dark.nanivio-app {
   background:
-    radial-gradient(ellipse 60% 45% at 0% 20%, rgba(34, 211, 238, .16), transparent 70%),
-    radial-gradient(ellipse 55% 45% at 100% 0%, rgba(139, 92, 246, .24), transparent 70%),
-    radial-gradient(ellipse 60% 45% at 70% 100%, rgba(236, 72, 153, .13), transparent 70%),
-    #08071a !important;
+    radial-gradient(ellipse 60% 45% at 0% 20%, rgba(56, 220, 245, .26), transparent 70%),
+    radial-gradient(ellipse 55% 45% at 100% 0%, rgba(167, 139, 250, .36), transparent 70%),
+    radial-gradient(ellipse 60% 45% at 70% 100%, rgba(244, 114, 182, .22), transparent 70%),
+    linear-gradient(160deg, #4a3d9e 0%, #3c3388 50%, #2f4c93 100%) !important;
 }
 
 /* Glass surfaces with a soft neon edge. */
@@ -61,7 +61,7 @@ body,
 .nv-theme-dark .home-wallet-card,
 .nv-theme-dark .nv-home .nv-home-hero.home-profile-card {
   border: 1px solid var(--neo-edge) !important;
-  background: linear-gradient(150deg, rgba(40, 34, 92, .62), rgba(16, 14, 42, .78)) !important;
+  background: linear-gradient(150deg, rgba(88, 76, 170, .5), rgba(44, 38, 104, .62)) !important;
   box-shadow: 0 18px 44px rgba(4, 2, 20, .42), inset 0 1px rgba(255, 255, 255, .08) !important;
 }
 
@@ -89,7 +89,7 @@ body,
 /* ---------- Header ---------- */
 .nv-theme-dark .nv-glass-header {
   border-bottom: 1px solid rgba(176, 160, 255, .14) !important;
-  background: rgba(12, 10, 32, .72) !important;
+  background: rgba(38, 32, 92, .72) !important;
 }
 .nv-pill-nav {
   padding: 5px;
@@ -146,7 +146,7 @@ body,
   overflow: hidden;
   border-radius: 50%;
   background: linear-gradient(140deg, #3b2a8a, #1b3f78);
-  box-shadow: 0 0 0 2px #0c0a20, 0 0 0 4px rgba(139, 92, 246, .8);
+  box-shadow: 0 0 0 2px #2a2468, 0 0 0 4px rgba(139, 92, 246, .8);
   font-size: .72rem;
 }
 .nv-profile-chip-avatar img { width: 100%; height: 100%; object-fit: cover; }
@@ -154,7 +154,7 @@ body,
 /* ---------- Bottom tab bar ---------- */
 .nv-tabbar {
   border-top: 1px solid rgba(176, 160, 255, .16) !important;
-  background: linear-gradient(180deg, rgba(20, 17, 50, .82), rgba(9, 8, 26, .96)) !important;
+  background: linear-gradient(180deg, rgba(48, 41, 110, .86), rgba(32, 27, 82, .96)) !important;
   -webkit-backdrop-filter: blur(20px);
   backdrop-filter: blur(20px);
   box-shadow: 0 -12px 34px rgba(4, 2, 20, .45);
@@ -212,7 +212,7 @@ body,
   border-radius: 24px;
   background:
     radial-gradient(ellipse 60% 90% at 85% 40%, rgba(139, 92, 246, .35), transparent 70%),
-    linear-gradient(150deg, rgba(36, 30, 86, .7), rgba(12, 11, 34, .85)) !important;
+    linear-gradient(150deg, rgba(92, 78, 182, .62), rgba(40, 34, 100, .72)) !important;
 }
 .nv-hero-ribbons {
   position: absolute;
@@ -239,7 +239,7 @@ body,
   width: 34px;
   height: 34px;
   border: 0;
-  box-shadow: 0 0 0 2px #0c0a20, 0 0 0 4px rgba(62, 230, 245, .75);
+  box-shadow: 0 0 0 2px #2a2468, 0 0 0 4px rgba(62, 230, 245, .75);
 }
 .nv-theme-dark .nv-hero-hello .home-profile-avatar > span { font-size: .75rem; }
 .nv-theme-dark .nv-home .nv-neon-hero h1 {
@@ -345,7 +345,7 @@ body,
   border: 2px solid var(--orb);
   border-radius: 50%;
   color: var(--orb);
-  background: radial-gradient(circle at 50% 30%, rgba(255, 255, 255, .14), rgba(14, 12, 40, .92) 70%);
+  background: radial-gradient(circle at 50% 30%, rgba(255, 255, 255, .22), rgba(52, 44, 118, .9) 70%);
   box-shadow: 0 0 16px var(--orb-glow), inset 0 0 14px var(--orb-glow);
   cursor: pointer;
   transition: transform .16s ease, box-shadow .16s ease, background .16s ease;
@@ -354,7 +354,7 @@ body,
 .nv-orb:active { transform: scale(.94); }
 .nv-orb-violet { --orb: #b794ff; --orb-glow: rgba(139, 92, 246, .55); }
 .nv-orb-pink { --orb: #f9a8d4; --orb-glow: rgba(236, 72, 153, .5); }
-.nv-orb.is-on { color: #fff; background: radial-gradient(circle at 50% 30%, var(--orb-glow), rgba(14, 12, 40, .9) 75%); }
+.nv-orb.is-on { color: #fff; background: radial-gradient(circle at 50% 30%, var(--orb-glow), rgba(52, 44, 118, .9) 75%); }
 .nv-orb.is-dim { opacity: .6; box-shadow: none; }
 .nv-orb.is-off { --orb: #fda4af; --orb-glow: rgba(244, 63, 94, .5); }
 .nv-orb-end {
@@ -375,7 +375,7 @@ body,
   border-radius: 50%;
   background:
     radial-gradient(circle at 50% 50%, rgba(139, 92, 246, .28), transparent 62%),
-    radial-gradient(circle at 50% 50%, rgba(18, 16, 48, .9), rgba(10, 9, 30, .95) 70%);
+    radial-gradient(circle at 50% 50%, rgba(70, 60, 150, .75), rgba(40, 34, 100, .9) 70%);
   box-shadow: 0 0 0 1px rgba(176, 160, 255, .25), 0 0 40px rgba(99, 102, 241, .35), inset 0 0 40px rgba(34, 211, 238, .12);
 }
 .nv-constellation-lines { position: absolute; inset: 0; width: 100%; height: 100%; }
@@ -394,7 +394,7 @@ body,
   border: 1px solid rgba(176, 160, 255, .3);
   border-radius: 50%;
   color: #fff;
-  background: rgba(24, 21, 60, .88);
+  background: rgba(62, 54, 136, .85);
   box-shadow: 0 0 12px rgba(139, 92, 246, .3);
   cursor: pointer;
   transition: box-shadow .15s ease, border-color .15s ease, transform .15s ease;
@@ -428,13 +428,13 @@ body,
 .chat-app-shell .nv-chat-workspace .chat-outgoing-bubble p { color: #fff !important; }
 .chat-app-shell .nv-chat-workspace .chat-incoming-bubble {
   border: 1px solid rgba(176, 160, 255, .2) !important;
-  background: rgba(34, 30, 80, .72) !important;
+  background: rgba(70, 62, 150, .62) !important;
 }
 .chat-app-shell {
   background:
     radial-gradient(ellipse 58% 44% at 0% 30%, rgba(34, 211, 238, .14), transparent 72%),
     radial-gradient(ellipse 50% 44% at 100% 0%, rgba(139, 92, 246, .24), transparent 70%),
-    linear-gradient(150deg, #151238 0%, #0d0b28 45%, #08071a 100%) !important;
+    linear-gradient(150deg, #2c2670 0%, #231e5a 45%, #1c2a5e 100%) !important;
 }
 
 /* ---------- Account ---------- */
@@ -443,7 +443,7 @@ body,
 .nv-ring-avatar {
   position: relative;
   border: 3px solid transparent;
-  background: linear-gradient(#141335, #141335) padding-box, var(--neo-ring) border-box;
+  background: linear-gradient(#2d2870, #2d2870) padding-box, var(--neo-ring) border-box;
   box-shadow: 0 0 26px rgba(139, 92, 246, .5);
 }
 .nanivio-account-page > div { border-radius: 24px; }
@@ -479,7 +479,7 @@ html .nv-theme-dark button[class~="bg-emerald-500"] svg { color: #fff !important
 html .nv-theme-dark .nanivio-main [class*="bg-gradient-to-r"][class*="from-[#0"],
 html .nv-theme-dark .nanivio-main [class*="bg-gradient-to-br"][class*="from-[#0"] {
   border-color: var(--neo-edge) !important;
-  background: linear-gradient(150deg, rgba(40, 34, 92, .62), rgba(16, 14, 42, .8)) !important;
+  background: linear-gradient(150deg, rgba(88, 76, 170, .5), rgba(44, 38, 104, .62)) !important;
   box-shadow: 0 18px 44px rgba(4, 2, 20, .4), inset 0 1px rgba(255, 255, 255, .07) !important;
 }
 
@@ -498,4 +498,74 @@ html .nv-theme-dark button[class*="bg-emerald-500/"] {
   .nv-theme-dark .nv-home .nv-neon-hero.home-profile-card { min-height: 0; padding-block: .85rem; }
   .nv-theme-dark .nv-home .nv-neon-hero h1 { margin: .3rem 0 .55rem; font-size: clamp(1.3rem, 3vw, 1.9rem); }
   .nv-hero-emblem { width: clamp(72px, 11vw, 112px); }
+}
+
+/* Friendlier, lighter calls workspace */
+.nv-theme-dark .nv-calls-page {
+  --nv-stage: transparent;
+  --nv-panel: rgba(74, 64, 150, .5);
+  --nv-panel-2: rgba(92, 80, 176, .55);
+  --nv-line: rgba(210, 200, 255, .24);
+}
+.nv-calls-page .nv-calls-heading {
+  border: 1px solid rgba(210, 200, 255, .24) !important;
+  border-radius: 1.5rem;
+  background: linear-gradient(120deg, rgba(139, 92, 246, .38), rgba(34, 211, 238, .22)) !important;
+}
+
+/* ---------- Friendlier, lighter base (overrides older deep-navy skins) ---------- */
+html .nv-theme-dark.nanivio-app,
+html body {
+  background:
+    radial-gradient(ellipse 60% 45% at 0% 20%, rgba(56, 220, 245, .26), transparent 70%),
+    radial-gradient(ellipse 55% 45% at 100% 0%, rgba(167, 139, 250, .36), transparent 70%),
+    radial-gradient(ellipse 60% 45% at 70% 100%, rgba(244, 114, 182, .22), transparent 70%),
+    linear-gradient(160deg, #4a3d9e 0%, #3c3388 50%, #2f4c93 100%) !important;
+  background-attachment: fixed !important;
+}
+html .nv-theme-dark .nv-glass-header,
+html .nv-theme-dark .nanivio-navbar {
+  background: rgba(62, 54, 140, .62) !important;
+  border-bottom-color: rgba(210, 200, 255, .2) !important;
+}
+html .nv-theme-dark #nanivio-bottom-navigation,
+html .nv-theme-dark .nv-tabbar {
+  background: linear-gradient(180deg, rgba(70, 60, 152, .82), rgba(50, 43, 120, .94)) !important;
+  border-top-color: rgba(210, 200, 255, .22) !important;
+}
+html .nv-theme-dark .nv-pill-nav { background: rgba(88, 76, 176, .45); }
+html :is(.nv-theme-dark, .nanivio-auth) [class~="bg-slate-950"] { background-color: #2a2665 !important; }
+html :is(.nv-theme-dark, .nanivio-auth) [class~="bg-slate-900"] { background-color: #332e74 !important; }
+html .chat-app-shell .nv-chat-workspace .chat-thread-surface { background: rgba(48, 42, 112, .6) !important; }
+html .chat-app-shell .chat-composer { background-color: rgba(58, 50, 130, .85) !important; }
+html .nv-theme-dark ::-webkit-scrollbar-track { background: #29245f; }
+html .nv-dialer-line { background: linear-gradient(120deg, rgba(110, 92, 210, .42), rgba(56, 189, 248, .2)) !important; border-color: rgba(210, 200, 255, .3) !important; }
+html body .nanivio-app.nv-theme-dark,
+html body .nanivio-app.chat-app-shell {
+  background:
+    radial-gradient(ellipse 60% 45% at 0% 20%, rgba(56, 220, 245, .26), transparent 70%),
+    radial-gradient(ellipse 55% 45% at 100% 0%, rgba(167, 139, 250, .36), transparent 70%),
+    radial-gradient(ellipse 60% 45% at 70% 100%, rgba(244, 114, 182, .22), transparent 70%),
+    linear-gradient(160deg, #4a3d9e 0%, #3c3388 50%, #2f4c93 100%) !important;
+}
+html body .chat-app-shell > .nv-chat-toolbar,
+html body .nanivio-app > header.nv-glass-header { background: rgba(62, 54, 140, .62) !important; }
+html body .chat-app-shell .nv-reference-pills { background: rgba(88, 76, 176, .45); }
+html body .chat-app-shell .nv-chat-workspace :is(.bg-slate-900,.bg-slate-950,.bg-slate-800,.bg-slate-700) { background-color: rgba(64, 56, 140, .6) !important; }
+html body .nanivio-app header.nv-glass-header.nv-glass-header { background: rgba(86, 74, 172, .55) !important; }
+html body .nanivio-app #nanivio-bottom-navigation#nanivio-bottom-navigation { background: linear-gradient(180deg, rgba(92, 80, 180, .78), rgba(70, 60, 152, .92)) !important; }
+html body .nanivio-app header.nv-glass-header [class*="bg-white/5"] { background: rgba(255, 255, 255, .14) !important; border-color: rgba(255, 255, 255, .22) !important; }
+html body .nv-theme-dark .nv-calls-page .nv-calls-heading {
+  padding: 1rem 1.15rem;
+  border: 1px solid rgba(210, 200, 255, .28) !important;
+  border-radius: 1.5rem;
+  background: linear-gradient(120deg, rgba(150, 120, 255, .42), rgba(56, 189, 248, .26)) !important;
+}
+html body .nv-theme-dark .nv-calls-page :is(.nv-dialer-panel, .nv-group-contacts > button) {
+  border-color: rgba(210, 200, 255, .26) !important;
+  background: linear-gradient(150deg, rgba(100, 86, 196, .5), rgba(64, 56, 146, .6)) !important;
+}
+html body .nv-theme-dark .nv-calls-page .nv-dialer-keypad > div:first-child {
+  border-color: rgba(210, 200, 255, .3) !important;
+  background: linear-gradient(120deg, rgba(120, 100, 225, .45), rgba(56, 189, 248, .22)) !important;
 }

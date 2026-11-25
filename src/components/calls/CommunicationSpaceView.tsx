@@ -148,7 +148,7 @@ export const CommunicationSpaceView: React.FC = () => {
   return (
     <div className="nv-calls-page">
       <header className="nv-calls-heading">
-        <div className="nv-calls-title"><span className="nv-call-mark"><Radio size={18} /></span><div><p className="nv-section-index">NANIVIO · CALLS</p><h1>Say hello.</h1></div></div>
+        <div className="nv-calls-title"><span className="nv-call-mark"><Radio size={18} /></span><div><h1>Say hello.</h1></div></div>
         <div className="nv-calls-line"><span>YOUR LINE</span><strong>{currentUser?.nvId || currentUser?.nanivioNumber || 'Not assigned'}</strong></div>
       </header>
       <nav className="nv-call-tabs" aria-label="Calls">

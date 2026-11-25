@@ -168,11 +168,8 @@ export const PhoneDialerModal: React.FC<PhoneDialerModalProps> = ({ isOpen, onCl
           {/* Dialer Keypad Section */}
           <div className="lg:col-span-6 nv-dialer-keypad">
             {/* Number Display with NV prefix */}
-            <div className="nv-dialer-line bg-[#080d1a] border border-slate-700/80 rounded-2xl p-4 text-center relative">
-              <div className="text-[10px] uppercase font-mono text-slate-500 tracking-wider">
-                Nanivio Line Display
-              </div>
-              <div className="text-2xl sm:text-3xl font-black font-mono tracking-widest text-emerald-400 flex items-center justify-center gap-2 mt-1 min-h-[40px]">
+            <div className="nv-dialer-line border border-slate-700/80 rounded-2xl p-4 text-center relative">
+              <div className="text-2xl sm:text-3xl font-black font-mono tracking-widest text-emerald-400 flex items-center justify-center gap-2 min-h-[40px]">
                 <span className="text-slate-500 text-lg font-bold">NV</span>
                 <input aria-label="Nanivio number to call" type="tel" inputMode="tel" autoComplete="tel" maxLength={15} value={dialedNumber} onChange={(event) => { setDialedNumber(event.target.value.replace(/[^0-9*#+]/g, '').slice(0, 15)); setLookupError(null); }} placeholder="Enter a number" className="nv-dialer-number-input" />
               </div>

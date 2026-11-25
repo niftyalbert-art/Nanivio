@@ -145,14 +145,6 @@ export const AdminControlCenter: React.FC = () => {
               <span className="bg-[#0c1626] px-2">Production authentication required</span>
             </div>
           </div>
-
-          <button
-            onClick={() => alert('Demo account bypass is disabled in production. Use the configured administrator credentials.')}
-            className="w-full py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-amber-300 border border-amber-500/40 text-xs font-bold transition-all flex items-center justify-center gap-2"
-          >
-            <ShieldCheck className="w-4 h-4 text-amber-400" />
-            <span>Sign in with configured administrator credentials</span>
-          </button>
         </div>
       </div>
     );

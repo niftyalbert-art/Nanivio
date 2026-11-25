@@ -187,7 +187,6 @@ export const AccountView: React.FC = () => {
 
   return (
     <div className="nanivio-account-page max-w-7xl mx-auto p-4 sm:p-6 lg:p-8 space-y-8 w-full max-w-full overflow-x-hidden">
-      <NanivioOfficialCard />
       {/* Toast Feedback */}
       {actionSuccessMessage && (
         <div className="p-4 rounded-2xl bg-emerald-950/90 border border-emerald-500 text-emerald-200 text-sm font-semibold flex items-center gap-3 shadow-xl animate-in fade-in duration-200">
@@ -325,6 +324,8 @@ export const AccountView: React.FC = () => {
           </div>
         </div>
       </div>
+
+      <NanivioOfficialCard />
 
       {/* ------------------------------------------------------------- */}
       {/* SECTION 2: PREMIUM LIVE LANGPRETATION METER READING */}
