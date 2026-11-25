@@ -10,7 +10,7 @@ export async function waitForCallTranslation(
     const query = new URLSearchParams({ callId, sourceLang, targetLang });
     const response = await authenticatedFetch(`/api/langpretation/call/readiness?${query}`, { signal });
     const result = await response.json();
-    if (response.ok && result.success) return;
+    if (response.ok && result.success) return result.live === true;
     if (response.status !== 425 || result.code !== 'CALL_STARTING' || attempt === 6)
       throw new Error(result.error || 'Langpretation could not start. Please try again.');
     await new Promise<void>((resolve, reject) => {

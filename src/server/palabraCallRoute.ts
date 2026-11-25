@@ -54,8 +54,7 @@ export function createPalabraCallHandler(deps: {
         catch{console.warn('[Nanivio call] Caption delivery failed.');}
       };
       let result;
-      if (supportsPalabraPair(sourceLang, targetLang)) {
-        if (!(deps.configured || palabraConfigured)()) throw new PalabraError(503,'Nanivio live translation is not configured.');
+      if (supportsPalabraPair(sourceLang, targetLang) && (deps.configured || palabraConfigured)()) {
         release=reservePalabraCapacity(userId);
         result = await (deps.translate || translatePalabraAudio)(audio,sourceLang,targetLang,abort.signal);
       } else {

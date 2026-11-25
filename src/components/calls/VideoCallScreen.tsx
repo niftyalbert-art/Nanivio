@@ -214,9 +214,9 @@ export const VideoCallScreen: React.FC<VideoCallScreenProps> = ({ onEndCall }) =
       await unlockTranslationAudio();
       if(!current())return;
       setSpeechStatus('Checking Langpretation setup…');
-      await waitForCallTranslation(activeCall.id,hostLang.code,remoteLang.code,request.signal);
+      const live=await waitForCallTranslation(activeCall.id,hostLang.code,remoteLang.code,request.signal);
       if(!current())return;
-      if(remoteLang&&supportsPalabraPair(hostLang.code,remoteLang.code)){
+      if(live&&remoteLang&&supportsPalabraPair(hostLang.code,remoteLang.code)){
         setSpeechStatus('Connecting Langpretation…');
           const voiceConsent=preserveMyVoice&&supportsPalabraVoiceCloning(hostLang.code,remoteLang.code);
           const started=await liveTranslation.current?.start(hostLang.code,remoteLang.code,voiceConsent,agoraClient.getLocalStream());
@@ -285,7 +285,10 @@ export const VideoCallScreen: React.FC<VideoCallScreenProps> = ({ onEndCall }) =
   };
 
   function unlockTranslationAudio() {
-    const pending=remoteLang&&supportsPalabraPair(hostLang.code,remoteLang.code)
+    const livePair=Boolean(remoteLang&&supportsPalabraPair(hostLang.code,remoteLang.code));
+    // A live pair falls back to translated call audio when the server has no live provider.
+    if(livePair)agoraClient.unlockTranslatedAudio().catch(()=>{});
+    const pending=livePair
       ? liveTranslation.current?.unlock() || Promise.reject(new Error('Call audio is not ready.'))
       : agoraClient.unlockTranslatedAudio();
     let timer:ReturnType<typeof setTimeout>|undefined;

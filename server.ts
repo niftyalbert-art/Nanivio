@@ -1403,7 +1403,8 @@ app.get("/api/langpretation/call/readiness", requireAuthenticatedUser, async (re
     requireLanguage(source); requireLanguage(target);
     if (!callId || callId.length > 160) return res.status(400).json({ success:false, error:'A connected call is required.' });
     await authorizeLiveLangpretation(authenticatedUserId(req), callId, source, target);
-    return res.json({ success:true });
+    // Without a Palabra key, live pairs use the staged speech pipeline instead.
+    return res.json({ success:true, live: supportsPalabraLivePair(source, target) && palabraConfigured() });
   } catch (error) {
     return res.status(error instanceof PalabraError ? error.status : 400).json({
       success:false, error:error instanceof PalabraError ? error.message : 'Choose a supported Langpretation language pair.',
@@ -1421,9 +1422,9 @@ app.get("/api/langpretation/speech-readiness",requireAuthenticatedUser,(req,res)
   try{
     const language=String(req.query.language||'en');requireLanguage(language);
     const target=String(req.query.targetLang||language);requireLanguage(target);
-    if (supportsPalabraLivePair(language,target)) return res.json({
-      success:true,language,target,provider:'nanivio-live',asrConfigured:palabraConfigured(),
-      ttsConfigured:palabraConfigured(),integratedSpeech:true,liveVerified:false
+    if (supportsPalabraLivePair(language,target) && palabraConfigured()) return res.json({
+      success:true,language,target,provider:'nanivio-live',asrConfigured:true,
+      ttsConfigured:true,integratedSpeech:true,liveVerified:false
     });
     if (target !== language) {
       const configured = stagedCallPairConfigured(language, target);
