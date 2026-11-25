@@ -62,7 +62,7 @@ test('the controller subscribes, queues and unsubscribes authoritative turn comp
 
 test('EOF support does not relax real audio-duration validation', () => {
   const f = fixture();
-  for (const duration of [0, -1, NaN, Infinity, 65001]) {
+  for (const duration of [0, -1, NaN, Infinity, 200_001]) {
     assert.throws(() => f.gate.enqueue(duration, () => {}), /safety limit/);
   }
   f.gate.cancel();

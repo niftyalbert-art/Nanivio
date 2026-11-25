@@ -19,7 +19,7 @@ export function createMalviReplySynthesizer({
 } = {}) {
   return async (text: string, code: string) => {
     if (typeof text !== 'string' || !text.trim() || text.length > MAX_SPEECH_TEXT) {
-      throw new SpeechProviderError(400, 'Malvi speech must contain 1–1200 characters.');
+      throw new SpeechProviderError(400, `Malvi speech must contain 1–${MAX_SPEECH_TEXT} characters.`);
     }
     const provider = await voice(), current = env();
     const setup = malviVoiceSetup(current, provider);

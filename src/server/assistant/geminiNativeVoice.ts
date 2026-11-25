@@ -7,6 +7,12 @@ export const MALVI_NATIVE_PACKET_BYTES = 9_600 + 960;
 export const MALVI_NATIVE_UNCAPTIONED_BYTES = 28_800 + 960;
 
 /** One bounded native turn. No synthesis request, voice clone, or provider retry. */
+// Per-connection guards. Billing (Malvi minutes) bounds real usage; these only
+// stop a runaway provider stream, so a long conversation must fit well inside.
+export const MALVI_NATIVE_SESSION_CHARACTERS = 60_000;
+export const MALVI_NATIVE_SESSION_BYTES = 172_800_000; // 60 min of 24 kHz PCM
+export const MALVI_NATIVE_SESSION_TURNS = 600;
+
 export class GeminiNativeVoice {
   private chunks: Buffer[] = [];
   private bytes = 0;
@@ -27,7 +33,7 @@ export class GeminiNativeVoice {
     }
     const pcm = Buffer.from(encoded, 'base64');
     if (!pcm.length || pcm.length % 2) throw new Error('Gemini returned invalid PCM voice audio.');
-    if (this.turnBytes + pcm.length > MAX_SPEECH_BYTES || this.sessionBytes + pcm.length > 14_400_000) {
+    if (this.turnBytes + pcm.length > MAX_SPEECH_BYTES || this.sessionBytes + pcm.length > MALVI_NATIVE_SESSION_BYTES) {
       throw new Error('Malvi reached the native voice audio safety limit.');
     }
     this.bytes += pcm.length;
@@ -55,10 +61,10 @@ export class GeminiNativeVoice {
     if (!this.bytes && !text.trim()) return null; // Duplicate completion.
     if (text.trim()) this.sawText = true;
     if (!this.bytes || (final && !this.sawText)) throw new Error('Gemini did not provide both voice audio and its transcript.');
-    if (this.turnCharacters + text.length > MAX_SPEECH_TEXT || this.characters + text.length > 6000 || (!this.emitted && this.turns >= 30)) {
+    if (this.turnCharacters + text.length > MAX_SPEECH_TEXT || this.characters + text.length > MALVI_NATIVE_SESSION_CHARACTERS || (!this.emitted && this.turns >= MALVI_NATIVE_SESSION_TURNS)) {
       throw new Error('Malvi reached this session’s native speech usage limit.');
     }
-    if (final && this.sessionBytes + MALVI_GEMINI_TAIL_SAMPLES * 2 > 14_400_000) {
+    if (final && this.sessionBytes + MALVI_GEMINI_TAIL_SAMPLES * 2 > MALVI_NATIVE_SESSION_BYTES) {
       throw new Error('Malvi reached the native voice audio safety limit.');
     }
     const joined = Buffer.concat(this.chunks, this.bytes);

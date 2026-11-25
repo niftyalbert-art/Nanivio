@@ -8,8 +8,8 @@ export type MalviSpeechBuffer = Buffer & { alignment?: MalviAlignment };
 type Env = Record<string, string | undefined>;
 export const MALVI_VOICE_ID = 'kW71iH6myeMHEvxKthQ6';
 export const MALVI_SPEECH_MODEL = 'eleven_multilingual_v2';
-export const MAX_SPEECH_TEXT = 1200;
-export const MAX_SPEECH_BYTES = 3_000_000;
+export const MAX_SPEECH_TEXT = 3000;
+export const MAX_SPEECH_BYTES = 9_000_000;
 // Advertised coverage, not a claim of tested pronunciation. Preserve dialect IDs.
 // https://elevenlabs.io/docs/overview/models#multilingual-v2
 const LANGUAGES = new Set('en ja zh de hi fr ko pt it es id nl tr fil pl sv bg ro ar cs el fi hr ms sk da ta uk ru'.split(' '));

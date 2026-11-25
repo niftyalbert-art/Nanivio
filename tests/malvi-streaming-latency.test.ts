@@ -1,8 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { GeminiNativeVoice } from '../src/server/assistant/geminiNativeVoice.ts';
+import { GeminiNativeVoice, MALVI_NATIVE_SESSION_TURNS } from '../src/server/assistant/geminiNativeVoice.ts';
 import { applyMalviGeminiEffects, MalviGeminiEffectStream } from '../src/server/assistant/geminiVoiceEffects.ts';
-import { estimatedMalviCaptionTrack, MalviCaptionPlayer } from '../src/lib/malviSpeechTiming.ts';
+import { estimatedMalviCaptionTrack, MalviCaptionPlayer, MALVI_AUDIO_QUEUE_MS } from '../src/lib/malviSpeechTiming.ts';
 import { waitForMalviVideoFrame, MalviAvatarVideoGate } from '../src/lib/malviAvatarVideoGate.ts';
 
 const tick = () => new Promise<void>(resolve => setImmediate(resolve));
@@ -30,20 +30,21 @@ test('streaming cancellation discards queued audio while keeping lifetime safety
   voice.finish('An opening.', false);
   voice.cancel();
   assert.equal(voice.finish(''), null);
-  for (let i = 0; i < 29; i++) { voice.append(audio, 'audio/pcm;rate=24000'); voice.finish('Next turn.'); }
+  for (let i = 0; i < MALVI_NATIVE_SESSION_TURNS - 1; i++) { voice.append(audio, 'audio/pcm;rate=24000'); voice.finish('Next turn.'); }
   voice.append(audio, 'audio/pcm;rate=24000');
   assert.throws(() => voice.finish('Over the limit.'), /usage limit/);
 });
 test('streaming does not reset the per-turn audio or character budgets', () => {
   const voice = new GeminiNativeVoice();
-  voice.append(pcm(1_000_000).toString('base64'), 'audio/pcm;rate=24000');
+  const chunk = pcm(1_000_000).toString('base64');
+  for (let i = 0; i < 4; i++) voice.append(chunk, 'audio/pcm;rate=24000');
   voice.finish('Opening.', false);
-  assert.throws(() => voice.append(pcm(1_000_000).toString('base64'), 'audio/pcm;rate=24000'), /audio safety limit/);
+  assert.throws(() => voice.append(chunk, 'audio/pcm;rate=24000'), /audio safety limit/);
   const characters = new GeminiNativeVoice();
   characters.append(pcm(25_000).toString('base64'), 'audio/pcm;rate=24000');
-  characters.finish('a'.repeat(700), false);
+  characters.finish('a'.repeat(1600), false);
   characters.append(pcm(25_000).toString('base64'), 'audio/pcm;rate=24000');
-  assert.throws(() => characters.finish('b'.repeat(700)), /usage limit/);
+  assert.throws(() => characters.finish('b'.repeat(1600)), /usage limit/);
 });
 test('trailing audio without more transcription remains playable without invented captions', () => {
   const voice = new GeminiNativeVoice();
@@ -99,7 +100,7 @@ test('ordered avatar delivery is bounded, and cancelled packets cannot play in t
   gate.enqueue(1000, () => delivered.push(3));
   await tick(); fixture.frame(); await tick();
   assert.deepEqual(delivered, [1, 3]);
-  assert.throws(() => gate.enqueue(66_000, () => {}), /safety limit/);
+  assert.throws(() => gate.enqueue(MALVI_AUDIO_QUEUE_MS + 1000, () => {}), /safety limit/);
   gate.cancel(); assert.deepEqual(errors, []);
 });
 test('older browsers wait for playable media and still allow cancellation', async () => {
@@ -114,7 +115,7 @@ test('client queues hold a long reply of 200 ms packets and still bound total du
   const captions = new MalviCaptionPlayer(() => {});
   const fixture = videoFixture(), errors: string[] = [];
   const gate = new MalviAvatarVideoGate(() => fixture.video, message => errors.push(message));
-  for (let i = 0; i < 300; i++) {
+  for (let i = 0; i < 990; i++) {
     captions.enqueue(estimatedMalviCaptionTrack('Once upon a time.', 200));
     gate.enqueue(200, () => {});
   }

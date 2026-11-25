@@ -1,7 +1,7 @@
 // Unplayed Malvi speech held by each client queue. Duration is the real bound;
-// the packet cap only stops floods of tiny packets (200 ms packets fill 65 s at 325).
-export const MALVI_AUDIO_QUEUE_MS = 65_000;
-export const MALVI_AUDIO_QUEUE_PACKETS = 384;
+// the packet cap only stops floods of tiny packets (200 ms packets fill 200 s at 1,000).
+export const MALVI_AUDIO_QUEUE_MS = 200_000;
+export const MALVI_AUDIO_QUEUE_PACKETS = 1_100;
 
 export interface MalviAlignment {
   characters: string[];

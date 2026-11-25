@@ -39,7 +39,7 @@ test('signature failure does not fall back to a language voice or a different pr
   });
   await assert.rejects(synthesize('مرحبا', 'ar'), /No alternate voice was used/);
   await assert.rejects(synthesize('Sample', 'xx'), /No alternate voice was used/);
-  await assert.rejects(synthesize('x'.repeat(1201), 'ar'), /1–1200/);
+  await assert.rejects(synthesize('x'.repeat(3001), 'ar'), /1–3000/);
   assert.equal(other, 0);
 });
 
