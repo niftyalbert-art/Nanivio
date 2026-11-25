@@ -128,7 +128,7 @@ export class MalviAvatarPlayout {
       // Inside a playing reply, silent packets (pauses, trailing tails) have no
       // onset to detect; the first packet still waits for audible output.
       if (this.continuing && (item.silent || waitedMs > item.leadingMs + CONTINUATION_DETECT_MS)) {
-        item.startedAt = context.currentTime - (item.silent ? 0 : waitedMs / 1000);
+        item.startedAt = context.currentTime - (item.silent ? 0 : item.leadingMs / 1000);
       } else {
         if (waitedMs > item.leadingMs + 8000) {
           this.cancel();
