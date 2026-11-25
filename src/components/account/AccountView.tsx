@@ -35,6 +35,7 @@ import { PWAInstallButton } from '../common/PWAInstallButton';
 import { getAccountText } from '../../i18n/authTranslations';
 import { billingNumber, formatBillingAmount, communicationCreditBalance, billingHistoryDisplay } from '../../lib/billingPresentation';
 import { AccountHomeSections } from '../home/AccountHomeSections';
+import { NanivioOfficialCard } from '../common/NanivioOfficialCard';
 
 export const AccountView: React.FC = () => {
   const {
@@ -186,6 +187,7 @@ export const AccountView: React.FC = () => {
 
   return (
     <div className="nanivio-account-page max-w-7xl mx-auto p-4 sm:p-6 lg:p-8 space-y-8 w-full max-w-full overflow-x-hidden">
+      <NanivioOfficialCard />
       {/* Toast Feedback */}
       {actionSuccessMessage && (
         <div className="p-4 rounded-2xl bg-emerald-950/90 border border-emerald-500 text-emerald-200 text-sm font-semibold flex items-center gap-3 shadow-xl animate-in fade-in duration-200">

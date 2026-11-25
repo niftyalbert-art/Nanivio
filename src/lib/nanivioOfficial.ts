@@ -9,7 +9,10 @@ export const NANIVIO_OFFICIAL_QR = '/brand/nanivio-official-qr.png';
 export const isNanivioJoinLink = () =>
   typeof window !== 'undefined' && window.location.pathname.replace(/\/$/, '') === '/join';
 
+export const NANIVIO_COMPANY = 'Nanivio Tech. Ghana';
+
 export const NANIVIO_CONTACTS = {
+  address: clean(env.VITE_NANIVIO_ADDRESS),
   email: clean(env.VITE_NANIVIO_CONTACT_EMAIL),
   phone: clean(env.VITE_NANIVIO_CONTACT_PHONE),
   whatsapp: clean(env.VITE_NANIVIO_CONTACT_WHATSAPP),

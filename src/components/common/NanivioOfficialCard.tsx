@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
-import { Check, Globe, Mail, MessageCircle, Phone, Share2 } from 'lucide-react';
-import { NANIVIO_CONTACTS, NANIVIO_OFFICIAL_QR, NANIVIO_OFFICIAL_URL } from '../../lib/nanivioOfficial';
+import { Check, Globe, Mail, MapPin, MessageCircle, Phone, Share2 } from 'lucide-react';
+import { NANIVIO_COMPANY, NANIVIO_CONTACTS, NANIVIO_OFFICIAL_QR, NANIVIO_OFFICIAL_URL } from '../../lib/nanivioOfficial';
 import { NanivioLogo } from './NanivioLogo';
 
 export const NanivioOfficialCard: React.FC<{ className?: string }> = ({ className = '' }) => {
@@ -18,7 +18,7 @@ export const NanivioOfficialCard: React.FC<{ className?: string }> = ({ classNam
     }
   };
 
-  const { email, phone, whatsapp, website } = NANIVIO_CONTACTS;
+  const { address, email, phone, whatsapp, website } = NANIVIO_CONTACTS;
   const whatsappUrl = whatsapp && (/^https?:/.test(whatsapp) ? whatsapp : `https://wa.me/${whatsapp.replace(/\D/g, '')}`);
   const contacts = [
     email && { label: email, href: `mailto:${email}`, icon: Mail },
@@ -42,6 +42,10 @@ export const NanivioOfficialCard: React.FC<{ className?: string }> = ({ classNam
         </div>
         <h2 id="nanivio-official-title" className="text-lg font-bold text-white">Scan to join Nanivio</h2>
         <p className="text-sm text-slate-300">Installs the app and opens registration.</p>
+        <div className="text-sm text-slate-200">
+          <p className="font-semibold">{NANIVIO_COMPANY}</p>
+          {address && <p className="mt-0.5 inline-flex items-start gap-1.5 text-slate-300"><MapPin className="mt-0.5 h-4 w-4 shrink-0 text-fuchsia-300" />{address}</p>}
+        </div>
         <div className="flex flex-wrap justify-center gap-2 sm:justify-start">
           <button type="button" onClick={share} className="inline-flex min-h-10 items-center gap-2 rounded-xl bg-gradient-to-r from-cyan-500 to-fuchsia-500 px-4 text-sm font-semibold text-white">
             {shared ? <Check className="h-4 w-4" /> : <Share2 className="h-4 w-4" />}
