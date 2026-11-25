@@ -1,7 +1,12 @@
 import React from 'react';
 import {
   AlertTriangle,
+  Home,
+  MessageCircle,
+  PhoneCall,
+  Sparkles,
   User,
+  Users,
 } from 'lucide-react';
 import { useNanivio } from '../context/NanivioContext';
 import { SUPPORTED_LANGUAGES } from '../types';
@@ -36,12 +41,13 @@ export const Navbar: React.FC<{compact?:boolean}> = ({compact=false}) => {
   );
 
   const links = [
-    { id: 'home', label: 'Home' },
-    { id: 'chat', label: 'Chat' },
-    { id: 'calls', label: 'Calls' },
-    { id: 'contacts', label: 'Contacts' },
-    ...(adminFeatures.malviAiAssistantEnabled ? [{ id: 'malvi', label: 'Malvi' }] : []),
+    { id: 'home', label: 'Home', icon: Home },
+    { id: 'chat', label: 'Messages', icon: MessageCircle },
+    { id: 'calls', label: 'Calls', icon: PhoneCall },
+    { id: 'contacts', label: 'Contacts', icon: Users },
+    ...(adminFeatures.malviAiAssistantEnabled ? [{ id: 'malvi', label: 'Malvi', icon: Sparkles }] : []),
   ] as const;
+  const firstName = currentUser?.name?.trim().split(/\s+/)[0] || 'Account';
   return (
     <header className="nv-glass-header sticky top-0 z-40 shrink-0 border-b border-white/10 bg-[#0b1026]/80 backdrop-blur-xl">
       {adminFeatures.maintenanceMode && (
@@ -55,18 +61,17 @@ export const Navbar: React.FC<{compact?:boolean}> = ({compact=false}) => {
           <button type="button" onClick={() => setActiveTab('home')} className="navbar-brand flex shrink-0 items-center" aria-label="Nanivio home">
             <NanivioLogo size="md" showTagline={false} />
           </button>
-          <nav className="hidden items-center gap-1 rounded-2xl border border-white/10 bg-white/5 p-1 md:flex" aria-label="Main">
-            {links.map((link) => (
+          <nav className="nv-pill-nav hidden items-center gap-1 md:flex" aria-label="Main">
+            {links.map(({ id, label, icon: Icon }) => (
               <button
-                key={link.id}
+                key={id}
                 type="button"
-                onClick={() => setActiveTab(link.id)}
-                aria-current={activeTab === link.id ? 'page' : undefined}
-                className={`rounded-xl px-3.5 py-2 text-sm font-semibold transition ${activeTab === link.id
-                  ? 'bg-gradient-to-r from-cyan-500/30 to-fuchsia-500/30 text-white shadow-[0_0_16px_rgba(34,211,238,.25)]'
-                  : 'text-slate-300 hover:bg-white/5 hover:text-white'}`}
+                onClick={() => setActiveTab(id)}
+                aria-current={activeTab === id ? 'page' : undefined}
+                className={`nv-pill-link ${activeTab === id ? 'is-active' : ''}`}
               >
-                {link.label}
+                <Icon size={16} strokeWidth={1.9} aria-hidden="true" />
+                <span>{label}</span>
               </button>
             ))}
           </nav>
@@ -100,10 +105,13 @@ export const Navbar: React.FC<{compact?:boolean}> = ({compact=false}) => {
             <button
               type="button"
               onClick={() => setActiveTab('account')}
-              className={`flex h-10 w-10 items-center justify-center rounded-full border text-xs font-bold text-white transition ${activeTab === 'account' ? 'border-cyan-300 bg-cyan-500/20' : 'border-white/15 bg-gradient-to-br from-cyan-500/30 to-fuchsia-500/30 hover:border-cyan-300/60'}`}
+              className={`nv-profile-chip ${activeTab === 'account' ? 'is-active' : ''}`}
               aria-label="My account"
             >
-              {currentUser?.initials || <User className="h-4 w-4" />}
+              <span className="nv-profile-chip-avatar">
+                {currentUser?.avatar ? <img src={currentUser.avatar} alt="" /> : (currentUser?.initials || <User className="h-4 w-4" />)}
+              </span>
+              <span className="nv-profile-chip-name hidden xl:inline">{firstName}</span>
             </button>
           </div>
         </div>

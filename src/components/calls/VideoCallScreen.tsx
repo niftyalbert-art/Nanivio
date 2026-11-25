@@ -655,11 +655,7 @@ export const VideoCallScreen: React.FC<VideoCallScreenProps> = ({ onEndCall }) =
                   type="button"
                   aria-label={isMuted ? 'Unmute microphone' : 'Mute microphone'}
                   onClick={toggleCallMute}
-                  className={`w-11 h-11 sm:w-12 sm:h-12 rounded-full flex items-center justify-center transition-all shadow-lg border ${
-                    isMuted
-                      ? 'bg-rose-600 text-white border-rose-500 shadow-rose-600/50 scale-105'
-                      : 'bg-slate-800/90 text-white border-white/20 hover:bg-slate-700'
-                  }`}
+                  className={`nv-orb nv-orb-cyan ${isMuted ? 'is-off' : ''}`}
                   title={isMuted ? 'Unmute microphone' : 'Mute microphone'}
                 >
                   {isMuted ? <MicOff className="w-5 h-5" /> : <Mic className="w-5 h-5" />}
@@ -676,11 +672,7 @@ export const VideoCallScreen: React.FC<VideoCallScreenProps> = ({ onEndCall }) =
                   type="button"
                   aria-label={isCameraOff ? 'Turn on camera' : 'Turn off camera'}
                   onClick={toggleCallVideo}
-                  className={`w-11 h-11 sm:w-12 sm:h-12 rounded-full flex items-center justify-center transition-all shadow-lg border ${
-                    isCameraOff
-                      ? 'bg-rose-600 text-white border-rose-500 shadow-rose-600/50 scale-105'
-                      : 'bg-slate-800/90 text-white border-white/20 hover:bg-slate-700'
-                  }`}
+                  className={`nv-orb nv-orb-violet ${isCameraOff ? 'is-off' : ''}`}
                   title={isCameraOff ? 'Turn on camera' : 'Turn off camera'}
                 >
                   {isCameraOff ? <VideoOff className="w-5 h-5" /> : <VideoIcon className="w-5 h-5" />}
@@ -712,7 +704,7 @@ export const VideoCallScreen: React.FC<VideoCallScreenProps> = ({ onEndCall }) =
                   type="button"
                   aria-label="End call"
                   onClick={onEndCall}
-                  className="w-11 h-11 sm:w-12 sm:h-12 rounded-full bg-[#ef4444] hover:bg-rose-600 text-white flex items-center justify-center shadow-[0_4px_24px_rgba(239,68,68,0.7)] hover:scale-105 active:scale-95 transition-all"
+                  className="nv-orb nv-orb-end"
                   title="End Live Call Session"
                 >
                   <PhoneOff className="w-5 h-5" />

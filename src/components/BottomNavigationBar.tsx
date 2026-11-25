@@ -1,6 +1,6 @@
 import React, { useRef, useEffect, useState } from 'react';
 import {
-  Globe,
+  Home,
   MessageSquare,
   PhoneCall,
   Users,
@@ -68,7 +68,7 @@ export const BottomNavigationBar: React.FC = () => {
       id: 'home',
       mobileLabel: 'Home',
       desktopLabel: 'Home',
-      icon: Globe,
+      icon: Home,
       color: 'emerald',
       activeClass: 'bg-emerald-500/25 text-emerald-300 border-emerald-500/50 shadow-md shadow-emerald-500/20',
       iconClass: 'text-emerald-400',
@@ -168,7 +168,7 @@ export const BottomNavigationBar: React.FC = () => {
       ref={navRef}
       id="nanivio-bottom-navigation"
       aria-label="Bottom Navigation"
-      className="fixed bottom-0 inset-x-0 z-40 border-t border-white/10 bg-[#0b1026]/85 backdrop-blur-xl pb-1 sm:pb-2 pt-1 select-none max-w-full overflow-visible"
+      className="nv-tabbar fixed bottom-0 inset-x-0 z-40 pb-1 sm:pb-2 pt-1 select-none max-w-full overflow-visible"
     >
       {/* Mobile Dedicated Drag Bar & Indicator */}
       <div className="w-full flex items-center justify-center sm:hidden pb-0.5">
@@ -188,7 +188,7 @@ export const BottomNavigationBar: React.FC = () => {
         {/* Primary destinations stay visible; less-used destinations live under More. */}
         <div
           ref={navScrollRef}
-          className="flex items-center justify-around sm:justify-center gap-1 sm:gap-3 overflow-x-auto scrollbar-none touch-pan-x snap-x snap-mandatory w-full px-1 py-1"
+          className="nv-tabbar-track flex items-center justify-around sm:justify-center gap-1 sm:gap-3 overflow-x-auto scrollbar-none touch-pan-x snap-x snap-mandatory w-full px-1 py-1"
           style={{ WebkitOverflowScrolling: 'touch' }}
         >
           {navItems.filter((item) => PRIMARY_TABS.includes(item.id)).map((item) => {
@@ -200,21 +200,12 @@ export const BottomNavigationBar: React.FC = () => {
                 key={item.id}
                 id={`nav-tab-${item.id}`}
                 onClick={() => handleTabClick(item.id)}
-                className={`shrink-0 group flex flex-col sm:flex-row items-center justify-center gap-1 sm:gap-2 px-2.5 sm:px-3.5 py-1.5 sm:py-2 rounded-2xl text-[12px] sm:text-[13px] font-bold transition-all border min-w-[52px] sm:min-w-0 min-h-[48px] snap-center active:scale-95 touch-manipulation cursor-pointer select-none ${
-                   isActive
-                    ? 'bg-gradient-to-r from-cyan-500/25 to-fuchsia-500/25 text-white border-cyan-300/40 shadow-[0_0_18px_rgba(34,211,238,.25)]'
-                      : 'border-transparent text-slate-400 hover:text-white hover:bg-white/5'
-                }`}
+                className={`nv-tab group snap-center touch-manipulation select-none ${isActive ? 'is-active' : ''}`}
+                aria-current={isActive ? 'page' : undefined}
                 title={item.desktopLabel}
               >
-                <div className="relative shrink-0 flex items-center justify-center">
-                  {Icon && (
-                    <Icon
-                      className={`w-5 h-5 shrink-0 transition-transform ${
-                         isActive ? 'text-cyan-300' : 'text-slate-400 group-hover:text-white'
-                      }`}
-                    />
-                  )}
+                <div className="nv-tab-icon relative shrink-0 flex items-center justify-center">
+                  {Icon && <Icon className="w-5 h-5 shrink-0" strokeWidth={1.9} />}
                     {/* Status Indicator Light (Green Pulse / Red Missed Call / None) */}
                     {item.indicator === 'green-pulse' && (
                       <span className="absolute -top-1 -right-1 flex h-2.5 w-2.5">
@@ -243,13 +234,9 @@ export const BottomNavigationBar: React.FC = () => {
             aria-expanded={showMore}
             aria-haspopup="menu"
             onClick={() => setShowMore((value) => !value)}
-            className={`relative shrink-0 group flex flex-col sm:flex-row items-center justify-center gap-1 sm:gap-2 px-2.5 sm:px-3.5 py-1.5 sm:py-2 rounded-2xl text-[12px] sm:text-[13px] font-bold transition-all border min-w-[52px] sm:min-w-0 min-h-[48px] cursor-pointer ${
-              showMore || (!PRIMARY_TABS.includes(activeTab))
-                ? 'bg-gradient-to-r from-cyan-500/25 to-fuchsia-500/25 text-white border-cyan-300/40'
-                : 'border-transparent text-slate-400 hover:text-white hover:bg-white/5'
-            }`}
+            className={`nv-tab relative group ${showMore || !PRIMARY_TABS.includes(activeTab) ? 'is-active' : ''}`}
           >
-            <MoreHorizontal className={`w-5 h-5 ${showMore ? 'text-cyan-300' : 'text-slate-400'}`} />
+            <span className="nv-tab-icon"><MoreHorizontal className="w-5 h-5" strokeWidth={1.9} /></span>
             <span>More</span>
           </button>
         </div>

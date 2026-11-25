@@ -63,7 +63,7 @@ export const NanivioOfficialCard: React.FC<{ className?: string }> = ({ classNam
           <span className="rounded-full border border-cyan-300/40 bg-cyan-400/10 px-2 py-0.5 text-[11px] font-semibold text-cyan-200">Official</span>
         </div>
         <h2 id="nanivio-official-title" className="text-lg font-bold text-white">Scan to join Nanivio</h2>
-        <p className="text-sm text-slate-300">Installs the app and opens registration.</p>
+        <p className="text-sm text-slate-300">{profile.qrMode === 'join' ? 'Installs the app and opens registration.' : 'Opens Nanivio, where new users can install the app and sign up.'}</p>
         <div className="text-sm text-slate-200">
           <p className="font-semibold">{NANIVIO_COMPANY}</p>
           {address && <p className="mt-0.5 inline-flex items-start gap-1.5 text-slate-300"><MapPin className="mt-0.5 h-4 w-4 shrink-0 text-fuchsia-300" />{address}</p>}

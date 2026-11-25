@@ -19,6 +19,29 @@ interface PhoneDialerModalProps {
   presentation?: 'modal' | 'inline';
 }
 
+const DIAL_KEYS = [
+  { digit: '0', sub: '+' },
+  { digit: '1', sub: '' },
+  { digit: '2', sub: 'ABC' },
+  { digit: '3', sub: 'DEF' },
+  { digit: '4', sub: 'GHI' },
+  { digit: '5', sub: 'JKL' },
+  { digit: '6', sub: 'MNO' },
+  { digit: '7', sub: 'PQRS' },
+  { digit: '8', sub: 'TUV' },
+  { digit: '9', sub: 'WXYZ' },
+  { digit: '*', sub: '' },
+  { digit: '#', sub: '' },
+];
+// Keys sit on a clock face: digit n at n o'clock, 0 at the top.
+const DIAL_POINTS = DIAL_KEYS.map((_, index) => {
+  const angle = ((index * 30 - 90) * Math.PI) / 180;
+  return [150 + 120 * Math.cos(angle), 150 + 120 * Math.sin(angle)] as const;
+});
+const CONSTELLATION_PATH = [0, 3, 7, 1, 5, 9, 2, 10, 6, 11, 4, 8, 0]
+  .map((index) => DIAL_POINTS[index].join(','))
+  .join(' ');
+
 export const PhoneDialerModal: React.FC<PhoneDialerModalProps> = ({ isOpen, onClose, presentation = 'modal' }) => {
   const {
     start1on1Call,
@@ -180,33 +203,28 @@ export const PhoneDialerModal: React.FC<PhoneDialerModalProps> = ({ isOpen, onCl
               </div>
             )}
 
-            {/* Keypad Grid */}
-            <div className="nv-dialer-pad-grid grid grid-cols-3 gap-2.5 max-w-xs mx-auto">
-              {[
-                { digit: '1', sub: '' },
-                { digit: '2', sub: 'ABC' },
-                { digit: '3', sub: 'DEF' },
-                { digit: '4', sub: 'GHI' },
-                { digit: '5', sub: 'JKL' },
-                { digit: '6', sub: 'MNO' },
-                { digit: '7', sub: 'PQRS' },
-                { digit: '8', sub: 'TUV' },
-                { digit: '9', sub: 'WXYZ' },
-                { digit: '*', sub: '' },
-                { digit: '0', sub: '+' },
-                { digit: '#', sub: '' },
-              ].map((k) => (
+            <div className="nv-constellation" role="group" aria-label="Keypad">
+              <svg className="nv-constellation-lines" viewBox="0 0 300 300" aria-hidden="true">
+                <circle cx="150" cy="150" r="142" />
+                <circle cx="150" cy="150" r="96" />
+                <polyline points={CONSTELLATION_PATH} />
+                {DIAL_POINTS.map(([x, y], index) => <circle key={index} className="nv-star" cx={x} cy={y} r="2.2" />)}
+              </svg>
+              {DIAL_KEYS.map((k, index) => (
                 <button
                   key={k.digit}
+                  type="button"
                   onClick={() => handleKeypadPress(k.digit)}
                   aria-label={`Enter ${k.digit}`}
                   disabled={isVerifying}
-                  className="h-14 rounded-2xl bg-slate-900/90 border border-slate-800 hover:border-emerald-500/50 hover:bg-slate-850 text-white font-mono flex flex-col items-center justify-center transition-all active:scale-95 shadow-sm cursor-pointer"
+                  className="nv-constellation-key"
+                  style={{ left: `${(DIAL_POINTS[index][0] / 300) * 100}%`, top: `${(DIAL_POINTS[index][1] / 300) * 100}%` }}
                 >
-                  <span className="text-lg font-bold leading-none">{k.digit}</span>
-                  {k.sub && <span className="text-[8px] text-slate-400 tracking-widest mt-0.5">{k.sub}</span>}
+                  <span>{k.digit}</span>
+                  {k.sub && <small>{k.sub}</small>}
                 </button>
               ))}
+              <div className="nv-constellation-core" aria-hidden="true"><Phone className="w-6 h-6" /></div>
             </div>
 
             {/* Action Buttons: Audio & Video Call */}

@@ -91,26 +91,56 @@ export const HomeView: React.FC = () => {
   return (
     <div className="nv-home nv-home-dashboard home-dashboard mx-auto w-full max-w-7xl">
       <section className="home-overview" aria-label="Your Nanivio overview">
-        <div className="nv-home-hero home-profile-card">
-          <div className="home-profile-avatar">
-            {currentUser.avatar ? (
-              <img src={currentUser.avatar} alt="" onError={(event) => { event.currentTarget.style.display = 'none'; }} />
-            ) : null}
-            <span>{currentUser.initials || firstName?.slice(0, 1) || 'N'}</span>
-            {currentUser.isOnline && <i aria-label="Online" />}
-          </div>
-          <div className="home-profile-copy">
-            <h1 id="home-title">{greeting}<span aria-hidden="true">.</span></h1>
-          </div>
-          <div className="home-profile-id">
-            <span><Fingerprint size={14} /> NANIVIO ID</span>
-            <strong>{nvId || 'Not assigned'}</strong>
-            {nvId && (
-              <button onClick={copyId} aria-label="Copy Nanivio ID">
-                {copied ? <Check size={14} /> : <Copy size={14} />}
-                {copied ? 'Copied' : 'Copy'}
+        <div className="nv-home-hero home-profile-card nv-neon-hero">
+          <svg className="nv-hero-ribbons" viewBox="0 0 600 260" preserveAspectRatio="none" aria-hidden="true">
+            <defs>
+              <linearGradient id="nv-ribbon-a" x1="0" x2="1">
+                <stop offset="0" stopColor="#22d3ee" stopOpacity="0" />
+                <stop offset=".35" stopColor="#22d3ee" />
+                <stop offset=".7" stopColor="#8b5cf6" />
+                <stop offset="1" stopColor="#ec4899" stopOpacity=".2" />
+              </linearGradient>
+              <linearGradient id="nv-ribbon-b" x1="0" x2="1">
+                <stop offset="0" stopColor="#ec4899" stopOpacity="0" />
+                <stop offset=".5" stopColor="#a855f7" />
+                <stop offset="1" stopColor="#38bdf8" stopOpacity=".3" />
+              </linearGradient>
+            </defs>
+            <path d="M-20 210 C 120 120, 220 250, 360 150 S 560 40, 640 90" stroke="url(#nv-ribbon-a)" strokeWidth="18" fill="none" />
+            <path d="M-20 235 C 140 150, 250 260, 380 175 S 560 80, 640 120" stroke="url(#nv-ribbon-b)" strokeWidth="9" fill="none" />
+            <path d="M-20 190 C 100 110, 240 220, 350 130 S 540 20, 640 60" stroke="url(#nv-ribbon-a)" strokeWidth="3" fill="none" />
+          </svg>
+          <div className="nv-hero-copy">
+            <div className="nv-hero-hello">
+              <span className="home-profile-avatar">
+                {currentUser.avatar ? (
+                  <img src={currentUser.avatar} alt="" onError={(event) => { event.currentTarget.style.display = 'none'; }} />
+                ) : null}
+                <span>{currentUser.initials || firstName?.slice(0, 1) || 'N'}</span>
+                {currentUser.isOnline && <i aria-label="Online" />}
+              </span>
+              <span>{greeting}</span>
+            </div>
+            <h1 id="home-title">Connect Beyond Boundaries</h1>
+            <div className="nv-hero-actions">
+              <button type="button" className="nv-gradient-button" onClick={() => setActiveTab('chat')}>
+                <MessageCircle size={16} /> Start Messaging
               </button>
-            )}
+              <div className="home-profile-id">
+                <span><Fingerprint size={14} /> NV ID</span>
+                <strong>{nvId || 'Not assigned'}</strong>
+                {nvId && (
+                  <button onClick={copyId} aria-label="Copy Nanivio ID">
+                    {copied ? <Check size={14} /> : <Copy size={14} />}
+                    {copied ? 'Copied' : 'Copy'}
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
+          <div className="nv-hero-emblem" aria-hidden="true">
+            <span className="nv-hero-emblem-glow" />
+            <img src="/brand/nanivio-emblem.png" alt="" />
           </div>
         </div>
 
