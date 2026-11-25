@@ -641,7 +641,7 @@ html body:not(#nv-aurora) .nanivio-auth :is(button[class~="bg-emerald-500"], but
   border-color: rgba(190, 240, 255, .45) !important;
   box-shadow: 0 6px 16px rgba(67, 142, 211, .18) !important;
 }
-html body:not(#nv-aurora) :is(.nv-gradient-button, .home-wallet-footer button, button[class~="bg-emerald-500"], button[class~="from-emerald-500"]) :is(svg, span) { color: #0d1a2c !important; }
+html body:not(#nv-aurora) :is(.nv-gradient-button, .home-wallet-footer button, button[class~="bg-emerald-500"], button[class~="from-emerald-500"]) :is(svg, span:not([class*="bg-slate-9"])) { color: #0d1a2c !important; }
 html body:not(#nv-aurora) :is(.nv-theme-dark, .nanivio-auth) [class~="bg-slate-950"],
 html body:not(#nv-aurora) .nv-theme-dark :is(.nanivio-account-page, main[data-nanivio-page]) :is([class*="bg-slate-950"], [class*="bg-slate-900/"], [class*="bg-[#0"], [class*="bg-[#1"]):not(button) { background-color: rgba(11, 16, 31, .78) !important; }
 html body:not(#nv-aurora) :is(.nv-theme-dark, .nanivio-auth) [class~="bg-slate-900"] { background-color: #131a31 !important; }
