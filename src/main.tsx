@@ -8,6 +8,9 @@ import './styles/reference-depth.css';
 import './styles/nanivio-aurora.css';
 import './styles/nanivio-neon.css';
 import './i18n';
+import { installStaleChunkReload } from './lib/staleChunkReload';
+
+installStaleChunkReload();
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
