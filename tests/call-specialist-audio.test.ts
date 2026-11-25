@@ -256,3 +256,19 @@ test('simultaneous Arabic and Twi turns deliver only the other speaker’s capti
   assert.equal(received.get('arabic-speaker').translatedText,'ترجمة عربية');
   assert.equal(received.get('twi-speaker').translatedText,'Twi translation');
 });
+test('live-provider pairs use the staged pipeline when Palabra is not configured', async () => {
+  const targets: string[] = [];
+  const f = fixture({
+    configured: () => false,
+    translate: async () => { throw new Error('Palabra must not run without a key'); },
+    stagedTranslate: (async (_audio: Buffer, source: string, target: string) => {
+      targets.push(`${source}>${target}`);
+      return { transcript: 'hello', translatedTranscript: 'bonjour',
+        audioBase64: wav().toString('base64'), contentType:'audio/wav', durationSeconds:0.5 };
+    }) as any,
+  });
+  f.req.body.targetLang = 'fr';
+  await f.handler(f.req, f.res);
+  assert.equal(f.res.code, 200); assert.deepEqual(targets, ['en>fr']);
+  assert.equal(f.res.body.translatedText, 'bonjour');
+});
