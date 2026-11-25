@@ -3,6 +3,8 @@ import { MalviGeminiEffectStream, MALVI_GEMINI_TAIL_SAMPLES } from './geminiVoic
 
 /** 200 ms of 24 kHz PCM16 per packet plus the retained 20 ms tail. */
 export const MALVI_NATIVE_PACKET_BYTES = 9_600 + 960;
+/** Without a transcript, wait at most 600 ms of audio before starting anyway. */
+export const MALVI_NATIVE_UNCAPTIONED_BYTES = 28_800 + 960;
 
 /** One bounded native turn. No synthesis request, voice clone, or provider retry. */
 export class GeminiNativeVoice {
@@ -35,12 +37,13 @@ export class GeminiNativeVoice {
   }
 
   /**
-   * Release audio as soon as a packet is buffered. Output transcription usually
-   * lags the PCM, so waiting for it delayed Malvi's first words; captions catch
-   * up on later packets. Still use paired avatar A/V playback.
+   * Release 200 ms packets. The first packet starts with its transcript, or after
+   * a bounded 600 ms when transcription lags, so subtitles keep real duration
+   * without stalling speech. Still use paired avatar A/V playback.
    */
-  ready(_text = '') {
-    return this.bytes >= MALVI_NATIVE_PACKET_BYTES;
+  ready(text = '') {
+    return this.bytes >= MALVI_NATIVE_PACKET_BYTES
+      && (this.emitted || Boolean(text.trim()) || this.bytes >= MALVI_NATIVE_UNCAPTIONED_BYTES);
   }
 
   finish(text: string, final = true) {

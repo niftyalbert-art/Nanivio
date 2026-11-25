@@ -154,7 +154,8 @@ test('native speech releases after 200 ms rather than waiting for a complete ans
   voice.append(Buffer.alloc(10000).toString('base64'),'audio/pcm;rate=24000');
   assert.equal(voice.ready('Hello'),false);
   voice.append(Buffer.alloc(560).toString('base64'),'audio/pcm;rate=24000');
-  assert.equal(voice.ready(''),true);
+  assert.equal(voice.ready('Hello'),true);
+  assert.equal(voice.ready(''),false);
   const output = voice.finish('Hello',false);
   assert.ok(output && output.speechDurationMs >= 200 && output.speechDurationMs < 300);
 });

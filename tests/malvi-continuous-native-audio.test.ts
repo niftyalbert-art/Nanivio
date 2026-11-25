@@ -7,7 +7,9 @@ const pcm = () => Buffer.alloc(24000,16).toString('base64');
 test('native PCM continues while transcription is between updates',()=>{
   const voice=new GeminiNativeVoice();
   voice.append(pcm(),'audio/pcm;rate=24000');
-  assert.equal(voice.ready(''),true,'first speech does not wait for lagging transcription');
+  assert.equal(voice.ready(''),false,'briefly wait for the first transcript');
+  voice.append(Buffer.alloc(6000,16).toString('base64'),'audio/pcm;rate=24000');
+  assert.equal(voice.ready(''),true,'but never more than 600 ms of audio');
   assert.equal(voice.ready('Hello.'),true);
   assert.ok(voice.finish('Hello.',false)?.pcm24k);
   for(let i=0;i<4;i++){
