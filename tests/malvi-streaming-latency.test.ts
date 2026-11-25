@@ -110,3 +110,15 @@ test('older browsers wait for playable media and still allow cancellation', asyn
   await assert.rejects(pending, /cancelled/);
   await waitForMalviVideoFrame({ readyState: 2, paused: false } as HTMLVideoElement, new AbortController().signal);
 });
+test('client queues hold a long reply of 200 ms packets and still bound total duration', () => {
+  const captions = new MalviCaptionPlayer(() => {});
+  const fixture = videoFixture(), errors: string[] = [];
+  const gate = new MalviAvatarVideoGate(() => fixture.video, message => errors.push(message));
+  for (let i = 0; i < 300; i++) {
+    captions.enqueue(estimatedMalviCaptionTrack('Once upon a time.', 200));
+    gate.enqueue(200, () => {});
+  }
+  assert.throws(() => captions.enqueue(estimatedMalviCaptionTrack('Once upon a time.', 5200)), /subtitle timing/);
+  assert.throws(() => gate.enqueue(5200, () => {}), /safety limit/);
+  captions.cancel(); gate.cancel(); assert.deepEqual(errors, []);
+});
