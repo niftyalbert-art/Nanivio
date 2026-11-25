@@ -1406,9 +1406,9 @@ app.get("/api/langpretation/speech-readiness",requireAuthenticatedUser,(req,res)
   try{
     const language=String(req.query.language||'en');requireLanguage(language);
     const target=String(req.query.targetLang||language);requireLanguage(target);
-    if (supportsPalabraLivePair(language,target)) return res.json({
-      success:true,language,target,provider:'nanivio-live',asrConfigured:palabraConfigured(),
-      ttsConfigured:palabraConfigured(),integratedSpeech:true,liveVerified:false
+    if (supportsPalabraLivePair(language,target) && palabraConfigured()) return res.json({
+      success:true,language,target,provider:'nanivio-live',asrConfigured:true,
+      ttsConfigured:true,integratedSpeech:true,liveVerified:false
     });
     if (target !== language) {
       const configured = stagedCallPairConfigured(language, target);
