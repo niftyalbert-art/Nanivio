@@ -8,6 +8,8 @@ test('a voice language switch requires the user to name the language', () => {
   assert.equal(languageMentioned('Parle en français', 'fr'), true);
   assert.equal(languageMentioned('Please continue in Twi', 'ak'), true);
   assert.equal(languageMentioned('Speak Akan to me', 'ak'), true);
+  assert.equal(languageMentioned('Parle anglais maintenant', 'en'), true);
+  assert.equal(languageMentioned('Habla ingles por favor', 'en'), true);
   assert.equal(languageMentioned('Merci, what is the weather in Accra?', 'fr'), false);
   assert.equal(languageMentioned('', 'fr'), false);
 });
